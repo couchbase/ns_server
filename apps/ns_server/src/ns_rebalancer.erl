@@ -39,7 +39,8 @@
          get_desired_services_nodes/1,
          prepare_fusion_rebalance/3,
          maybe_check_expected_topology/2,
-         run_janitor/1]).
+         run_janitor/1,
+         generate_vbucket_map_options/2]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
 

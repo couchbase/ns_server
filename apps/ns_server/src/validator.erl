@@ -81,7 +81,9 @@
          validate_field_path/2,
          no_duplicate_values/1,
          validate_decoded_object/2,
-         strip_json_nulls/1]).
+         strip_json_nulls/1,
+         simple_term_to_list/1,
+         jsonify_results/1]).
 
 %% Used for testing validators.
 -ifdef(TEST).

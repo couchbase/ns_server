@@ -19,7 +19,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type op() :: sync_fusion_log_store.
+-type op() :: sync_fusion_log_store | prepare_fusion_snapshot_restore.
 
 -type busy() :: rebalance_running |
                 in_recovery |
@@ -115,7 +115,8 @@
          has_rebalance_plan/0,
          fusion_upload_mounted_volumes/2,
          sync_fusion_log_store/1,
-         stop_op/0]).
+         stop_op/0,
+         prepare_fusion_snapshot_restore/1]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -648,6 +649,11 @@ stop_recovery(Bucket, UUID) ->
           {failed_nodes, [node()]} | failed_to_run_janitor | busy().
 sync_fusion_log_store(Timeout) ->
     call({start_op, sync_fusion_log_store, [{timeout, Timeout}]}).
+
+-spec prepare_fusion_snapshot_restore(list()) ->
+          {ok, list()} | stopped | busy() | not_enabled.
+prepare_fusion_snapshot_restore(BucketInfos) ->
+    call({start_op, prepare_fusion_snapshot_restore, BucketInfos}).
 
 -spec stop_op() -> ok | not_running | stopping.
 stop_op() -> call(stop_op).
@@ -2822,9 +2828,13 @@ handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
 
 verify_op(sync_fusion_log_store, _Params) ->
     {ok, [Name || {Name, _} <- ns_bucket:get_fusion_buckets()]};
-%% TODO: remove after there will be actual error returned for some op
-verify_op(for_dialyzer_only, _Params) ->
-    error.
+verify_op(prepare_fusion_snapshot_restore, _Params) ->
+    case fusion_backup:validate_prepare_snapshot_restore() of
+        ok ->
+            {ok, []};
+        Error ->
+            Error
+    end.
 
 handle_op(sync_fusion_log_store, Props, BucketNames) ->
     Timeout = proplists:get_value(timeout, Props),
@@ -2836,7 +2846,13 @@ handle_op(sync_fusion_log_store, Props, BucketNames) ->
             R;
         {error, timeout} ->
             timeout
-    end.
+    end;
+handle_op(prepare_fusion_snapshot_restore, BucketInfos, []) ->
+    ?log_info("Request to prepare fusion snapshot restore. BucketInfos = ~p ",
+              [BucketInfos]),
+    {ok, RestorePlan, _RestoreBlueprint} =
+        fusion_backup:prepare_snapshot_restore(BucketInfos),
+    {ok, RestorePlan}.
 
 handle_sync_fusion_log_store(BucketNames, Timeout) ->
     ?log_debug("Ensure janitor runs for ~p.", [BucketNames]),

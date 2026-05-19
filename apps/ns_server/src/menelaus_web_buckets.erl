@@ -55,7 +55,8 @@
          serve_short_bucket_info/2,
          serve_streaming_short_bucket_info/2,
          build_hibernation_state/1,
-         get_ddocs_list/2]).
+         get_ddocs_list/2,
+         parse_new_buckets/1]).
 
 -import(menelaus_util,
         [reply/2,
@@ -806,6 +807,11 @@ init_bucket_validation_context(IsNew, BucketName, Req) ->
         proplists:get_value("internal",
                             mochiweb_request:parse_qs(Req)) =:= "1",
 
+    init_bucket_validation_context(
+      IsNew, BucketName, ValidateOnly, IgnoreWarnings, AllowInternalParams).
+
+init_bucket_validation_context(
+  IsNew, BucketName, ValidateOnly, IgnoreWarnings, AllowInternalParams) ->
     Config = ns_config:get(),
     Snapshot =
         chronicle_compat:get_snapshot(
@@ -859,22 +865,50 @@ init_bucket_validation_context(IsNew, BucketName, BucketUUID, AllBuckets,
             {_, V} ->
                 V
         end,
-    #bv_ctx{
-       validate_only = ValidateOnly,
-       ignore_warnings = IgnoreWarnings,
-       allow_internal_params = AllowInternalParams,
-       new = IsNew,
-       bucket_name = BucketName,
-       bucket_uuid = BucketUUID,
-       all_buckets = AllBuckets,
-       kv_nodes = KvNodes,
-       max_replicas = MaxReplicas,
-       bucket_config = BucketConfig,
-       cluster_storage_totals = ClusterStorageTotals,
-       cluster_version = ClusterVersion,
-       is_enterprise = IsEnterprise,
-       is_developer_preview = IsDeveloperPreview
-      }.
+    set_bucket_to_validation_context(
+      BucketName, BucketUUID,
+      #bv_ctx{
+         validate_only = ValidateOnly,
+         ignore_warnings = IgnoreWarnings,
+         allow_internal_params = AllowInternalParams,
+         new = IsNew,
+         all_buckets = AllBuckets,
+         kv_nodes = KvNodes,
+         max_replicas = MaxReplicas,
+         bucket_config = BucketConfig,
+         cluster_storage_totals = ClusterStorageTotals,
+         cluster_version = ClusterVersion,
+         is_enterprise = IsEnterprise,
+         is_developer_preview = IsDeveloperPreview
+        }).
+
+add_to_quota_used_per_node(ClusterStorageTotals, Delta) ->
+    lists:map(
+      fun ({ram, RamProps}) ->
+              {ram, [case Entry of
+                         {quotaUsedPerNode, Value} ->
+                             {quotaUsedPerNode, Value + Delta};
+                         _ ->
+                             Entry
+                     end || Entry <- RamProps]};
+          (Entry) ->
+              Entry
+      end,
+      ClusterStorageTotals).
+
+add_bucket_to_validation_context(
+  BucketName, BucketConfig,
+  Ctx = #bv_ctx{all_buckets = AllBuckets,
+                cluster_storage_totals = ClusterStorageTotals}) ->
+    NewAllBuckets = [{BucketName, BucketConfig} | AllBuckets],
+    NewClusterStorageTotals = add_to_quota_used_per_node(
+                                ClusterStorageTotals,
+                                ns_bucket:raw_ram_quota(BucketConfig)),
+    Ctx#bv_ctx{all_buckets = NewAllBuckets,
+               cluster_storage_totals = NewClusterStorageTotals}.
+
+set_bucket_to_validation_context(BucketName, BucketUUID, Ctx) ->
+    Ctx#bv_ctx{bucket_name = BucketName, bucket_uuid = BucketUUID}.
 
 is_storage_mode_migration(_IsNewBucket = true, _BucketConfig, _Params) ->
     false;
@@ -1426,6 +1460,30 @@ service_name(goxdcr) ->
           free}).                               % total - other_data - other_buckets - this_alloc
                                                 % So it's kind of: Amount of cluster disk space available of allocation,
                                                 % but with a number of 'but's.
+
+parse_new_buckets(Buckets) ->
+    {Result, _} =
+        lists:mapfoldl(
+          fun ({BucketName, BucketProps}, Ctx) ->
+                  CtxWithBucket =
+                      case Ctx of
+                          undefined ->
+                              init_bucket_validation_context(true, BucketName,
+                                                             true, true, false);
+                          _ ->
+                              set_bucket_to_validation_context(
+                                BucketName, not_present, Ctx)
+                      end,
+                  case parse_bucket_params(CtxWithBucket, BucketProps) of
+                      {ok, BucketConfig, _} ->
+                          NewCtx = add_bucket_to_validation_context(
+                                     BucketName, BucketConfig, CtxWithBucket),
+                          {{ok, BucketName, BucketConfig}, NewCtx};
+                      {errors, Errors, _} ->
+                          {{errors, BucketName, Errors}, CtxWithBucket}
+                  end
+          end, undefined, Buckets),
+    Result.
 
 parse_bucket_params(Ctx, Params) ->
     RV = parse_bucket_params_without_warnings(Ctx, Params),

@@ -26,7 +26,8 @@
          handle_upload_mounted_volumes/1,
          handle_get_active_guest_volumes/1,
          handle_diag_active_guest_volumes/1,
-         handle_sync_log_store/1]).
+         handle_sync_log_store/1,
+         handle_prepare_snapshot_restore/1]).
 
 settings() ->
     [{"logStoreURI", #{type => {uri, ["s3", "local"]},
@@ -417,3 +418,96 @@ handle_sync_log_store(Req) ->
       [validator:integer(timeout, 1, 300000, _),
        validator:default(timeout, 60, _),
        validator:unsupported(_)]).
+
+handle_prepare_snapshot_restore(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_totoro(),
+    validator:handle(
+      fun (Params) ->
+              Buckets = proplists:get_value(buckets, Params),
+              ToValidate =
+                  lists:map(
+                    fun ({BucketInfo}) ->
+                            Config =
+                                [{validator:simple_term_to_list(K),
+                                  validator:simple_term_to_list(V)} ||
+                                    {K, V} <- proplists:get_value(
+                                                config, BucketInfo)],
+                            {proplists:get_value("name", Config), Config}
+                    end, Buckets),
+              Validated = menelaus_web_buckets:parse_new_buckets(ToValidate),
+              Errors = [{BucketName, Errors} || {errors, BucketName, Errors} <-
+                                                    Validated],
+              case Errors of
+                  [] ->
+                      Zipped = lists:zip3(Validated, Buckets, ToValidate),
+                      BucketInfos = [{BucketName, BucketConfig,
+                                      proplists:get_value(manifest, Props),
+                                      RawConfig} ||
+                                        {{ok, BucketName, BucketConfig},
+                                         {Props},
+                                         {_, RawConfig}} <- Zipped],
+                      case ns_orchestrator:prepare_fusion_snapshot_restore(
+                             BucketInfos) of
+                          {ok, RestorePlan} ->
+                              menelaus_util:reply_json(Req, {RestorePlan}, 200);
+                          not_enabled ->
+                              menelaus_util:reply_text(
+                                Req, "Fusion is not enabled", 412);
+                          stopped ->
+                              menelaus_util:reply_text(
+                                Req, "Operation was stopped.", 409);
+                          Other ->
+                              reply_other(
+                                Req, "prepare fusion snapshot restore", Other)
+                      end;
+                  _ ->
+                      ErrorsJson =
+                          {[{list_to_binary(BucketName),
+                             validator:jsonify_results(BucketErrors)} ||
+                               {BucketName, BucketErrors} <- Errors]},
+                      menelaus_util:reply_json(Req, ErrorsJson, 400)
+              end
+      end, Req, json,
+      [validator:required(buckets, _),
+       validator:json_array(buckets,
+                            [validator:required(manifest, _),
+                             validate_manifest(manifest, _),
+                             validator:required(config, _),
+                             validate_bucket_config(config, _),
+                             validator:unsupported(_)],
+                            _),
+       validator:unsupported(_)]).
+
+validate_manifest(Name, State) ->
+    validator:decoded_json(
+      Name,
+      [validator:required(namespace, _),
+       validator:string(namespace, _),
+       validator:required(volumes, _),
+       validate_volumes(volumes, _),
+       validator:unsupported(_)],
+      State).
+
+validate_volumes(Name, State) ->
+    validator:json_array(
+      Name,
+      [validator:required(logManifestName, _),
+       validator:string(logManifestName, _),
+       validator:convert(logManifestName, fun list_to_binary/1, _),
+       validator:required(logicalSize, _),
+       validator:integer(logicalSize, _),
+       validator:required(storageSize, _),
+       validator:integer(storageSize, _),
+       validator:required(volumeID, _),
+       validator:string(volumeID, _),
+       validator:convert(volumeID, fun list_to_binary/1, _),
+       validator:unsupported(_)],
+      State).
+
+validate_bucket_config(Name, State) ->
+    validator:decoded_json(
+      Name,
+      [validator:required(name, _),
+       validator:string(name, _)],
+      State).
