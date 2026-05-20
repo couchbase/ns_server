@@ -20,7 +20,9 @@ start_link() ->
 
 init([]) ->
     {ok, {{rest_for_one, 10, 1},
-          [{dist_manager, {dist_manager, start_link, []},
+          [{cb_crl_cache, {cb_crl_cache, start_link, []},
+            permanent, 1000, worker, [cb_crl_cache]},
+           {dist_manager, {dist_manager, start_link, []},
             permanent, 1000, worker, [dist_manager]},
            {ns_server_cluster_sup, {ns_server_cluster_sup, start_link, []},
             permanent, infinity, supervisor, [ns_server_cluster_sup]}]}}.
