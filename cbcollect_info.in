@@ -2397,7 +2397,8 @@ def make_product_task(guts, initargs_path, local_token_creds_fun,
         [make_mcstat_task(kind, memcached_pass_fun, guts)
          for kind in ["allocator", "clocks", "connections", "threads",
                       "tracing", "worker_thread_info",
-                      "worker_thread_info aggregate", "bucket_details"]],
+                      "worker_thread_info aggregate", "bucket_details",
+                      "settings"]],
 
         [AllOsTask("ddocs for %s (%s)" % (bucket, path),
                    ["couch_dbdump", path],
