@@ -47,7 +47,8 @@
          cleanup_snapshots/0,
          cleanup_mounted_volumes/2,
          init_namespace/1,
-         enable_bucket/1]).
+         enable_bucket/1,
+         wait_for_uploaders_state/3]).
 
 %% used via rpc:call
 -export([do_get_snapshots/4, do_delete_snapshots/3]).
@@ -1343,6 +1344,39 @@ cleanup_mounted_volumes(Bucket, BucketConfig) ->
             end;
         false ->
             ok
+    end.
+
+-define(WAIT_FOR_UPLOADERS_INTERVAL, 1000).
+-spec wait_for_uploaders_state(
+        ns_bucket:name(), non_neg_integer(), fun((binary()) -> boolean())) ->
+          ok | {error, term()}.
+wait_for_uploaders_state(BucketName, Timeout, ConditionFun) ->
+    do_wait_for_uploaders_state(
+      BucketName, Timeout div ?WAIT_FOR_UPLOADERS_INTERVAL, ConditionFun).
+
+do_wait_for_uploaders_state(_BucketName, 0, _ConditionFun) ->
+    {error, timeout};
+do_wait_for_uploaders_state(BucketName, Tries, ConditionFun) ->
+    case ns_memcached:get_fusion_uploaders_state(BucketName) of
+        {ok, null} ->
+            {error, no_vbuckets};
+        {ok, {VBucketsInfo}} ->
+            case lists:all(
+                   fun ({_VBName, {VBStats}}) ->
+                           ConditionFun(
+                             proplists:get_value(<<"state">>, VBStats))
+                   end, VBucketsInfo) of
+                false ->
+                    timer:sleep(?WAIT_FOR_UPLOADERS_INTERVAL),
+                    do_wait_for_uploaders_state(BucketName, Tries - 1,
+                                                ConditionFun);
+                true ->
+                    ok
+            end;
+        bucket_not_found ->
+            {error, bucket_not_found};
+        Error ->
+            {error, Error}
     end.
 
 -ifdef(TEST).

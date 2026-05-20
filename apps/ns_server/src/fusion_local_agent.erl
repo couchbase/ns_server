@@ -180,31 +180,15 @@ schedule_deletes(ToDelete, #state{queue = Queue,
        Queue, ?cut(delete_data(Self, NS))) || NS <- ToDelete],
     State#state{deleting = Deleting ++ ToDelete}.
 
-wait_for_uploaders_to_stop(_BucketName, 0) ->
-    {error, timeout};
-wait_for_uploaders_to_stop(BucketName, Tries) ->
-    case ns_memcached:get_fusion_uploaders_state(BucketName) of
-        {ok, null} ->
-            %% this is returned when there are no vbuckets
+wait_for_uploaders_to_stop(BucketName) ->
+    case fusion_uploaders:wait_for_uploaders_state(
+           BucketName, ?UPLOADERS_STOP_TIMEOUT, _ =:= <<"disabled">>) of
+        {error, no_vbuckets} ->
             ok;
-        {ok, {[]}} ->
+        {error, bucket_not_found} ->
             ok;
-        {ok, {VBucketsInfo}} ->
-            case lists:any(
-                   fun ({_VBName, {VBStats}}) ->
-                           proplists:get_value(<<"state">>, VBStats) =/=
-                               <<"disabled">>
-                   end, VBucketsInfo) of
-                true ->
-                    timer:sleep(1000),
-                    wait_for_uploaders_to_stop(BucketName, Tries - 1);
-                false ->
-                    ok
-            end;
-        bucket_not_found ->
-            ok;
-        Error ->
-            {error, Error}
+        Other->
+            Other
     end.
 
 pre_delete_data(Namespace) ->
@@ -213,8 +197,7 @@ pre_delete_data(Namespace) ->
         {ok, BucketName} ->
             ?log_info("Waiting for bucket ~p uploaders to stop",
                       [BucketName]),
-            case wait_for_uploaders_to_stop(
-                   BucketName, ?UPLOADERS_STOP_TIMEOUT div 1000) of
+            case wait_for_uploaders_to_stop(BucketName) of
                 {error, Err} ->
                     ?log_error("Error waiting for uploaders for bucket "
                                "~p to stop: ~p", [BucketName, Err]),

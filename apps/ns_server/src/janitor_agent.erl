@@ -30,6 +30,8 @@
 -define(MOUNT_VOLUMES_TIMEOUT,  ?get_timeout(mount_volumes, 5*60000)).
 -define(UNMOUNT_VOLUMES_TIMEOUT,  ?get_timeout(unmount_volumes, 30000)).
 -define(RELEASE_SNAPSHOTS_TIMEOUT, ?get_timeout(release_snapshots, 30000)).
+-define(UPLOADERS_START_TIMEOUT, ?get_timeout(uploaders_start, 60000)).
+
 -record(state, {bucket_name :: ns_bucket:name(),
                 rebalance_pid :: undefined | pid(),
                 rebalance_mref :: undefined | reference(),
@@ -1067,7 +1069,16 @@ do_handle_call({sync_fusion_log_store, VBuckets, Timeout}, From, State) ->
     handle_call_via_servant(
       From, State, sync_fusion_log_store,
       fun (sync_fusion_log_store, #state{bucket_name = Bucket}) ->
-              ns_memcached:sync_fusion_log_store(Bucket, VBuckets, Timeout)
+              case fusion_uploaders:wait_for_uploaders_state(
+                     Bucket, ?UPLOADERS_START_TIMEOUT, _ =/= <<"enabling">>) of
+                  {error, Err} ->
+                      ?log_error("Error waiting for uploaders for bucket "
+                                 "~p to start: ~p", [Bucket, Err]),
+                      error;
+                  ok ->
+                      ns_memcached:sync_fusion_log_store(
+                        Bucket, VBuckets, Timeout)
+              end
       end);
 do_handle_call({cleanup_mounted_volumes, NVBuckets}, From, State) ->
     handle_call_via_servant(
