@@ -625,7 +625,7 @@ build_cache_config(Label, Overrides) ->
 cache_size_defaults() ->
     [{uuid_cache_size, uuidCacheSize, 256},
      {user_bkts_cache_size, userBktsCacheSize, 1024},
-     {up_cache_size, upCacheSize, 1024},
+     {up_cache_size, upCacheSize, 10240},
      {auth_cache_size, authCacheSize, 256},
      {client_cert_cache_size, clientCertCacheSize, 256}].
 
