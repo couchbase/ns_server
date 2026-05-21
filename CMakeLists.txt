@@ -93,8 +93,18 @@ IF (BUILD_ENTERPRISE)
   _maybe_add_pluggable_ui_stamp("cbas-ui" "cbas.js.stamp")
 ENDIF()
 
-SET(NS_UI_PUB_JS_OUT_DIR "${NS_UI_PUB_DIR}/jsout")
-SET(NS_UI_PUB_CSS_OUT_DIR "${NS_UI_PUB_DIR}/cssout")
+# MB-71811: Use a product-specific jsout directory to avoid browser cache
+# collisions when EA and Couchbase Server share the same host:port.
+IF (BUILD_COLUMNAR)
+  SET(NS_UI_PUB_JS_OUT_DIR "${NS_UI_PUB_DIR}/ea-jsout")
+ELSE()
+  SET(NS_UI_PUB_JS_OUT_DIR "${NS_UI_PUB_DIR}/jsout")
+ENDIF()
+IF (BUILD_COLUMNAR)
+  SET(NS_UI_PUB_CSS_OUT_DIR "${NS_UI_PUB_DIR}/ea-cssout")
+ELSE()
+  SET(NS_UI_PUB_CSS_OUT_DIR "${NS_UI_PUB_DIR}/cssout")
+ENDIF()
 FILE (GLOB_RECURSE UI_SRC_CSS_FILES CONFIGURE_DEPENDS "${NS_UI_SRC}/*.css")
 
 ADD_CUSTOM_COMMAND (OUTPUT "${NS_UI_BUILD_DIR}/out.js.stamp"
@@ -131,9 +141,9 @@ INSTALL (DIRECTORY "${NS_UI_PUB_SRC}/"
   PATTERN "*-dev.html" EXCLUDE
   PATTERN "node_modules/" EXCLUDE
   PATTERN "*.js" EXCLUDE)
-INSTALL (DIRECTORY "${NS_UI_PUB_DIR}/jsout"
+INSTALL (DIRECTORY "${NS_UI_PUB_JS_OUT_DIR}"
   DESTINATION "${NS_UI_INSTALL_DIR}")
-INSTALL (DIRECTORY "${NS_UI_PUB_DIR}/cssout"
+INSTALL (DIRECTORY "${NS_UI_PUB_CSS_OUT_DIR}"
   DESTINATION "${NS_UI_INSTALL_DIR}")
 INSTALL (FILES
   "${NS_UI_SRC}/libs/reflect-metadata.js"
