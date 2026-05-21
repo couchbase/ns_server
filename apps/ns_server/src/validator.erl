@@ -79,7 +79,8 @@
          report_errors_for_one/3,
          validate_field_path/2,
          no_duplicate_values/1,
-         validate_decoded_object/2]).
+         validate_decoded_object/2,
+         strip_json_nulls/1]).
 
 %% Used for testing validators.
 -ifdef(TEST).
@@ -258,6 +259,16 @@ json_array(Name, Validators, State) ->
           (_) ->
               {error, "The value must be a json array"}
       end, Name, State).
+
+%% @doc Intended for PUT handlers that want to treat explicit JSON null the
+%% same as an absent field. Do not use for PATCH handlers that merge-patch
+%% semantics where null means "remove this field from the target."
+strip_json_nulls({KVList}) when is_list(KVList) ->
+    {[{K, strip_json_nulls(V)} || {K, V} <- KVList, V =/= null]};
+strip_json_nulls(List) when is_list(List) ->
+    [strip_json_nulls(E) || E <- List];
+strip_json_nulls(Other) ->
+    Other.
 
 with_decoded_object({KVList}, Validators) ->
     Params = [{binary_to_list(Name), Value} || {Name, Value} <- KVList],

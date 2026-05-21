@@ -353,11 +353,18 @@ handle_settings_get(Req) ->
                         [{"Content-Type", "application/json"}]).
 
 handle_settings_put(Req) ->
-    validator:handle(
-      fun (Props) ->
-              validate_and_store_settings(Props, Req)
-      end,
-      Req, json, main_validators()).
+    Body = mochiweb_request:recv_body(Req),
+    try ejson:decode(Body) of
+        Decoded ->
+            validator:handle(
+              fun (Props) ->
+                      validate_and_store_settings(Props, Req)
+              end,
+              Req, validator:strip_json_nulls(Decoded), main_validators())
+    catch _:_ ->
+            menelaus_util:reply_json(
+              Req, {[{error, <<"Invalid JSON">>}]}, 400)
+    end.
 
 handle_settings_delete(Req) ->
     Fun = fun (_) -> {commit, [{delete, jwt_settings}]} end,
