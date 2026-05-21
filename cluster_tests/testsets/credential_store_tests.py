@@ -410,6 +410,20 @@ class CredentialStoreCrudTests(testlib.BaseTestSet):
         testlib.get_fail(self.cluster, cred_url("does/not/exist"), 404)
         testlib.delete_fail(self.cluster, cred_url("does/not/exist"), 404)
 
+    def put_type_change_rejected_test(self):
+        """PUT must reject a request that changes the credential's type with
+        a 400, not surface a 500."""
+        cred_id = "test/aws/type-change"
+        testlib.post_succ(self.cluster, cred_url(cred_id),
+                          json=aws_body(), expected_code=201)
+        try:
+            r = testlib.put_fail(self.cluster, cred_url(cred_id), 400,
+                                 json=gcp_body())
+            assert "error" in r.json(), \
+                f"Expected error body, got {r.text!r}"
+        finally:
+            testlib.ensure_deleted(self.cluster, cred_url(cred_id))
+
     def cbauth_not_found_test(self):
         backup_auth = ("@backup", self.special_password)
         r = cbauth_get(self.node, "does/not/exist", auth=backup_auth,

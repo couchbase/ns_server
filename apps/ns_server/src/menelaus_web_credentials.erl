@@ -1047,6 +1047,13 @@ reply_store_error(Req, n2n_encryption_required) ->
                                  "n2nEncryptionOverride to be set in "
                                  "/settings/credentialStore">>}),
                   400);
+reply_store_error(Req, invalid_type) ->
+    reply_json_ok(Req,
+                  encode_response(
+                    #{error => <<"Credential type is immutable and cannot be "
+                                 "changed; delete and recreate the credential "
+                                 "to change its type">>}),
+                  400);
 reply_store_error(Req, {txn_failed, Reason}) ->
     ?log_error("Credential store transaction failed: ~p", [Reason]),
     reply_json_ok(Req,
