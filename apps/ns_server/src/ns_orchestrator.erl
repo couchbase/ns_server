@@ -2871,8 +2871,12 @@ handle_op(sync_fusion_log_store, Props, BucketNames) ->
 handle_op(prepare_fusion_snapshot_restore, BucketInfos, []) ->
     ?log_info("Request to prepare fusion snapshot restore. BucketInfos = ~p ",
               [BucketInfos]),
-    {ok, RestorePlan, _RestoreBlueprint} =
+    {ok, RestorePlan, RestoreBlueprint} =
         fusion_backup:prepare_snapshot_restore(BucketInfos),
+    ?log_info("Fusion snapshot restore is prepared.~n"
+              "RestorePlan:~n~p~nRestoreBlueprint:~n~p~n",
+              [RestorePlan, RestoreBlueprint]),
+    save_fusion_plan([{type, restore} | RestoreBlueprint]),
     {ok, RestorePlan}.
 
 handle_sync_fusion_log_store(BucketNames, Timeout) ->
