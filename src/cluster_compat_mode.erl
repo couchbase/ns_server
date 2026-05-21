@@ -29,6 +29,7 @@
          is_version_76/1,
          is_enterprise/0,
          is_enterprise/1,
+         is_node_enterprise/2,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
          supported_compat_version/0,
@@ -142,6 +143,9 @@ is_enterprise(Config) ->
 
 is_enterprise() ->
     ns_config:read_key_fast({node, node(), is_enterprise}, false).
+
+is_node_enterprise(Node, Config) ->
+    ns_config:search(Config, {node, Node, is_enterprise}, false).
 
 is_saslauthd_enabled() ->
     is_enterprise() andalso

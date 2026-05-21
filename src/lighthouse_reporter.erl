@@ -172,10 +172,59 @@ build_resource_telemetry(_Statuses) ->
       cpuPhysicalCores => CpuPhysicalCores,
       cpuLogicalCores => CpuLogicalCores}.
 
-build_services() ->
-    [].
+build_edition(Node, Config) ->
+    case cluster_compat_mode:is_node_enterprise(Node, Config) of
+        true -> <<"enterprise">>;
+        false -> <<"community">>
+    end.
+
+build_services(Node) ->
+    ns_cluster_membership:node_active_services(Node).
 
 create_report() ->
+    Config = ns_config:get(),
+    Nodes = ns_node_disco:nodes_actual(),
+    NodesData =
+        lists:map(
+          fun (Node) ->
+                  Props = ns_doctor:get_node(Node),
+                  Os = iolist_to_binary(
+                         proplists:get_value(system_arch, Props, "unknown")),
+                  Hostname = iolist_to_binary(misc:extract_node_address(Node)),
+                  IsEnterprise = build_edition(Node, Config),
+                  UptimeSeconds = proplists:get_value(wall_clock, Props, 0),
+                  CoresLogical = proplists:get_value(cpu_count, Props, 0),
+                  SystemStats = proplists:get_value(system_stats, Props, []),
+                  CoresPhysical = proplists:get_value(cpu_host_cores_available,
+                                                      Props, 0),
+                  RamBytesTotal = proplists:get_value(mem_total,
+                                                      SystemStats, 0),
+                  RamBytesUsed = proplists:get_value(mem_actual_used,
+                                                     SystemStats, 0),
+                  CgroupRamBytesTotal = proplists:get_value(mem_cgroup_limit,
+                                                            SystemStats, 0),
+                  CgroupRamBytesUsed = proplists:get_value(mem_cgroup_used,
+                                                           SystemStats, 0),
+                  StorageBytesTotal =
+                      proplists:get_value(data_disk_bytes_available, Props, 0),
+                  StorageBytesUsed =
+                      proplists:get_value(data_disk_bytes_used, Props, 0),
+                  Services = build_services(Node),
+                  #{os => Os,
+                    hostname => Hostname,
+                    edition => IsEnterprise,
+                    uptimeSeconds => UptimeSeconds,
+                    cpuLogicalCores => CoresLogical,
+                    cpuPhysicalCores => CoresPhysical,
+                    ramBytesTotal => RamBytesTotal,
+                    ramBytesUsed => RamBytesUsed,
+                    cgroupRamBytesTotal => CgroupRamBytesTotal,
+                    cgroupRamBytesUsed => CgroupRamBytesUsed,
+                    storageBytesTotal => StorageBytesTotal,
+                    storageBytesUsed => StorageBytesUsed,
+                    services => Services}
+          end, Nodes),
+
     Now = os:timestamp(),
     CollectedAt = list_to_binary(misc:timestamp_iso8601(Now, utc)),
     Product = build_product(),
@@ -183,10 +232,10 @@ create_report() ->
     BasePayload = #{collectedAt => CollectedAt,
                     product => Product,
                     clusterUuid => ClusterUuid},
-    ResourceTelemetry = build_resource_telemetry([]),
+    ResourceTelemetry = build_resource_telemetry(NodesData),
     Payload1 = maps:merge(BasePayload, ResourceTelemetry),
-    ClusterDetails = #{services => build_services(),
-                       nodes => []},
+    ClusterDetails = #{services => [],
+                       nodes => NodesData},
     Payload2 = maps:merge(Payload1, ClusterDetails),
     json:encode(Payload2).
 
@@ -205,13 +254,38 @@ report_keys() ->
      <<"storageBytesTotal">>,
      <<"storageBytesUsed">>].
 
+node_keys() ->
+    [<<"cpuLogicalCores">>,
+     <<"cpuPhysicalCores">>,
+     <<"hostname">>,
+     <<"os">>,
+     <<"edition">>,
+     <<"ramBytesTotal">>,
+     <<"ramBytesUsed">>,
+     <<"cgroupRamBytesTotal">>,
+     <<"cgroupRamBytesUsed">>,
+     <<"services">>,
+     <<"storageBytesTotal">>,
+     <<"storageBytesUsed">>,
+     <<"uptimeSeconds">>].
+
 create_report_test_() ->
     {setup,
      fun () ->
              fake_ns_config:setup(),
-             fake_chronicle_kv:setup()
+             fake_chronicle_kv:setup(),
+             PidMap1 = mock_helpers:setup_mocks([ns_heart]),
+             {ok, NsDoctorPid} = ns_doctor:start_link(),
+             PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
+             meck:expect(ns_node_disco, nodes_actual, 0, [node()]),
+             PidMap2
      end,
-     fun (_) ->
+     fun (PidMap) ->
+             %% Shut down ns_heart first, as it depends on other processes
+             mock_helpers:teardown(
+               maps:filter(fun (Key, _) -> Key =:= ns_heart end, PidMap)),
+             %% It's now safe to shut down the rest without crashing ns_heart
+             mock_helpers:teardown(PidMap),
              fake_chronicle_kv:teardown(),
              fake_ns_config:teardown(),
              meck:unload()
@@ -220,7 +294,9 @@ create_report_test_() ->
              Report = create_report(),
              %% Convert back to maps for validation
              ReportMap = json:decode(list_to_binary(Report)),
-             ?assertListsEqual(report_keys(), maps:keys(ReportMap))
+             ?assertListsEqual(report_keys(), maps:keys(ReportMap)),
+             [NodeMap] = maps:get(<<"nodes">>, ReportMap),
+             ?assertListsEqual(node_keys(), maps:keys(NodeMap))
      end}.
 
 -endif.
