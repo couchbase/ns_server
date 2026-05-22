@@ -3330,6 +3330,7 @@ extract_bucket_props(Props) ->
                          magma_fusion_state,
                          dcp_backfill_idle_protection_enabled,
                          throttle_reserved, throttle_hard_limit,
+                         data_service_rebalance_type,
                          extra_params]],
           X =/= false].
 
