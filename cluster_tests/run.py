@@ -90,7 +90,8 @@ from testsets import \
     external_catalog_tests, \
     external_collection_tests, \
     throttle_tests, \
-    credential_store_tests
+    credential_store_tests, \
+    crl_tests
 
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")
