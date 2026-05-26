@@ -15,6 +15,11 @@
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-include("ns_test.hrl").
+-endif.
+
 -export([start_link/0, start_link_slow_updater/0, status_all/1,
          force_beat/0, grab_fresh_failover_safeness_infos/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -440,3 +445,60 @@ grab_procfs_files() ->
         false ->
             []
     end.
+
+-ifdef(TEST).
+status_slow_keys() ->
+    [outgoing_replications_safeness_level, incoming_replications_conf_hashes,
+     {service_status, fts}, {service_status, index}, {service_status, cbas},
+     {service_status, eventing}, {service_status, backup},
+     {service_status, n1ql}, local_tasks, memory, cpu_count,
+     system_memory_data, node_storage_conf, statistics, system_stats,
+     interesting_stats, per_bucket_interesting_stats, processes_stats, version,
+     supported_compat_version, advertised_version, system_arch, wall_clock,
+     memory_data, disk_data].
+
+status_slow_keys_linux() ->
+    [cpu_pressure,io_pressure,loadavg,meminfo, memory_pressure].
+
+statistics_keys() ->
+    [context_switches, garbage_collection, io, reductions, run_queue,
+     run_queues, runtime, wall_clock].
+
+system_stats_keys() ->
+    [allocstall, cpu_cores_available, cpu_stolen_rate, cpu_utilization_rate,
+     mem_free, mem_limit, mem_total, swap_total, swap_used].
+
+status_slow_setup() ->
+    fake_ns_config:setup(),
+    fake_chronicle_kv:setup(),
+    fake_config_helpers:setup_node_config(
+      #{node() => {active, [backup, cbas, eventing, fts, index, n1ql]}}),
+    mock_helpers:setup_mocks([ns_heart]).
+
+status_slow_teardown(PidMap) ->
+    mock_helpers:teardown(PidMap),
+    fake_chronicle_kv:teardown(),
+    fake_ns_config:teardown(),
+    meck:unload().
+
+status_slow_test_() ->
+    {setup,
+     fun status_slow_setup/0,
+     fun status_slow_teardown/1,
+     fun () ->
+             Status = current_status_slow_inner(),
+             ExpectedKeys = status_slow_keys() ++
+                 case misc:is_linux() of
+                     true -> status_slow_keys_linux();
+                     false -> []
+                 end,
+             ?assertListsEqual(ExpectedKeys,
+                               proplists:get_keys(Status)),
+             Stats = proplists:get_value(statistics, Status),
+             ?assertListsEqual(statistics_keys(),
+                               proplists:get_keys(Stats)),
+             SystemStats = proplists:get_value(system_stats, Status),
+             ?assertListsEqual(system_stats_keys(),
+                               proplists:get_keys(SystemStats))
+     end}.
+-endif.
