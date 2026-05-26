@@ -25,6 +25,7 @@
          handle_delete_catalog/2,
          get_uid/0,
          binary_params/1,
+         catalogs_key/0,
          catalog_fetcher/1]).
 
 -define(CHRONICLE_KEY, external_catalogs).
@@ -278,6 +279,9 @@ get_state(Snapshot) ->
 
 get_catalogs(#{catalogs := Catalogs}) ->
     Catalogs.
+
+catalogs_key() ->
+    ?CHRONICLE_KEY.
 
 catalog_fetcher(Txn) ->
     Result = chronicle_compat:txn_get(?CHRONICLE_KEY, Txn),

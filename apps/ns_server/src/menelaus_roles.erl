@@ -1278,7 +1278,14 @@ find_object(Name, Find) when is_list(Name) ->
     end.
 
 params_version() ->
-    params_version(ns_bucket:get_snapshot(all, [collections, props, uuid])).
+    Fetchers =
+        [ns_bucket:fetch_snapshot(all, _, [collections, props, uuid])] ++
+        case cluster_compat_mode:is_cluster_totoro() of
+            true -> [menelaus_web_external_catalogs:catalog_fetcher(_)];
+            false -> []
+        end,
+
+    params_version(chronicle_compat:get_snapshot(Fetchers)).
 
 -spec params_version(map()) -> term().
 params_version(Snapshot) ->
@@ -1459,10 +1466,13 @@ start_compiled_roles_cache() ->
             (_) ->
                 false
         end,
+    CatalogsKey = menelaus_web_external_catalogs:catalogs_key(),
     ConfigFilter =
         fun (cluster_compat_version) ->
                 true;
             (rest_creds) ->
+                true;
+            (K) when K =:= CatalogsKey ->
                 true;
             (Key) ->
                 collections:key_match(Key) =/= false orelse
@@ -2967,20 +2977,21 @@ get_security_roles_test__() ->
                        <<"security_admin">>, <<"ro_security_admin">>],
                       Names).
 
-params_version_get_snapshot(TestProps, _, SubKeys) ->
+params_version_get_snapshot(TestProps) ->
+    SubKeys = [collections, props, uuid],
     PrunedProps = lists:flatmap(
                     fun({Bucket, Props}) ->
                             [{Bucket,
-                              lists:filtermap(
+                              lists:filter(
                                 fun({SubKey, _}) ->
                                         lists:member(SubKey, SubKeys)
                                 end, Props)}]
                     end, TestProps),
-    ns_bucket:toy_buckets(PrunedProps).
+    maps:map(fun (_, {V, _}) -> V end, ns_bucket:toy_buckets(PrunedProps)).
 
 params_version_case(TestProps) ->
-    meck:expect(ns_bucket, get_snapshot,
-                params_version_get_snapshot(TestProps, _, _)),
+    PrunedSnapshot = params_version_get_snapshot(TestProps),
+    fake_chronicle_kv:update_snapshot(PrunedSnapshot),
     Snapshot = ns_bucket:toy_buckets(TestProps),
     Version = params_version(Snapshot),
     ?assertEqual(params_version(), Version),
