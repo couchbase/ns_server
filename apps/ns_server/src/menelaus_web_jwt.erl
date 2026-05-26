@@ -394,12 +394,14 @@ main_validators() ->
                        ?JWKS_URI_REFRESH_MIN_S,
                        ?JWKS_URI_REFRESH_MAX_S, _),
      validator:default(jwksUriRefreshIntervalS, ?JWKS_URI_REFRESH_DEFAULT_S, _),
-     validator:required(issuers, _),
      validator:json_array(issuers, issuer_validators(), _),
-     validator:validate(
-       fun ([]) -> {error, "Must contain at least one issuer"};
-           (_) -> ok
-       end, issuers, _),
+     validator:default(issuers, [], _),
+     validator:validate_relative(
+       fun ([], true) ->
+               {error, "Must contain at least one issuer when enabled"};
+           (_, _) ->
+               ok
+       end, issuers, enabled, _),
      validator:validate(
        fun(Issuers) ->
                Names = [proplists:get_value(name, I) || {I} <- Issuers],
