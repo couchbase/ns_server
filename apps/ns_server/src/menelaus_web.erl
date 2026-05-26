@@ -581,11 +581,11 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, security], read},
                      fun menelaus_web_credentials:handle_settings/2, ['GET']};
                 ["settings", "credentials"] ->
-                    {{[admin, security], read},
+                    {{[admin, credentials], read},
                      fun menelaus_web_credentials:handle_list/1};
                 ["settings", "credentials" | IdTokens] ->
                     IdStr = lists:flatten(lists:join("/", IdTokens)),
-                    {{[admin, security], read},
+                    {{[admin, credentials], read},
                      fun menelaus_web_credentials:handle_get/2, [IdStr]};
                 ["settings", "dataService"] ->
                     {{[admin, settings], read},
@@ -974,7 +974,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_settings:handle_post/2, [internal]};
                 ["settings", "credentials" | IdTokens] when IdTokens =/= [] ->
                     IdStr = lists:flatten(lists:join("/", IdTokens)),
-                    {{[admin, security], write},
+                    {{[admin, credentials], write},
                      fun menelaus_web_credentials:handle_post/2, [IdStr]};
                 ["pools", "default"] ->
                     {{[pools], write}, fun menelaus_web_pools:handle_pool_settings_post/1};
@@ -1395,7 +1395,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_credentials:handle_settings/2, ['DELETE']};
                 ["settings", "credentials" | IdTokens] when IdTokens =/= [] ->
                     IdStr = lists:flatten(lists:join("/", IdTokens)),
-                    {{[admin, security], write},
+                    {{[admin, credentials], write},
                      fun menelaus_web_credentials:handle_delete/2, [IdStr]};
                 ["couchBase" | _] -> {no_check_disallow_anonymous,
                                       fun menelaus_pluggable_ui:proxy_req/4,
@@ -1547,7 +1547,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_credentials:handle_settings/2, ['PUT']};
                 ["settings", "credentials" | IdTokens] when IdTokens =/= [] ->
                     IdStr = lists:flatten(lists:join("/", IdTokens)),
-                    {{[admin, security], write},
+                    {{[admin, credentials], write},
                      fun menelaus_web_credentials:handle_put/2, [IdStr]};
                 _ ->
                     {done, reply_text(Req, "Object Not Found", 404)}
@@ -1571,7 +1571,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      [Name]};
                 ["settings", "credentials" | IdTokens] when IdTokens =/= [] ->
                     IdStr = lists:flatten(lists:join("/", IdTokens)),
-                    {{[admin, security], write},
+                    {{[admin, credentials], write},
                      fun menelaus_web_credentials:handle_patch/2, [IdStr]};
                 _ ->
                     {done, reply_text(Req, "Object Not Found", 404)}

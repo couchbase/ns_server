@@ -49,7 +49,7 @@ Likewise for n2n encryption and `n2nEncryptionOverride`.
 **Resource model.** Credential RBAC has two lanes:
 
 - **Consume lane** — each credential is a per-id resource addressed as `cluster.credentials[<id>]!consume`. This is the user-delegation lane, granted via `credential_consumer[<id>]`.
-- **Management lane** — credential CRUD and credential store settings are gated by `cluster.admin.security!read` and `!write`. Credential management is part of Security Admin's surface; only Security Admin (or Full Admin) can manage credentials.
+- **Management lane** — credential CRUD is gated by a dedicated `cluster.admin.credentials!read` and `!write` permission, **not** by `cluster.admin.security`. The `credential_admin` role grants this lane without any security or user-admin power, so credentials can be managed without holding the full security domain. Security Admin and Full Admin also hold it. The credential **store settings** (the encryption overrides under `/settings/credentialStore`) remain on `cluster.admin.security`, so a credential manager cannot weaken the encryption that protects stored secrets.
 
 **Credential id patterns.** Wherever a `credential_id` is supplied — as the parameter on `credential_consumer[<id>]` (role grants) or as the bracket parameter on `cluster.credentials[<id>]!consume` (permission strings) — three forms are accepted:
 
@@ -67,14 +67,16 @@ Credential ids are opaque strings; `/` may appear in an id but has no special me
 
 | Permission string | Description |
 |---|---|
-| `cluster.admin.security!read` | Read credential metadata (secrets redacted), list credentials, read credential store settings (alongside other security settings) |
-| `cluster.admin.security!write` | Create, update, or delete a credential; write credential store settings (alongside other security settings) |
+| `cluster.admin.credentials!read` | Read credential metadata (secrets redacted), list credentials |
+| `cluster.admin.credentials!write` | Create, update, or delete credentials |
+| `cluster.admin.security!read` | Read credential **store settings** (encryption overrides), alongside other security settings |
+| `cluster.admin.security!write` | Write credential **store settings** (encryption overrides), alongside other security settings |
 | `cluster.credentials[<id>]!consume` | Decrypt and retrieve the credential's secret fields for `<id>` |
 
 **Access control summary:**
 
-- **Security Admin** can create, read, update, delete, and list credentials.
-  Read operations do **not** return sensitive material in the payload.
+- **Credential Admin** (and Security Admin, Full Admin) can create, read, update, delete, and list credentials.
+  Read operations do **not** return sensitive material in the payload, and credential management grants neither secret `consume` nor the ability to grant roles or change store settings.
 - **Consume** permissions must be **explicitly granted** — to end users (local, external) or to internal service accounts (`@cbq-engine`, `@eventing`, `@cbas`, etc.).
   Internal service accounts do **not** see any credentials unless granted the `credential_consumer` role.
 - ns_server checks RBAC permissions when a service or user consumes the credential.
@@ -84,19 +86,21 @@ Credential ids are opaque strings; `/` may appear in an id but has no special me
 | Role | Parameterised By | Capability | Assignable To |
 |---|---|---|---|
 | `credential_consumer` | `credential_id` | Consume a matching credential | End users **and** services |
-| `service_admin` | *(internal)* | Administrative operations for service identities, excluding credential access | Service identities only (implicit, Totoro+) |
+| `service_admin` | *(internal)* | Administrative operations for service identities; no credential management or consume (services consume via cbauth, not via REST CRUD) | Service identities only (implicit, Totoro+) |
 | `admin` (Full Admin) | — | All operations including credential CRUD and service role grants | Human administrators |
+| `credential_admin` | — | Credential CRUD (metadata only); cannot consume secrets, change store settings, or grant roles | Human administrators |
 | `security_admin` | — | Credential CRUD and credential store settings; cannot manage users or service roles | Human administrators |
 | `user_admin_local` | — | Assign non-security roles (including `credential_consumer`) to local users; cannot CRUD credentials | Human administrators |
 | `user_admin_external` | — | Assign non-security roles (including `credential_consumer`) to external users; cannot CRUD credentials | Human administrators |
 
 ### Role separation
 
-Administrative duties are split across three distinct roles so that no single non-Full-Admin role can both produce and consume a credential:
+Administrative duties are split so that no single non-Full-Admin role can both produce and consume a credential:
 
 | Responsibility | Role |
 |---|---|
-| Create / edit / delete credentials; manage credential store settings | **Security Admin** or Full Admin |
+| Create / edit / delete credentials | **Credential Admin** or Security Admin (or Full Admin) |
+| Manage credential store settings (encryption overrides) | **Security Admin** or Full Admin |
 | Assign roles to end users (including `credential_consumer`) | **User Admin** (local / external) or Full Admin |
 | Assign roles to service identities | **Full Admin only** |
 
@@ -105,6 +109,7 @@ New in Totoro (8.1):
 - The **credential store** itself (CRUD, consume, guardrails).
 - The **`service_admin`** internal role, which removes credential access from service identities so they must be granted `credential_consumer` explicitly.
 - The **`credential_consumer`** role and the service roles endpoint (`/settings/rbac/services/:name/roles`).
+- The **`credential_admin`** role and the `cluster.admin.credentials` management vertex, which gate credential CRUD independently of `cluster.admin.security`.
 
 `credential_consumer` is classified as a non-security role, so User Admin is sufficient to grant it to end users; CRUD of the credential itself remains a Security Admin capability.
 Service-role assignment is deliberately restricted to Full Admin.

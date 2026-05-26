@@ -1492,9 +1492,10 @@ class CredentialRbacTests(testlib.BaseTestSet):
 
     def service_admin_credential_access_test(self):
         """Service identities (holding the implicit `service_admin' role)
-        can read credential metadata (service_admin grants
-        [admin, security], read) but cannot create, update, or delete
-        credentials (write on the same vertex is denied).
+        cannot read or write credential metadata: the [admin, credentials]
+        vertex is not granted to service_admin (service identities consume
+        credentials via cbauth, not via the REST CRUD endpoints). They can
+        still read credential store settings via [admin, security].
         """
         cred_id = "test/svc/regression"
 
@@ -1505,21 +1506,24 @@ class CredentialRbacTests(testlib.BaseTestSet):
             for svc_user in ["@backup", "@cbq-engine", "@cbcontbk"]:
                 svc_auth = (svc_user, self.special_password)
 
-                # Read lane — allowed.
+                # Credential metadata read -- denied (service_admin has no
+                # [admin, credentials] grant).
                 r = requests.get(self.node.url + cred_url(cred_id),
                                  auth=svc_auth, timeout=10)
-                testlib.assert_http_code(200, r)
+                testlib.assert_http_code(403, r)
 
                 r = requests.get(self.node.url + "/settings/credentials",
                                  auth=svc_auth, timeout=10)
-                testlib.assert_http_code(200, r)
+                testlib.assert_http_code(403, r)
 
+                # Store settings read -- still allowed (gated on
+                # [admin, security], which service_admin retains).
                 r = requests.get(
                     self.node.url + "/settings/credentialStore",
                     auth=svc_auth, timeout=10)
                 testlib.assert_http_code(200, r)
 
-                # Write lane — denied.
+                # Credential write -- denied.
                 new_id = f"test/svc/{svc_user.lstrip('@')}_create"
                 r = requests.post(self.node.url + cred_url(new_id),
                                   auth=svc_auth, json=aws_body(),

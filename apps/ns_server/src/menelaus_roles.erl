@@ -139,6 +139,7 @@ default_roles_totoro() ->
                 "read data. This user cannot use stored credentials.">>}],
       [{[admin, security, admin], none},
        {[admin, security], all},
+       {[admin, credentials], [read, write]},
        {[admin, security_info], all},
        {[admin, users], [read]},
        {[admin, logs], none},
@@ -170,6 +171,7 @@ default_roles_totoro() ->
                 "This user cannot read data.">>}],
       [{[admin, security, admin], [read]},
        {[admin, security], [read]},
+       {[admin, credentials], [read]},
        {[admin, security_info], [read]},
        {[admin, users], [read]},
        {[admin, logs], none},
@@ -205,6 +207,7 @@ default_roles_totoro() ->
        {[admin, users, admin], none},
        {[admin, users, external], none},
        {[admin, users], all},
+       {[admin, credentials], none},
        {[admin, logs], none},
        {[admin, event], none},
        {[admin, metakv], none},
@@ -238,6 +241,7 @@ default_roles_totoro() ->
        {[admin, users, admin], none},
        {[admin, users, local], none},
        {[admin, users], all},
+       {[admin, credentials], none},
        {[admin, logs], none},
        {[admin, event], none},
        {[admin, metakv], none},
@@ -265,6 +269,13 @@ default_roles_totoro() ->
        {desc, <<"Can read, consume (use) specific external credentials or "
                 "those matching a pattern.">>}],
       [{[{credentials, credential_id}], [consume]}]},
+     {<<"credential_admin">>, [],
+      [{name, <<"Credential Admin">>},
+       {folder, admin},
+       {desc, <<"Can create, read, update, delete, back up and restore the "
+                "metadata of external credentials, but cannot use (consume) "
+                "them. This user cannot read data.">>}],
+      [{[admin, credentials], [read, write]}]},
      {<<"cluster_admin">>, [],
       [{name, <<"Cluster Admin">>},
        {folder, admin},
@@ -274,6 +285,7 @@ default_roles_totoro() ->
        {[admin, security], none},
        {[admin, security_info], none},
        {[admin, users], none},
+       {[admin, credentials], none},
        {[admin, diag], [read]},
        {[admin, event], none},
        {[admin, metakv], none},
@@ -931,6 +943,7 @@ internal_roles() ->
       [{[admin, security, admin], [impersonate, read]},
        {[admin, security], [read]},
        {[admin, users], [read]},
+       {[admin, credentials], none},
        {[{credentials, any}], none},
        {[], all}]}].
 
@@ -1739,9 +1752,11 @@ validate_roles(Roles, Scope, Snapshot) ->
 -spec get_security_roles(map()) -> [rbac_role()].
 get_security_roles(Snapshot) ->
     %% A role is security-classified if it grants any operation on
-    %% [admin, security]. Credential CRUD is gated by [admin, security];
-    %% the credentials vertex carries `consume' only, which is the User
-    %% Admin delegation lane (granted via `credential_consumer').
+    %% [admin, security]. Credential management is gated by its own
+    %% [admin, credentials] vertex (not [admin, security]); the
+    %% parameterized credentials vertex carries `consume' only -- the
+    %% delegation lane granted via `credential_consumer'. Neither of those
+    %% makes a role security-classified.
     pipes:run(produce_roles_by_permission({[admin, security], any}, Snapshot),
               pipes:collect()).
 
@@ -2170,14 +2185,16 @@ service_admin_with_credential_consumer_test__() ->
 %% fail here with the offending role and op.
 credentials_access_matrix_test__() ->
     Defs = roles() ++ internal_roles(),
-    %% {SecurityRead, SecurityWrite, Consume}; missing roles default to
-    %% all-false. service_admin is allowed [admin, security], read so it
-    %% can read credential metadata; write is denied.
+    %% {CredRead, CredWrite, Consume}; missing roles (e.g. backup_admin,
+    %% service_admin) default to all-false. Credential management lives
+    %% on the [admin, credentials] vertex: ro_security_admin gets read;
+    %% credential_admin and security_admin get read+write. Consume stays
+    %% on the parameterized credentials vertex.
     Exceptions =
-        #{<<"admin">>               => {true, true,  true},
-          <<"service_admin">>       => {true, false, false},
-          <<"security_admin">>      => {true, true,  false},
-          <<"ro_security_admin">>   => {true, false, false},
+        #{<<"admin">>               => {true,  true,  true},
+          <<"credential_admin">>    => {true,  true,  false},
+          <<"security_admin">>      => {true,  true,  false},
+          <<"ro_security_admin">>   => {true,  false, false},
           <<"credential_consumer">> => {false, false, true}},
     lists:foreach(
       fun ({Name, ParamDefs, _Props, _Perms}) ->
@@ -2194,8 +2211,8 @@ credentials_access_matrix_test__() ->
                           ?assertEqual({Name, Op, Expected},
                                        {Name, Op, Actual})
                   end,
-              Check([admin, security], read, ER),
-              Check([admin, security], write, EW),
+              Check([admin, credentials], read, ER),
+              Check([admin, credentials], write, EW),
               Check([{credentials, "test"}], consume, EC)
       end, Defs).
 
