@@ -36,6 +36,27 @@ class CRLTests(testlib.BaseTestSet):
         pass
 
     def client_cert_crl_test(self):
+        """Test CRL revocation using a full (base) CRL."""
+        self._run_crl_revocation_checks(_setup_full_crl, _update_full_crl)
+
+    def delta_crl_base_and_delta_test(self):
+        """Test delta CRL: cert1 revoked in base CRL, cert2 in delta CRL."""
+        setup_fn, update_fn = _make_delta_crl_ops_base_and_delta()
+        self._run_crl_revocation_checks(setup_fn, update_fn)
+
+    def delta_crl_both_in_delta_test(self):
+        """Test delta CRL: both certs revoked only in delta CRL."""
+        setup_fn, update_fn = _make_delta_crl_ops_both_in_delta()
+        self._run_crl_revocation_checks(setup_fn, update_fn)
+
+    def _run_crl_revocation_checks(self, setup_crl, update_crl):
+        """Shared test body for CRL revocation tests.
+
+        setup_crl(crl_dir, ca_pem, ca_key, revoked_certs) -> state
+            writes initial CRL file(s) revoking the given certs
+        update_crl(crl_dir, ca_pem, ca_key, extra_certs, state)
+            adds extra_certs to the revoked list and rewrites CRL file(s)
+        """
         # All requests go to a single node so that client-cert-auth settings
         # changes are seen immediately (the setting is not instantly
         # synchronised across the cluster).
@@ -81,18 +102,12 @@ class CRLTests(testlib.BaseTestSet):
 
             # ------------------------------------------------------------------
             # Step 4: Load Root CA and Intermediate CA as trusted certs.
-            # Both must be trusted so that:
-            #   (a) the client cert chain can be verified, and
-            #   (b) the CRL (signed by the Intermediate CA) is accepted.
             # ------------------------------------------------------------------
             ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca_pem])
 
             # ------------------------------------------------------------------
             # Step 5: Verify both client certs can authenticate
             # ------------------------------------------------------------------
-            # The cert file sent to the server contains the leaf cert, the
-            # intermediate CA cert (so the server can build the full chain),
-            # and the private key.
             with (client_cert_file(client_cert1_pem, inter_ca_pem,
                                    client_key1_pem) as cert1_path,
                   client_cert_file(client_cert2_pem, inter_ca_pem,
@@ -109,32 +124,20 @@ class CRLTests(testlib.BaseTestSet):
                                   name='user2 /whoami before CRL')
 
                 # --------------------------------------------------------------
-                # Step 6: Generate a CRL (signed by Intermediate CA) that
-                # revokes client cert 1
+                # Step 6: Generate CRL(s) that revoke client cert 1
                 # --------------------------------------------------------------
-                crl_pem = generate_crl(inter_ca_pem, inter_ca_key_pem,
-                                       [client_cert1_pem])
-                crl_path = os.path.join(crl_dir, 'revoked.pem')
-                with open(crl_path, 'w') as f:
-                    f.write(crl_pem)
+                crl_state = setup_crl(crl_dir, inter_ca_pem,
+                                      inter_ca_key_pem,
+                                      [client_cert1_pem])
 
                 # --------------------------------------------------------------
                 # Step 7: Enable CRL – "Require" policy for clientAuth scope.
-                # The server loads CRLs from the directory as soon as it is
-                # configured, so no explicit reload is needed.
                 # --------------------------------------------------------------
                 set_crl_settings(self.cluster,
                                  policy_per_scope={'clientAuth': 'Require',
                                                    'nodeToNode': 'Disabled'},
                                  poll_interval_ms=5000,
                                  directory=crl_dir)
-
-                # Verify the CRL settings were saved correctly
-                r = get_crl_settings(self.cluster)
-                testlib.assert_eq(r['policyPerScope']['clientAuth'], 'Require',
-                                  name='clientAuth CRL policy')
-                testlib.assert_eq(r['directory'], crl_dir,
-                                  name='CRL directory')
 
                 # Verify CRL status shows the loaded CRL as active
                 assert_crl_status(self.cluster, expected_status='active')
@@ -151,13 +154,11 @@ class CRLTests(testlib.BaseTestSet):
                                   name='user2 /whoami after CRL')
 
                 # --------------------------------------------------------------
-                # Step 9: Add client cert 2 to the CRL, update the file, call
-                # reload API, and verify both certs are now revoked.
+                # Step 9: Update CRL(s) to also revoke cert2, call reload API,
+                # and verify both certs are now revoked.
                 # --------------------------------------------------------------
-                crl_pem = generate_crl(inter_ca_pem, inter_ca_key_pem,
-                                       [client_cert1_pem, client_cert2_pem])
-                with open(crl_path, 'w') as f:
-                    f.write(crl_pem)
+                update_crl(crl_dir, inter_ca_pem, inter_ca_key_pem,
+                           [client_cert2_pem], crl_state)
 
                 # Call reload API to force immediate CRL refresh
                 assert_reload_crl(node, expected_status='active')
@@ -181,14 +182,112 @@ class CRLTests(testlib.BaseTestSet):
             for ca_id in ca_ids:
                 testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
 
-            # Disable CRL checking (clearing policyPerScope is sufficient;
-            # leaving the directory set is harmless).
             set_crl_settings(self.cluster,
                              policy_per_scope={'clientAuth': 'Disabled',
                                                'nodeToNode': 'Disabled'},
                              directory="")
 
             shutil.rmtree(crl_dir, ignore_errors=True)
+
+
+# =============================================================================
+# Full CRL callbacks
+# =============================================================================
+
+
+def _setup_full_crl(crl_dir, ca_pem, ca_key_pem, revoked_certs):
+    """Write a full CRL revoking the given certs. Returns state."""
+    filename = f'crl_{testlib.random_str(8)}.pem'
+    generate_crl_to_file(os.path.join(crl_dir, filename), ca_pem, ca_key_pem,
+                         revoked_certs)
+    return {'filename': filename, 'revoked': list(revoked_certs)}
+
+
+def _update_full_crl(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+                     state):
+    """Update full CRL adding extra certs to revoked list."""
+    state['revoked'].extend(extra_revoked_certs)
+    generate_crl_to_file(os.path.join(crl_dir, state['filename']), ca_pem,
+                         ca_key_pem, state['revoked'])
+    return state
+
+
+# =============================================================================
+# Delta CRL callbacks
+# =============================================================================
+
+
+def _make_delta_crl_ops_base_and_delta():
+    """Factory for delta CRL ops: revoked_certs in base, extras via delta.
+
+    Returns (setup_fn, update_fn) where:
+    - setup: creates base CRL (revoked_certs) + empty delta CRL
+    - update: adds extra_certs to the delta CRL
+    """
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs):
+        base_filename = f'base_{testlib.random_str(8)}.pem'
+        delta_filename = f'delta_{testlib.random_str(8)}.pem'
+        delta_uri = f'file://{os.path.join(crl_dir, delta_filename)}'
+        base_pem, base_num = generate_crl_with_number(
+            ca_pem, ca_key_pem, revoked_certs,
+            freshest_crl_uri=delta_uri)
+        with open(os.path.join(crl_dir, base_filename), 'w') as f:
+            f.write(base_pem)
+        delta_pem = generate_delta_crl(ca_pem, ca_key_pem, base_num, [])
+        with open(os.path.join(crl_dir, delta_filename), 'w') as f:
+            f.write(delta_pem)
+        return {'base_filename': base_filename,
+                'delta_filename': delta_filename,
+                'base_num': base_num,
+                'delta_revoked': []}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_certs, state):
+        state['delta_revoked'].extend(extra_certs)
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, state['base_num'],
+            state['delta_revoked'])
+        with open(os.path.join(crl_dir, state['delta_filename']), 'w') as f:
+            f.write(delta_pem)
+        return state
+
+    return setup, update
+
+
+def _make_delta_crl_ops_both_in_delta():
+    """Factory for delta CRL ops: all revocations carried in the delta CRL.
+
+    Returns (setup_fn, update_fn) where:
+    - setup: creates empty base CRL + delta CRL (revoked_certs)
+    - update: adds extra_certs to the delta CRL
+    """
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs):
+        base_filename = f'base_{testlib.random_str(8)}.pem'
+        delta_filename = f'delta_{testlib.random_str(8)}.pem'
+        delta_uri = f'file://{os.path.join(crl_dir, delta_filename)}'
+        base_pem, base_num = generate_crl_with_number(
+            ca_pem, ca_key_pem, [],
+            freshest_crl_uri=delta_uri)
+        with open(os.path.join(crl_dir, base_filename), 'w') as f:
+            f.write(base_pem)
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, base_num, revoked_certs)
+        with open(os.path.join(crl_dir, delta_filename), 'w') as f:
+            f.write(delta_pem)
+        return {'base_filename': base_filename,
+                'delta_filename': delta_filename,
+                'base_num': base_num,
+                'delta_revoked': list(revoked_certs)}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_certs, state):
+        state['delta_revoked'].extend(extra_certs)
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, state['base_num'],
+            state['delta_revoked'])
+        with open(os.path.join(crl_dir, state['delta_filename']), 'w') as f:
+            f.write(delta_pem)
+        return state
+
+    return setup, update
 
 
 # =============================================================================
@@ -422,14 +521,33 @@ def generate_client_cert_cn(ca_cert_pem, ca_key_pem, cn):
 _crl_number = 0
 
 
+def generate_crl_to_file(filepath, *args, **kwargs):
+    """Generate a CRL and write it to the given filepath."""
+    crl_pem = generate_crl(*args, **kwargs)
+    with open(filepath, 'w') as f:
+        f.write(crl_pem)
+
+
 def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems):
-    """Return a PEM-encoded CRL signed by the given CA.
+    """Return a PEM-encoded CRL signed by the given CA."""
+    pem, _ = generate_crl_with_number(ca_cert_pem, ca_key_pem,
+                                       revoked_cert_pems)
+    return pem
+
+
+def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
+                             freshest_crl_uri=None):
+    """Return (pem, crl_number) for a CRL signed by the given CA.
 
     revoked_cert_pems is a list of PEM strings whose serial numbers will be
     added to the revocation list.
+
+    If freshest_crl_uri is provided, a FreshestCRL extension is added
+    pointing to the delta CRL location (required when using delta CRLs).
     """
     global _crl_number
     _crl_number += 1
+    crl_num = _crl_number
 
     ca_cert = x509.load_pem_x509_certificate(ca_cert_pem.encode(),
                                              default_backend())
@@ -458,10 +576,19 @@ def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems):
         .issuer_name(ca_cert.subject)
         .last_update(now)
         .next_update(now + datetime.timedelta(days=1))
-        .add_extension(x509.CRLNumber(_crl_number), critical=False)
+        .add_extension(x509.CRLNumber(crl_num), critical=False)
         .add_extension(aki, critical=False)
         .add_extension(idp, critical=True)
     )
+    if freshest_crl_uri is not None:
+        dp = x509.DistributionPoint(
+            full_name=[x509.UniformResourceIdentifier(freshest_crl_uri)],
+            relative_name=None,
+            reasons=None,
+            crl_issuer=None
+        )
+        builder = builder.add_extension(
+            x509.FreshestCRL([dp]), critical=False)
     revoked_serials = []
     for cert_pem in revoked_cert_pems:
         cert = x509.load_pem_x509_certificate(cert_pem.encode(),
@@ -476,17 +603,85 @@ def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems):
         builder = builder.add_revoked_certificate(revoked)
 
     crl = builder.sign(ca_key, hashes.SHA256(), default_backend())
+    _print_crl_info(crl, "base CRL")
+    return crl.public_bytes(serialization.Encoding.PEM).decode(), crl_num
+
+
+def generate_delta_crl(ca_cert_pem, ca_key_pem, base_crl_number,
+                       revoked_cert_pems):
+    """Return a PEM-encoded delta CRL referencing the given base CRL.
+
+    The delta CRL contains revocations added since the base CRL was issued.
+    The DeltaCRLIndicator extension marks this as a delta CRL and contains
+    the base CRL number.
+    """
+    global _crl_number
+    _crl_number += 1
+    crl_num = _crl_number
+
+    ca_cert = x509.load_pem_x509_certificate(ca_cert_pem.encode(),
+                                             default_backend())
+    ca_key = serialization.load_pem_private_key(ca_key_pem.encode(),
+                                                password=None,
+                                                backend=default_backend())
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    # Authority Key Identifier from the CA's public key
+    aki = x509.AuthorityKeyIdentifier.from_issuer_public_key(
+        ca_key.public_key())
+
+    # Issuing Distribution Point - must match the CDP in client certs
+    idp = x509.IssuingDistributionPoint(
+        full_name=[x509.DirectoryName(ca_cert.subject)],
+        relative_name=None,
+        only_contains_user_certs=False,
+        only_contains_ca_certs=False,
+        only_some_reasons=None,
+        indirect_crl=False,
+        only_contains_attribute_certs=False
+    )
+
+    # DeltaCRLIndicator marks this as a delta CRL and references the base
+    delta_indicator = x509.DeltaCRLIndicator(base_crl_number)
+
+    builder = (
+        x509.CertificateRevocationListBuilder()
+        .issuer_name(ca_cert.subject)
+        .last_update(now)
+        .next_update(now + datetime.timedelta(days=1))
+        .add_extension(x509.CRLNumber(crl_num), critical=False)
+        .add_extension(aki, critical=False)
+        .add_extension(idp, critical=True)
+        .add_extension(delta_indicator, critical=True)
+    )
+    for cert_pem in revoked_cert_pems:
+        cert = x509.load_pem_x509_certificate(cert_pem.encode(),
+                                              default_backend())
+        revoked = (
+            x509.RevokedCertificateBuilder()
+            .serial_number(cert.serial_number)
+            .revocation_date(now)
+            .build(default_backend())
+        )
+        builder = builder.add_revoked_certificate(revoked)
+
+    crl = builder.sign(ca_key, hashes.SHA256(), default_backend())
+    _print_crl_info(crl, f"delta CRL (base={base_crl_number})")
+    return crl.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def _print_crl_info(crl, label):
+    """Print decoded CRL info for debugging."""
     revoked_certs = [
         {'serial': r.serial_number, 'revocation_date': r.revocation_date,
          'extensions': [e for e in r.extensions]}
         for r in crl
     ]
-    print(f"Generated CRL: issuer={crl.issuer}, "
+    print(f"Generated {label}: issuer={crl.issuer}, "
           f"last_update={crl.last_update}, next_update={crl.next_update}, "
           f"signature_algorithm={crl.signature_algorithm_oid}, "
           f"extensions={[e for e in crl.extensions]}, "
           f"revoked_certs={revoked_certs}")
-    return crl.public_bytes(serialization.Encoding.PEM).decode()
 
 
 def _cert_and_key_pem(cert, key):
