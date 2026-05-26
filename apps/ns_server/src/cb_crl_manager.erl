@@ -18,6 +18,7 @@
 -export([start_link/0,
          get_config/0,
          set_config/1,
+         sync/0,
          reload/0,
          get_status/0]).
 
@@ -30,6 +31,7 @@
 -define(DEFAULT_POLL_INTERVAL_MS, 60000).
 -define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
 -define(STATUS_TIMEOUT, ?get_timeout(status_timeout, 60000)).
+-define(SYNC_TIMEOUT, ?get_timeout(sync_timeout, 60000)).
 
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
@@ -112,6 +114,14 @@ set_config(NewCfg0) ->
         {ok, _} -> ok;
         {error, Err} -> {error, Err}
     end.
+
+%% Wait for any pending config changes to be fully applied.
+%% Call this after set_config/1 to ensure subsequent requests see the new
+%% settings.
+-spec sync() -> ok.
+sync() ->
+    chronicle_compat_events:sync(),
+    gen_server:call(?SERVER, sync, ?SYNC_TIMEOUT).
 
 %% Merge a partial config with defaults.  Performs a deep merge for
 %% policy_per_scope so that missing scopes get their default values.
@@ -202,6 +212,9 @@ handle_call(reload, _From, #state{poll_directory = Dir} = State) ->
 
 handle_call(get_status, _From, State) ->
     {reply, build_status_map(State), State};
+
+handle_call(sync, _From, State) ->
+    {reply, ok, State};
 
 handle_call(Req, _From, State) ->
     ?log_error("Received unknown call: ~p", [Req]),

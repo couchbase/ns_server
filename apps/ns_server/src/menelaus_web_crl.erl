@@ -57,6 +57,9 @@ handle_post_settings(Req) ->
               Cfg = build_config(Values),
               case cb_crl_manager:set_config(Cfg) of
                   ok ->
+                      %% Wait for the new config to be applied before
+                      %% returning, so subsequent requests see the new state.
+                      cb_crl_manager:sync(),
                       %% Re-read to get the fully merged config with defaults.
                       menelaus_util:reply_json(
                         Req, config_to_json(cb_crl_manager:get_config()));
