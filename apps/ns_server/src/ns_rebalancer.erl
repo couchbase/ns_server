@@ -1551,10 +1551,15 @@ drop_old_2i_indexes(KeepNodes, Params) ->
                 Nodes
         end,
 
-    ActiveIndexNodes = ns_cluster_membership:service_active_nodes(
-                         Snapshot, index),
-
-    NewIndexNodes = KeepIndexNodes -- ActiveIndexNodes,
+    %% Exclude index nodes for which we have already started index as we don't
+    %% want to remove the indexes from those nodes.
+    ActiveNodes = ns_cluster_membership:active_nodes(Snapshot),
+    AlreadyStarted =
+        [N || N <- ActiveNodes, lists:member(
+                                    index,
+                                    ns_cluster_membership:node_services(
+                                        Snapshot, N))],
+    NewIndexNodes = KeepIndexNodes -- AlreadyStarted,
     %% Only delta recovery is supported for index service.
     %% Note that if a node is running both KV and index service,
     %% and if user selects the full recovery option for such
