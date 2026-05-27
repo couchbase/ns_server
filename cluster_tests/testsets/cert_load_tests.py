@@ -597,6 +597,12 @@ def load_client_cert(node, cert, key, passphrase=None):
     load_cert(node, cert, key, passphrase, is_client=True)
 
 
+def generate_and_load_internal_client_cert(node, *args, **kwargs):
+    cert, key = generate_internal_client_cert(*args, **kwargs)
+    load_client_cert(node, cert, key, passphrase=None)
+    return (cert, key)
+
+
 def load_cert(node, cert, key, passphrase, is_client, force_reload=False):
     inbox_dir = os.path.join(node.data_path(), 'inbox')
     chain_file_name = 'client_chain.pem' if is_client else 'chain.pem'

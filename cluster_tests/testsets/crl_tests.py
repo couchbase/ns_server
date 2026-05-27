@@ -16,6 +16,7 @@ import tempfile
 import requests
 
 import testlib
+from testsets.cert_load_tests import generate_and_load_internal_client_cert
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
@@ -48,6 +49,142 @@ class CRLTests(testlib.BaseTestSet):
         """Test delta CRL: both certs revoked only in delta CRL."""
         setup_fn, update_fn = _make_delta_crl_ops_both_in_delta()
         self._run_crl_revocation_checks(setup_fn, update_fn)
+
+    def ootb_internal_client_cert_ignores_crl_test(self):
+        """Test that OOTB internal client certs bypass CRL checks.
+
+        The cluster's self-generated internal client cert should still work
+        even when CRL "Require" policy is active, because is_ootb_cert/1
+        exempts certs signed by the cluster's own generated CA.
+        """
+        node = self.cluster.connected_nodes[0]
+        crl_dir = tempfile.mkdtemp()
+        ca_ids = []
+
+        try:
+            # Generate a CA and dummy cert just to have a valid CRL
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            dummy_cert_pem, _ = generate_client_cert_cn(
+                root_ca_pem, root_ca_key_pem, 'dummy')
+
+            ca_ids = load_multiple_cas(node, [root_ca_pem])
+
+            # Enable client cert auth (enable mode - not mandatory)
+            testlib.toggle_client_cert_auth(
+                node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+
+            # Create a CRL that revokes the dummy cert (just to make CRL active)
+            crl_filepath = os.path.join(crl_dir, 'crl.pem')
+            generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem,
+                                 [dummy_cert_pem])
+
+            # Enable CRL with "Require" policy
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Require',
+                                               'nodeToNode': 'Disabled'},
+                             poll_interval_ms=5000,
+                             directory=crl_dir)
+
+            assert_crl_status(self.cluster, expected_status='active')
+
+            # Read the OOTB internal client cert from disk and connect
+            with ootb_internal_client_cert_file(node) as cert_path:
+                r = try_client_auth(node, cert_path)
+                # Should succeed - OOTB certs bypass CRL
+                testlib.assert_eq(r.status_code, 200,
+                                  name='OOTB cert auth status')
+                user_id = r.json().get('id')
+                assert user_id == '@internal', \
+                    f'Expected @internal user, got {user_id}'
+                print(f"OOTB internal cert auth succeeded: user={user_id}")
+
+        finally:
+            testlib.toggle_client_cert_auth(node, enabled=False)
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory='')
+            shutil.rmtree(crl_dir, ignore_errors=True)
+
+    def custom_internal_client_cert_crl_test(self):
+        """Test that custom internal client certs are subject to CRL checks.
+
+        A custom (uploaded) internal client cert is NOT signed by the cluster's
+        generated CA, so CRL checks apply. First verify it works when not
+        revoked, then revoke it and verify the connection is rejected.
+        """
+        node = self.cluster.connected_nodes[0]
+        crl_dir = tempfile.mkdtemp()
+        ca_ids = []
+
+        try:
+            # Generate our own CA for the custom internal client cert
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            ca_ids = load_multiple_cas(node, [root_ca_pem])
+
+            # Enable client cert auth
+            testlib.toggle_client_cert_auth(
+                node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+
+            # Generate a custom internal client cert with the special SAN email
+            custom_cert_pem, custom_key_pem = \
+                generate_and_load_internal_client_cert(node, root_ca_pem,
+                                                       root_ca_key_pem,
+                                                       'internal')
+
+            # Create an empty CRL (no revocations yet)
+            crl_filepath = os.path.join(crl_dir, 'crl.pem')
+            generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem, [])
+
+            # Enable CRL with "Require" policy
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Require',
+                                               'nodeToNode': 'Disabled'},
+                             poll_interval_ms=5000,
+                             directory=crl_dir)
+
+            assert_crl_status(self.cluster, expected_status='active')
+
+            # Step 1: Verify custom internal cert works when NOT revoked
+            with client_cert_file(custom_cert_pem, root_ca_pem,
+                                  custom_key_pem) as cert_path:
+                r = try_client_auth(node, cert_path)
+                testlib.assert_eq(r.status_code, 200,
+                                  name='custom internal cert before revocation')
+                user_id = r.json().get('id')
+                assert user_id == '@internal', \
+                    f'Expected @internal user, got {user_id}'
+                print(f"Custom internal cert auth succeeded: user={user_id}")
+
+                # Step 2: Revoke the custom cert and verify rejection
+                generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem,
+                                     [custom_cert_pem])
+                assert_reload_crl(node, expected_status='active')
+
+                # Should now be rejected
+                assert_cert_rejected(lambda: try_client_auth(node, cert_path))
+                print("Custom internal cert correctly rejected after "
+                      "revocation")
+
+        finally:
+            testlib.toggle_client_cert_auth(node, enabled=False)
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory='')
+            # Regenerate the default internal client cert
+            testlib.post_succ(node, '/controller/regenerateCertificate',
+                              params={'forceResetCACertificate': 'false',
+                                      'dropUploadedCertificates': 'true'})
+            shutil.rmtree(crl_dir, ignore_errors=True)
 
     def _run_crl_revocation_checks(self, setup_crl, update_crl):
         """Shared test body for CRL revocation tests.
@@ -789,3 +926,83 @@ def assert_cert_rejected(fun):
 
     testlib.poll_for_condition(do, sleep_time=0.5, attempts=20,
                                msg='waiting for CRL revocation to be enforced')
+
+
+# =============================================================================
+# Internal client cert helpers
+# =============================================================================
+
+
+@contextlib.contextmanager
+def ootb_internal_client_cert_file(node):
+    """Context manager that reads the OOTB internal client cert from disk.
+
+    Reads the cert and key from the node's config/certs directory, extracts
+    the passphrase via diag/eval if needed, decrypts the key if encrypted,
+    and writes everything to a temp file suitable for requests library.
+
+    Note: requests library doesn't support passphrase-protected keys directly,
+    so we must decrypt encrypted keys before writing them to the temp file.
+    """
+    certs_dir = os.path.join(node.data_path(), 'config', 'certs')
+    chain_path = os.path.join(certs_dir, 'client_chain.pem')
+    pkey_path = os.path.join(certs_dir, 'client_pkey.pem')
+
+    with open(chain_path, 'r') as f:
+        cert_pem = f.read()
+    with open(pkey_path, 'r') as f:
+        key_pem = f.read()
+
+    # Check if the key is encrypted by trying to load it without passphrase
+    try:
+        serialization.load_pem_private_key(
+            key_pem.encode(), password=None, backend=default_backend())
+        # Key is not encrypted, use as-is
+        print("OOTB internal client key is not encrypted")
+    except (TypeError, ValueError):
+        # Key is encrypted, need to extract passphrase and decrypt
+        print("OOTB internal client key is encrypted, extracting passphrase")
+        r = testlib.diag_eval(
+            node, '(ns_secrets:get_pkey_pass(client_cert))().')
+        passphrase_str = r.text.strip()
+        print(f"Extracted passphrase response: {passphrase_str}")
+
+        if passphrase_str == 'undefined':
+            raise ValueError("Key is encrypted but passphrase is undefined")
+
+        # Remove surrounding quotes if present
+        passphrase = passphrase_str.strip('"')
+        key_pem = _decrypt_pem_key(key_pem, passphrase)
+
+    # Write to temp file
+    f = tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.pem')
+    try:
+        f.write(cert_pem)
+        f.write('\n')
+        f.write(key_pem)
+        f.close()
+        yield f.name
+    finally:
+        try:
+            f.close()
+        except Exception:
+            pass
+        if os.path.exists(f.name):
+            os.unlink(f.name)
+
+
+def _decrypt_pem_key(encrypted_key_pem, passphrase):
+    """Decrypt a PEM-encoded private key using the passphrase.
+
+    Uses cryptography library to load and re-serialize without encryption.
+    This is needed because requests library doesn't support passphrase-protected
+    keys directly.
+    """
+    key = serialization.load_pem_private_key(
+        encrypted_key_pem.encode(),
+        password=passphrase.encode(),
+        backend=default_backend())
+    return key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.TraditionalOpenSSL,
+        serialization.NoEncryption()).decode()
