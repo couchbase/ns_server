@@ -48,7 +48,7 @@
 %% ETS layout (set):
 %%   {crl_file, NormPath}         => [#crl_elem{}]
 %%   {issuer,   NormIssuer}       => [{crl_file, NormPath}]
-%%   {policy,   Scope}            => disabled | permissive | require
+%%   {policy,   Scope}            => crl_policy()
 %%
 %% Each #crl_elem{} stores the normalised issuer, the DER-encoded CRL, and
 %% the timestamp at which it was loaded (passed in by the caller).
@@ -127,7 +127,7 @@ get_file_crls(Path) ->
 %% Called exclusively by cb_crl_manager with strict ordering guarantees:
 %%   disabled policies are written before CRL data is modified;
 %%   non-disabled policies are written after CRL data is loaded.
--spec set_policy(Scope :: atom(), Policy :: atom()) -> ok.
+-spec set_policy(Scope :: crl_scope(), Policy :: crl_policy()) -> ok.
 set_policy(Scope, Policy) ->
     gen_server:call(?SERVER, {set_policy, Scope, Policy}).
 
@@ -135,8 +135,7 @@ set_policy(Scope, Policy) ->
 %% Returns 'unknown' — not 'disabled' — when the entry is absent or the ETS
 %% table does not yet exist.  Callers must treat 'unknown' as a security
 %% failure (the cache is not ready) rather than silently allowing traffic.
--spec get_policy(Scope :: atom()) ->
-          disabled | permissive | require | unknown.
+-spec get_policy(Scope :: crl_scope()) -> crl_policy() | unknown.
 get_policy(Scope) ->
     try
         case ets:lookup(?ETS, {policy, Scope}) of

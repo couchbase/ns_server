@@ -14,7 +14,7 @@
 
 -export([verify_fun/1, verify/4]).
 
--spec verify_fun(CRLScope :: atom()) ->
+-spec verify_fun(CRLScope :: crl_scope()) ->
           fun((#'OTPCertificate'{}, term(), term()) ->
               {valid, term()} | {fail, term()} | {unknown, term()}).
 verify_fun(CRLScope) ->
@@ -33,7 +33,7 @@ verify_fun(CRLScope) ->
 %% ns_server node.
 -spec verify(OtpCert  :: #'OTPCertificate'{},
                  Event    :: term(),
-                 CRLScope :: atom(),
+                 CRLScope :: crl_scope(),
                  State    :: term()) ->
           {valid, term()} | {fail, term()} | {unknown, term()}.
 verify(OtpCert, Event, CRLScope, State) ->

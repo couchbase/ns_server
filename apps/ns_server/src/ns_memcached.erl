@@ -180,7 +180,8 @@
          get_snapshot_ready_status/2,
          release_snapshot/2,
          get_snapshot_statuses/1,
-         get_snapshot_details/2
+         get_snapshot_details/2,
+         crl_config_opts/0
         ]).
 
 %% for ns_memcached_sockets_pool, memcached_file_refresh only
@@ -2926,3 +2927,14 @@ create_fusion_namespace(BucketName) ->
       fun (Sock) ->
               {reply, mc_client_binary:create_fusion_namespace(Sock)}
       end, BucketName).
+
+crl_config_opts() ->
+    #{policy_per_scope := PolicyPerScope,
+      files := Files} = cb_crl_manager:get_push_config(),
+    PolicyJson = {[{S, crl_mode_to_binary(M)} || {S, M} <- PolicyPerScope]},
+    [{<<"crl_policies">>, PolicyJson},
+     {<<"crl_files">>, Files}].
+
+crl_mode_to_binary(disabled) -> <<"Disabled">>;
+crl_mode_to_binary(permissive) -> <<"Permissive">>;
+crl_mode_to_binary(require) -> <<"Require">>.

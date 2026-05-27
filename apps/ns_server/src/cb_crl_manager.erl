@@ -20,7 +20,8 @@
          set_config/1,
          sync/0,
          reload/0,
-         get_status/0]).
+         get_status/0,
+         get_push_config/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -32,6 +33,7 @@
 -define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
 -define(STATUS_TIMEOUT, ?get_timeout(status_timeout, 60000)).
 -define(SYNC_TIMEOUT, ?get_timeout(sync_timeout, 60000)).
+-define(GET_PUSH_CONFIG_TIMEOUT, ?get_timeout(get_push_config_timeout, 60000)).
 
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
@@ -169,6 +171,21 @@ reload() ->
 get_status() ->
     gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
 
+%% Return CRL config data for pushing to memcached and cbauth.
+%%
+%% Returns a map with:
+%%   policy_per_scope => [{crl_scope(), crl_policy()}] — all scopes with their
+%%                       policies
+%%   files            => binary() — crls file paths to be used by services
+%%
+%% This function is the single source of truth for CRL push config. Both
+%% memcached_config_mgr and menelaus_cbauth call it.
+-spec get_push_config() ->
+    #{policy_per_scope => [{crl_scope(), crl_policy()}],
+      files => [binary()]}.
+get_push_config() ->
+    gen_server:call(?SERVER, get_push_config, ?GET_PUSH_CONFIG_TIMEOUT).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -206,6 +223,7 @@ handle_call(reload, _From, #state{poll_directory = Dir} = State) ->
     ?log_debug("CRL manual reload start: ~p", [Dir]),
     ?flush(poll_directory),
     NewState = scan_directory(Dir, State, true),
+    maybe_notify_crl_consumers(State, NewState),
     ?log_debug("CRL manual reload done: ~p active file(s)",
                [maps:size(NewState#state.active)]),
     {reply, {ok, build_status_map(NewState)}, schedule_timer(NewState)};
@@ -215,6 +233,15 @@ handle_call(get_status, _From, State) ->
 
 handle_call(sync, _From, State) ->
     {reply, ok, State};
+
+handle_call(get_push_config, _From, #state{active = Active} = State) ->
+    Cfg = get_config(),
+    PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
+    FileVersions = build_file_versions(Active),
+    Files = [F || {F, _} <- FileVersions],
+    Result = #{policy_per_scope => PolicyPerScope,
+               files => Files},
+    {reply, Result, State};
 
 handle_call(Req, _From, State) ->
     ?log_error("Received unknown call: ~p", [Req]),
@@ -227,6 +254,7 @@ handle_cast(Msg, State) ->
 handle_info(config_changed, State) ->
     Cfg = get_config(),
     State1 = apply_config(Cfg, State),
+    notify_crl_consumers(),
     {noreply, schedule_timer(State1)};
 
 handle_info(poll_directory, #state{poll_directory = undefined} = State) ->
@@ -236,6 +264,9 @@ handle_info(poll_directory, #state{poll_directory = undefined} = State) ->
 handle_info(poll_directory, #state{poll_directory = Dir} = State) ->
     ?flush(poll_directory),
     State1 = scan_directory(Dir, State, false),
+    %% Only the set of active (good) files matters to consumers; reload-attempt
+    %% bookkeeping changing on its own does not warrant a push.
+    maybe_notify_crl_consumers(State, State1),
     {noreply, schedule_timer(State1)};
 
 handle_info(Msg, State) ->
@@ -264,6 +295,21 @@ get_crl_number(#'CertificateList'{tbsCertList = TBS}) ->
             try public_key:der_decode('CRLNumber', iolist_to_binary(V))
             catch _:_ -> undefined end
     end.
+
+maybe_notify_crl_consumers(StateBefore, StateCurrent) ->
+    %% Only call notify_crl_consumers when the set of CRL files changes
+    %% It doesn't check if policies have changed !!!
+    case StateBefore#state.active =:= StateCurrent#state.active of
+        true  -> ok;
+        false -> notify_crl_consumers()
+    end.
+
+%% Notify memcached that CRL data has changed.
+%% Called after config changes, manual reload, and poll when files changed.
+-spec notify_crl_consumers() -> ok.
+notify_crl_consumers() ->
+    memcached_config_mgr:trigger_tls_config_push(),
+    ok.
 
 -spec default_config() -> map().
 default_config() ->
@@ -630,6 +676,20 @@ populate_cache_from_config_crls() ->
 
 default_local_crl_source_dir() ->
     filename:join(path_config:component_path(data, "inbox"), "crls").
+
+%%%===================================================================
+%%% Push config helpers (used by get_push_config/0)
+%%%===================================================================
+
+%% Build the file-version list for the push config.
+%% Returns [{ConfigCrlsPathBin, ChecksumBin}] — one entry per file currently
+%% held in config/crls (the last-known-good set).  Consumers read these copies
+%% directly, so they only ever see fully validated files.
+-spec build_file_versions(active_files()) -> [{binary(), binary()}].
+build_file_versions(Active) ->
+    ConfigDir = crls_dir(),
+    [{iolist_to_binary(filename:join(ConfigDir, Name)), Checksum}
+     || {Name, Checksum} <- maps:to_list(Active)].
 
 %%%===================================================================
 %%% Status helpers (used by get_status/0)

@@ -607,4 +607,7 @@
                                           {node_capacity,
                                              ?MAX_64BIT_UNSIGNED_INT}]).
 
+-type crl_policy() :: disabled | permissive | require.
+-type crl_scope() :: client_auth | node_to_node.
+
 -endif.

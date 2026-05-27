@@ -72,7 +72,7 @@ trigger_tls_config_push() ->
         ?MODULE ! upload_tls_config,
         ok
     catch
-        error:badarg -> {error, no_proccess}
+        error:badarg -> {error, no_process}
     end.
 
 push_config_encryption_key(ReloadCfg) ->
@@ -810,6 +810,7 @@ tls_config(Params) ->
                        undefined -> [];
                        P -> [{<<"password">>, base64:encode(P)}]
                    end,
+    CRLOpts = ns_memcached:crl_config_opts(),
     {[{<<"private key">>, KeyPath},
       {<<"certificate chain">>, ChainPath},
       {<<"CA file">>, CAPath},
@@ -817,8 +818,8 @@ tls_config(Params) ->
       {<<"security level">>, SecurityLevel},
       {<<"cipher list">>, Ciphers},
       {<<"cipher order">>, CipherOrder},
-      {<<"client cert auth">>, AuthBinMcd} |
-      PasswordOpts]}.
+      {<<"client cert auth">>, AuthBinMcd}] ++
+      PasswordOpts ++ CRLOpts}.
 
 format_ciphers(RFCCipherNames) ->
     OpenSSLNames = [Name || C <- RFCCipherNames,
