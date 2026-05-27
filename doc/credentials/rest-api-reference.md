@@ -247,6 +247,10 @@ Errors returned from `/_cbauth/getCredential/:id` and mapped to Go sentinel erro
     "description": "Production S3 access",
     "createdAt": 1740000000000,
     "createdBy": {"user": "Administrator", "domain": "admin"},
+    "updatedAt": 1740864000000,
+    "updatedBy": {"user": "Administrator", "domain": "admin"},
+    "secretSetAt": 1740864000000,
+    "secretSetBy": {"user": "Administrator", "domain": "admin"},
     "expiresAt": 1750000000000,
     "guardrails": {
       "allowedServices": ["n1ql", "index"],
@@ -265,5 +269,17 @@ Errors returned from `/_cbauth/getCredential/:id` and mapped to Go sentinel erro
   }
 }
 ```
+
+### `meta` fields
+
+| Field | Stamped on | Description |
+|---|---|---|
+| `createdAt` / `createdBy` | POST | Immutable once set; preserved across PUT and PATCH. |
+| `updatedAt` / `updatedBy` | PUT, PATCH | Advance on any update, including PATCH-only metadata changes. |
+| `secretSetAt` / `secretSetBy` | POST, PUT | Advance only when the sensitive portion of the credential is (re-)declared. POST stamps them alongside `createdAt`/`createdBy`; PUT advances them alongside `updatedAt`/`updatedBy` (PUT is full-replace including secret material); PATCH never advances them, since PATCH cannot touch sensitive fields. Operators can use these to distinguish "credential edited" from "credential rotated." |
+| `expiresAt` | POST, PATCH | Optional; clearable via PATCH `expiresAt: null`. |
+| `description` | POST, PATCH | Optional; clearable via PATCH `description: null`. |
+| `guardrails` | POST, PATCH | Optional; PATCH `guardrails: {…}` is a full replacement of the sub-object, `guardrails: null` clears all guardrails. |
+| `payloadVersion` | Server-managed | Opaque chronicle revision token. |
 
 See [credential-types.md](credential-types.md) for the full field reference for each credential type.

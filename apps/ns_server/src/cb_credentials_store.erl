@@ -287,7 +287,10 @@ redact_credential(#{id := Id, schema_version := SV, type := Type, meta := Meta,
 create_impl(Id, Type, Fields, MetaExtra, Author) ->
     Key  = build_key(Id),
     Now  = os:system_time(millisecond),
-    BaseMeta = #{created_at => Now, created_by => Author},
+    BaseMeta = #{created_at    => Now,
+                 created_by    => Author,
+                 secret_set_at => Now,
+                 secret_set_by => Author},
     Meta = maps:merge(BaseMeta, maps:with(?USER_META_FIELDS, MetaExtra)),
     Cred = #{
              id             => Id,
@@ -426,7 +429,9 @@ update_existing(Id, Update) ->
 %%
 %% Keeps immutable fields (created_at, created_by) from the existing
 %% meta, merges in user-supplied optional fields (?USER_META_FIELDS),
-%% and stamps the update timestamp and author.
+%% and stamps the update timestamp and author.  Also stamps
+%% secret_set_at / secret_set_by, because PUT is a full replace of the
+%% credential including its sensitive portion.
 %% Used by PUT (update/5) only.  PUT semantics are full replace: omitted
 %% user-supplied keys are dropped from meta.  The `clear` sentinel never
 %% reaches this function because cred_validators/0 (POST/PUT) rejects
@@ -434,7 +439,10 @@ update_existing(Id, Update) ->
 build_updated_meta(ExistingMeta, MetaExtra, Author, Now) ->
     Immutable = maps:with([created_at, created_by], ExistingMeta),
     UserSupplied = maps:with(?USER_META_FIELDS, MetaExtra),
-    ServerStamped = #{updated_at => Now, updated_by => Author},
+    ServerStamped = #{updated_at    => Now,
+                      updated_by    => Author,
+                      secret_set_at => Now,
+                      secret_set_by => Author},
     maps:merge(Immutable, maps:merge(UserSupplied, ServerStamped)).
 
 %% @doc Build the meta map for a PATCH (partial update).
@@ -569,12 +577,14 @@ redact_credential_test() ->
                secret_access_key => "SECRET_KEY",
                region            => "us-east-1",
                endpoint          => "https://s3.amazonaws.com"},
+    Author = #{user => <<"admin">>, domain => local},
     Cred = #{id             => "test_aws",
              schema_version => ?SCHEMA_VERSION,
              type           => aws,
-             meta           => #{created_at => 1234567890,
-                                 created_by => #{user => <<"admin">>,
-                                                 domain => local}},
+             meta           => #{created_at    => 1234567890,
+                                 created_by    => Author,
+                                 secret_set_at => 1234567890,
+                                 secret_set_by => Author},
              fields         => Fields},
     Redacted = redact_credential(Cred),
     ?assertEqual("test_aws", maps:get(id, Redacted)),
@@ -588,6 +598,52 @@ redact_credential_test() ->
                  maps:get(region, RedactedFields)),
     ?assertEqual(<<"********">>,
                  maps:get(secret_access_key, RedactedFields)).
+
+build_updated_meta_stamps_secret_test() ->
+    %% PUT is full-replace including the sensitive portion, so the helper
+    %% must stamp secret_set_at/secret_set_by alongside updated_at/updated_by.
+    Created = 1000,
+    Now = 2000,
+    OldAuthor = #{user => <<"creator">>, domain => local},
+    NewAuthor = #{user => <<"rotator">>, domain => local},
+    ExistingMeta = #{created_at    => Created,
+                     created_by    => OldAuthor,
+                     secret_set_at => Created,
+                     secret_set_by => OldAuthor,
+                     description   => <<"old">>},
+    Updated = build_updated_meta(ExistingMeta, #{description => <<"new">>},
+                                 NewAuthor, Now),
+    ?assertEqual(Created,   maps:get(created_at, Updated)),
+    ?assertEqual(OldAuthor, maps:get(created_by, Updated)),
+    ?assertEqual(Now,       maps:get(updated_at, Updated)),
+    ?assertEqual(NewAuthor, maps:get(updated_by, Updated)),
+    ?assertEqual(Now,       maps:get(secret_set_at, Updated)),
+    ?assertEqual(NewAuthor, maps:get(secret_set_by, Updated)),
+    ?assertEqual(<<"new">>, maps:get(description, Updated)).
+
+build_patched_meta_preserves_secret_test() ->
+    %% PATCH cannot touch sensitive fields, so secret_set_at/secret_set_by
+    %% must roll forward unchanged.  updated_at/updated_by still advance.
+    Created = 1000,
+    SecretSet = 1500,
+    Now = 2000,
+    OldAuthor = #{user => <<"creator">>, domain => local},
+    SecretAuthor = #{user => <<"rotator">>, domain => local},
+    NewAuthor = #{user => <<"patcher">>, domain => local},
+    ExistingMeta = #{created_at    => Created,
+                     created_by    => OldAuthor,
+                     secret_set_at => SecretSet,
+                     secret_set_by => SecretAuthor,
+                     description   => <<"old">>},
+    Patched = build_patched_meta(ExistingMeta, #{description => <<"new">>},
+                                 NewAuthor, Now),
+    ?assertEqual(Created,      maps:get(created_at, Patched)),
+    ?assertEqual(OldAuthor,    maps:get(created_by, Patched)),
+    ?assertEqual(Now,          maps:get(updated_at, Patched)),
+    ?assertEqual(NewAuthor,    maps:get(updated_by, Patched)),
+    ?assertEqual(SecretSet,    maps:get(secret_set_at, Patched)),
+    ?assertEqual(SecretAuthor, maps:get(secret_set_by, Patched)),
+    ?assertEqual(<<"new">>,    maps:get(description, Patched)).
 
 with_version_test() ->
     Rev = {<<"e12e6c751a3f7c7ea73b833324ce70b1">>, 152},

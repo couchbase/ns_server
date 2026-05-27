@@ -2045,10 +2045,12 @@
                   "ip": "",
                   "port": 1
               },
-              "id"         : "",
-              "type"       : "",
-              "created_at" : 1,
-              "created_by" : {"domain" : "", "user" : ""}
+              "id"            : "",
+              "type"          : "",
+              "created_at"    : 1,
+              "created_by"    : {"domain" : "", "user" : ""},
+              "secret_set_at" : 1,
+              "secret_set_by" : {"domain" : "", "user" : ""}
           },
           "optional_fields": {
               "expires_at"  : 1,
@@ -2151,14 +2153,16 @@
               "id" : ""
           },
           "optional_fields": {
-              "type"        : "",
-              "created_at"  : 1,
-              "created_by"  : {"domain" : "", "user" : ""},
-              "updated_at"  : 1,
-              "updated_by"  : {"domain" : "", "user" : ""},
-              "expires_at"  : 1,
-              "description" : "",
-              "error"       : "",
+              "type"          : "",
+              "created_at"    : 1,
+              "created_by"    : {"domain" : "", "user" : ""},
+              "updated_at"    : 1,
+              "updated_by"    : {"domain" : "", "user" : ""},
+              "secret_set_at" : 1,
+              "secret_set_by" : {"domain" : "", "user" : ""},
+              "expires_at"    : 1,
+              "description"   : "",
+              "error"         : "",
               "authenticated_userid": {
                   "domain": "",
                   "user": ""

@@ -263,10 +263,13 @@ format_audit_params(create_credential, {Id, Type, Cred}, Error) ->
                #{meta := M} -> M;
                undefined    -> #{}
            end,
-    [{id,         list_to_binary(Id)},
-     {type,       Type},
-     {created_at, maps:get(created_at, Meta, undefined)},
-     {created_by, format_identity(maps:get(created_by, Meta, undefined))}]
+    [{id,            list_to_binary(Id)},
+     {type,          Type},
+     {created_at,    maps:get(created_at, Meta, undefined)},
+     {created_by,    format_identity(maps:get(created_by, Meta, undefined))},
+     {secret_set_at, maps:get(secret_set_at, Meta, undefined)},
+     {secret_set_by, format_identity(
+                       maps:get(secret_set_by, Meta, undefined))}]
         ++ optional_meta(Meta)
         ++ format_error(Error);
 
@@ -290,13 +293,16 @@ format_audit_params(update_credential, {Id, Cred}, Error) ->
     MetaParams =
         case {Error, Cred} of
             {ok, #{meta := Meta, type := Type}} ->
-                [{type,       Type},
-                 {created_at, maps:get(created_at, Meta, undefined)},
-                 {created_by, format_identity(
-                                maps:get(created_by, Meta, undefined))},
-                 {updated_at, maps:get(updated_at, Meta, undefined)},
-                 {updated_by, format_identity(
-                                maps:get(updated_by, Meta, undefined))}]
+                [{type,          Type},
+                 {created_at,    maps:get(created_at, Meta, undefined)},
+                 {created_by,    format_identity(
+                                   maps:get(created_by, Meta, undefined))},
+                 {updated_at,    maps:get(updated_at, Meta, undefined)},
+                 {updated_by,    format_identity(
+                                   maps:get(updated_by, Meta, undefined))},
+                 {secret_set_at, maps:get(secret_set_at, Meta, undefined)},
+                 {secret_set_by, format_identity(
+                                   maps:get(secret_set_by, Meta, undefined))}]
                     ++ optional_meta(Meta);
             _ ->
                 []
@@ -952,8 +958,12 @@ export_credential(#{id := Id, schema_version := SV, type := Type,
       <<"meta">>          => export_meta(Meta),
       <<"fields">>        => export_fields(Type, Fields)}.
 
-export_meta(#{created_at := CA, created_by := CB} = Meta) ->
-    Base = #{<<"createdAt">> => CA, <<"createdBy">> => export_author(CB)},
+export_meta(#{created_at := CA, created_by := CB,
+              secret_set_at := SSA, secret_set_by := SSB} = Meta) ->
+    Base = #{<<"createdAt">>   => CA,
+             <<"createdBy">>   => export_author(CB),
+             <<"secretSetAt">> => SSA,
+             <<"secretSetBy">> => export_author(SSB)},
     WithUpdated = case Meta of
                       #{updated_at := UA, updated_by := UB} ->
                           Base#{<<"updatedAt">> => UA,
@@ -1088,15 +1098,16 @@ roundtrip_test() ->
     ?assertEqual(false, maps:get(n2nEncryptionOverride, RestFormat)).
 
 export_credential_test() ->
+    Admin = #{user => <<"Administrator">>, domain => local},
     Cred = #{id             => <<"backup/aws/prod">>,
              schema_version => 1,
              type           => aws,
-             meta           => #{created_at => 1740000000000,
-                                 created_by => #{user => <<"Administrator">>,
-                                                 domain => local},
-                                 updated_at => 1740000000000,
-                                 updated_by => #{user => <<"Administrator">>,
-                                                 domain => local},
+             meta           => #{created_at      => 1740000000000,
+                                 created_by      => Admin,
+                                 updated_at      => 1740000000000,
+                                 updated_by      => Admin,
+                                 secret_set_at   => 1740000000000,
+                                 secret_set_by   => Admin,
                                  payload_version => <<"abddefsdf">>},
              fields         => #{access_key_id => <<"AKIA">>,
                                  region        => <<"us-east-1">>}},
@@ -1106,7 +1117,12 @@ export_credential_test() ->
     ?assertEqual(1,                     maps:get(<<"schemaVersion">>, Got)),
     Fields = maps:get(<<"fields">>, Got),
     ?assertEqual(<<"AKIA">>,      maps:get(<<"accessKeyId">>, Fields)),
-    ?assertEqual(<<"us-east-1">>, maps:get(<<"region">>, Fields)).
+    ?assertEqual(<<"us-east-1">>, maps:get(<<"region">>, Fields)),
+    Meta = maps:get(<<"meta">>, Got),
+    ?assertEqual(1740000000000, maps:get(<<"secretSetAt">>, Meta)),
+    ?assertEqual(#{<<"user">> => <<"Administrator">>,
+                   <<"domain">> => <<"local">>},
+                 maps:get(<<"secretSetBy">>, Meta)).
 
 export_guardrails_test() ->
     Guardrails = #{allowed_services => [<<"n1ql">>, <<"fts">>],
@@ -1135,21 +1151,31 @@ export_guardrails_empty_test() ->
     ?assertEqual(#{}, export_guardrails(#{})).
 
 export_meta_with_guardrails_test() ->
-    Meta = #{created_at => 1740000000000,
-             created_by => #{user => <<"admin">>, domain => local},
-             guardrails => #{allowed_services => [<<"n1ql">>]},
+    Admin = #{user => <<"admin">>, domain => local},
+    Meta = #{created_at      => 1740000000000,
+             created_by      => Admin,
+             secret_set_at   => 1740000000000,
+             secret_set_by   => Admin,
+             guardrails      => #{allowed_services => [<<"n1ql">>]},
              payload_version => <<"23423">>},
     Got = export_meta(Meta),
     ?assert(maps:is_key(<<"guardrails">>, Got)),
     GR = maps:get(<<"guardrails">>, Got),
-    ?assertEqual([<<"n1ql">>], maps:get(<<"allowedServices">>, GR)).
+    ?assertEqual([<<"n1ql">>], maps:get(<<"allowedServices">>, GR)),
+    ?assertEqual(1740000000000, maps:get(<<"secretSetAt">>, Got)),
+    ?assertEqual(#{<<"user">> => <<"admin">>, <<"domain">> => <<"local">>},
+                 maps:get(<<"secretSetBy">>, Got)).
 
 export_meta_without_guardrails_test() ->
-    Meta = #{created_at => 1740000000000,
-             created_by => #{user => <<"admin">>, domain => local},
+    Admin = #{user => <<"admin">>, domain => local},
+    Meta = #{created_at      => 1740000000000,
+             created_by      => Admin,
+             secret_set_at   => 1740000000000,
+             secret_set_by   => Admin,
              payload_version => <<"12312">>},
     Got = export_meta(Meta),
-    ?assertNot(maps:is_key(<<"guardrails">>, Got)).
+    ?assertNot(maps:is_key(<<"guardrails">>, Got)),
+    ?assertEqual(1740000000000, maps:get(<<"secretSetAt">>, Got)).
 
 validated_guardrails_to_store_test() ->
     Props = [{allowedServices, [<<"index">>, <<"n1ql">>]},

@@ -33,6 +33,10 @@
                                    access_denied.
 -type credential_id() :: string().
 
+%% secret_set_at / secret_set_by record when the sensitive portion of a
+%% credential was last written.  Distinct from updated_at / updated_by, which
+%% advance on any update including PATCH-only meta changes.  Stamped on
+%% create (POST) and replace (PUT); never on PATCH.
 -type credential_meta() :: #{created_at := integer(),
                              created_by := credential_author(),
                              updated_at => integer(),
@@ -40,6 +44,8 @@
                              expires_at => integer(),
                              description => binary() | string(),
                              guardrails => map(),
+                             secret_set_at => integer(),
+                             secret_set_by => credential_author(),
                              payload_version := chronicle:revision()}.
 
 -type credential_fields() :: #{atom() => string() | integer() | boolean() |

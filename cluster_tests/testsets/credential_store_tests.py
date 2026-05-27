@@ -2533,3 +2533,97 @@ class CredentialPatchTests(testlib.BaseTestSet):
             f"expiresAt should remain absent, got: {meta}"
         testlib.assert_eq(meta["description"], "x",
                           "description preserved")
+
+
+# ---------------------------------------------------------------------------
+# 7. secret_set_at / secret_set_by stamping
+# ---------------------------------------------------------------------------
+
+class CredentialSecretSetMetadataTests(testlib.BaseTestSet):
+    """secretSetAt / secretSetBy track when the sensitive portion of a
+    credential was last written.  POST stamps both; PUT advances both
+    (PUT is full-replace including the sensitive portion); PATCH preserves
+    both (PATCH cannot touch sensitive fields).
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition="Enterprise",
+                                           encryption=True)
+
+    def setup(self):
+        ensure_config_encryption_enabled(self.cluster)
+        self.node = self.cluster.connected_nodes[0]
+
+    def teardown(self):
+        pass
+
+    def test_teardown(self):
+        testlib.ensure_deleted(self.cluster,
+                               cred_url("test/aws/secretmeta"))
+
+    def post_stamps_secret_set_metadata_test(self):
+        """POST populates secretSetAt and secretSetBy alongside createdAt."""
+        cred_id = "test/aws/secretmeta"
+        before = int(time.time() * 1000)
+        r = testlib.post_succ(self.cluster, cred_url(cred_id),
+                              json=aws_body(), expected_code=201)
+        after = int(time.time() * 1000)
+        meta = r.json()["meta"]
+        assert "secretSetAt" in meta, \
+            f"secretSetAt missing on POST: {meta}"
+        assert "secretSetBy" in meta, \
+            f"secretSetBy missing on POST: {meta}"
+        assert before <= meta["secretSetAt"] <= after, \
+            f"secretSetAt {meta['secretSetAt']} not in [{before}, {after}]"
+        testlib.assert_eq(meta["secretSetAt"], meta["createdAt"],
+                          "secretSetAt equals createdAt on POST")
+        testlib.assert_eq(meta["secretSetBy"], meta["createdBy"],
+                          "secretSetBy equals createdBy on POST")
+
+    def put_stamps_secret_set_metadata_together_with_updated_test(self):
+        """PUT is full-replace including the sensitive portion.  Server-side
+        `build_updated_meta` stamps secretSetAt/secretSetBy and
+        updatedAt/updatedBy together with the same `Now`/`Author` values, so
+        after PUT the two pairs must match exactly.  This pin asserts the
+        stamping happened on PUT (rather than being a stale value carried
+        from POST) without relying on the system clock to advance between
+        the two requests, which would be flaky on fast hosts."""
+        cred_id = "test/aws/secretmeta"
+        created = testlib.post_succ(self.cluster, cred_url(cred_id),
+                                    json=aws_body(),
+                                    expected_code=201).json()
+        updated_body = aws_body(key_id="NEWKEYID000000000000",
+                                secret="NEWSECRETKEY")
+        r = testlib.put_succ(self.cluster, cred_url(cred_id),
+                             json=updated_body)
+        meta = r.json()["meta"]
+        testlib.assert_eq(meta["secretSetAt"], meta["updatedAt"],
+                          "secretSetAt tracks updatedAt on PUT")
+        testlib.assert_eq(meta["secretSetBy"], meta["updatedBy"],
+                          "secretSetBy tracks updatedBy on PUT")
+        testlib.assert_eq(meta["createdAt"], created["meta"]["createdAt"],
+                          "createdAt preserved across PUT")
+        testlib.assert_eq(meta["createdBy"], created["meta"]["createdBy"],
+                          "createdBy preserved across PUT")
+
+    def patch_preserves_secret_set_metadata_test(self):
+        """PATCH cannot touch sensitive fields; secretSetAt and secretSetBy
+        must be carried forward byte-for-byte from the prior POST.  We assert
+        identity against the POST response rather than ordering against the
+        clock — server-side `build_patched_meta` never writes to
+        secret_set_*, so an equality check is the strongest portable
+        signal."""
+        cred_id = "test/aws/secretmeta"
+        created = testlib.post_succ(self.cluster, cred_url(cred_id),
+                                    json=aws_body(),
+                                    expected_code=201).json()
+        r = testlib.patch_succ(self.cluster, cred_url(cred_id),
+                               json={"description": "patched"})
+        meta = r.json()["meta"]
+        testlib.assert_eq(meta["secretSetAt"],
+                          created["meta"]["secretSetAt"],
+                          "secretSetAt preserved across PATCH")
+        testlib.assert_eq(meta["secretSetBy"],
+                          created["meta"]["secretSetBy"],
+                          "secretSetBy preserved across PATCH")
