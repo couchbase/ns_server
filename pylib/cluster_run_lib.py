@@ -253,7 +253,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
 
     datadir = abs_path_join(root_dir, 'data', f'n_{i}')
     tempdir = abs_path_join(root_dir, 'tmp')
-    cb_etc_dir = os.path.join(ns_server_dir, "..", "install", "etc", "couchbase")
+    cb_etc_dir = os.path.join(PREFIX, "etc", "couchbase")
     nodefile = os.path.join(datadir, "nodefile")
     ssloptfile = generate_ssl_dist_optfile(datadir)
     cb_dist_config = os.path.join(datadir, "config", "dist_cfg")
