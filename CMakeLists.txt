@@ -79,6 +79,10 @@ if (IS_DIRECTORY "${SERVER_UI_SRC}")
   set (NS_UI_PUB_DIR "${NS_UI_BUILD_DIR}/public")
   set (NS_UI_BIN "${NS_UI_PUB_DIR}/ui")
   file (MAKE_DIRECTORY "${NS_UI_BIN}")
+  # Cluster run needs to find the UI build dir. We support different build dirs
+  # so we need to tell it where to look.
+  FILE (APPEND "${PROJECT_BINARY_DIR}/cluster_run.configuration"
+        "approot=\"${NS_UI_PUB_DIR}\"\n")
 
   set (SERVER_UI_PUB_SRC "${SERVER_UI_SRC}/public")
   # Copy assets

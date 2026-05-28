@@ -60,6 +60,7 @@ def read_configuration():
 
 config = read_configuration()
 PREFIX = config['prefix']
+APPROOT = config['approot']
 
 valid_bucket_types = ["ephemeral", "membase", "couchbase", "memcached"]
 valid_service_types = {"kv", "n1ql", "index", "fts", "cbas", "eventing",
@@ -272,7 +273,7 @@ def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
         "-ns_server", "config_path", f'"{static_config}"',
         "error_logger_mf_dir", quote_string_for_erl(logdir),
         "path_config_etcdir", f'"{os.path.join(ns_server_dir, "priv")}"',
-        "approot", quote_string_for_erl(ns_server_dir + "/../build/ui-build/public"),
+        "approot", quote_string_for_erl(APPROOT),
         "path_config_bindir", quote_string_for_erl(PREFIX + "/bin"),
         "path_config_libdir", quote_string_for_erl(PREFIX + "/lib"),
         "path_config_datadir", quote_string_for_erl(datadir),
