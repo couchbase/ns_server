@@ -923,8 +923,12 @@ internal_roles() ->
      %% issue cb-on-behalf-of callbacks (e.g. /_p/<svc> proxy paths). The more
      %% specific pattern must precede the [admin, security] filter so the
      %% strict match there does not deny it.
+     %% [admin, security, admin] read is required so service users can retrieve
+     %% the complete role catalog via /settings/rbac/roles. Granting or
+     %% modifying security/user roles still requires the corresponding write,
+     %% which service_admin does not have.
      {<<"service_admin">>, [], [],
-      [{[admin, security, admin], [impersonate]},
+      [{[admin, security, admin], [impersonate, read]},
        {[admin, security], [read]},
        {[admin, users], [read]},
        {[{credentials, any}], none},
