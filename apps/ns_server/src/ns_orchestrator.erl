@@ -1350,6 +1350,8 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
                     {error, Err} ->
                         throw(Err)
                 end,
+            proplists:get_value(type, RebalancePlan) =:= rebalance orelse
+                throw(not_found),
             Nodes = proplists:get_value(nodes, RebalancePlan),
             PlanNodeNames = [atom_to_list(N) || N <- Nodes],
             PassedNodeNames = [N || {N, _} <- Volumes],
