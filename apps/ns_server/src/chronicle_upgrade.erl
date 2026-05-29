@@ -17,7 +17,8 @@
 
 -define(UPGRADE_PULL_TIMEOUT, ?get_timeout(upgrade_pull, 60000)).
 
--export([get_key/2, set_key/3, upgrade/2, maybe_initialize/0]).
+-export([get_key/2, set_key/3, upgrade/2, maybe_initialize/0,
+         build_commit/1]).
 
 get_key(Key, {Snapshot, Txn}) ->
     case maps:find(Key, Snapshot) of
@@ -73,14 +74,7 @@ initialize() ->
 
 upgrade(Version, Nodes) ->
     RV = chronicle_kv:txn(
-           kv,
-           fun (Txn) ->
-                   {Changes, Txn} = upgrade_loop({#{}, Txn}, Version),
-                   {commit, maps:fold(
-                              fun (K, V, Acc) ->
-                                      [{set, K, V} | Acc]
-                              end, [], Changes)}
-           end),
+           kv, ?cut(build_commit(upgrade_loop({#{}, _}, Version)))),
     case RV of
         {ok, _} ->
             OtherNodes = Nodes -- [node()],
@@ -98,6 +92,11 @@ upgrade(Version, Nodes) ->
             ale:error(?USER_LOGGER, "Error upgrading chronicle: ~p", [Error]),
             error
     end.
+
+build_commit({Changes, _Txn}) ->
+    {commit, maps:fold(fun (K, V, Acc) ->
+                               [{set, K, V} | Acc]
+                       end, [], Changes)}.
 
 upgrade_loop(UpgradeTxn, FinalVersion) ->
     CurrentVersion =
@@ -133,4 +132,4 @@ upgrade_to(?VERSION_76, UpgradeTxn) ->
         ns_server_cert:chronicle_upgrade_to_79(_)])};
 
 upgrade_to(?VERSION_79, UpgradeTxn) ->
-    {?VERSION_80, UpgradeTxn}.
+    {?VERSION_80, ns_bucket:chronicle_upgrade_to_80(UpgradeTxn)}.
