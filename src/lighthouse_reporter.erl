@@ -17,6 +17,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include("ns_test.hrl").
 -endif.
 
 
@@ -148,20 +149,13 @@ post(URL, Body, Timeout) ->
 
 build_product() ->
     #{name => build_name(),
-      edition => build_edition(),
       version => build_version()}.
 
 build_name() ->
-    %% TODO: Actual product name
-    <<"couchbase">>.
-
-build_edition() ->
-    %% TODO: Actual edition name
-    <<"enterprise">>.
+    <<"Couchbase Server">>.
 
 build_version() ->
-    %% TODO: Actual product version
-    <<"7.6">>.
+    misc:compat_version_to_binary(cluster_compat_mode:get_compat_version()).
 
 build_resource_telemetry(_Statuses) ->
     %% TODO: Resource telemetry
@@ -195,3 +189,38 @@ create_report() ->
                        nodes => []},
     Payload2 = maps:merge(Payload1, ClusterDetails),
     json:encode(Payload2).
+
+-ifdef(TEST).
+
+report_keys() ->
+    [<<"clusterUuid">>,
+     <<"collectedAt">>,
+     <<"cpuLogicalCores">>,
+     <<"cpuPhysicalCores">>,
+     <<"nodes">>,
+     <<"product">>,
+     <<"ramBytesTotal">>,
+     <<"ramBytesUsed">>,
+     <<"services">>,
+     <<"storageBytesTotal">>,
+     <<"storageBytesUsed">>].
+
+create_report_test_() ->
+    {setup,
+     fun () ->
+             fake_ns_config:setup(),
+             fake_chronicle_kv:setup()
+     end,
+     fun (_) ->
+             fake_chronicle_kv:teardown(),
+             fake_ns_config:teardown(),
+             meck:unload()
+     end,
+     fun () ->
+             Report = create_report(),
+             %% Convert back to maps for validation
+             ReportMap = json:decode(list_to_binary(Report)),
+             ?assertListsEqual(report_keys(), maps:keys(ReportMap))
+     end}.
+
+-endif.
