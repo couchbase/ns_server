@@ -343,12 +343,20 @@ optional_meta(Meta) ->
 prefix_param("") -> [];
 prefix_param(P)  -> [{prefix, list_to_binary(P)}].
 
+-spec camel_field_names([atom()]) -> [binary()].
+camel_field_names(Fields) ->
+    [atom_to_binary(misc:snake_to_camel_atom(F)) || F <- Fields].
+
 %% Error field — absent on success, human-readable binary on failure.
 -spec format_error(ok | credential_error_reason()) ->
           [{error, binary()}].
 format_error(ok) -> [];
 format_error(Reason) when is_atom(Reason) ->
     [{error, atom_to_binary(Reason)}];
+format_error({secret_missing, MissingFields}) ->
+    Camel = camel_field_names(MissingFields),
+    [{error, iolist_to_binary(
+               ["secret_missing: [", lists:join(", ", Camel), "]"])}];
 format_error({txn_failed, Detail}) ->
     [{error, iolist_to_binary(["txn_failed: ",
                                io_lib:format("~p", [Detail])])}].
@@ -641,10 +649,27 @@ handle_consume_credential(IdStr, Service, User, Domain, Req) ->
             reply_cbauth_error(
               Req, <<"UNSUPPORTED_SCHEMA_VERSION">>,
               <<"Credential uses an unsupported schema version">>, 503);
+        {error, {secret_missing, MissingFields}} ->
+            audit_consume(Req, IdStr, Service, User, Domain,
+                          {secret_missing, MissingFields}),
+            reply_secret_missing(Req, MissingFields);
         {error, Reason} ->
             audit_consume(Req, IdStr, Service, User, Domain, Reason),
             reply_store_error(Req, Reason)
     end.
+
+%% @doc 503 response for the secret_missing case, carrying the per-credential
+%% list of sensitive field names that need to be re-supplied via PUT.
+reply_secret_missing(Req, MissingFields) ->
+    Camel = camel_field_names(MissingFields),
+    Reason =
+        iolist_to_binary(
+          io_lib:format(
+            "Credential's sensitive portion is missing; complete via "
+            "PUT /settings/credentials/:id supplying: ~s",
+            [lists:join(", ", Camel)])),
+    reply_cbauth_error(Req, <<"CREDENTIAL_SECRET_MISSING">>, Reason,
+                       #{missingSensitiveFields => Camel}, 503).
 
 %% @doc Handle consume for an end user: enforce the allowedServices guardrail.
 handle_end_user_consume(IdStr, Service, User, Domain, Cred, Req) ->
@@ -728,9 +753,15 @@ reply_json_ok(Req, JsonBin, Code) ->
                         [{"Content-Type", "application/json"}]).
 
 reply_cbauth_error(Req, Code, Reason, HttpStatus) ->
+    reply_cbauth_error(Req, Code, Reason, #{}, HttpStatus).
+
+%% Extra carries error-specific keys into the error object alongside
+%% code/reason (e.g. missingSensitiveFields for CREDENTIAL_SECRET_MISSING).
+reply_cbauth_error(Req, Code, Reason, Extra, HttpStatus) ->
     reply_json_ok(Req,
                   encode_response(
-                    #{error => #{code => Code, reason => Reason}}),
+                    #{error => maps:merge(#{code => Code, reason => Reason},
+                                          Extra)}),
                   HttpStatus).
 
 %% Credential request validation
@@ -987,12 +1018,22 @@ validated_fields_to_store(Type, FieldsProplist) ->
 %% Store internal map -> wire JSON map (camelCase, secrets already stripped
 %% by store).  Output uses maps with binary keys for json:encode.
 export_credential(#{id := Id, schema_version := SV, type := Type,
-                    meta := Meta, fields := Fields}) ->
-    #{<<"id">>            => ensure_binary(Id),
-      <<"type">>          => atom_to_binary(misc:snake_to_camel_atom(Type)),
-      <<"schemaVersion">> => SV,
-      <<"meta">>          => export_meta(Meta),
-      <<"fields">>        => export_fields(Type, Fields)}.
+                    meta := Meta, fields := Fields} = Cred) ->
+    Base = #{<<"id">>            => ensure_binary(Id),
+             <<"type">>          => atom_to_binary(
+                                      misc:snake_to_camel_atom(Type)),
+             <<"schemaVersion">> => SV,
+             <<"meta">>          => export_meta(Meta),
+             <<"fields">>        => export_fields(Type, Fields)},
+    %% missingSensitiveFields, when present, marks a credential whose
+    %% secret is missing and names the fields the operator must re-supply
+    %% via PUT; fully populated credentials omit it.
+    case maps:get(missing_sensitive_fields, Cred, []) of
+        [] ->
+            Base;
+        MFs ->
+            Base#{<<"missingSensitiveFields">> => camel_field_names(MFs)}
+    end.
 
 export_meta(#{created_at := CA, created_by := CB,
               secret_set_at := SSA, secret_set_by := SSB} = Meta) ->
@@ -1167,6 +1208,7 @@ export_credential_test() ->
     ?assertEqual(<<"backup/aws/prod">>, maps:get(<<"id">>, Got)),
     ?assertEqual(<<"aws">>,             maps:get(<<"type">>, Got)),
     ?assertEqual(1,                     maps:get(<<"schemaVersion">>, Got)),
+    ?assertNot(maps:is_key(<<"missingSensitiveFields">>, Got)),
     Fields = maps:get(<<"fields">>, Got),
     ?assertEqual(<<"AKIA">>,      maps:get(<<"accessKeyId">>, Fields)),
     ?assertEqual(<<"us-east-1">>, maps:get(<<"region">>, Fields)),
@@ -1175,6 +1217,26 @@ export_credential_test() ->
     ?assertEqual(#{<<"user">> => <<"Administrator">>,
                    <<"domain">> => <<"local">>},
                  maps:get(<<"secretSetBy">>, Meta)).
+
+%% A missing-secret credential surfaces the camelCase missingSensitiveFields
+%% list operators must re-supply via PUT; its presence is what marks the
+%% credential as incomplete.
+export_credential_missing_test() ->
+    Admin = #{user => <<"Administrator">>, domain => local},
+    Cred = #{id             => <<"backup/aws/restored">>,
+             schema_version => 1,
+             type           => aws,
+             missing_sensitive_fields => [secret_access_key],
+             meta           => #{created_at      => 1740000000000,
+                                 created_by      => Admin,
+                                 secret_set_at   => 1740000000000,
+                                 secret_set_by   => Admin,
+                                 payload_version => <<"abc">>},
+             fields         => #{access_key_id => <<"AKIA">>,
+                                 region        => <<"us-east-1">>}},
+    Got = export_credential(Cred),
+    ?assertEqual([<<"secretAccessKey">>],
+                 maps:get(<<"missingSensitiveFields">>, Got)).
 
 export_guardrails_test() ->
     Guardrails = #{allowed_services => [<<"n1ql">>, <<"fts">>],

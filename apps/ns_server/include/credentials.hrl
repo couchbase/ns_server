@@ -30,6 +30,8 @@
                                    rev_mismatch |
                                    {txn_failed, Reason :: term()} |
                                    expired |
+                                   {secret_missing,
+                                    MissingFields :: [atom()]} |
                                    service_not_allowed |
                                    access_denied.
 -type credential_id() :: string().
@@ -52,9 +54,16 @@
 -type credential_fields() :: #{atom() => string() | integer() | boolean() |
                                binary()}.
 
+%% missing_sensitive_fields marks a credential whose sensitive portion is absent
+%% after restore. Restore always knows which sensitive fields it omitted. Totoro
+%% does not restore credentials, so missing_sensitive_fields is never populated.
+%% A future maintenance release that opts to restore only credential metadata
+%% will omit sensitive fields. Those credentials return an error on consume. The
+%% operator should fill in missing sensitive fields after restore using a PUT.
 -type credentials_map() :: #{id := string(),
                              schema_version := pos_integer(),
                              type := credential_type(),
+                             missing_sensitive_fields => [atom()],
                              meta := credential_meta(),
                              fields := credential_fields()}.
 

@@ -107,10 +107,29 @@ list(Prefix) ->
     case ensure_prerequisites(Snapshot) of
         ok ->
             {ok, Creds} = list_impl(Prefix, Snapshot),
-            Warnings = get_credential_warnings(Snapshot),
+            BaseWarnings = get_credential_warnings(Snapshot),
+            Warnings = BaseWarnings ++ missing_secret_warning(Creds),
             {ok, Creds, Warnings};
         {error, _} = Err ->
             Err
+    end.
+
+%% @doc Per-list warning summarizing how many credentials are unconsumable
+%% because their sensitive fields are missing. Emitted only when at least
+%% one such credential is in the returned list. The warning is so the
+%% post-restore follow-up is visible (in a future maintenance release).
+-spec missing_secret_warning([credential_public_view()]) -> [binary()].
+missing_secret_warning(Creds) ->
+    case [C || #{missing_sensitive_fields := [_|_]} = C <- Creds] of
+        [] ->
+            [];
+        Missing ->
+            [iolist_to_binary(
+               io_lib:format(
+                 "~B credential(s) have missing sensitive fields and "
+                 "cannot be consumed until they are filled in via PUT "
+                 "/settings/credentials/:id",
+                 [length(Missing)]))]
     end.
 
 %% @doc Replace an existing credential's fields.
@@ -274,8 +293,8 @@ sensitive_fields(Type) -> cb_credential_types:sensitive_fields(Type).
 
 %% @doc Return the public (secret-redacted) view of a stored credential.
 -spec redact_credential(credential_full_view()) -> credential_public_view().
-redact_credential(#{id := Id, schema_version := SV, type := Type, meta := Meta,
-                    fields := Fields}) ->
+redact_credential(#{id := Id, schema_version := SV, type := Type,
+                    meta := Meta, fields := Fields} = Cred) ->
     Sensitive = sensitive_fields(Type),
     MaskedFields = maps:map(
                      fun (K, _V) ->
@@ -284,11 +303,14 @@ redact_credential(#{id := Id, schema_version := SV, type := Type, meta := Meta,
                                  false -> _V
                              end
                      end, Fields),
-    #{id             => Id,
-      schema_version => SV,
-      type           => Type,
-      meta           => Meta,
-      fields         => MaskedFields}.
+    Base = #{id             => Id,
+             schema_version => SV,
+             type           => Type,
+             meta           => Meta,
+             fields         => MaskedFields},
+    %% missing_sensitive_fields, when present, names the fields the operator
+    %% must re-supply via PUT; carry it through to the public view.
+    maps:merge(Base, maps:with([missing_sensitive_fields], Cred)).
 
 create_impl(Id, Type, Fields, MetaExtra, Author) ->
     Key  = build_key(Id),
@@ -378,7 +400,13 @@ update_impl(Id, Type, Fields, MetaExtra, Author, ExpectedRev) ->
                   true ->
                       UpdatedMeta = build_updated_meta(ExistingMeta, MetaExtra,
                                                        Author, Now),
-                      {commit, Current#{fields => Fields, meta => UpdatedMeta}};
+                      %% PUT is full-replace including the sensitive portion;
+                      %% drop missing_sensitive_fields unconditionally (a
+                      %% no-op when absent, the completion step when a future
+                      %% restore's credential is filled in).
+                      {commit, maps:remove(missing_sensitive_fields,
+                                           Current#{fields => Fields,
+                                                    meta => UpdatedMeta})};
                   false ->
                       {abort, invalid_type}
               end
@@ -514,6 +542,18 @@ delete_impl(Id) ->
 consume_credential_impl(Id, Snapshot) ->
     Key = build_key(Id),
     case maps:find(Key, Snapshot) of
+        %% Refuse missing-state credentials before any other check: the
+        %% sensitive portion is absent, so handing back the record would let
+        %% a service consume a half-baked credential and produce a confusing
+        %% downstream failure. The error carries the field names that need
+        %% to be re-supplied.
+        {ok, {#{schema_version := ?SCHEMA_VERSION,
+                missing_sensitive_fields := [_|_] = MissingFields},
+              _Rev}} ->
+            ?log_error("consume_credential: credential ~p has missing "
+                       "sensitive fields ~p; complete via PUT",
+                       [Id, MissingFields]),
+            {error, {secret_missing, MissingFields}};
         {ok, {#{schema_version := ?SCHEMA_VERSION, meta := Meta} = Cred,
               Rev}} ->
             case is_expired(Meta) of
@@ -606,6 +646,7 @@ redact_credential_test() ->
     ?assertEqual("test_aws", maps:get(id, Redacted)),
     ?assertEqual(aws, maps:get(type, Redacted)),
     ?assertEqual(1, maps:get(schema_version, Redacted)),
+    ?assertNot(maps:is_key(missing_sensitive_fields, Redacted)),
     ?assertMatch(#{created_at := 1234567890}, maps:get(meta, Redacted)),
     RedactedFields = maps:get(fields, Redacted),
     ?assertEqual("AKIAIOSFODNN7EXAMPLE",
@@ -614,6 +655,63 @@ redact_credential_test() ->
                  maps:get(region, RedactedFields)),
     ?assertEqual(<<"********">>,
                  maps:get(secret_access_key, RedactedFields)).
+
+redact_credential_missing_carries_fields_test() ->
+    Author = #{user => <<"admin">>, domain => local},
+    Cred = #{id             => "restored_aws",
+             schema_version => ?SCHEMA_VERSION,
+             type           => aws,
+             missing_sensitive_fields => [secret_access_key],
+             meta           => #{created_at    => 1234567890,
+                                 created_by    => Author,
+                                 secret_set_at => 1234567890,
+                                 secret_set_by => Author},
+             fields         => #{access_key_id => "AKIA",
+                                 region        => "us-east-1"}},
+    Redacted = redact_credential(Cred),
+    ?assertEqual([secret_access_key],
+                 maps:get(missing_sensitive_fields, Redacted)).
+
+%% consume must refuse a missing-secret credential before any other check,
+%% returning the field list to re-supply.  (No endpoint produces one in
+%% this release; the snapshot is built directly to pin the contract a
+%% later restore path will rely on.)
+consume_refuses_missing_secret_test() ->
+    Id = "test/restored",
+    Author = #{user => <<"admin">>, domain => local},
+    Cred = #{id             => Id,
+             schema_version => ?SCHEMA_VERSION,
+             type           => aws,
+             missing_sensitive_fields => [secret_access_key],
+             meta           => #{created_at => 1, created_by => Author},
+             fields         => #{access_key_id => "AKIA"}},
+    Snapshot = #{build_key(Id) => {Cred, {<<"rev">>, 1}}},
+    ?assertEqual({error, {secret_missing, [secret_access_key]}},
+                 consume_credential_impl(Id, Snapshot)).
+
+%% A fully populated credential consumes normally through the same path.
+consume_allows_present_secret_test() ->
+    Id = "test/present",
+    Author = #{user => <<"admin">>, domain => local},
+    Cred = #{id             => Id,
+             schema_version => ?SCHEMA_VERSION,
+             type           => aws,
+             meta           => #{created_at => 1, created_by => Author},
+             fields         => #{access_key_id => "AKIA",
+                                 secret_access_key => "SECRET"}},
+    Snapshot = #{build_key(Id) => {Cred, {<<"rev">>, 1}}},
+    {ok, Got} = consume_credential_impl(Id, Snapshot),
+    ?assertEqual(Id, maps:get(id, Got)).
+
+%% The per-list warning fires only when a missing-secret credential is in
+%% the list.
+missing_secret_warning_test() ->
+    ?assertEqual([], missing_secret_warning([#{id => "a"}])),
+    [Warning] = missing_secret_warning(
+                  [#{id => "b",
+                     missing_sensitive_fields => [secret_access_key]},
+                   #{id => "a"}]),
+    ?assert(is_binary(Warning)).
 
 build_updated_meta_stamps_secret_test() ->
     %% PUT is full-replace including the sensitive portion, so the helper
