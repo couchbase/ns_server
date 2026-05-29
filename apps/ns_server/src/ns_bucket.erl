@@ -102,7 +102,6 @@
          history_retention_collection_default/1,
          rank/1,
          eviction_policy/1,
-         default_storage_mode/1,
          storage_mode/1,
          storage_backend/1,
          raw_ram_quota/1,
@@ -177,6 +176,7 @@
          deactivate_bucket_data_on_this_node/1,
          chronicle_upgrade_to_76/1,
          chronicle_upgrade_to_79/1,
+         chronicle_upgrade_to_80/1,
          config_upgrade_to_80/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
@@ -596,26 +596,13 @@ node_storage_mode(Node, BucketConfig) ->
             NodeStorageMode
     end.
 
--spec default_storage_mode(memcached|membase) -> atom().
-default_storage_mode(memcached) ->
-    undefined;
-default_storage_mode(membase) ->
-    case cluster_compat_mode:is_cluster_79() andalso
-         cluster_compat_mode:is_enterprise() of
-        true ->
-            magma;
-        false ->
-            couchstore
-    end.
-
 -spec storage_mode(proplists:proplist()) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(storage_mode, BucketConfig,
-                                default_storage_mode(membase))
+            proplists:get_value(storage_mode, BucketConfig, couchstore)
     end.
 
 autocompaction_settings(BucketConfig) ->
@@ -2974,6 +2961,30 @@ chronicle_upgrade_to_79(ChronicleTxn) ->
                chronicle_add_uuid2bucket_mapping_upgrade_to_79(Name, _)])
         end, BucketNames, ChronicleTxn).
 
+chronicle_upgrade_to_80(ChronicleTxn) ->
+    {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
+    chronicle_upgrade_bucket(chronicle_upgrade_bucket_props_to_80(_, _),
+                             BucketNames, ChronicleTxn).
+
+chronicle_upgrade_bucket_props_to_80(BucketName, ChronicleTxn) ->
+    PropsKey = sub_key(BucketName, props),
+    {ok, BucketConfig} = chronicle_upgrade:get_key(PropsKey, ChronicleTxn),
+    case bucket_type(BucketConfig) of
+        memcached ->
+            ChronicleTxn;
+        membase ->
+            case proplists:get_value(storage_mode, BucketConfig) of
+                undefined ->
+                    %% can happen on buckets created pre-5.0
+                    NewBucketConfig =
+                        [{storage_mode, couchstore} | BucketConfig],
+                    chronicle_upgrade:set_key(PropsKey, NewBucketConfig,
+                                              ChronicleTxn);
+                _ ->
+                    ChronicleTxn
+            end
+    end.
+
 default_76_enterprise_props(true = _IsEnterprise) ->
     [{cross_cluster_versioning_enabled, false},
      {version_pruning_window_hrs,
@@ -3929,6 +3940,34 @@ upgrade_to_79_test() ->
     ?assertEqual(blocking, proplists:get_value(warmup_behavior, NewBC2)),
 
     meck:unload().
+
+upgrade_to_80_test() ->
+    fake_chronicle_kv:setup(),
+    Buckets =
+        [{b1, [{type, memcached}]},
+         {b2, [{type, membase}]},
+         {b3, [{type, membase}, {storage_mode, magma}]}],
+
+    try
+        fake_chronicle_kv:update_snapshot(root(), [BN || {BN, _} <- Buckets]),
+        [fake_chronicle_kv:update_snapshot(sub_key(BN, props), BC) ||
+            {BN, BC} <- Buckets],
+        RV = chronicle_kv:txn(
+               kv,
+               fun (Txn) ->
+                       chronicle_upgrade:build_commit(
+                         chronicle_upgrade_to_80({#{}, Txn}))
+               end),
+
+        ?assertMatch({ok, _}, RV),
+        NewBuckets = lists:sort(get_buckets()),
+        ?assertEqual([none, couchstore, magma],
+                     [proplists:get_value(storage_mode, BC, none) ||
+                         {_, BC} <- NewBuckets])
+    after
+        fake_chronicle_kv:teardown()
+    end.
+
 
 -endif.
 
