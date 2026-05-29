@@ -273,7 +273,8 @@ default(Vsn) ->
        %% Default of 0 denotes no throttling.
        {snapshot_download_throttle_bytes, 0},
        {magma_compaction_rate_limit, 0},
-       {magma_enable_compaction_dataonly_ratelimiting, false}]},
+       {magma_enable_compaction_dataonly_ratelimiting, false},
+       {sync_writes_return_committed_seqno, true}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -384,7 +385,8 @@ default(Vsn) ->
         {throttle_enabled, throttle_enabled},
         {read_unit_size, read_unit_size},
         {write_unit_size, write_unit_size},
-        {node_capacity, node_capacity}
+        {node_capacity, node_capacity},
+        {sync_writes_return_committed_seqno, sync_writes_return_committed_seqno}
        ]}},
 
      {memory_quota, KvQuota},
