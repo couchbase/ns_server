@@ -260,6 +260,16 @@ handle_prepare_rebalance(Req) ->
        validator:default(snapshotLifetimeSec, 60 * 60, _),
        validator:unsupported(_)]).
 
+maybe_reply_plan_validation_error(Req, not_found) ->
+    menelaus_util:reply_text(Req, "Not Found", 404),
+    true;
+maybe_reply_plan_validation_error(Req, id_mismatch) ->
+    validator:report_errors_for_one(
+      Req, [{planUUID, "Doesn't match stored plan id"}], 400),
+    true;
+maybe_reply_plan_validation_error(_, _) ->
+    false.
+
 handle_abort_prepared_rebalance(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_totoro(),
@@ -270,13 +280,9 @@ handle_abort_prepared_rebalance(Req) ->
                   ok ->
                       ns_audit:abort_prepared_fusion_rebalance(Req, PlanUUID),
                       menelaus_util:reply_json(Req, [], 200);
-                  not_found ->
-                      menelaus_util:reply_text(Req, "Not Found", 404);
-                  id_mismatch ->
-                      validator:report_errors_for_one(
-                        Req, [{planUUID, "Doesn't match stored plan id"}], 400);
                   Other ->
-                      reply_other(Req, "abort_prepared_rebalance", Other)
+                      maybe_reply_plan_validation_error(Req, Other) orelse
+                          reply_other(Req, "abort_prepared_rebalance", Other)
               end
       end, Req, qs,
       [validator:string(planUUID, _),
@@ -307,13 +313,6 @@ handle_upload_mounted_volumes(Req) ->
                                     {P} <- proplists:get_value(nodes, Props)],
                         case ns_orchestrator:fusion_upload_mounted_volumes(
                                PlanUUID, Nodes) of
-                            not_found ->
-                                menelaus_util:reply_text(Req, "Not Found", 404);
-                            id_mismatch ->
-                                validator:report_errors_for_one(
-                                  Req,
-                                  [{planUUID, "Doesn't match stored plan id"}],
-                                  400);
                             {need_nodes, N} ->
                                 validator:report_errors_for_one(
                                   Req,
@@ -331,7 +330,10 @@ handle_upload_mounted_volumes(Req) ->
                                   Req, PlanUUID, Nodes),
                                 menelaus_util:reply_json(Req, [], 200);
                             Other ->
-                                reply_other(Req, "upload mounted volumes", Other)
+                                maybe_reply_plan_validation_error(
+                                  Req, Other) orelse
+                                    reply_other(Req, "upload mounted volumes",
+                                                Other)
                         end
                 end, Req, json,
                 [validator:required(nodes, _),
