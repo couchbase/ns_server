@@ -16,7 +16,9 @@
 
 -export([handle_get_settings/1,
          handle_post_settings/1,
-         handle_reload_crl/1]).
+         handle_reload_crl/1,
+         handle_get_diagnostics_status/1,
+         handle_post_diagnostics_status/1]).
 
 %%%===================================================================
 %%% GET /settings/crl
@@ -129,6 +131,112 @@ handle_reload_crl(Req) ->
         {ok, StatusMap} ->
             menelaus_util:reply_json(Req, format_status_map(StatusMap))
     end.
+
+%%%===================================================================
+%%% POST /settings/crl/diagnostics/status
+%%%===================================================================
+
+%% Timeout for each per-node cb_crl_manager:get_status() RPC call.
+-define(STATUS_CALL_TIMEOUT_MS, ?get_timeout(status_call_timeout, 60000)).
+
+%% GET: nodes as a comma-separated query parameter.
+%%   ?nodes=node0.localhost%3A9000%2Cnode1.localhost%3A9001
+handle_get_diagnostics_status(Req) ->
+    assert_supported(),
+    do_diagnostics_status(Req, qs, diag_status_validators_qs(Req)).
+
+%% POST: nodes as a JSON array in the request body, for when the list
+%% is too long to fit in a query string.
+handle_post_diagnostics_status(Req) ->
+    assert_supported(),
+    do_diagnostics_status(Req, json, diag_status_validators_json(Req)).
+
+do_diagnostics_status(Req, ParseMode, Validators) ->
+    validator:handle(
+      fun (Values) ->
+              NodePairs =
+                  case proplists:get_value(nodes, Values) of
+                      undefined ->
+                          %% Default: every active node in the cluster.
+                          %% get_hostnames/2 returns [{ErlNode, HostnameBin}].
+                          Nodes = ns_node_disco:nodes_actual(),
+                          menelaus_web_node:get_hostnames(Req, Nodes);
+                      Pairs when is_list(Pairs) ->
+                          %% Already resolved to {ErlNode, HostnameBin}
+                          %% by the respective validator.
+                          Pairs
+                  end,
+              UniqPairs = lists:uniq(fun ({Node, _}) -> Node end, NodePairs),
+              Results = collect_crl_status(UniqPairs),
+              menelaus_util:reply_json(Req, {Results})
+      end, Req, ParseMode, Validators).
+
+%% GET: split the single comma-separated string into individual
+%% hostnames, then resolve each one.
+diag_status_validators_qs(Req) ->
+    [validator:validate(
+       fun (NodesStr) ->
+               Hostnames = [string:trim(H)
+                            || H <- string:tokens(NodesStr, ","),
+                               string:trim(H) =/= ""],
+               resolve_hostnames(Hostnames, Req)
+       end, nodes, _),
+     validator:unsupported(_)].
+
+%% POST: nodes arrives as a JSON array of strings.
+diag_status_validators_json(Req) ->
+    [validator:string_array(
+       nodes,
+       fun (Hostname) ->
+               case menelaus_web_node:find_node_hostname(
+                      Hostname, Req, any) of
+                   {ok, Node} ->
+                       {value, {Node, list_to_binary(Hostname)}};
+                   {error, _} ->
+                       {error, "unknown node"}
+               end
+       end, true, _),
+     validator:unsupported(_)].
+
+resolve_hostnames([], _Req) ->
+    {value, []};
+resolve_hostnames(Hostnames, Req) ->
+    Results = [case menelaus_web_node:find_node_hostname(H, Req, any) of
+                   {ok, Node} -> {ok, {Node, list_to_binary(H)}};
+                   {error, _} -> {error, "unknown node: " ++ H}
+               end || H <- Hostnames],
+    case [E || {error, E} <- Results] of
+        [Err | _] -> {error, Err};
+        []        -> {value, [P || {ok, P} <- Results]}
+    end.
+
+%% Call cb_crl_manager:get_status() on each target node in parallel and
+%% return an ejson proplist keyed by hostname binary.
+%%
+%% Per-node errors (node down, RPC timeout) are surfaced as
+%% {"error": "<reason>"} objects rather than failing the whole request,
+%% so the caller can tell which nodes responded and which did not.
+-spec collect_crl_status([{node(), binary()}]) -> [{binary(), term()}].
+collect_crl_status(NodePairs) ->
+    Results =
+        misc:parallel_map(
+          fun ({Node, _Hostname}) ->
+                  rpc:call(Node, cb_crl_manager, get_status, [],
+                           ?STATUS_CALL_TIMEOUT_MS)
+          end, NodePairs, ?STATUS_CALL_TIMEOUT_MS + 1000),
+    lists:zipwith(
+      fun ({_Node, Hostname}, NodeResult) ->
+              NodeJson =
+                  case NodeResult of
+                      StatusMap when is_map(StatusMap) ->
+                          format_status_map(StatusMap);
+                      {badrpc, Reason} ->
+                          {[{error,
+                             iolist_to_binary(
+                               io_lib:format("~p", [Reason]))}]}
+                  end,
+              {Hostname, NodeJson}
+      end, NodePairs, Results).
 
 %%%===================================================================
 %%% Helpers

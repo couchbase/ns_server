@@ -18,7 +18,8 @@
 -export([start_link/0,
          get_config/0,
          set_config/1,
-         reload/0]).
+         reload/0,
+         get_status/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,6 +29,7 @@
 -define(CHRONICLE_KEY, crl_settings).
 -define(DEFAULT_POLL_INTERVAL_MS, 60000).
 -define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
+-define(STATUS_TIMEOUT, ?get_timeout(status_timeout, 60000)).
 
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
@@ -136,6 +138,27 @@ merge_default(Cfg) ->
 reload() ->
     gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
 
+%% Return the current per-file CRL status for this node.
+%%
+%% Returns #{LoadDirPath => StatusMap} where each StatusMap is a plain map
+%% (no records, RPC-safe) describing both what we are currently *using* and the
+%% outcome of the last reload attempt:
+%%   status      => active | expired | not_yet_valid | untrusted
+%%                  | invalid | not_loaded
+%%                  — state of the config/crls copy we currently use, freshly
+%%                    re-verified at query time.
+%%   entries     => [EntryMap] — per-entry breakdown of that active copy; lets
+%%                  callers see which entry is expired/untrusted.  EntryMap has:
+%%                    issuer, status, this_update, next_update, checksum.
+%%   last_reload => #{result => loaded | failed | not_attempted,
+%%                    time   => calendar:datetime() | undefined,
+%%                    errors => [binary()]}
+%%
+%% An empty map is returned when no source is configured or no files exist.
+-spec get_status() -> #{file:filename_all() => map()}.
+get_status() ->
+    gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -176,6 +199,9 @@ handle_call(reload, _From, #state{poll_directory = Dir} = State) ->
     ?log_debug("CRL manual reload done: ~p active file(s)",
                [maps:size(NewState#state.active)]),
     {reply, {ok, build_status_map(NewState)}, schedule_timer(NewState)};
+
+handle_call(get_status, _From, State) ->
+    {reply, build_status_map(State), State};
 
 handle_call(Req, _From, State) ->
     ?log_error("Received unknown call: ~p", [Req]),
