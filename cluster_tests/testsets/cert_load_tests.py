@@ -597,6 +597,12 @@ def load_client_cert(node, cert, key, passphrase=None):
     load_cert(node, cert, key, passphrase, is_client=True)
 
 
+def generate_and_load_node_cert(node, *args, **kwargs):
+    cert, key = generate_node_certs(node.addr(), *args, **kwargs)
+    load_node_cert(node, cert, key, passphrase=None)
+    return (cert, key)
+
+
 def generate_and_load_internal_client_cert(node, *args, **kwargs):
     cert, key = generate_internal_client_cert(*args, **kwargs)
     load_client_cert(node, cert, key, passphrase=None)

@@ -16,7 +16,8 @@ import tempfile
 import requests
 
 import testlib
-from testsets.cert_load_tests import generate_and_load_internal_client_cert
+from testsets.cert_load_tests import generate_and_load_node_cert, \
+                                     generate_and_load_internal_client_cert
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
@@ -1122,3 +1123,392 @@ def _decrypt_pem_key(encrypted_key_pem, passphrase):
         serialization.Encoding.PEM,
         serialization.PrivateFormat.TraditionalOpenSSL,
         serialization.NoEncryption()).decode()
+
+
+# =============================================================================
+# Node-to-node (Erlang distribution) CRL tests
+# =============================================================================
+
+
+class CRLNodeToNodeTests(testlib.BaseTestSet):
+    """CRL revocation tests for Erlang distribution client certificates.
+
+    These tests verify that cb_dist:verify_client_cert/3 correctly enforces
+    the node_to_node CRL policy.  Two scenarios are covered:
+
+    OOTB certs  — both nodes use the cluster's own generated CA; the
+                  verify_fun exempts these regardless of policy.
+    Custom certs — both nodes use client certs signed by an external CA;
+                  the CRL check applies and revoked certs are rejected.
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(
+            edition='Enterprise',
+            num_nodes=2, num_connected=2,
+            encryption=True, balanced=True)
+
+    def setup(self):
+        self.crl_dir = tempfile.mkdtemp()
+        self.ca_ids = []
+        r = testlib.get_succ(self.cluster, '/settings/autoFailover').json()
+        self.af_enabled = r['enabled']
+        self.af_timeout = r.get('timeout')
+        if self.af_enabled:
+            testlib.post_succ(self.cluster, '/settings/autoFailover',
+                              data={'enabled': 'false'})
+
+    def teardown(self):
+        shutil.rmtree(self.crl_dir, ignore_errors=True)
+        if self.af_enabled:
+            testlib.post_succ(self.cluster, '/settings/autoFailover',
+                              data={'enabled': 'true',
+                                    'timeout': self.af_timeout})
+
+    def test_teardown(self):
+        # Disable clientCertVerification and restore OOTB client certs.
+        for node in self.cluster.connected_nodes:
+            testlib.post_succ(
+                node, '/node/controller/setupNetConfig',
+                data={'clientCertVerification': 'false'})
+
+        # Wait node reconnect, otherwise regenerateCerts can timeout (no quorum)
+        _wait_n2n_reconnected(self.cluster.connected_nodes,
+                              expect_connected=True)
+
+        for node in self.cluster.connected_nodes:
+            testlib.post_succ(
+                node, '/controller/regenerateCertificate',
+                params={'forceResetCACertificate': 'false',
+                        'dropUploadedCertificates': 'true'})
+
+        # Disable CRL first so new handshakes don't fail.
+        set_crl_settings(self.cluster,
+                         policy_per_scope={'clientAuth': 'Disabled',
+                                           'nodeToNode': 'Disabled'},
+                         directory="")
+
+        # Wait for nodes to reconnect
+        _wait_n2n_reconnected(self.cluster.connected_nodes,
+                              expect_connected=True)
+
+        for ca_id in self.ca_ids:
+            testlib.delete(self.cluster,
+                           f'/pools/default/trustedCAs/{ca_id}')
+        self.ca_ids = []
+
+    # ------------------------------------------------------------------
+    # OOTB cert tests — cluster-generated certs are always exempt
+    # ------------------------------------------------------------------
+
+    def crl_n2n_disabled_ootb_test(self):
+        """OOTB certs + Disabled policy: nodes stay connected."""
+        self._run_n2n_crl_check('Disabled', expect_connected=True,
+                                custom_cert=False)
+
+    def crl_n2n_disabled_custom_revoked_test(self):
+        """Revoked custom certs + Disabled policy: nodes stay connected.
+
+        Disabled bypasses the CRL check entirely, so a revoked cert
+        must not block the connection.
+        """
+        self._run_n2n_crl_check('Disabled', expect_connected=True,
+                                custom_cert=True, crl_mode='revoked')
+
+    def crl_n2n_ccv_off_revoked_require_test(self):
+        """Revoked certs + Require policy + clientCertVerification off:
+        nodes stay connected.
+
+        When clientCertVerification is disabled the server uses
+        verify_none and never invokes the verify_fun, so CRL policy
+        has no effect even with Require and a revoked cert.
+        """
+        self._run_n2n_crl_check('Require', expect_connected=True,
+                                custom_cert=True, crl_mode='revoked',
+                                client_cert_verification=False)
+
+    def crl_n2n_ccv_off_ootb_test(self):
+        """OOTB certs + Require policy + clientCertVerification off:
+        nodes stay connected.
+
+        verify_none means no cert is requested, so the OOTB exemption
+        path in the verify_fun is never even reached.
+        """
+        self._run_n2n_crl_check('Require', expect_connected=True,
+                                custom_cert=False,
+                                client_cert_verification=False)
+
+    def crl_n2n_ccv_off_policy_disabled_test(self):
+        """Revoked certs + Disabled policy + clientCertVerification off:
+        nodes stay connected.
+
+        Both the CRL policy and client cert verification are disabled;
+        the connection must succeed regardless of cert status.
+        """
+        self._run_n2n_crl_check('Disabled', expect_connected=True,
+                                custom_cert=True, crl_mode='revoked',
+                                client_cert_verification=False)
+
+    def crl_n2n_require_ootb_test(self):
+        """OOTB certs + Require policy: OOTB exemption keeps nodes connected."""
+        self._run_n2n_crl_check('Require', expect_connected=True,
+                                custom_cert=False)
+
+    # ------------------------------------------------------------------
+    # Custom client cert tests — external CA, CRL check applies
+    # ------------------------------------------------------------------
+
+    def crl_n2n_permissive_missing_crl_test(self):
+        """Permissive policy + no CRL loaded for the cert CA: nodes stay connected.
+
+        When no CRL can be found the revocation status is undetermined;
+        Permissive treats undetermined as valid.
+        """
+        self._run_n2n_crl_check('Permissive', expect_connected=True,
+                                custom_cert=True, crl_mode='missing')
+
+    def crl_n2n_permissive_expired_crl_test(self):
+        """Permissive policy + expired CRL: nodes stay connected.
+
+        An expired CRL makes the revocation status undetermined;
+        Permissive treats undetermined as valid.
+        """
+        self._run_n2n_crl_check('Permissive', expect_connected=True,
+                                custom_cert=True, crl_mode='expired')
+
+    def crl_n2n_require_custom_valid_test(self):
+        """Custom client certs (not revoked) + Require: nodes stay connected."""
+        self._run_n2n_crl_check('Require', expect_connected=True,
+                                custom_cert=True, crl_mode='valid')
+
+    def crl_n2n_require_custom_revoked_test(self):
+        """Custom client certs (revoked) + Require: nodes get disconnected."""
+        self._run_n2n_crl_check('Require', expect_connected=False,
+                                custom_cert=True, crl_mode='revoked')
+
+    def crl_n2n_require_missing_crl_test(self):
+        """Require policy + no CRL loaded: nodes get disconnected.
+
+        Undetermined status is treated as a failure under Require.
+        """
+        self._run_n2n_crl_check('Require', expect_connected=False,
+                                custom_cert=True, crl_mode='missing')
+
+    def crl_n2n_require_expired_crl_test(self):
+        """Require policy + expired CRL: nodes get disconnected.
+
+        An expired CRL makes revocation status undetermined, which
+        Require treats as a failure.
+        """
+        self._run_n2n_crl_check('Require', expect_connected=False,
+                                custom_cert=True, crl_mode='expired')
+
+    # ------------------------------------------------------------------
+    # Server cert tests — verify_fun on the CLIENT side of distribution
+    # ------------------------------------------------------------------
+
+    def crl_n2n_server_disabled_ootb_test(self):
+        """OOTB server cert + Disabled policy: nodes stay connected."""
+        self._run_n2n_crl_check('Disabled', expect_connected=True,
+                                custom_cert=False, cert_type='server')
+
+    def crl_n2n_server_require_ootb_test(self):
+        """OOTB server cert + Require policy: OOTB exemption keeps nodes
+        connected."""
+        self._run_n2n_crl_check('Require', expect_connected=True,
+                                custom_cert=False, cert_type='server')
+
+    def crl_n2n_server_require_valid_test(self):
+        """Custom server cert (not revoked) + Require: nodes stay connected."""
+        self._run_n2n_crl_check('Require', expect_connected=True,
+                                custom_cert=True, crl_mode='valid',
+                                cert_type='server')
+
+    def crl_n2n_server_require_revoked_test(self):
+        """Custom server cert (revoked) + Require: nodes get disconnected."""
+        self._run_n2n_crl_check('Require', expect_connected=False,
+                                custom_cert=True, crl_mode='revoked',
+                                cert_type='server')
+
+    def crl_n2n_server_disabled_revoked_test(self):
+        """Revoked server cert + Disabled policy: nodes stay connected."""
+        self._run_n2n_crl_check('Disabled', expect_connected=True,
+                                custom_cert=True, crl_mode='revoked',
+                                cert_type='server')
+
+    def crl_n2n_server_permissive_missing_crl_test(self):
+        """Custom server cert + Permissive + no CRL: nodes stay connected."""
+        self._run_n2n_crl_check('Permissive', expect_connected=True,
+                                custom_cert=True, crl_mode='missing',
+                                cert_type='server')
+
+    def crl_n2n_server_require_missing_crl_test(self):
+        """Custom server cert + Require + no CRL: nodes get disconnected."""
+        self._run_n2n_crl_check('Require', expect_connected=False,
+                                custom_cert=True, crl_mode='missing',
+                                cert_type='server')
+
+    def crl_n2n_server_require_expired_crl_test(self):
+        """Custom server cert + Require + expired: nodes get disconnected."""
+        self._run_n2n_crl_check('Require', expect_connected=False,
+                                custom_cert=True, crl_mode='expired',
+                                cert_type='server')
+
+    def _run_n2n_crl_check(self, policy, expect_connected,
+                           custom_cert=False, crl_mode=None,
+                           client_cert_verification=True, cert_type='client'):
+        """Run a node-to-node CRL check scenario.
+        Provision nodes with certs and CRLs according to the parameters,
+        set the CRL policy, and verify whether the nodes stay connected or
+        get disconnected as expected.
+
+        cert_type: 'client' (default) — exercises verify_client_cert/3
+                                        (server checks connecting node's
+                                        client cert)
+                   'server'           — exercises verify_server_cert/3
+                                        (client checks server's node cert)
+        crl_mode (only relevant when custom_cert=True):
+          None / 'valid'  — valid CRL, cert not revoked
+          'revoked'       — valid CRL, both certs revoked
+          'missing'       — no CRL loaded for the cert CA (undetermined)
+          'expired'       — expired CRL, cert not revoked (undetermined)
+        """
+        if crl_mode is None:
+            crl_mode = 'valid'
+        if not custom_cert and crl_mode != 'valid':
+            raise ValueError("crl_mode other than 'valid' is not applicable "
+                             "when custom_cert is False")
+
+        node1 = self.cluster.connected_nodes[0]
+        node2 = self.cluster.connected_nodes[1]
+
+        crl_file = os.path.join(self.crl_dir, 'n2n_crl.pem')
+
+        ca_pem, ca_key_pem = generate_root_ca()
+        self.ca_ids = load_multiple_cas(node1, [ca_pem])
+        if custom_cert:
+
+            if cert_type == 'server':
+                cert1_pem, _ = generate_and_load_node_cert(node1, ca_pem,
+                                                           ca_key_pem)
+                cert2_pem, _ = generate_and_load_node_cert(node2, ca_pem,
+                                                           ca_key_pem)
+            else:
+                cert1_pem, _ = generate_and_load_internal_client_cert(
+                                 node1, ca_pem, ca_key_pem, 'internal')
+                cert2_pem, _ = generate_and_load_internal_client_cert(
+                                 node2, ca_pem, ca_key_pem, 'internal')
+
+            if crl_mode == 'revoked':
+                # Revoke both certs so BOTH directions of the handshake
+                # fail, giving a deterministic disconnection result.
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem,
+                                     [cert1_pem, cert2_pem])
+            elif crl_mode == 'valid':
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+            elif crl_mode == 'expired':
+                # Expired CRL (nextUpdate in the past): revocation status
+                # is undetermined for all certs under this CA.
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [],
+                                     expired=True)
+            elif crl_mode == 'missing':
+                # Write nothing — no CRL for this CA.
+                pass
+        else:
+            # OOTB certs are already loaded; just generate a CRL for the CA.
+            generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+
+        # Enable or disable clientCertVerification.  When disabled the
+        # server uses verify_none and never calls the verify_fun, so CRL
+        # policy has no effect regardless of cert status.
+        ccv_value = 'true' if client_cert_verification else 'false'
+        for node in [node1, node2]:
+            testlib.post_succ(
+                node, '/node/controller/setupNetConfig',
+                data={'clientCertVerification': ccv_value})
+
+        # Wait for the nodes to reconnect with the new clientCertVerification
+        # At this point the connection should always succeed
+        _wait_n2n_reconnected([node1, node2], expect_connected=True)
+
+        crl_settings = {'policy_per_scope': {'nodeToNode': policy,
+                                             'clientAuth': 'Disabled'},
+                        'poll_interval_ms': 5000,
+                        'directory': self.crl_dir}
+        set_crl_settings(self.cluster, **crl_settings)
+        if custom_cert and crl_mode in ('valid', 'revoked'):
+            assert_crl_status(self.cluster, expected_status='active')
+
+        # Wait until both nodes have written the new node_to_node policy
+        # to cb_crl_cache ETS before restarting TLS.
+        expected_policy = policy.lower()
+        for node in [node1, node2]:
+            _wait_crl_policy(node, 'node_to_node', expected_policy)
+
+        _wait_n2n_reconnected([node1, node2], expect_connected=expect_connected)
+
+        # Testing is done, now we should restore connectivity
+        if expect_connected:
+            # already connected
+            return
+
+        if custom_cert:
+            # Generate CRL if it is missing now.
+            # Otherwise nodes will not reconnect
+            if crl_mode == 'missing':
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+            elif crl_mode == 'revoked':
+                # Generate new certificates for nodes to replace
+                # the revoked ones
+                if cert_type == 'server':
+                    cert1_pem, _ = generate_and_load_node_cert(node1, ca_pem,
+                                                               ca_key_pem)
+                    cert2_pem, _ = generate_and_load_node_cert(node2, ca_pem,
+                                                               ca_key_pem)
+                else:
+                    cert1_pem, _ = generate_and_load_internal_client_cert(
+                                    node1, ca_pem, ca_key_pem, 'internal')
+                    cert2_pem, _ = generate_and_load_internal_client_cert(
+                                    node2, ca_pem, ca_key_pem, 'internal')
+            elif crl_mode == 'expired':
+                # In this case we should update CRL as it has expired
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+
+def _wait_crl_policy(node, scope, expected_policy, timeout_s=15):
+    """Poll until cb_crl_cache reports the expected policy for scope.
+
+    Chronicle replication is async; the verify_fun reads policy from ETS,
+    so TLS must not be restarted before the policy lands in ETS.
+    scope is an Erlang atom string, e.g. 'node_to_node'.
+    expected_policy is a lowercase string: 'disabled','permissive','strict',
+    'require'.
+    """
+    def check():
+        r = testlib.diag_eval(
+            node,
+            f"cb_crl_cache:get_policy({scope}).")
+        return r.text.strip() == expected_policy
+
+    testlib.poll_for_condition(
+        check, sleep_time=0.2, timeout=timeout_s,
+        msg=f'{scope} policy={expected_policy} on {node}')
+
+
+def _wait_n2n_reconnected(nodes, expect_connected=True, timeout_s=30):
+    """Drop connection between nodes and poll until node1 and node2 are
+       (or are not) distribution-connected."""
+
+    assert len(nodes) == 2, "Exactly 2 nodes must be provided"
+
+    testlib.diag_eval(nodes[0], f"[net_kernel:disconnect(N) || N <- nodes()].")
+
+    node2_otp = testlib.diag_eval(nodes[1], 'node().').text.strip()
+
+    def check():
+        r = testlib.diag_eval(nodes[0], f"net_adm:ping({node2_otp}).")
+        return (r.text.strip() == 'pong') == expect_connected
+
+    testlib.poll_for_condition(
+        check, sleep_time=1.0, timeout=timeout_s,
+        msg=f'n2n {"connected" if expect_connected else "disconnected"}')
