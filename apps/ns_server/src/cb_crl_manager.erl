@@ -17,7 +17,8 @@
 %% public API
 -export([start_link/0,
          get_config/0,
-         set_config/1]).
+         set_config/1,
+         reload/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,6 +27,7 @@
 -define(SERVER, ?MODULE).
 -define(CHRONICLE_KEY, crl_settings).
 -define(DEFAULT_POLL_INTERVAL_MS, 60000).
+-define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
 
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
@@ -119,6 +121,21 @@ merge_default(Cfg) ->
     CfgPPS = maps:get(policy_per_scope, Cfg, #{}),
     Merged#{policy_per_scope => maps:merge(DefaultPPS, CfgPPS)}.
 
+%% Trigger an immediate, unconditional reload of all CRL files from the
+%% configured directory (ignoring mtime-based caching).  Each file is loaded
+%% independently and atomically (whole file or nothing): a file is only loaded
+%% if it can be read, decoded, and every entry in it is valid.  A file that
+%% fails to load never overwrites or removes a previously loaded good copy.
+%%
+%% Returns {ok, StatusMap} where StatusMap has the same shape as get_status/0
+%% (see below).  Returns {error, not_configured} when no CRL source directory
+%% has been set.
+-spec reload() ->
+          {ok, #{file:filename_all() => map()}}
+        | {error, not_configured}.
+reload() ->
+    gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -149,6 +166,16 @@ init([]) ->
     %% of this process (e.g. it crashed after a file was deleted from disk).
     ok = purge_stale_cache_entries(State1#state.active),
     {ok, schedule_timer(State1)}.
+
+handle_call(reload, _From, #state{poll_directory = undefined} = State) ->
+    {reply, {error, not_configured}, State};
+handle_call(reload, _From, #state{poll_directory = Dir} = State) ->
+    ?log_debug("CRL manual reload start: ~p", [Dir]),
+    ?flush(poll_directory),
+    NewState = scan_directory(Dir, State, true),
+    ?log_debug("CRL manual reload done: ~p active file(s)",
+               [maps:size(NewState#state.active)]),
+    {reply, {ok, build_status_map(NewState)}, schedule_timer(NewState)};
 
 handle_call(Req, _From, State) ->
     ?log_error("Received unknown call: ~p", [Req]),
@@ -525,6 +552,122 @@ populate_cache_from_config_crls() ->
 
 default_local_crl_source_dir() ->
     filename:join(path_config:component_path(data, "inbox"), "crls").
+
+%%%===================================================================
+%%% Status helpers (used by get_status/0)
+%%%===================================================================
+
+%% Build the per-file status map for the status / reload endpoints.
+%%
+%% The reported set of files is the union of the load-dir files we have a
+%% reload record for and the files we currently hold in config/crls (the
+%% active set).  Each is keyed by its load-directory path.
+%%
+%% For every file we report two independent things (all values RPC-safe):
+%%   status      — the state of the config/crls copy we currently use, freshly
+%%                 re-verified now (so expiry is accurate at query time):
+%%                 active | expired | not_yet_valid | untrusted | invalid
+%%                 | not_loaded
+%%   entries     — per-entry breakdown of that active copy (issuer, status,
+%%                 this_update, next_update, checksum)
+%%   last_reload — outcome of the most recent attempt to load from the load dir
+-spec build_status_map(#state{}) -> #{file:filename_all() => map()}.
+build_status_map(#state{file_state = FS, active = Active}) ->
+    TrustedDerCAs = ns_server_cert:trusted_CAs(der),
+    ConfigDir = crls_dir(),
+    %% Every active base name has a corresponding file_state full-path entry, so
+    %% iterating file_state covers all reported files.
+    maps:fold(
+      fun (Path, ReloadStatus, Acc) ->
+              Name = filename:basename(Path),
+              {Status, Entries} =
+                  case maps:is_key(Name, Active) of
+                      true ->
+                          current_status(filename:join(ConfigDir, Name),
+                                         TrustedDerCAs);
+                      false ->
+                          {not_loaded, []}
+                  end,
+              maps:put(iolist_to_binary(Path),
+                       #{status      => Status,
+                         entries     => Entries,
+                         last_reload => last_reload_map(ReloadStatus)}, Acc)
+      end, #{}, FS).
+
+%% Compute the current status of an active CRL by reading DER entries from
+%% the cache and re-verifying them now.  Returns {FileStatus, [EntryMap]}.
+-spec current_status(file:filename_all(), [binary()]) -> {atom(), [map()]}.
+current_status(ConfigPath, TrustedDerCAs) ->
+    case cb_crl_cache:get_file_crls(ConfigPath) of
+        [] ->
+            {not_loaded, []};
+        DerCRLs ->
+            Results = lists:map(
+                        fun (Der) ->
+                            case decode_and_verify_crl(Der, TrustedDerCAs) of
+                                {ok, [R]} -> entry_to_map(R);
+                                {error, _} -> invalid_entry_map()
+                            end
+                        end, DerCRLs),
+            {aggregate_status(Results), Results}
+    end.
+
+%% Reduce per-entry results to a single file-level status, worst-first.
+-spec aggregate_status([map()]) -> atom().
+aggregate_status(Results) ->
+    Statuses = [R || #{status := R} <- Results],
+    case lists:member(expired, Statuses) of
+        true -> expired;
+        false ->
+            case lists:member(not_yet_valid, Statuses) of
+                true -> not_yet_valid;
+                false ->
+                    case lists:member(untrusted, Statuses) of
+                        true -> untrusted;
+                        false ->
+                            case lists:member(invalid, Statuses) of
+                                true  -> invalid;
+                                false -> active
+                            end
+                    end
+            end
+    end.
+
+%% Convert a per-entry verify result to a plain (RPC-safe) map.
+-spec entry_to_map(entry_result()) -> map().
+entry_to_map(#entry_result{result = Result,
+                           issuer      = Issuer,
+                           this_update = ThisUpdate,
+                           next_update = NextUpdate,
+                           der         = Der}) ->
+    Status = case Result of
+                 ok -> ok;
+                 {error, crl_expired} -> expired;
+                 {error, crl_not_yet_valid} -> not_yet_valid;
+                 {error, crl_issuer_not_trusted} -> untrusted;
+                 {error, _} -> invalid
+             end,
+    #{issuer      => iolist_to_binary(ns_server_cert:format_name(Issuer)),
+      status      => Status,
+      this_update => ThisUpdate,
+      next_update => NextUpdate,
+      checksum    => file_checksum(Der)}.
+
+invalid_entry_map() ->
+    #{issuer      => <<"unknown">>,
+      status      => invalid,
+      this_update => undefined,
+      next_update => undefined,
+      checksum    => <<>>}.
+
+%% Convert a stored #crl_reload_status{} to a plain (RPC-safe) map.
+%% 'undefined' (no attempt recorded yet) maps to a not_attempted result.
+-spec last_reload_map(#crl_reload_status{} | undefined) -> map().
+last_reload_map(undefined) ->
+    #{result => not_attempted, time => undefined, errors => []};
+last_reload_map(#crl_reload_status{result = Result, time = Time,
+                                   errors = Errors}) ->
+    #{result => Result, time => Time, errors => Errors}.
 
 %%%===================================================================
 %%% Error-string helpers (used to populate last_reload.errors)

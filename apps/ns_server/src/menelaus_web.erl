@@ -808,6 +808,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["node", "controller", "reloadClientCertificate"] ->
                     {{[admin, security], write},
                      fun (R) -> menelaus_web_cert:handle_reload_certificate(client_cert, R) end};
+                ["node", "controller", "reloadCrl"] ->
+                    {{[admin, security], write},
+                     fun menelaus_web_crl:handle_reload_crl/1};
                 ["node", "controller", "loadTrustedCAs"] ->
                     {{[admin, security], write},
                      fun menelaus_web_cert:handle_load_ca_certs/1};

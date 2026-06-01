@@ -15,7 +15,8 @@
 -include_lib("ns_common/include/cut.hrl").
 
 -export([handle_get_settings/1,
-         handle_post_settings/1]).
+         handle_post_settings/1,
+         handle_reload_crl/1]).
 
 %%%===================================================================
 %%% GET /settings/crl
@@ -115,8 +116,84 @@ build_config(Values) ->
     end.
 
 %%%===================================================================
+%%% POST /node/controller/reloadCrl
+%%%===================================================================
+
+handle_reload_crl(Req) ->
+    assert_supported(),
+    case cb_crl_manager:reload() of
+        {error, not_configured} ->
+            menelaus_util:reply_json(
+              Req,
+              {[{error, <<"No CRL source directory is configured">>}]}, 400);
+        {ok, StatusMap} ->
+            menelaus_util:reply_json(Req, format_status_map(StatusMap))
+    end.
+
+%%%===================================================================
 %%% Helpers
 %%%===================================================================
+
+%% Convert a #{LoadDirPath => StatusMap} map (from cb_crl_manager:get_status/0)
+%% to an ejson object.  Each StatusMap is a plain map with keys:
+%%   status (atom), entries ([EntryMap]), last_reload (map).
+-spec format_status_map(#{file:filename_all() => map()}) -> term().
+format_status_map(StatusMap) ->
+    Props =
+        maps:fold(
+          fun (Path, FileStatus, Acc) ->
+                  PathKey = iolist_to_binary(Path),
+                  [{PathKey, file_status_to_json(FileStatus)} | Acc]
+          end, [], StatusMap),
+    {Props}.
+
+%% Serialise a single per-file status map to an ejson object.
+file_status_to_json(#{status      := Status,
+                      entries     := Entries,
+                      last_reload := LastReload}) ->
+    {[{cacheStatus, status_to_json(Status)},
+      {entries,     [status_entry_to_json(E) || E <- Entries]},
+      {lastReload,  last_reload_to_json(LastReload)}]}.
+
+%% Serialise the per-entry breakdown of the active copy.
+status_entry_to_json(#{issuer      := Issuer,
+                       status      := Status,
+                       this_update := ThisUpdate,
+                       next_update := NextUpdate,
+                       checksum    := Checksum}) ->
+    {[{issuer,     Issuer},
+      {status,     status_to_json(Status)},
+      {thisUpdate, format_datetime(ThisUpdate)},
+      {nextUpdate, format_datetime(NextUpdate)},
+      {checksum,   Checksum}]}.
+
+%% Serialise the last-reload-attempt information.
+last_reload_to_json(#{result := Result, time := Time, errors := Errors}) ->
+    {[{result, reload_result_to_json(Result)},
+      {time,   format_datetime(Time)},
+      {errors, Errors}]}.
+
+%% Format a calendar:datetime() as an ISO-8601 UTC string, or null.
+format_datetime(undefined) ->
+    null;
+format_datetime(DateTime) ->
+    menelaus_util:format_server_time(DateTime, 0).
+
+%% Map a current-status atom (state of the active config/crls copy) to the
+%% string shown in the HTTP response.
+status_to_json(active)        -> <<"active">>;
+status_to_json(expired)       -> <<"expired">>;
+status_to_json(not_yet_valid) -> <<"notYetValid">>;
+status_to_json(untrusted)     -> <<"untrusted">>;
+status_to_json(invalid)       -> <<"invalid">>;
+status_to_json(not_loaded)    -> <<"notLoaded">>;
+status_to_json(Other)         -> iolist_to_binary(io_lib:format("~p", [Other])).
+
+%% Map a reload-result atom to the string shown in the HTTP response.
+reload_result_to_json(loaded)        -> <<"loaded">>;
+reload_result_to_json(failed)        -> <<"failed">>;
+reload_result_to_json(not_attempted) -> <<"notAttempted">>;
+reload_result_to_json(Other)         -> iolist_to_binary(io_lib:format("~p", [Other])).
 
 assert_supported() ->
     menelaus_util:assert_is_enterprise(),

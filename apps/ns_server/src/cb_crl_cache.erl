@@ -17,7 +17,6 @@
 -include_lib("public_key/include/public_key.hrl").
 
 %% Internal record — not exposed outside this module.
-%% Callers receive plain {LoadTS, Der} tuples via get_file_crls/1.
 -record(crl_elem, {
     issuer,   %% public_key:issuer_name()   — normalised
     der       %% binary()                   — DER-encoded CertificateList
@@ -31,7 +30,8 @@
          insert_file/2,
          remove_file/1,
          remove_all_crls/0,
-         get_all_file_paths/0]).
+         get_all_file_paths/0,
+         get_file_crls/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -98,6 +98,21 @@ remove_all_crls() ->
 get_all_file_paths() ->
     try
         [P || [P] <- ets:match(?ETS, {{crl_file, '$1'}, '_'})]
+    catch
+        error:badarg -> []
+    end.
+
+%% Return the DER-encoded CRLs for a single file currently in the cache.
+%% Reads directly from ETS (safe: table is 'protected').
+%% Returns [] when the path is not cached or the table does not exist yet.
+-spec get_file_crls(file:filename_all()) -> [der_crl()].
+get_file_crls(Path) ->
+    NormPath = misc:normalize_path(Path),
+    try
+        case ets:lookup(?ETS, {crl_file, NormPath}) of
+            []           -> [];
+            [{_, Elems}] -> [E#crl_elem.der || E <- Elems]
+        end
     catch
         error:badarg -> []
     end.
