@@ -5119,7 +5119,7 @@ basic_bucket_params_screening_t() ->
                       {"continuousBackupEnabled", "true"},
                       {"historyRetentionSeconds", "10"},
                       {"continuousBackupInterval", "123"},
-                      {"continuousBackupRetentionPeriod", "2400"},
+                      {"continuousBackupRetentionPeriod", "1400"},
                       {"continuousBackupLocation", "s3://hello/world"}],
                     AllBuckets),
     ?assertEqual([], E37),
