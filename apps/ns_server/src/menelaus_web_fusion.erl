@@ -28,7 +28,8 @@
          handle_get_active_guest_volumes/1,
          handle_diag_active_guest_volumes/1,
          handle_sync_log_store/1,
-         handle_prepare_snapshot_restore/1]).
+         handle_prepare_snapshot_restore/1,
+         handle_restore_snapshot/1]).
 
 settings() ->
     [{"logStoreURI", #{type => {uri, ["s3", "local"]},
@@ -301,6 +302,10 @@ validate_guest_volumes(Name, State) ->
                           validator:unsupported(_)],
                          State).
 
+extract_nodes_volumes(Props) ->
+    [{proplists:get_value(name, P), proplists:get_value(guestVolumePaths, P)} ||
+        {P} <- proplists:get_value(nodes, Props)].
+
 handle_upload_mounted_volumes(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_79(),
@@ -309,30 +314,17 @@ handle_upload_mounted_volumes(Req) ->
               PlanUUID = proplists:get_value(planUUID, Params),
               validator:handle(
                 fun (Props) ->
-                        Nodes = [{proplists:get_value(name, P),
-                                  proplists:get_value(guestVolumePaths, P)} ||
-                                    {P} <- proplists:get_value(nodes, Props)],
+                        NodesVolumes = extract_nodes_volumes(Props),
                         case ns_orchestrator:fusion_upload_mounted_volumes(
-                               PlanUUID, Nodes) of
-                            {need_nodes, N} ->
-                                validator:report_errors_for_one(
-                                  Req,
-                                  [{nodes,
-                                    io_lib:format("Absent nodes ~p", [N])}],
-                                  400);
-                            {extra_nodes, N} ->
-                                validator:report_errors_for_one(
-                                  Req,
-                                  [{nodes,
-                                    io_lib:format("Unneeded nodes ~p", [N])}],
-                                  400);
+                               PlanUUID, NodesVolumes) of
                             ok ->
                                 ns_audit:upload_mounted_volumes(
-                                  Req, PlanUUID, Nodes),
+                                  Req, PlanUUID, NodesVolumes),
                                 menelaus_util:reply_json(Req, [], 200);
                             Other ->
-                                maybe_reply_plan_validation_error(
-                                  Req, Other) orelse
+                                maybe_reply_nodes_error(Req, Other) orelse
+                                    maybe_reply_plan_validation_error(
+                                      Req, Other) orelse
                                     reply_other(Req, "upload mounted volumes",
                                                 Other)
                         end
@@ -517,3 +509,79 @@ validate_bucket_config(Name, State) ->
       [validator:required(name, _),
        validator:string(name, _)],
       State).
+
+handle_restore_snapshot(Req) ->
+    menelaus_util:assert_is_enterprise(),
+    menelaus_util:assert_is_totoro(),
+    validator:handle(
+      fun (Params) ->
+              PlanUUID = proplists:get_value(planUUID, Params),
+              validator:handle(
+                fun (Props) ->
+                        do_handle_restore_snapshot(
+                          Req, PlanUUID, extract_nodes_volumes(Props))
+                end, Req, json,
+                [validator:required(nodes, _),
+                 validate_guest_volumes(nodes, _),
+                 validator:unsupported(_)])
+      end, Req, qs,
+      [validator:string(planUUID, _),
+       validator:required(planUUID, _),
+       validator:unsupported(_)]).
+
+do_handle_restore_snapshot(Req, PlanUUID, Volumes) ->
+    case ns_orchestrator:fusion_snapshot_restore(PlanUUID, Volumes) of
+        ok ->
+            menelaus_util:reply_json(Req, [], 200);
+        Other ->
+            maybe_reply_plan_validation_error(Req, Other) orelse
+                maybe_reply_restore_snapshot_error(Req, Other) orelse
+                reply_other(Req, "fusion snapshot restore", Other)
+    end.
+
+maybe_reply_restore_snapshot_error(Req, not_enabled) ->
+    menelaus_util:reply_text(Req, "Fusion is not enabled", 412),
+    true;
+maybe_reply_restore_snapshot_error(Req, nodes_mismatch) ->
+    validator:report_errors_for_one(
+      Req, [{nodes, "Nodes do not match restore plan"}], 400),
+    true;
+maybe_reply_restore_snapshot_error(Req, Errors) when is_list(Errors) ->
+    ErrorsJson =
+        {[{list_to_binary(BucketName),
+           restore_error_to_json(BucketErr)} ||
+             {BucketName, BucketErr} <- Errors]},
+    menelaus_util:reply_json(Req, ErrorsJson, 400),
+    true;
+maybe_reply_restore_snapshot_error(Req, Other) ->
+    maybe_reply_nodes_error(Req, Other).
+
+maybe_reply_nodes_error(Req, {need_nodes, Nodes}) ->
+    validator:report_errors_for_one(
+      Req, [{nodes, io_lib:format("Absent nodes ~p", [Nodes])}], 400),
+    true;
+maybe_reply_nodes_error(Req, {extra_nodes, Nodes}) ->
+    validator:report_errors_for_one(
+      Req, [{nodes, io_lib:format("Unneeded nodes ~p", [Nodes])}], 400),
+    true;
+maybe_reply_nodes_error(_, _) ->
+    false.
+
+restore_error_to_json(Err) when is_list(Err) ->
+    validator:jsonify_results(Err);
+restore_error_to_json(Err) when is_binary(Err) ->
+    Err;
+restore_error_to_json(wait_for_bucket) ->
+    <<"Timed out waiting for bucket warmup">>;
+restore_error_to_json({failed_nodes, Nodes}) ->
+    iolist_to_binary(
+      io_lib:format("Failed nodes while mounting volumes: ~p", [Nodes]));
+restore_error_to_json(Error = {error, _}) ->
+    case menelaus_web_buckets:bucket_create_reply(Error) of
+        undefined ->
+            iolist_to_binary(io_lib:format("~p", [Error]));
+        {_, [{_, Msg}]} ->
+            iolist_to_binary(Msg)
+    end;
+restore_error_to_json(Other) ->
+    iolist_to_binary(io_lib:format("~p", [Other])).

@@ -56,7 +56,8 @@
          serve_streaming_short_bucket_info/2,
          build_hibernation_state/1,
          get_ddocs_list/2,
-         parse_new_buckets/1]).
+         parse_new_buckets/1,
+         bucket_create_reply/1]).
 
 -import(menelaus_util,
         [reply/2,

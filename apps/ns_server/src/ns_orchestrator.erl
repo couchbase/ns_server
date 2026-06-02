@@ -40,7 +40,7 @@
         {error, cannot_enable_fusion} |
         {error, {throttle_error, binary()}}.
 
--export_type([busy/0]).
+-export_type([busy/0, bucket_create_error/0]).
 
 %% Constants and definitions
 
@@ -88,6 +88,7 @@
 
 %% API
 -export([create_bucket/3,
+         create_membase_bucket/3,
          update_bucket/5,
          delete_bucket/1,
          flush_bucket/1,
@@ -129,7 +130,8 @@
          fusion_upload_mounted_volumes/2,
          sync_fusion_log_store/1,
          stop_op/0,
-         prepare_fusion_snapshot_restore/1]).
+         prepare_fusion_snapshot_restore/1,
+         fusion_snapshot_restore/2]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -656,6 +658,15 @@ stop_recovery(Bucket, UUID) ->
 sync_fusion_log_store(Timeout) ->
     call({start_op, sync_fusion_log_store, [{timeout, Timeout}]}).
 
+-spec fusion_snapshot_restore(string(), list()) ->
+          ok | stopped | not_found | id_mismatch |
+          fusion_backup:validate_restore_error() |
+          [fusion_backup:validate_restore_bucket_error()] |
+          [fusion_backup:restore_bucket_error()] | busy().
+fusion_snapshot_restore(PlanUUID, Volumes) ->
+    call({start_op, fusion_snapshot_restore, [{planUUID, PlanUUID},
+                                              {volumes, Volumes}]}).
+
 -spec prepare_fusion_snapshot_restore(list()) ->
           {ok, list()} | stopped | busy() | not_enabled.
 prepare_fusion_snapshot_restore(BucketInfos) ->
@@ -981,27 +992,15 @@ running_op(_Event, _State) ->
 
 %% Synchronous idle events
 idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
-    maybe
-        {ok, NewBucketConfig} ?=
-            validate_create_bucket(BucketName, BucketType, BucketConfig),
-        {ok, UUID, ActualBucketConfig} ?=
-            ns_bucket:create_bucket(BucketType, BucketName, NewBucketConfig),
-        ConfigJSON = ns_bucket:build_bucket_props_json(
-                       ns_bucket:extract_bucket_props(ActualBucketConfig)),
-        master_activity_events:note_bucket_creation(BucketName, BucketType,
-                                                    ConfigJSON),
-        event_log:add_log(
-          bucket_created,
-          [{bucket, list_to_binary(BucketName)},
-           {bucket_uuid, UUID},
-           {bucket_type, ns_bucket:display_type(ActualBucketConfig)},
-           {bucket_props, {ConfigJSON}}]),
-        request_janitor_run({bucket, BucketName}),
-        {keep_state_and_data, [{reply, From, ok}]}
-    else
-        {error, _} = Error ->
-            {keep_state_and_data, [{reply, From, Error}]}
-    end;
+    Reply =
+        case BucketType of
+            memcached ->
+                {incorrect_parameters,
+                 "memcached buckets are no longer supported"};
+            membase ->
+                create_membase_bucket(BucketName, BucketConfig, undefined)
+        end,
+    {keep_state_and_data, [{reply, From, Reply}]};
 idle({flush_bucket, BucketName}, From, _State) ->
     RV = perform_bucket_flushing(BucketName),
     case RV of
@@ -1352,14 +1351,13 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
     RV =
         try
             RebalancePlan =
-                case retrieve_fusion_plan_and_check_uuid(PlanUUID) of
+                case retrieve_fusion_plan_and_check_uuid_and_type(
+                       PlanUUID, rebalance) of
                     {ok, RP} ->
                         RP;
                     {error, Err} ->
                         throw(Err)
                 end,
-            proplists:get_value(type, RebalancePlan) =:= rebalance orelse
-                throw(not_found),
             Nodes = proplists:get_value(nodes, RebalancePlan),
             PreparedVolumes =
                 case fusion_uploaders:validate_mounted_volumes(
@@ -1711,6 +1709,19 @@ check_ce_node_limit(KeepNodes) ->
                 [NumKeepCeNodes])),
             ale:error(?USER_LOGGER, ErrMsg),
             throw({cluster_node_limit_exceeded, ErrMsg})
+    end.
+
+retrieve_fusion_plan_and_check_uuid_and_type(PlanUUID, Type) ->
+    case retrieve_fusion_plan_and_check_uuid(PlanUUID) of
+        {ok, Plan} ->
+            case proplists:get_value(type, Plan) of
+                Type ->
+                    {ok, Plan};
+                _ ->
+                    {error, not_found}
+            end;
+        Error ->
+            Error
     end.
 
 retrieve_fusion_plan_and_check_uuid(PlanUUID) ->
@@ -2748,14 +2759,33 @@ handle_info_in_buckets_shutdown({'EXIT', Pid, Reason}, State) ->
             {keep_state, NewState, [{reply, From, Reply}]}
     end.
 
-validate_create_bucket(BucketName, BucketType, BucketConfig) ->
+-spec create_membase_bucket(bucket_name(), list(), undefined | term()) ->
+          ok | bucket_create_error().
+create_membase_bucket(BucketName, BucketConfig, CustomUUID) ->
+    maybe
+        {ok, NewBucketConfig} ?=
+            validate_create_bucket(BucketName, BucketConfig),
+        {ok, UUID, ActualBucketConfig} ?=
+            ns_bucket:create_bucket(membase, BucketName, CustomUUID,
+                                    NewBucketConfig),
+        ConfigJSON = ns_bucket:build_bucket_props_json(
+                       ns_bucket:extract_bucket_props(ActualBucketConfig)),
+        master_activity_events:note_bucket_creation(BucketName, membase,
+                                                    ConfigJSON),
+        event_log:add_log(
+          bucket_created,
+          [{bucket, list_to_binary(BucketName)},
+           {bucket_uuid, UUID},
+           {bucket_type, ns_bucket:display_type(ActualBucketConfig)},
+           {bucket_props, {ConfigJSON}}]),
+        request_janitor_run({bucket, BucketName}),
+        ok
+    end.
+
+validate_create_bucket(BucketName, BucketConfig) ->
     try
         not ns_bucket:name_conflict(BucketName) orelse
             throw({already_exists, BucketName}),
-
-        BucketType =/= memcached orelse
-            throw({incorrect_parameters,
-                 "memcached buckets are no longer supported"}),
 
         ShutdownBuckets =
             case cluster_compat_mode:is_cluster_76() of
@@ -2859,6 +2889,22 @@ verify_op(prepare_fusion_snapshot_restore, _Params) ->
             {ok, []};
         Error ->
             Error
+    end;
+verify_op(fusion_snapshot_restore, Params) ->
+    PlanUUID = proplists:get_value(planUUID, Params),
+    Volumes = proplists:get_value(volumes, Params),
+    case retrieve_fusion_plan_and_check_uuid_and_type(PlanUUID, restore) of
+        {ok, Blueprint} ->
+            case fusion_backup:validate_restore(Blueprint, Volumes) of
+                {ok, _} = Success ->
+                    Success;
+                {errors, Errors} ->
+                    Errors;
+                {error, Error} ->
+                    Error
+            end;
+        {error, Error} ->
+            Error
     end.
 
 handle_op(sync_fusion_log_store, Props, BucketNames) ->
@@ -2881,7 +2927,9 @@ handle_op(prepare_fusion_snapshot_restore, BucketInfos, []) ->
               "RestorePlan:~n~p~nRestoreBlueprint:~n~p~n",
               [RestorePlan, RestoreBlueprint]),
     save_fusion_plan([{type, restore} | RestoreBlueprint]),
-    {ok, RestorePlan}.
+    {ok, RestorePlan};
+handle_op(fusion_snapshot_restore, _Params, {BucketInfos, Volumes}) ->
+    fusion_backup:restore(Volumes, BucketInfos).
 
 handle_sync_fusion_log_store(BucketNames, Timeout) ->
     ?log_debug("Ensure janitor runs for ~p.", [BucketNames]),

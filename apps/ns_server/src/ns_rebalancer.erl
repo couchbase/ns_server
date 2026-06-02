@@ -40,7 +40,8 @@
          prepare_fusion_rebalance/3,
          maybe_check_expected_topology/2,
          run_janitor/1,
-         generate_vbucket_map_options/2]).
+         generate_vbucket_map_options/2,
+         wait_for_bucket/2]).
 
 -export([wait_local_buckets_shutdown_complete/0]). % used via rpc:multicall
 
@@ -1315,8 +1316,10 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
 
     ok.
 
+-spec wait_for_bucket(ns_bucket:name(), [node()]) -> ok | fail.
 wait_for_bucket(Bucket, Nodes) ->
-    ?log_debug("Waiting until bucket ~p gets ready on nodes ~p", [Bucket, Nodes]),
+    ?log_debug("Waiting until bucket ~p gets ready on nodes ~p",
+               [Bucket, Nodes]),
     do_wait_for_bucket(Bucket, Nodes).
 
 do_wait_for_bucket(Bucket, Nodes) ->

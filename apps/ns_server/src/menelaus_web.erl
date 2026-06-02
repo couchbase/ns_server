@@ -1061,6 +1061,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["controller", "fusion", "prepareSnapshotRestore"] ->
                     {{[pools], write},
                      fun menelaus_web_fusion:handle_prepare_snapshot_restore/1};
+                ["controller", "fusion", "restoreSnapshot"] ->
+                    {{[admin, fusion], write},
+                     fun menelaus_web_fusion:handle_restore_snapshot/1};
                 ["controller", "rebalance"] ->
                     {{[pools], write}, fun menelaus_web_cluster:handle_rebalance/1};
                 ["controller", "reAddNode"] ->

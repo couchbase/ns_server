@@ -56,7 +56,7 @@
          kv_bucket_type/1,
          node_kv_backend_type/1,
          num_replicas_changed/1,
-         create_bucket/3,
+         create_bucket/4,
          restore_bucket/4,
          delete_bucket/1,
          display_type/1,
@@ -1428,12 +1428,15 @@ new_bucket_default_params(memcached) ->
 cleanup_bucket_props(Props) ->
     lists:keydelete(moxi_port, 1, Props).
 
-create_bucket(BucketType, BucketName, NewConfig) ->
+create_bucket(BucketType, BucketName, CustomUUID, NewConfig) ->
     MergedConfig0 =
         misc:update_proplist(new_bucket_default_params(BucketType),
                              NewConfig),
     MergedConfig = maybe_set_num_vbuckets(MergedConfig0),
-    BucketUUID = couch_uuids:random(),
+    BucketUUID = case CustomUUID of
+                     undefined -> couch_uuids:random();
+                     _ -> CustomUUID
+                 end,
     Manifest = collections:default_manifest(MergedConfig),
     case do_create_bucket(BucketName, MergedConfig, BucketUUID, Manifest) of
         ok ->
@@ -3351,7 +3354,8 @@ extract_bucket_props(Props) ->
                          dcp_backfill_idle_protection_enabled,
                          throttle_reserved, throttle_hard_limit,
                          data_service_rebalance_type,
-                         extra_params]],
+                         extra_params,
+                         fusion_restore_in_progress]],
           X =/= false].
 
 build_threshold({Percentage, Size}) ->
