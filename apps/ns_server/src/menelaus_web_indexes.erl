@@ -113,6 +113,12 @@ settings_post_validators() ->
             false ->
                 []
         end ++
+        case cluster_compat_mode:is_cluster_totoro() of
+            true ->
+                [validator:boolean(generateScanReport, _)];
+            false ->
+                []
+        end ++
         [validate_param(logLevel, logLevel, _),
          validate_storage_mode(storageMode, _)].
 
