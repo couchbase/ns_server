@@ -1355,6 +1355,108 @@ class CRLNodeToNodeTests(testlib.BaseTestSet):
                                 custom_cert=True, crl_mode='expired',
                                 cert_type='server')
 
+    # ------------------------------------------------------------------
+    # HTTP connection tests — exercises node_to_node_crl_verify/3 via
+    # tls_peer_verification_client_opts (all outgoing HTTPS connections
+    # from ns_server to other nodes go through this path).
+    # Only node2's node cert is customised; the test connects from
+    # node1 (TLS client) to node2 (TLS server).
+    # ------------------------------------------------------------------
+
+    def crl_n2n_http_require_ootb_test(self):
+        """OOTB server cert + Require: HTTP connection stays connected.
+
+        OOTB node certs are signed by the cluster CA and exempted.
+        """
+        self._run_n2n_http_crl_check('Require', expect_connected=True,
+                                     custom_cert=False)
+
+    def crl_n2n_http_require_valid_test(self):
+        """Custom server cert (not revoked) + Require: HTTP connected."""
+        self._run_n2n_http_crl_check('Require', expect_connected=True,
+                                     custom_cert=True, crl_mode='valid')
+
+    def crl_n2n_http_require_revoked_test(self):
+        """Custom server cert (revoked) + Require: HTTP connection fails."""
+        self._run_n2n_http_crl_check('Require', expect_connected=False,
+                                     custom_cert=True, crl_mode='revoked')
+
+    def crl_n2n_http_disabled_revoked_test(self):
+        """Revoked server cert + Disabled policy: HTTP stays connected."""
+        self._run_n2n_http_crl_check('Disabled', expect_connected=True,
+                                     custom_cert=True, crl_mode='revoked')
+
+    def crl_n2n_http_permissive_missing_crl_test(self):
+        """Custom server cert + Permissive + no CRL: HTTP stays connected.
+
+        Undetermined status is treated as valid under Permissive.
+        """
+        self._run_n2n_http_crl_check('Permissive', expect_connected=True,
+                                     custom_cert=True, crl_mode='missing')
+
+    def crl_n2n_http_require_missing_crl_test(self):
+        """Custom server cert + Require + no CRL: HTTP connection fails.
+
+        Undetermined status is treated as failure under Require.
+        """
+        self._run_n2n_http_crl_check('Require', expect_connected=False,
+                                     custom_cert=True, crl_mode='missing')
+
+    def _run_n2n_http_crl_check(self, policy, expect_connected,
+                                custom_cert=False, crl_mode=None):
+        """Test CRL checking for outgoing HTTP connections via
+        tls_peer_verification_client_opts / node_to_node_crl_verify/3.
+
+        A custom NODE cert is loaded on node2 (the server); node1 (the
+        client) makes a direct TLS connection to node2's HTTPS port
+        using tls_client_opts, which now includes the CRL verify_fun.
+        Only node2's cert is customised — this is one-directional.
+        """
+        if crl_mode is None:
+            crl_mode = 'valid'
+
+        node1 = self.cluster.connected_nodes[0]
+        node2 = self.cluster.connected_nodes[1]
+        crl_file = os.path.join(self.crl_dir, 'n2n_http_crl.pem')
+
+        ca_pem, ca_key_pem = generate_root_ca()
+        self.ca_ids = load_multiple_cas(node1, [ca_pem])
+        if custom_cert:
+            cert2_pem, _ = generate_and_load_node_cert(node2, ca_pem,
+                                                       ca_key_pem)
+
+            if crl_mode == 'revoked':
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [cert2_pem])
+            elif crl_mode == 'valid':
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+            elif crl_mode == 'expired':
+                generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [],
+                                     expired=True)
+            elif crl_mode == 'missing':
+                # no CRL for this CA
+                pass
+        else:
+            generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+
+        crl_settings = {'policy_per_scope': {'nodeToNode': policy,
+                                             'clientAuth': 'Disabled'},
+                        'poll_interval_ms': 5000,
+                        'directory': self.crl_dir}
+        set_crl_settings(self.cluster, **crl_settings)
+        if custom_cert and crl_mode in ('valid', 'revoked'):
+            assert_crl_status(self.cluster, expected_status='active')
+
+        # Wait for both nodes to have the new policy in ETS before
+        # initiating the test connection.
+        expected_policy = policy.lower()
+        for node in [node1, node2]:
+            _wait_crl_policy(node, 'node_to_node', expected_policy)
+
+        connected = _http_request_to_node(node1, node2, self.cluster)
+        assert connected == expect_connected, \
+            (f"Expected {'connected' if expect_connected else 'not connected'}"
+             f" but got {'connected' if connected else 'not connected'}")
+
     def _run_n2n_crl_check(self, policy, expect_connected,
                            custom_cert=False, crl_mode=None,
                            client_cert_verification=True, cert_type='client'):
@@ -1474,6 +1576,33 @@ class CRLNodeToNodeTests(testlib.BaseTestSet):
             elif crl_mode == 'expired':
                 # In this case we should update CRL as it has expired
                 generate_crl_to_file(crl_file, ca_pem, ca_key_pem, [])
+
+def _http_request_to_node(from_node, to_node, cluster):
+    """Make an HTTPS GET from from_node to to_node via
+    menelaus_rest:json_request_hilevel — the same internal HTTP client
+    all ns_server node-to-node calls use.  Returns True when any HTTP
+    response is received (TLS handshake succeeded), False when the
+    request fails at the TLS level (e.g. cert revoked).
+    """
+    host = to_node.host
+    port = to_node.tls_service_port()
+    user = cluster.admin_user()
+    password = cluster.admin_password()
+    # ?HIDE(X) expands to fun () -> X end, so HiddenAuth must be a
+    # zero-arity fun that returns the auth term.
+    code = (
+        f"case menelaus_rest:json_request_hilevel("
+        f"get,"
+        f" {{https, \"{host}\", {port}, \"/pools\"}},"
+        f" fun () -> {{basic_auth, \"{user}\", \"{password}\"}} end,"
+        f" []) of"
+        f" {{ok, _}} -> ok;"
+        f" _ -> error"
+        f" end."
+    )
+    r = testlib.diag_eval(from_node, code)
+    return r.text.strip() == 'ok'
+
 
 def _wait_crl_policy(node, scope, expected_policy, timeout_s=15):
     """Poll until cb_crl_cache reports the expected policy for scope.

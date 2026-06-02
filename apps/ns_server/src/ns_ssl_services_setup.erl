@@ -634,7 +634,8 @@ tls_peer_verification_client_opts() ->
     [{cacertfile, ca_file_path()},
      {verify, verify_peer},
      {depth, ?ALLOWED_CERT_CHAIN_LENGTH},
-     {reuse_sessions, false}].
+     {reuse_sessions, false},
+     {verify_fun, {cb_crl:verify_fun(node_to_node), undefined}}].
 
 tls_no_peer_verification_client_opts() ->
     [{verify, verify_none}].
