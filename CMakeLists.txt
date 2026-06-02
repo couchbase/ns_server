@@ -152,7 +152,6 @@ if (IS_DIRECTORY "${SERVER_UI_SRC}")
     PATTERN "*.js" EXCLUDE)
 endif ()
 
-
 # Various cleaning targets
 ADD_CUSTOM_TARGET (ns_realclean
   COMMAND "${CMAKE_COMMAND}" -E remove -f cov.html erl_crash.dump

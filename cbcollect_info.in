@@ -1382,7 +1382,13 @@ def read_local_token(path, gosecrets_cfg_path, master_pass):
         log(f'{error_msg}: cbcat not found')
         return ""
 
+    dumpkeys_path = find_script(exec_name("dump-keys"))
+    if dumpkeys_path is None:
+        log(f'{error_msg}: dump-keys not found')
+        return ""
+
     args = [cbcat_path, '--with-gosecrets', gosecrets_cfg_path,
+            '--with-dump-keys', dumpkeys_path,
             '--password', '-', path]
     if master_pass is None:
         master_pass = ''

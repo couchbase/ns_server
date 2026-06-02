@@ -1,0 +1,59 @@
+<!--
+     Copyright 2026-Present Couchbase, Inc.
+
+     Use of this software is governed by the Business Source License included
+     in the file licenses/BSL-Couchbase.txt.  As of the Change Date specified
+     in that file, in accordance with the Business Source License, use of this
+     software will be governed by the Apache License, Version 2.0, included in
+     the file licenses/APL2.txt.
+-->
+<div [formGroup]="group" *ngIf="(isEnterprise | async) && (compatVersion80 | async)" class="margin-bottom-1">
+  <div class="row flex-left margin-bottom-half">
+    <label class="toggle-control margin-0">
+      <input
+         formControlName="forwardLocalOnly"
+         id="forward_local_only"
+         type="checkbox">
+      <span class="toggle-control-body"></span>
+    </label>
+    <span class="text-small margin-left-half max-width-80">
+      Only forward local mutations
+    </span>
+    <ng-template #forwardLocalOnlyTooltip>
+      <ul class="margin-bottom-0 padding-left-1">
+        <li class="text-smaller">
+          In a full-mesh topology, this setting can reduce network bandwidth usage and data transfer costs.
+        </li>
+        <li class="text-smaller">
+          Even in a full-mesh topology, this setting reduces redundancy by limiting each mutation to a single replication path to a given destination.
+        </li>
+        <li class="text-smaller">Both the source and target buckets must have Cross Cluster Versioning enabled.</li>
+        <li class="text-smaller">
+          All nodes in the replication topology must be running with cluster compatibility version 8.0.2 or later.
+        </li>
+        <li class="text-smaller">
+          Use this setting only in a replication topology where every bucket is in bi-directional replication with every other bucket (otherwise the locally mutated data will not replicate to every bucket/cluster in the replication topology)
+        </li>
+        <li class="text-smaller">This setting does not support Mobile buckets in the replication topology.</li>
+      </ul>
+    </ng-template>
+    <span
+       class="fa-stack icon-info margin-left-quarter"
+       [ngbTooltip]="forwardLocalOnlyTooltip"
+       placement="auto bottom"
+       container="body">
+      <span class="icon fa-circle-thin fa-stack-2x"></span>
+      <span class="icon fa-info fa-stack-1x"></span>
+    </span>
+  </div>
+  <div
+     class="text-smaller warning margin-bottom-half"
+     *ngIf="(showWarning | async)">
+    Use this only in full-mesh active-active topologies. If enabled in other topologies, it can cause data loss.
+  </div>
+  <div
+     class="error"
+     [hidden]="!(error | async)?.forwardLocalOnly">
+    {{(error | async)?.forwardLocalOnly}}
+  </div>
+</div>
