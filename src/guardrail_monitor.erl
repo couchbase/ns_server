@@ -50,10 +50,6 @@
                   index_severity().
 -export_type([status/0]).
 
--type disk_stats_error() :: no_dbdir
-                          | {dbdir_path_error, term()}
-                          | no_disk_stats_found.
-
 -type topology_change_error() :: data_size_will_be_too_high
                                | rr_will_be_too_low
                                | not_enough_cores_for_num_buckets
@@ -470,7 +466,7 @@ get_disk_stats_from_nodes(Nodes) ->
                   {badrpc, _} = Error ->
                       {Node, Error};
                   Mounts ->
-                      {Node, get_disk_data(Mounts)}
+                      {Node, misc:get_disk_data(Mounts)}
               end
       end, Nodes, ?PARALLEL_RPC_TIMEOUT).
 
@@ -1053,34 +1049,6 @@ get_severity_for_thresholds(Resource, Thresholds, Metric, Order) ->
     ok | disk_severity().
 check_disk_usage(Thresholds, {_Disk, _Cap, Used}) ->
     get_severity_for_thresholds(index, Thresholds, Used, descending).
-
--spec get_disk_data(ns_disksup:disk_stats()) ->
-          {ok, ns_disksup:disk_stat()} | {error, disk_stats_error()}.
-get_disk_data(Mounts) ->
-    case ns_storage_conf:this_node_dbdir() of
-        {ok, DbDir} ->
-            case misc:realpath(DbDir, "/") of
-                {ok, RealFile} ->
-                    case ns_storage_conf:extract_disk_stats_for_path(
-                           Mounts, RealFile) of
-                        {ok, _} = DiskData ->
-                            DiskData;
-                        none ->
-                            ?log_error("Couldn't check disk space as ~p "
-                                       "wasn't found in ~p",
-                                       [RealFile, Mounts]),
-                            {error, no_disk_stats_found}
-                    end;
-                Error ->
-                    ?log_error("Couldn't check disk space as ~p doesn't "
-                               "appear to be a valid path. Error: ~p",
-                               [DbDir, Error]),
-                    {error, {dbdir_path_error, Error}}
-            end;
-        {error, not_found} ->
-            ?log_error("Couldn't check disk usage as node db dir is missing"),
-            {error, no_dbdir}
-    end.
 
 get_thresholds(Config) ->
     case proplists:get_value(enabled, Config) of

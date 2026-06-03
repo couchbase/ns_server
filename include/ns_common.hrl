@@ -43,6 +43,10 @@
 -type service() :: kv | index | n1ql | fts | eventing | cbas | backup.
 -type tcp_port() :: 0..65535.
 
+-type disk_stats_error() :: no_dbdir
+                          | {dbdir_path_error, term()}
+                          | no_disk_stats_found.
+
 -define(MULTICALL_DEFAULT_TIMEOUT, 30000).
 
 -define(MIB, 1048576).
