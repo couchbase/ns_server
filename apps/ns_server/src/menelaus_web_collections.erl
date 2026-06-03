@@ -35,6 +35,13 @@
 
 handle_get(Bucket, Req) ->
     CollectionFilter = get_collection_filter(Req),
+    case CollectionFilter of
+        couchbase ->
+            ok;
+        _ ->
+            menelaus_util:assert_is_totoro()
+    end,
+
     menelaus_util:reply_json(
       Req, collections:manifest_json_for_rest_response(
              menelaus_auth:get_authn_res(Req), Bucket,
