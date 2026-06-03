@@ -110,6 +110,7 @@ extra_ns_config_setting_names() ->
      {not_locked_returns_tmpfail, bool},
      {clustermap_push_notifications_enabled, bool},
      {magma_blind_write_optimisation_enabled, bool},
+     {log_tls_certificate_verification_problems, bool},
      {file_fragment_checksum_enabled, bool},
      {file_fragment_max_chunk_size, {int, 0, ?MAX_64BIT_UNSIGNED_INT}},
      {file_fragment_checksum_length, {int, 0, ?MAX_64BIT_UNSIGNED_INT}},
