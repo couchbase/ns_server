@@ -991,4 +991,27 @@ async_randomized_test_failure(NumChildren) ->
     end,
 
     0 = ?flush(_).
+
+wait_any_returns_first_result_test() ->
+    async:with_many(
+      fun ({Sleep, Result}) ->
+              timer:sleep(Sleep),
+              Result
+      end,
+      [{50, slow}, {0, fast}],
+      fun (Asyncs) ->
+              {_Pid, Result} = async:wait_any(Asyncs),
+              ?assertEqual(fast, Result)
+      end).
+
+wait_any_returns_correct_pid_test() ->
+    async:with_many(
+      fun (X) -> X end,
+      [only],
+      fun ([Async] = Asyncs) ->
+              {Pid, Result} = async:wait_any(Asyncs),
+              ?assertEqual(Async, Pid),
+              ?assertEqual(only, Result)
+      end).
+
 -endif.
