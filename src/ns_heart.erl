@@ -317,6 +317,8 @@ current_status_slow_inner() ->
                          || N <- [cpu_utilization_rate, cpu_stolen_rate,
                                   swap_total, swap_used,
                                   mem_total, mem_free, mem_limit,
+                                  mem_actual_used,
+                                  mem_cgroup_limit, mem_cgroup_used,
                                   cpu_cores_available, cpu_host_cores_available,
                                   allocstall]]},
          {interesting_stats, InterestingStats},
@@ -468,8 +470,8 @@ statistics_keys() ->
 
 system_stats_keys() ->
     [allocstall, cpu_cores_available, cpu_host_cores_available, cpu_stolen_rate,
-     cpu_utilization_rate, mem_free, mem_limit, mem_total, swap_total,
-     swap_used].
+     cpu_utilization_rate, mem_free, mem_limit, mem_total, mem_actual_used,
+     mem_cgroup_limit, mem_cgroup_used, swap_total, swap_used].
 
 status_slow_setup() ->
     fake_ns_config:setup(),
