@@ -126,15 +126,8 @@ post(URL, Body, Timeout) ->
     try menelaus_rest:json_request_hilevel(post, Request,
                                            ?HIDE({basic_auth, "", ""}),
                                            [{connect_timeout, Timeout}]) of
-        {ok, {RespBody}} when is_list(RespBody) ->
-            case proplists:get_value(<<"success">>, RespBody) of
-                true ->
-                    ?log_debug("Lighthouse report sent successfuly");
-                false ->
-                    ?log_error("Sending lighthouse report failed. "
-                               "Remote server returned:~n~p",
-                               [RespBody])
-            end;
+        ok ->
+            ?log_debug("Lighthouse report sent successfuly");
         {error, rest_error, Reason, _} ->
             %% When the lighthouse isn't available, we will usually get an
             %% nxdomain error, so we don't need to log it at error level
