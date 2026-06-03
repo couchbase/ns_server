@@ -303,10 +303,15 @@ current_status_slow_inner() ->
     [{cpu_cores_available, CoresAvailable}] =
         sigar:get_gauges([cpu_cores_available]),
 
+    {_, BasicInfo} = ns_info:basic_info(),
+
+    DiskData = grab_disk_data(BasicInfo),
+
     ns_bootstrap:ensure_os_mon(),
     failover_safeness_level:build_local_safeness_info(BucketNames) ++
         ServiceStatuses ++
         ProcFSFiles ++
+        DiskData ++
         [{local_tasks, Tasks},
          {memory, misc:memory()},
          {cpu_count, ceil(CoresAvailable)},
@@ -324,7 +329,7 @@ current_status_slow_inner() ->
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, ProcessesStats}
-         | element(2, ns_info:basic_info())].
+        | BasicInfo].
 
 %% returns dict as if returned by ns_doctor:get_nodes/0 but containing only
 %% failover safeness fields (or down bool property). Instead of going
@@ -450,6 +455,16 @@ grab_procfs_files() ->
             []
     end.
 
+grab_disk_data(BasicInfo) ->
+    DiskData = proplists:get_value(disk_data, BasicInfo),
+    case misc:get_disk_data(DiskData) of
+        {ok, {_, A, U}} ->
+            [{data_disk_bytes_available, A},
+             {data_disk_bytes_used, U}];
+        {error, _} ->
+            []
+    end.
+
 -ifdef(TEST).
 status_slow_keys() ->
     [outgoing_replications_safeness_level, incoming_replications_conf_hashes,
@@ -459,7 +474,7 @@ status_slow_keys() ->
      system_memory_data, node_storage_conf, statistics, system_stats,
      interesting_stats, per_bucket_interesting_stats, processes_stats, version,
      supported_compat_version, advertised_version, system_arch, wall_clock,
-     memory_data, disk_data].
+     memory_data, disk_data, data_disk_bytes_available, data_disk_bytes_used].
 
 status_slow_keys_linux() ->
     [cpu_pressure,io_pressure,loadavg,meminfo, memory_pressure].
@@ -478,6 +493,8 @@ status_slow_setup() ->
     fake_chronicle_kv:setup(),
     fake_config_helpers:setup_node_config(
       #{node() => {active, [backup, cbas, eventing, fts, index, n1ql]}}),
+    fake_ns_config:update_snapshot({node, node(), database_dir}, "/"),
+    meck:expect(ns_disksup, get_disk_data, fun () -> [{"/", 1, 2}] end),
     mock_helpers:setup_mocks([ns_heart]).
 
 status_slow_teardown(PidMap) ->
