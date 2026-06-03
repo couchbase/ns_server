@@ -160,15 +160,30 @@ handle_bad_cert_crl_reason(Reason, Policy, SubjectStr) ->
             {public_key:der_encoded(), #'CertificateList'{}}}].
 build_dps_and_crls(OtpCert) ->
     Pairs = get_crls_for_cert_dps(OtpCert) ++ get_crls_for_cert_issuer(OtpCert),
-    lists:filtermap(
-        fun ({DP, Der}) ->
-                try public_key:der_decode('CertificateList', Der) of
-                    OtpCRL -> {true, {DP, {Der, OtpCRL}}}
-                catch _:_ ->
-                    ?log_error("Failed to decode CRL for DP ~p: ~p", [DP, Der]),
-                    false
-                end
-        end, lists:uniq(Pairs)).
+    Decoded =
+        lists:filtermap(
+          fun ({DP, Der}) ->
+                  try public_key:der_decode('CertificateList', Der) of
+                      OtpCRL -> {true, {DP, {Der, OtpCRL}}}
+                  catch _:_ ->
+                      ?log_error("Failed to decode CRL for DP ~p: ~p",
+                                 [DP, Der]),
+                      false
+                  end
+          end, lists:uniq(Pairs)),
+    %% Sort newest-first so that pkix_crls_validate/3 sees the most
+    %% recent CRL first and avoids false "not revoked" results when
+    %% an outdated CRL is checked before a newer one.
+    lists:sort(
+        fun ({_, {_, CRL1}}, {_, {_, CRL2}}) ->
+                crl_this_update_secs(CRL1) >= crl_this_update_secs(CRL2)
+        end, Decoded).
+
+-spec crl_this_update_secs(#'CertificateList'{}) -> non_neg_integer().
+crl_this_update_secs(#'CertificateList'{tbsCertList = TBS}) ->
+    try pubkey_cert:time_str_2_gregorian_sec(TBS#'TBSCertList'.thisUpdate)
+    catch _:_ -> 0
+    end.
 
 get_crls_for_cert_dps(OtpCert) ->
     %% Extract the cert's CDP DPs and retrieve matching CRLs from the cache.
