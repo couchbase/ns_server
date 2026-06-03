@@ -71,6 +71,12 @@ n1ql_cluster_capabilities(Version) ->
                 [readFromReplica];
             false ->
                 []
+        end ++
+        case is_enabled_at(Version, ?VERSION_TOTORO) of
+            true ->
+                [externalCollections];
+            false ->
+                []
         end.
 
 cluster_capabilities(Version) ->

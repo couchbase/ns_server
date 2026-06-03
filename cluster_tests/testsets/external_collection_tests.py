@@ -900,6 +900,14 @@ class ExternalCollectionTests(testlib.BaseTestSet):
         testlib.assert_not_eq(ext_uid_before,
                               ext_uid_after)
 
+    def n1ql_capability_in_node_services_test(self):
+        r = testlib.get_succ(self.cluster,
+                             "/pools/default/nodeServices")
+        node_services = r.json()
+        caps = node_services.get("clusterCapabilities", {})
+        n1ql_caps = caps.get("n1ql", [])
+        testlib.assert_in("externalCollections", n1ql_caps)
+
     def put_manifest_creates_external_collection_test(
             self):
         bucket_name = "put-create-ext-bucket"
