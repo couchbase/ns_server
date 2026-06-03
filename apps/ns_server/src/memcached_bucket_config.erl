@@ -125,6 +125,14 @@ params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
                   ns_bucket:get_dcp_backfill_idle_limit_seconds(BucketConfig)},
                  {"dcp_backfill_idle_disk_threshold", [{reload, dcp}],
                   ns_bucket:get_dcp_backfill_idle_disk_threshold(BucketConfig)}]
+        end ++
+        case cluster_compat_mode:is_cluster_totoro() of
+            false -> [];
+            true ->
+                %% Continuous backup need this for some cross-param validation.
+                [{"encryption_at_rest_key_id", [],
+                  proplists:get_value(encryption_secret_id, BucketConfig,
+                                      ?SECRET_ID_NOT_SET)}]
         end
         ++ get_magma_bucket_config(BucketConfig).
 
