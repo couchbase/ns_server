@@ -211,11 +211,12 @@ get_kinds_for_label(Label) ->
 %% This function defines which services use which encr-at-rest keys.
 %% Currently returns [] for all supported kinds, but structure is in place
 %% for future services that may use these DEKs.
-get_cbauth_services(logDek) -> 
+get_cbauth_services(logDek) ->
     [
       index,
       eventing,
-      n1ql
+      n1ql,
+      projector
     %% cbas %% uncomment to pass log keys to cbas
     ];
 get_cbauth_services(otherDek) ->
@@ -223,7 +224,6 @@ get_cbauth_services(otherDek) ->
       index,
       n1ql,
       fts
-    %% projector %% uncomment to pass other keys to projector
     %% cbas %% uncomment to pass other keys to cbas
     %% eventing %% uncomment to pass other keys to eventing
     ];
