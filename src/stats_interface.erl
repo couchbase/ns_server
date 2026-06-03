@@ -44,7 +44,8 @@ system() ->
               "name=~`sys_cpu_utilization_rate|"
                      "sys_cpu_stolen_rate|sys_swap_total|sys_swap_used|"
                      "sys_mem_total|sys_mem_free|sys_mem_limit|"
-                     "sys_cpu_cores_available|sys_allocstall`}">>,
+                     "sys_cpu_cores_available|sys_cpu_host_cores_available|"
+                     "sys_allocstall`}">>,
            fun (Props) ->
                <<"sys_", N/binary>> = proplists:get_value(<<"name">>, Props),
                {true, binary_to_atom(N, latin1)}

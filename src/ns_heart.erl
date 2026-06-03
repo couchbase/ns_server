@@ -302,6 +302,7 @@ current_status_slow_inner() ->
     ServiceStatuses = grab_service_statuses(),
     [{cpu_cores_available, CoresAvailable}] =
         sigar:get_gauges([cpu_cores_available]),
+
     ns_bootstrap:ensure_os_mon(),
     failover_safeness_level:build_local_safeness_info(BucketNames) ++
         ServiceStatuses ++
@@ -316,7 +317,8 @@ current_status_slow_inner() ->
                          || N <- [cpu_utilization_rate, cpu_stolen_rate,
                                   swap_total, swap_used,
                                   mem_total, mem_free, mem_limit,
-                                  cpu_cores_available, allocstall]]},
+                                  cpu_cores_available, cpu_host_cores_available,
+                                  allocstall]]},
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, ProcessesStats}
@@ -465,8 +467,9 @@ statistics_keys() ->
      run_queues, runtime, wall_clock].
 
 system_stats_keys() ->
-    [allocstall, cpu_cores_available, cpu_stolen_rate, cpu_utilization_rate,
-     mem_free, mem_limit, mem_total, swap_total, swap_used].
+    [allocstall, cpu_cores_available, cpu_host_cores_available, cpu_stolen_rate,
+     cpu_utilization_rate, mem_free, mem_limit, mem_total, swap_total,
+     swap_used].
 
 status_slow_setup() ->
     fake_ns_config:setup(),
