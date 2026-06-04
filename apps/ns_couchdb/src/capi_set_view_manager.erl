@@ -26,6 +26,8 @@
 -include_lib("couch_set_view/include/couch_set_view.hrl").
 -include("ns_common.hrl").
 
+-define(BUCKET_ENGINE_TIMEOUT_MS, 10000).
+
 -record(state, {bucket :: bucket_name(),
                 local_docs = [] :: [#doc{}],
                 num_vbuckets :: non_neg_integer(),
@@ -179,28 +181,52 @@ init({Bucket, UseReplicaIndex, NumVBuckets}) ->
 
 wait_for_bucket_to_start(Bucket, Time) ->
     RV = ns_memcached:perform_very_long_call(
-           fun (_Sock) ->
-                   ?log_debug("Engine for bucket ~p is created in memcached", [Bucket]),
-                   {reply, ok}
+           fun (Sock) ->
+                   %% A bucket becomes selectable as soon as a ClusterConfigOnly
+                   %% placeholder is created for it (to serve the CCCP payload),
+                   %% but such a bucket has no data engine. maybe_define_group/2
+                   %% opens a DCP producer, which memcached rejects on a
+                   %% config-only bucket, so wait until it has been upgraded in
+                   %% place to a real bucket.
+                   {reply, bucket_engine_status(Sock)}
            end, Bucket),
     case RV of
         ok ->
+            ?log_debug("Engine for bucket ~p is ready in memcached", [Bucket]),
             ok;
-        {error, {select_bucket_failed, {memcached_error, key_enoent, _}}} = RV ->
-            case Time of
-                10000 ->
-                    ?log_error("Engine for bucket ~p didn't start in ~p ms. Exit.", [Bucket, Time]),
-                    exit(RV);
-                _ ->
-                    timer:sleep(500),
-
-                    Time1 = Time + 500,
-                    ?log_debug("Waiting for engine to start. Bucket: ~p, Wait time: ~p ms.",
-                               [Bucket, Time1]),
-                    wait_for_bucket_to_start(Bucket, Time1)
-            end;
+        {error, {select_bucket_failed, {memcached_error, key_enoent, _}}} ->
+            retry_wait_for_bucket_to_start(Bucket, Time, RV);
+        {error, config_only_bucket} ->
+            retry_wait_for_bucket_to_start(Bucket, Time, RV);
         Error ->
             exit(Error)
+    end.
+
+retry_wait_for_bucket_to_start(Bucket, Time, RV)
+  when Time >= ?BUCKET_ENGINE_TIMEOUT_MS ->
+    ?log_error("Engine for bucket ~p didn't start in ~p ms. Exit.",
+               [Bucket, Time]),
+    exit(RV);
+retry_wait_for_bucket_to_start(Bucket, Time, _RV) ->
+    timer:sleep(500),
+
+    Time1 = Time + 500,
+    ?log_debug("Waiting for engine to start. Bucket: ~p, Wait time: ~p ms.",
+               [Bucket, Time1]),
+    wait_for_bucket_to_start(Bucket, Time1).
+
+%% A ClusterConfigOnly bucket (a placeholder holding only the CCCP payload) has
+%% no data engine and answers the default stats request with 'not_supported'
+%% This is the method the memcached team has told us to use to identify a
+%% config-only bucket.
+bucket_engine_status(Sock) ->
+    case mc_binary:quick_stats(Sock, <<>>, fun (_, _, Acc) -> Acc end, []) of
+        {ok, _} ->
+            ok;
+        {memcached_error, not_supported, undefined} ->
+            {error, config_only_bucket};
+        Error ->
+            {error, Error}
     end.
 
 get_live_ddoc_ids(#state{local_docs = Docs}) ->
