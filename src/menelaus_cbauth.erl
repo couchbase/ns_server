@@ -698,7 +698,7 @@ setup_t() ->
 teardown_t(PidMap) ->
     Name = list_to_atom("json_rpc_connection-" ++ ?LABEL),
     erlang:unregister(Name),
-    mock_helpers:shutdown_processes(PidMap),
+    mock_helpers:teardown(PidMap),
     fake_chronicle_kv:teardown(),
     fake_ns_config:teardown(),
     meck:unload().
