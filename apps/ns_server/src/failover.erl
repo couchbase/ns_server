@@ -706,10 +706,19 @@ janitor_buckets(BucketsParams, Nodes) ->
           fun({Bucket, ok}) ->
                   {Bucket, ok};
              ({Bucket, {error, _, BadNodes}}) ->
-                  ?rebalance_error("Skipped vbucket activations and "
-                                   "replication topology changes because not "
-                                   "all remaining nodes were found to have "
-                                   "healthy bucket ~p: ~p", [Bucket, BadNodes]),
+                  BinMsg =
+                      iolist_to_binary(
+                        io_lib:format(
+                          "Skipped vbucket activations and replication "
+                          "topology changes because not all remaining "
+                          "nodes were found to have healthy bucket ~p: ~p",
+                          [Bucket, BadNodes])),
+                  ?rebalance_error(BinMsg),
+                  ale:error(?USER_LOGGER, BinMsg),
+                  event_log:add_log(
+                    vbucket_activation_skipped,
+                    [{bucket, list_to_binary(Bucket)},
+                     {nodes, BadNodes}]),
                   {Bucket, janitor_failed};
              ({Bucket, Error}) ->
                   ?rebalance_error("Janitor cleanup of ~p "

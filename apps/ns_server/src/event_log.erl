@@ -73,6 +73,8 @@ event_details(cb_collect_failed) ->
     {23, ns_server, error, <<"CB collect failed">>};
 event_details(cgroups_changed) ->
     {24, ns_server, info, <<"Changed CGroup settings">>};
+event_details(vbucket_activation_skipped) ->
+    {25, ns_server, warn, <<"Skipped vbucket activations">>};
 
 %% event_ids block for Security related events: [9216, ..., 10239]
 event_details(audit_enabled) ->
