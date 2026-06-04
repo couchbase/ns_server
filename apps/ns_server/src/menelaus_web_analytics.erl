@@ -182,15 +182,10 @@ handle_settings_post_enterprise_analytics(Req) ->
             "-skipValidation=" ++ atom_to_list(SkipValidation)]
         ++ common_settings_args(),
 
-    case misc:run_external_tool(
-        path_config:component_path(bin, "cbas"), Args, Env,
-        [{write_data, JsonObject}, {stderr_to_stdout, false}]) of
-        {0, StdErr, StdOut} ->
-            ?log_debug("handle_settings_post success stderr: ~s", [StdErr]),
+    case run_cbas_streaming_stderr(Args, Env, JsonObject) of
+        {0, StdOut} ->
             menelaus_util:reply_ok(Req, "application/json", StdOut);
-        {Code, StdErr, StdOut} ->
-            ?log_debug("handle_settings_post fail ~p stderr: ~s",
-                       [Code, StdErr]),
+        {_Code, StdOut} ->
             menelaus_util:reply(Req, StdOut, 400,
                                 [{"Content-Type", "application/json"}])
     end.
@@ -303,3 +298,76 @@ common_settings_args() ->
     Columnar = config_profile:search({cbas, columnar}, false),
     ["-deploymentModel=" ++ config_profile:name(),
     "-columnar=" ++ atom_to_list(Columnar)].
+
+%% Similar to misc:run_external_tool/4 but streams stderr to the debug log
+%% incrementally (line by line) instead of buffering it all in memory.
+%% This avoids truncation of large stderr output (e.g., SDK debug logs
+%% from the Java blob storage validator).
+%% Returns {ExitCode, StdoutBinary}.
+run_cbas_streaming_stderr(Args, Env, WriteData) ->
+    misc:executing_on_new_process(
+      fun () ->
+              erlang:process_flag(trap_exit, true),
+              Path = path_config:component_path(bin, "cbas"),
+              GoportOpts = [binary, stream, exit_status,
+                            {args, Args},
+                            {env, Env},
+                            {name, false},
+                            {graceful_shutdown, false},
+                            {cgroup, ""}],
+              {ok, Port} = goport:start_link(Path, GoportOpts),
+              goport:deliver(Port),
+              case WriteData of
+                  undefined -> ok;
+                  Data -> goport:write(Port, Data)
+              end,
+              collect_cbas_output(Port, [], [])
+      end).
+
+collect_cbas_output(Port, StdoutAcc, StderrLineBuf) ->
+    receive
+        {Port, {data, {stdout, Data}}} ->
+            goport:deliver(Port),
+            collect_cbas_output(Port, [Data | StdoutAcc], StderrLineBuf);
+        {Port, {data, {stderr, Data}}} ->
+            goport:deliver(Port),
+            %% Stream stderr lines to the log immediately
+            NewBuf = cbas_stderr(StderrLineBuf, Data),
+            collect_cbas_output(Port, StdoutAcc, NewBuf);
+        {Port, {data, Data}} ->
+            %% Fallback for combined stdout/stderr mode (shouldn't happen here)
+            goport:deliver(Port),
+            collect_cbas_output(Port, [Data | StdoutAcc], StderrLineBuf);
+        {Port, {exit_status, Status}} ->
+            %% Flush any remaining stderr buffer
+            case StderrLineBuf of
+                [] -> ok;
+                _ ->
+                    Remaining = iolist_to_binary(lists:reverse(StderrLineBuf)),
+                    ?log_debug("cbas stderr: ~s", [Remaining])
+            end,
+            {Status, iolist_to_binary(lists:reverse(StdoutAcc))};
+        {'EXIT', Port, normal} ->
+            ?log_error("Saw goport exit with normal status unexpectedly"),
+            exit(unexpected_normal_termination_of_goport);
+        {'EXIT', Pid, Reason} ->
+            ?log_error("Got 'EXIT' from ~p with reason ~p", [Pid, Reason]),
+            exit(Reason);
+        Msg ->
+            ?log_error("Got unexpected message ~p", [Msg]),
+            exit({unexpected_message, Msg})
+    end.
+
+cbas_stderr(Buf, NewData) ->
+    Combined = iolist_to_binary([lists:reverse(Buf), NewData]),
+    cbas_stderr(Combined).
+
+cbas_stderr(Bin) ->
+    case binary:split(Bin, <<"\n">>) of
+        [Line, Rest] ->
+            ?log_debug("~s", [Line]),
+            cbas_stderr(Rest);
+        [Remaining] ->
+            %% No newline yet; buffer remaining data
+            [Remaining]
+    end.
