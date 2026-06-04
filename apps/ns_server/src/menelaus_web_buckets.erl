@@ -817,8 +817,8 @@ init_bucket_validation_context(IsNew, BucketName, Req) ->
 
     BucketUUID =
         case IsNew of
-            true -> ns_bucket:uuid(BucketName, Snapshot);
-            false -> not_present
+            false -> ns_bucket:uuid(BucketName, Snapshot);
+            true -> not_present
         end,
     init_bucket_validation_context(
       IsNew, BucketName, BucketUUID,
@@ -4531,8 +4531,8 @@ basic_bucket_params_screening(IsNew, Name, Params, AllBuckets,
                {nodes, [N]}] || N <- KvNodes],
     BucketUUID =
         case IsNew of
-            true -> <<"7a3e8e249d8a2f9dabd757ec4dfcbc03">>;
-            false -> not_present
+            false -> <<"7a3e8e249d8a2f9dabd757ec4dfcbc03">>;
+            true -> not_present
         end,
     Ctx = init_bucket_validation_context(IsNew, Name, BucketUUID, AllBuckets,
                                          KvNodes, Groups, [],
