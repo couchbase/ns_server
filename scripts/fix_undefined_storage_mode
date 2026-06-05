@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+#
+# Detect and fix membase buckets whose 'storage_mode' property is undefined in
+# the chronicle config.
+#
+# Background (MB-72097):
+#   ns_bucket:storage_mode/1 falls back to a *computed* default when the
+#   'storage_mode' property is absent from a bucket's config:
+#
+#       default_storage_mode(membase) ->
+#           case is_cluster_79() andalso is_enterprise() of
+#               true  -> magma;
+#               false -> couchstore
+#           end.
+#
+# The fix locks in a concrete storage backend so it no longer depends on the
+# compat-mode-sensitive default:
+#   1. GET  /pools/default/buckets/<bucket>   -> read the current storageBackend
+#   2. POST /pools/default/buckets/<bucket>   -> write a value back
+#   Posting the value the bucket already resolves to is not treated as a storage
+#   mode migration (see is_storage_mode_migration/3); it simply persists
+#   'storage_mode' into chronicle.
+#
+# Modes:
+#   scan
+#       Read-only. Reports membase buckets with no persisted storage_mode.
+#
+#   dry_run_fix_pre_8_0
+#       Read-only. For clusters at compat version < 8.0 only. Reports what
+#       'fix_pre_8_0' would persist without changing anything. As an extra
+#       safety check, only buckets that currently resolve to couchstore (the
+#       pre-8.0 computed default) are eligible; any affected bucket resolving
+#       to a different backend is reported as an error and skipped.
+#
+#   fix_pre_8_0
+#       For clusters at compat version < 8.0 only. Persists the *current*
+#       storageBackend for affected buckets (optionally restricted with
+#       --bucket). A --bucket that is not in the set of affected buckets is
+#       refused. A bucket that does not resolve to couchstore is reported as an
+#       error and skipped. Not allowed on clusters at compat version >= 8.0.
+#
+# The dry-run mode is read-only and is deliberately separate from the fix mode
+# (rather than a --dry-run flag) so that there is no way to accidentally apply
+# changes by forgetting a flag. Always run 'scan' and the matching dry-run mode
+# first, verify the proposed changes, then apply.
+#
+# The scan uses /diag/eval to inspect the actual chronicle config (the REST
+# bucket info always shows the computed default, so it cannot by itself reveal
+# whether 'storage_mode' is persisted). /diag/eval requires the request to
+# originate from localhost unless 'allow_nonlocal_eval' is set, so this is
+# normally run on a cluster node against its own REST port.
+#
+# Usage:
+#   # Report buckets missing a persisted storage_mode:
+#   ./fix_undefined_storage_mode scan -c localhost:8091 \
+#       -u <Username> -p <password>
+#
+#   # (compat < 8.0) Show what would be persisted without changing anything:
+#   ./fix_undefined_storage_mode dry_run_fix_pre_8_0 -c localhost:8091 \
+#       -u <Username> -p <password>
+#
+#   # (compat < 8.0) Persist the current storageBackend for affected buckets:
+#   ./fix_undefined_storage_mode fix_pre_8_0 -c localhost:8091 \
+#       -u <Username> -p <password>
+
+import argparse
+import getpass
+import sys
+import time
+
+import requests
+from requests.auth import HTTPBasicAuth
+
+
+# These scripts run against live production clusters. Just for extra
+# safety, pause between per-bucket operations so we don't fire a burst of
+# requests at the cluster all at once.
+PER_BUCKET_DELAY_SECS = 0.50
+
+
+# Erlang snippet evaluated via /diag/eval. Returns a JSON array of the names of
+# all membase (couchbase) buckets whose config has no persisted 'storage_mode'
+# property. Ephemeral buckets always persist storage_mode=ephemeral and
+# memcached buckets have no storage_mode, so both are correctly excluded.
+SCAN_SNIPPET = """
+Missing = [list_to_binary(Name) ||
+              {Name, BC} <- ns_bucket:get_buckets(),
+              ns_bucket:bucket_type(BC) =:= membase,
+              not proplists:is_defined(storage_mode, BC)],
+{json, Missing}.
+"""
+
+
+# Returns the atom 'true'/'false' for whether the cluster's effective compat
+# version is at or above 8.0. This gates which fix mode is allowed.
+COMPAT_80_SNIPPET = "cluster_compat_mode:is_cluster_80()."
+
+
+class ClusterClient:
+    def __init__(self, args):
+        scheme = "https" if args.ssl else "http"
+        self.base = f"{scheme}://{args.cluster}"
+        self.auth = HTTPBasicAuth(args.username, args.password)
+        self.verify = not args.no_verify
+        self.timeout = args.timeout
+
+    def diag_eval(self, snippet):
+        resp = requests.post(f"{self.base}/diag/eval",
+                             data=snippet.encode("utf-8"),
+                             auth=self.auth, verify=self.verify,
+                             timeout=self.timeout)
+        resp.raise_for_status()
+        return resp
+
+    def get_bucket(self, bucket):
+        resp = requests.get(f"{self.base}/pools/default/buckets/{bucket}",
+                            auth=self.auth, verify=self.verify,
+                            timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def post_bucket(self, bucket, params):
+        resp = requests.post(f"{self.base}/pools/default/buckets/{bucket}",
+                             data=params, auth=self.auth, verify=self.verify,
+                             timeout=self.timeout)
+        return resp
+
+
+def find_buckets_missing_storage_mode(client):
+    resp = client.diag_eval(SCAN_SNIPPET)
+    try:
+        return resp.json()
+    except ValueError:
+        sys.exit(f"Unexpected /diag/eval response (expected a JSON array of "
+                 f"bucket names):\n{resp.text}")
+
+
+def is_cluster_80(client):
+    resp = client.diag_eval(COMPAT_80_SNIPPET)
+    text = resp.text.strip()
+    if text == "true":
+        return True
+    if text == "false":
+        return False
+    sys.exit(f"Unexpected /diag/eval response when checking the cluster compat "
+             f"version (expected 'true' or 'false'):\n{resp.text}")
+
+
+def do_scan(client, args):
+    buckets = find_buckets_missing_storage_mode(client)
+    if not buckets:
+        print("No buckets with an undefined storage_mode were found. "
+              "Nothing to fix.")
+        return 0
+
+    print(f"Found {len(buckets)} bucket(s) with an undefined storage_mode "
+          f"(would resolve to a compat-mode-dependent default on upgrade):")
+    warning_printed = False
+    for name in buckets:
+        storage_backend = "<unknown>"
+        try:
+            info = client.get_bucket(name)
+            storage_backend = info.get("storageBackend", "<none>")
+        except requests.RequestException as e:
+            storage_backend = f"<error reading bucket: {e}>"
+        print(f"  {name}  (currently resolves to storageBackend={storage_backend})")
+        # A bucket with an undefined storage_mode that resolves to magma is in a
+        # dangerous state: the data on disk may be couchstore while the bucket
+        # now resolves to magma (the >= 8.0 enterprise computed default), so any
+        # operation that acts on the resolved backend risks data loss.
+        if storage_backend == "magma":
+            print("    WARNING: possible or actual data loss due to "
+                  "storage_mode mismatch. Do not restart nodes, rebalance, "
+                  "or change bucket settings")
+            warning_printed = True
+    if not warning_printed:
+        print("\nNext, run the matching dry-run mode to see exactly what "
+              "would\n"
+              "change before applying anything.\n"
+              "\n"
+              "For clusters at compat version < 8.0:\n"
+              "  1. Run 'dry_run_fix_pre_8_0' to preview changes\n"
+              "  2. Run 'fix_pre_8_0' to persist the current storageBackend")
+    return 0
+
+
+def do_fix_pre_8_0(client, args, dry_run):
+    if is_cluster_80(client):
+        sys.exit("ERROR: 'fix_pre_8_0' mode is not allowed for clusters at "
+                 "compat version 8.0 or later.")
+
+    buckets = find_buckets_missing_storage_mode(client)
+    if args.bucket:
+        requested = set(args.bucket)
+        # Safeguard: only buckets that 'scan' reports (no persisted
+        # storage_mode in chronicle) may be touched. Refuse if any requested
+        # bucket is not in that set, rather than silently skipping it, so a
+        # typo or a stale bucket name cannot quietly result in nothing being
+        # done (or a wrong assumption about what was fixed).
+        ineligible = requested - set(buckets)
+        if ineligible:
+            sys.exit(
+                f"ERROR: refusing to run: the following --bucket value(s) are "
+                f"not in the set of buckets with an undefined storage_mode: "
+                f"{', '.join(sorted(ineligible))}. Only buckets that 'scan' "
+                f"reports may be changed in this mode. A bucket that already "
+                f"has a storage backend defined in chronicle (or that does not "
+                f"exist) cannot be changed here. Run 'scan' to see the "
+                f"eligible buckets.")
+        buckets = [b for b in buckets if b in requested]
+
+    if not buckets:
+        print("No buckets with an undefined storage_mode to fix.")
+        return 0
+
+    failures = 0
+    for i, name in enumerate(buckets):
+        # Throttle per-bucket operations against live production clusters so we
+        # don't issue all the requests back-to-back.
+        if i > 0:
+            time.sleep(PER_BUCKET_DELAY_SECS)
+
+        try:
+            info = client.get_bucket(name)
+        except requests.RequestException as e:
+            print(f"FAILED  {name}: could not GET bucket info: {e}")
+            failures += 1
+            continue
+
+        storage_backend = info.get("storageBackend")
+        # Safety check: a membase bucket with an undefined storage_mode on a
+        # cluster at compat version < 8.0 must resolve to couchstore (the
+        # pre-8.0 computed default). If it resolves to anything else (e.g.
+        # magma), something unexpected is going on; refuse to persist that
+        # value and skip this bucket rather than locking in a surprising
+        # backend.
+        if storage_backend != "couchstore":
+            print(f"ERROR   {name}: storageBackend resolves to "
+                  f"{storage_backend!r}, not 'couchstore'; refusing to apply "
+                  f"a fix and skipping this bucket. Only buckets resolving to "
+                  f"couchstore may be fixed in this mode.")
+            failures += 1
+            continue
+
+        if dry_run:
+            print(f"DRY-RUN {name}: would POST storageBackend={storage_backend}")
+            continue
+
+        resp = client.post_bucket(name, {"storageBackend": storage_backend})
+        if resp.ok:
+            print(f"FIXED   {name}: persisted storageBackend={storage_backend}")
+        else:
+            print(f"FAILED  {name}: POST storageBackend={storage_backend} "
+                  f"returned {resp.status_code}: {resp.text}")
+            failures += 1
+
+    if not dry_run:
+        remaining = find_buckets_missing_storage_mode(client)
+        if remaining:
+            print(f"\n{len(remaining)} bucket(s) still missing a persisted "
+                  f"storage_mode: {', '.join(remaining)}")
+        else:
+            print("\nAll buckets now have a persisted storage_mode.")
+
+    return 1 if failures else 0
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Detect and fix membase buckets with an undefined "
+                    "storage_mode in chronicle (MB-72097).")
+    parser.add_argument("mode",
+                        choices=["scan",
+                                 "dry_run_fix_pre_8_0", "fix_pre_8_0"],
+                        help="scan: report affected buckets. "
+                             "dry_run_fix_pre_8_0: (compat < 8.0) report what "
+                             "fix_pre_8_0 would persist, changing nothing. "
+                             "fix_pre_8_0: (compat < 8.0) persist the current "
+                             "storageBackend for affected buckets.")
+    parser.add_argument("-c", "--cluster", default="localhost:8091",
+                        help="<host:port> of a cluster node's REST API "
+                             "(default: localhost:8091).")
+    parser.add_argument("-u", "--username", default="Administrator",
+                        help="Administrator username (default: Administrator).")
+    parser.add_argument("-p", "--password",
+                        help="Administrator password. If omitted you will be "
+                             "prompted.")
+    parser.add_argument("--ssl", action="store_true",
+                        help="Use https (e.g. with the SSL REST port 18091).")
+    parser.add_argument("--no-verify", action="store_true",
+                        help="Do not verify TLS certificates (https only).")
+    parser.add_argument("--bucket", action="append", metavar="NAME",
+                        help="(dry_run_)fix_pre_8_0: restrict to this bucket; "
+                             "may be repeated; default is all affected "
+                             "buckets.")
+    parser.add_argument("--timeout", type=float, default=60.0,
+                        help="Per-request timeout in seconds (default: 60).")
+    args = parser.parse_args()
+    if args.password is None:
+        args.password = getpass.getpass(
+            f"Password for {args.username}@{args.cluster}: ")
+    return args
+
+
+def main():
+    args = parse_args()
+    client = ClusterClient(args)
+    try:
+        if args.mode == "scan":
+            return do_scan(client, args)
+        return do_fix_pre_8_0(
+            client, args, dry_run=args.mode == "dry_run_fix_pre_8_0")
+    except requests.RequestException as e:
+        sys.exit(f"Error communicating with the cluster: {e}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())
