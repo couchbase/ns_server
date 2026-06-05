@@ -2515,12 +2515,13 @@ validate_test_roles(Roles) ->
 
 roles_format_test() ->
     setup_meck(),
-
-    ?assert(validate_test_roles(roles())),
-    ?assert(validate_test_roles(menelaus_old_roles:roles_pre_76())),
-    ?assert(validate_test_roles(menelaus_old_roles:roles_pre_79())),
-
-    teardown_meck().
+    try
+        ?assert(validate_test_roles(roles())),
+        ?assert(validate_test_roles(menelaus_old_roles:roles_pre_76())),
+        ?assert(validate_test_roles(menelaus_old_roles:roles_pre_79()))
+    after
+        teardown_meck()
+    end.
 
 params_from_permissions_test__() ->
     CompiledRoles =

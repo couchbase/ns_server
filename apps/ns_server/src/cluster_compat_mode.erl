@@ -488,7 +488,7 @@ is_compatible_product_test() ->
         false = is_compatible_product(?DEFAULT_PROD),
         true = is_compatible_product(?WOMBAT_PROD)
     after
-        ?meckUnload(config_profile)
+        meck:unload(config_profile)
     end.
 -endif.
 
