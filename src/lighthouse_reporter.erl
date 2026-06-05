@@ -157,21 +157,6 @@ build_name() ->
 build_version() ->
     misc:compat_version_to_binary(cluster_compat_mode:get_compat_version()).
 
-build_resource_telemetry(_Statuses) ->
-    %% TODO: Resource telemetry
-    StorageBytesUsed = 0,
-    StorageBytesTotal = 0,
-    RamBytesUsed = 0,
-    RamBytesTotal = 0,
-    CpuPhysicalCores = 0,
-    CpuLogicalCores = 0,
-    #{storageBytesUsed => StorageBytesUsed,
-      storageBytesTotal => StorageBytesTotal,
-      ramBytesUsed => RamBytesUsed,
-      ramBytesTotal => RamBytesTotal,
-      cpuPhysicalCores => CpuPhysicalCores,
-      cpuLogicalCores => CpuLogicalCores}.
-
 build_edition(Node, Config) ->
     case cluster_compat_mode:is_node_enterprise(Node, Config) of
         true -> <<"enterprise">>;
@@ -232,27 +217,17 @@ create_report() ->
     BasePayload = #{collectedAt => CollectedAt,
                     product => Product,
                     clusterUuid => ClusterUuid},
-    ResourceTelemetry = build_resource_telemetry(NodesData),
-    Payload1 = maps:merge(BasePayload, ResourceTelemetry),
-    ClusterDetails = #{services => [],
-                       nodes => NodesData},
-    Payload2 = maps:merge(Payload1, ClusterDetails),
-    json:encode(Payload2).
+    ClusterDetails = #{nodes => NodesData},
+    Payload1 = maps:merge(BasePayload, ClusterDetails),
+    json:encode(Payload1).
 
 -ifdef(TEST).
 
 report_keys() ->
     [<<"clusterUuid">>,
      <<"collectedAt">>,
-     <<"cpuLogicalCores">>,
-     <<"cpuPhysicalCores">>,
      <<"nodes">>,
-     <<"product">>,
-     <<"ramBytesTotal">>,
-     <<"ramBytesUsed">>,
-     <<"services">>,
-     <<"storageBytesTotal">>,
-     <<"storageBytesUsed">>].
+     <<"product">>].
 
 node_keys() ->
     [<<"cpuLogicalCores">>,
