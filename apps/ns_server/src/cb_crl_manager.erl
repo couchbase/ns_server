@@ -538,7 +538,8 @@ download_from_nodes([Node | Rest], FilenameBin, ExpectedChecksum) ->
 do_upload_crl_file(Filename, Binary, State) ->
     TrustedCAs = ns_server_cert:trusted_CAs(der),
     TS = calendar:universal_time(),
-    case decode_and_verify_crl(Binary, TrustedCAs) of
+    AllowExpired = ?get_param(allow_expired_crls, false),
+    case decode_and_verify_crl(Binary, TrustedCAs, AllowExpired) of
         {error, Reason} ->
             ?log_debug("CRL ~p: decode failed: ~p", [Filename, Reason]),
             {error, Reason};
@@ -961,7 +962,9 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
                             {ok, Bin} -> {ok, Bin};
                             {error, Err} -> {error, {read_error, Err}}
                         end,
-        {ok, Results} ?= decode_and_verify_crl(Binary, TrustedCAs),
+        AllowExpired = ?get_param(allow_expired_crls, false),
+        {ok, Results} ?= decode_and_verify_crl(Binary, TrustedCAs,
+                                               AllowExpired),
         Bad = [R || R <- Results, R#entry_result.result =/= ok],
         ok ?= case Bad of
                     [] -> ok;
@@ -1232,7 +1235,8 @@ current_status(ConfigPath, TrustedDerCAs) ->
         DerCRLs ->
             Results = lists:map(
                         fun (Der) ->
-                            case decode_and_verify_crl(Der, TrustedDerCAs) of
+                            case decode_and_verify_crl(Der, TrustedDerCAs,
+                                                       false) of
                                 {ok, [R]} -> entry_to_map(R);
                                 {error, _} -> invalid_entry_map()
                             end
@@ -1406,10 +1410,10 @@ decode_der_crl(Der) ->
 %%% CRL verification (RFC 5280 §6.3)
 %%%===================================================================
 
-decode_and_verify_crl(Binary, TrustedDerCAs) ->
+decode_and_verify_crl(Binary, TrustedDerCAs, AllowExpiredCrls) ->
     maybe
         {ok, Triples} ?= decode_crl(Binary),
-        {ok, verify_crls(Triples, TrustedDerCAs)}
+        {ok, verify_crls(Triples, TrustedDerCAs, AllowExpiredCrls)}
     else
         {error, Reason} ->
             {error, {decode_error, Reason}}
@@ -1426,15 +1430,16 @@ decode_to_entries(Binary) ->
             {error, {decode_error, Reason}}
     end.
 
-%% Verify every CRL triple against the cluster's trusted CAs and return one
-%% entry_result() per entry.  No formatting is done here; callers extract
-%% the raw fields they need (see attempt_load/6 and current_status/2).
+%% When AllowExpiredCrls is true the thisUpdate/nextUpdate validity window
+%% is not checked; only the CRL signature is verified.  This is intended
+%% for testing environments where expired CRLs must be loadable.
 -spec verify_crls(
         [{public_key:issuer_name(), #'CertificateList'{}, binary()}],
-        [binary()]) -> [entry_result()].
-verify_crls(CRLTriples, TrustedDerCAs) ->
+        [binary()],
+        AllowExpiredCrls :: boolean()) -> [entry_result()].
+verify_crls(CRLTriples, TrustedDerCAs, AllowExpiredCrls) ->
     [begin
-         Result = verify_crl(Decoded, TrustedDerCAs),
+         Result = verify_crl(Decoded, TrustedDerCAs, AllowExpiredCrls),
          case Result of
              {error, Reason} ->
                  ?log_warning("CRL entry verification failed"
@@ -1475,11 +1480,15 @@ crl_times(#'CertificateList'{tbsCertList = TBS}) ->
     {ThisUpdate, NextUpdate}.
 
 %% Top-level CRL verifier: validity period first, then signature.
--spec verify_crl(#'CertificateList'{}, [binary()]) -> ok | {error, term()}.
-verify_crl(CRL, TrustedDerCAs) ->
-    case check_crl_validity(CRL) of
-        ok  -> verify_crl_signature(CRL, TrustedDerCAs);
-        Err -> Err
+-spec verify_crl(#'CertificateList'{}, [binary()], boolean()) ->
+          ok | {error, term()}.
+verify_crl(CRL, TrustedDerCAs, AllowExpiredCrls) ->
+    maybe
+        ok ?= case AllowExpiredCrls of
+                  true -> ok;
+                  false -> check_crl_validity(CRL)
+              end,
+        ok ?= verify_crl_signature(CRL, TrustedDerCAs)
     end.
 
 %% RFC 5280 §6.3.3 step (a): check thisUpdate ≤ now ≤ nextUpdate.
