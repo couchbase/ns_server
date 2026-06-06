@@ -54,7 +54,8 @@
          verify_cert_hostname_strict/2,
          decode_and_validate_chain/2,
          encrypt_pkey/2,
-         chronicle_upgrade_to_79/1]).
+         chronicle_upgrade_to_79/1,
+         format_name/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").

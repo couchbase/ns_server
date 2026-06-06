@@ -4168,3 +4168,48 @@ get_disk_data(Mounts) ->
             ?log_error("Couldn't check disk usage as node db dir is missing"),
             {error, no_dbdir}
     end.
+
+%% Normalize a file path to a canonical absolute form.
+%%   1. filename:absname/1 makes the path absolute relative to CWD.
+%%   2. . and .. segments are collapsed without touching the filesystem
+%%      (symlinks are NOT resolved).
+%% Raises error(badarg) if the path escapes the filesystem root (e.g. /a/../../b).
+%% This ensures that two paths referring to the same file via . or .. map to
+%% the same string.
+-spec normalize_path(file:filename_all()) -> file:filename_all().
+normalize_path(Path) ->
+    Resolve = fun Resolve([], Acc) ->
+                      lists:reverse(Acc);
+                  Resolve(["."  | Rest], Acc) ->
+                      Resolve(Rest, Acc);
+                  Resolve([".." | Rest], [_ | Acc]) ->
+                      Resolve(Rest, Acc);
+                  Resolve([".." | _], []) ->
+                      %% Attempt to go above the filesystem root — path is invalid
+                      error(badarg);
+                  Resolve([Seg  | Rest], Acc) ->
+                      Resolve(Rest, [Seg | Acc])
+              end,
+    Abs = filename:absname(Path),
+    case filename:split(Abs) of
+        []                -> Abs;
+        [Root | Segments] -> filename:join([Root | Resolve(Segments, [])])
+    end.
+
+-ifdef(TEST).
+normalize_path_test_() ->
+    [
+     ?_assertEqual("/foo/bar/baz",  misc:normalize_path("/foo/bar/baz")),
+     ?_assertEqual("/foo/bar/baz",  misc:normalize_path("/foo/bar/baz/")),
+     ?_assertEqual("/foo/bar",      misc:normalize_path("/foo/./bar")),
+     ?_assertEqual("/foo/bar",      misc:normalize_path("/foo/bar/.")),
+     ?_assertEqual("/foo",          misc:normalize_path("/foo/bar/..")),
+     ?_assertEqual("/foo/baz",      misc:normalize_path("/foo/bar/../baz")),
+     ?_assertEqual("/",             misc:normalize_path("/foo/bar/../..")),
+     ?_assertEqual("/qux",          misc:normalize_path("/foo/bar/../../qux")),
+     ?_assertEqual("/a/c",          misc:normalize_path("/a/b/./../c")),
+     ?_assertError(badarg,          misc:normalize_path("/foo/../../bar")),
+     ?_assertError(badarg,          misc:normalize_path("/../..")),
+     ?_assertError(badarg,          misc:normalize_path("/../../foo"))
+    ].
+-endif.

@@ -47,6 +47,9 @@ child_specs() ->
      {chronicle_compat_events, {chronicle_compat_events, start_link, []},
       permanent, 5000, worker, [chronicle_compat_events]},
 
+     {cb_crl_manager, {cb_crl_manager, start_link, []},
+      permanent, 1000, worker, [cb_crl_manager]},
+
      {remote_monitors, {remote_monitors, start_link, []},
       permanent, 1000, worker, []},
 
