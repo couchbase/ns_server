@@ -261,37 +261,76 @@ default_config() ->
       delta_crls => false,
       poll_interval_ms => ?DEFAULT_POLL_INTERVAL_MS}.
 
-%% Apply a new configuration to State, updating the CRL poll dir and poll
-%% interval.  Loads / removes CRL files as needed for the new poll dir.
+%% Apply a new configuration to State without creating a window where the
+%% cache is empty and without the race where a non-disabled policy is
+%% visible in ETS before the corresponding CRL data has been loaded.
 %%
-%% Three poll dir transitions are handled:
-%%   poll dir unchanged  — only interval/policy changed; cache untouched
-%%   _ → undefined     — poll dir removed; bulk-remove all CRL records
-%%   _ → Dir           — new or changed directory; scan_directory adds
-%%                       new files before removing old ones so the cache
-%%                       is never empty during the transition
+%% The function executes three strictly-ordered phases:
+%%
+%%   Phase 1 — Disable first.
+%%     Write 'disabled' to ETS for every scope whose new policy is
+%%     'disabled'.  Any concurrent verify_fun call for that scope will
+%%     now pass through immediately, so it is safe to modify the cache.
+%%
+%%   Phase 2 — Load CRL data.
+%%     Insert / update / remove CRL files according to the new poll dir.
+%%     Three poll dir transitions are handled:
+%%       poll dir unchanged  — only interval/policy changed; cache untouched
+%%       _ → undefined       — poll dir removed; bulk-remove all CRL records
+%%       _ → Dir             — new or changed directory; scan_directory adds
+%%                             new files before removing old ones so the cache
+%%                             is never empty during the transition
+%%
+%%   Phase 3 — Enable last.
+%%     Write non-disabled policies to ETS only after Phase 2 completes.
+%%     Any verify_fun call that now sees a non-disabled policy is guaranteed
+%%     to find its CRLs in the cache.
 -spec apply_config(map(), #state{}) -> #state{}.
 apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
     NewPollDir  = maps:get(poll_directory, Cfg),
     NewInterval = maps:get(poll_interval_ms, Cfg),
+    NewPolicies = maps:get(policy_per_scope, Cfg),
     State1 = State#state{poll_directory = NewPollDir,
                          poll_interval_ms = NewInterval},
 
-    case {OldPollDir, NewPollDir} of
-        {Same, Same} ->
-            %% Poll dir unchanged; cache already up-to-date.
-            State1;
-        {_, undefined} ->
-            ?log_info(
-               "CRL poll directory cleared; removing ~p loaded CRL file(s)",
-               [maps:size(State#state.active)]),
-            cb_crl_cache:remove_all_crls(),
-            clear_config_crls(),
-            State1#state{file_state = #{}, active = #{}};
-        {_, Dir} ->
-            ?log_info("CRL poll directory set to ~p", [Dir]),
-            scan_directory(Dir, State1, false)
-    end.
+    %% Phase 1: disable scopes whose new policy is 'disabled'.
+    maps:foreach(
+      fun (Scope, disabled) ->
+              cb_crl_cache:set_policy(Scope, disabled);
+          (_Scope, _Policy) ->
+              ok
+      end, NewPolicies),
+
+    %% Phase 2: update CRL data.
+    State2 =
+        case {OldPollDir, NewPollDir} of
+            {Same, Same} ->
+                %% Poll dir unchanged; cache already up-to-date.
+                State1;
+            {_, undefined} ->
+                ?log_info(
+                   "CRL poll directory cleared; removing ~p loaded CRL file(s)",
+                   [maps:size(State#state.active)]),
+                cb_crl_cache:remove_all_crls(),
+                clear_config_crls(),
+                State1#state{file_state = #{}, active = #{}};
+            {_, Dir} ->
+                ?log_info("CRL poll directory set to ~p", [Dir]),
+                scan_directory(Dir, State1, false)
+        end,
+
+    %% Phase 3: enable / update scopes whose new policy is not 'disabled'.
+    %% CRL data is now in the cache, so the verify_fun will find what it
+    %% needs as soon as it reads the new policy from ETS.
+    maps:foreach(
+      fun (_Scope, disabled) ->
+              %% Already written in Phase 1; skip.
+              ok;
+          (Scope, Policy) ->
+              cb_crl_cache:set_policy(Scope, Policy)
+      end, NewPolicies),
+
+    State2.
 
 %% Schedule the next poll and return the updated state.
 %% No timer is created when there is nothing to poll.

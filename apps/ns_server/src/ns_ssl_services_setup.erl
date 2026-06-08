@@ -474,9 +474,8 @@ honor_cipher_order(Service) -> honor_cipher_order(Service, ns_config:latest()).
 honor_cipher_order(Service, Config) ->
     get_sec_setting(Service, honor_cipher_order, Config, true).
 
-ssl_auth_options() ->
-    Val = list_to_atom(proplists:get_value(state, client_cert_auth())),
-    case Val of
+ssl_auth_options(CertAuth) ->
+    case CertAuth of
         disable ->
             [];
         enable ->
@@ -546,8 +545,10 @@ ssl_server_opts() ->
     %% web server doesn't load new CA (after cert rotation) until
     %% all connections to the server are closed
     Versions = supported_versions(ssl_minimum_protocol(ns_server)),
+    CertAuth = list_to_atom(proplists:get_value(state, client_cert_auth())),
     RawTLSOptions =
-        ssl_auth_options() ++
+        ssl_auth_options(CertAuth) ++
+        server_verify_fun_opt(CertAuth) ++
             [{keyfile, pkey_file_path(node_cert)},
              {certfile, chain_file_path(node_cert)},
              {versions, Versions},
@@ -595,6 +596,12 @@ read_ca_certs(File) ->
         {error, enoent} ->
             []
     end.
+
+-spec server_verify_fun_opt(CertAuth :: atom()) -> list().
+server_verify_fun_opt(disable) ->
+    [];
+server_verify_fun_opt(_CertAuth) ->
+    [{verify_fun, {cb_crl:verify_fun(client_auth), undefined}}].
 
 tls_client_opts(Config, PresetOpts) ->
     RawTLSOptions =

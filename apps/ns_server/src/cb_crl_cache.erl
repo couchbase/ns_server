@@ -31,7 +31,9 @@
          remove_file/1,
          remove_all_crls/0,
          get_all_file_paths/0,
-         get_file_crls/1]).
+         get_file_crls/1,
+         set_policy/2,
+         get_policy/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -46,6 +48,7 @@
 %% ETS layout (set):
 %%   {crl_file, NormPath}         => [#crl_elem{}]
 %%   {issuer,   NormIssuer}       => [{crl_file, NormPath}]
+%%   {policy,   Scope}            => disabled | permissive | require
 %%
 %% Each #crl_elem{} stores the normalised issuer, the DER-encoded CRL, and
 %% the timestamp at which it was loaded (passed in by the caller).
@@ -54,6 +57,9 @@
 %%   and collapses . / .. segments (raises badarg if the path escapes root).
 %% Issuer normalization: public_key:pkix_normalize_name/1 (applied in
 %% insert_file).
+%%
+%% Policy entries are managed exclusively by cb_crl_manager with strict
+%% ordering guarantees; see cb_crl_manager:apply_config/2.
 
 -record(state, {}).
 
@@ -115,6 +121,30 @@ get_file_crls(Path) ->
         end
     catch
         error:badarg -> []
+    end.
+
+%% Store the revocation policy for a given scope.
+%% Called exclusively by cb_crl_manager with strict ordering guarantees:
+%%   disabled policies are written before CRL data is modified;
+%%   non-disabled policies are written after CRL data is loaded.
+-spec set_policy(Scope :: atom(), Policy :: atom()) -> ok.
+set_policy(Scope, Policy) ->
+    gen_server:call(?SERVER, {set_policy, Scope, Policy}).
+
+%% Read the revocation policy for a scope directly from ETS.
+%% Returns 'unknown' — not 'disabled' — when the entry is absent or the ETS
+%% table does not yet exist.  Callers must treat 'unknown' as a security
+%% failure (the cache is not ready) rather than silently allowing traffic.
+-spec get_policy(Scope :: atom()) ->
+          disabled | permissive | require | unknown.
+get_policy(Scope) ->
+    try
+        case ets:lookup(?ETS, {policy, Scope}) of
+            [{{policy, _}, Policy}] -> Policy;
+            []                      -> unknown
+        end
+    catch
+        error:badarg -> unknown
     end.
 
 %%%===================================================================
@@ -275,8 +305,15 @@ handle_call({remove_file, Path}, _From, State) ->
     {reply, ok, State};
 
 handle_call(remove_all_crls, _From, State) ->
+    %% Delete only crl_file and issuer records; policy entries are managed
+    %% independently by cb_crl_manager and must not be removed here.
     ets:match_delete(?ETS, {{crl_file, '_'}, '_'}),
     ets:match_delete(?ETS, {{issuer,    '_'}, '_'}),
+    {reply, ok, State};
+
+handle_call({set_policy, Scope, Policy}, _From, State) ->
+    ?log_debug("Setting policy '~p' for scope '~p'", [Policy, Scope]),
+    ets:insert(?ETS, {{policy, Scope}, Policy}),
     {reply, ok, State};
 
 handle_call(Req, _From, State) ->

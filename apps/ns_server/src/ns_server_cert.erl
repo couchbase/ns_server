@@ -55,7 +55,9 @@
          decode_and_validate_chain/2,
          encrypt_pkey/2,
          chronicle_upgrade_to_79/1,
-         format_name/1]).
+         format_name/1,
+         get_subject/1,
+         is_ootb_cert/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -1561,6 +1563,34 @@ chronicle_upgrade_cert_to_79(Cert) ->
             ?log_error("Couldn't upgrade cert to 7.9 (error ~w), keeping "
                        "existing:~n~p", [Reason, Cert]),
             Cert
+    end.
+
+%% Returns true when the client cert was signed by the cluster's
+%% generated (OOTB) CA.
+%%
+%% Uses public_key:pkix_is_issuer/2 for an efficient issuer/subject
+%% name match first.  Only if that passes does it call
+%% pkix_path_validation/3 to verify the actual signature, preventing
+%% a cert with a matching issuer DN from bypassing CRL checks.
+%%
+%% The OOTB CA is read fresh from Chronicle on each valid_peer call
+%% (once per handshake) so that CA rotation takes effect immediately.
+%% Returns false on any error: the cert is then CRL-checked rather
+%% than silently exempted.
+-spec is_ootb_cert(#'OTPCertificate'{}) -> boolean().
+is_ootb_cert(OtpCert) ->
+    CaPem = ns_server_cert:self_generated_ca(),
+    {ok, Der} = ns_server_cert:decode_single_certificate(CaPem),
+    case public_key:pkix_is_issuer(OtpCert, Der) of
+        false ->
+            false;
+        true ->
+            OtpCa = public_key:pkix_decode_cert(Der, otp),
+            case public_key:pkix_path_validation(
+                        OtpCa, [OtpCert], []) of
+                {ok, _}    -> true;
+                {error, _} -> false
+            end
     end.
 
 -ifdef(TEST).
