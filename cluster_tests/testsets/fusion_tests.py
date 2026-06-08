@@ -648,13 +648,9 @@ class FusionTests(testlib.BaseTestSet):
 
         wrapper_args = [
             '--just-disable-auto-failover',
-            '--rewrite', '[fusion_config, state]', 'disabling',
             '--rewrite', '[fusion_config, log_store_uri]', '"local://002"',
             '--rewrite', '[fusion_config, enable_sync_threshold_mb]', '1000',
-            '--rewrite-if', '[{bucket, _, props}, magma_fusion_state]',
-            'enabled', 'disabling',
-            '--rewrite-if', '[{bucket, _, props}, magma_fusion_state]',
-            'enabling', 'disabling']
+            '--disable-fusion']
 
         ConfigRemapTest.run_config_remap(self, self.cluster, wrapper_args)
 

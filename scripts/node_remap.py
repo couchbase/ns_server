@@ -18,6 +18,7 @@ def run_config_remap(initargs,
                      extra_args,
                      rewrite=None,
                      rewrite_if=None,
+                     disable_fusion=False,
                      log_level='info',
                      capture_output=False,
                      root_dir=basedir()):
@@ -29,6 +30,16 @@ def run_config_remap(initargs,
         for path, old, new in rewrite_if:
             print(f"rewrite-if: {path} {old} -> {new}")
             extra_args += ['--rewrite-if', path, old, new]
+    if disable_fusion:
+        rewrite_states = ['enabled', 'enabling', 'stopping', 'stopped',
+                          'disabling']
+        for state in rewrite_states:
+            extra_args += ['--rewrite-if',
+                           '[fusion_config, state]',
+                           state, 'disabling']
+            extra_args += ['--rewrite-if',
+                           '[{bucket, _, props}, magma_fusion_state]',
+                           state, 'disabling']
 
     escript_path = find_valid_binary('escript', root_dir)
     escript_wrapper_path = find_valid_binary('escript-wrapper', root_dir)
@@ -57,6 +68,7 @@ def run_config_remap_via_escript_wrapper(initargs,
                                          remap,
                                          rewrite=None,
                                          rewrite_if=None,
+                                         disable_fusion=False,
                                          log_level='info',
                                          capture_output=False,
                                          root_dir=basedir()):
@@ -71,15 +83,16 @@ def run_config_remap_via_escript_wrapper(initargs,
                   '--disable-auto-failover'] + extra_args
 
     run_config_remap(initargs, output_path, extra_args, rewrite, rewrite_if,
-                     log_level, capture_output, root_dir)
+                     disable_fusion, log_level, capture_output, root_dir)
 
 def disable_afo_via_config_remap(initargs,
                                  output_path,
                                  rewrite=None,
                                  rewrite_if=None,
+                                 disable_fusion=False,
                                  log_level='info',
                                  capture_output=False,
                                  root_dir=basedir()):
     extra_args = ['--disable-auto-failover']
     run_config_remap(initargs, output_path, extra_args, rewrite, rewrite_if,
-                     log_level, capture_output, root_dir)
+                     disable_fusion, log_level, capture_output, root_dir)
