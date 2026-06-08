@@ -406,6 +406,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_alerts_srv:handle_settings_alerts_limits_get/1};
                 ["settings", "stats"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_settings_stats/1};
+                ["internal", "settings", "lighthouse" | PathRest] ->
+                    {{[admin, settings, lighthouse], read},
+                     fun menelaus_web_lighthouse:handle_get_settings/2,
+                     [PathRest]};
                 ["internal", "settings", "metrics" | PathRest] ->
                     {{[admin, settings, metrics], read},
                      fun menelaus_web_stats:handle_get_internal_settings/2,
@@ -714,6 +718,10 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_alerts_srv:handle_settings_alerts_limits_post/1};
                 ["settings", "stats"] ->
                     {{[settings], write}, fun menelaus_web_settings:handle_settings_stats_post/1};
+                ["internal", "settings", "lighthouse" | PathRest] ->
+                    {{[admin, settings, lighthouse], write},
+                     fun menelaus_web_lighthouse:handle_post_settings/2,
+                     [PathRest]};
                 ["internal", "settings", "metrics" | PathRest] ->
                     {{[admin, settings, metrics], write},
                      fun menelaus_web_stats:handle_post_internal_settings/2,
