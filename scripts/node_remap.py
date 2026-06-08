@@ -17,6 +17,7 @@ def run_config_remap(initargs,
                      output_path,
                      extra_args,
                      rewrite_key_values=None,
+                     rewrite=None,
                      log_level='info',
                      capture_output=False,
                      root_dir=basedir()):
@@ -24,6 +25,10 @@ def run_config_remap(initargs,
         for kv in rewrite_key_values:
             print(f"rewrite-key-value: {kv}")
             extra_args += ['--rewrite-key-value'] + kv
+    if rewrite is not None:
+        for one in rewrite:
+            print(f"rewrite: {one}")
+            extra_args += ['--rewrite'] + one
 
     escript_path = find_valid_binary('escript', root_dir)
     escript_wrapper_path = find_valid_binary('escript-wrapper', root_dir)
@@ -51,6 +56,7 @@ def run_config_remap_via_escript_wrapper(initargs,
                                          output_path,
                                          remap,
                                          rewrite_key_values=None,
+                                         rewrite=None,
                                          log_level='info',
                                          capture_output=False,
                                          root_dir=basedir()):
@@ -65,14 +71,15 @@ def run_config_remap_via_escript_wrapper(initargs,
                   '--disable-auto-failover'] + extra_args
 
     run_config_remap(initargs, output_path, extra_args, rewrite_key_values,
-                     log_level, capture_output, root_dir)
+                     rewrite, log_level, capture_output, root_dir)
 
 def disable_afo_via_config_remap(initargs,
                                  output_path,
                                  rewrite_key_values=None,
+                                 rewrite=None,
                                  log_level='info',
                                  capture_output=False,
                                  root_dir=basedir()):
     extra_args = ['--disable-auto-failover']
     run_config_remap(initargs, output_path, extra_args, rewrite_key_values,
-                     log_level, capture_output, root_dir)
+                     rewrite, log_level, capture_output, root_dir)

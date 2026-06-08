@@ -35,6 +35,9 @@ code that the server runs for that.
 simple to rewrite, they behave like term files (3) but are compressed and have a
 crc hash that needs regenerating. Log files are iterated term by term and a new
 log is built as we process these terms.
+6) The --rewrite option can be specified to rewrite configuration keys stored in
+chronicle. It takes a path of keys specified as an erlang list to allow for the
+modification of nested configuration such as bucket configuration.
 
 ## How to run:
 

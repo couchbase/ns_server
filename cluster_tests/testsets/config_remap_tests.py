@@ -63,6 +63,11 @@ class ConfigRemapTest(testlib.BaseTestSet):
         node_remap_path = testlib.get_utility_path('node_remap')
 
         for i in range(len(old_cluster._nodes)):
+            # We re-use the tmp dir to remap nodes, delete it beforehand to
+            # avoid mixing up files that may differ between them.
+            shutil.rmtree(cluster_path/'data'/f'tmp',
+                          ignore_errors=True)
+
             old_node_index = old_start_index + i
 
             initargs_path = (
@@ -83,9 +88,9 @@ class ConfigRemapTest(testlib.BaseTestSet):
 
     @tag(Tag.LowUrgency)
     def without_remap_test(self):
-        testlib.post_succ(
-            self.cluster, '/settings/fusion',
-            json={'logStoreURI': 'local://001', 'enableSyncThresholdMB': 1024})
+        testlib.diag_eval(
+            self.cluster,
+            'ok = chronicle_compat:set_multiple([{top_level_key, value}])')
 
         otp_nodes = str(list(testlib.get_otp_nodes(self.cluster).values()))
         testlib.diag_eval(self.cluster, f"chronicle_compat:push({otp_nodes}).")
@@ -102,8 +107,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
 
         wrapper_args = [
             '--just-disable-auto-failover',
-            '--rewrite-key-values', 'log_store_uri', '"local://002"',
-            '--rewrite-key-values', 'enable_sync_threshold_mb', '1000']
+            '--rewrite', '[top_level_key]', 'value2']
 
         self.run_config_remap(self.cluster, wrapper_args)
 
@@ -116,6 +120,7 @@ class ConfigRemapTest(testlib.BaseTestSet):
             afo_settings = testlib.get_succ(node,
                                             '/settings/autoFailover').json()
             assert not afo_settings["enabled"]
-            fusion_settings = testlib.get_succ(node, '/settings/fusion').json()
-            assert fusion_settings['logStoreURI'] == 'local://002'
-            assert fusion_settings['enableSyncThresholdMB'] == 1000
+
+            testlib.diag_eval(self.cluster,
+                              '{ok, value2} = '
+                              'chronicle_compat:get(top_level_key, #{})')

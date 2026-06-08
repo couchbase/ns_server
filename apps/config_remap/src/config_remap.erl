@@ -34,6 +34,30 @@
 -define(CHRONICLE_KV_SNAPSHOT, "kv.snapshot").
 -define(CHRONICLE_CONFIG_RSM_SNAPSHOT, "chronicle_config_rsm.snapshot").
 
+maybe_log_updated_term(LogAs, BeforeTerm, AfterTerm) ->
+    %% We should avoid writing too much to the log that isn't useful, only log
+    %% if different.
+    case BeforeTerm of
+        AfterTerm ->
+            AfterTerm;
+        _ ->
+            {SanitizedBefore, SanitizedAfter} =
+                case BeforeTerm of
+                    %% Chronicle snapshot case
+                    {Key, Val} ->
+                        {AfterKey, AfterVal} = AfterTerm,
+                        {chronicle_kv_log:sanitize(Key, Val),
+                         chronicle_kv_log:sanitize(AfterKey, AfterVal)};
+                    _ ->
+                        %% We don't have a common way to sanitize other stuff
+                        %% yet.
+                        {BeforeTerm, AfterTerm}
+                end,
+            ?log_debug("Rewriting ~s term ~p as ~p",
+                       [LogAs, SanitizedBefore, SanitizedAfter]),
+            AfterTerm
+    end.
+
 rewrite_term(BeforeTerm, #{node_map := NodeMap, kv_map := KVMap}) ->
     WithNodesRewritten =
         maps:fold(
@@ -63,26 +87,7 @@ rewrite_term(BeforeTerm, LogAs, Args) ->
 
     %% We should avoid writing too much to the log that isn't useful, only log
     %% if different.
-    case BeforeTerm of
-        AfterTerm ->
-            AfterTerm;
-        _ ->
-            {SanitizedBefore, SanitizedAfter} =
-                case BeforeTerm of
-                    %% Chronicle snapshot case
-                    {Key, Val} ->
-                        {AfterKey, AfterVal} = AfterTerm,
-                        {chronicle_kv_log:sanitize(Key, Val),
-                         chronicle_kv_log:sanitize(AfterKey, AfterVal)};
-                    _ ->
-                        %% We don't have a common way to sanitize other stuff
-                        %% yet.
-                        {BeforeTerm, AfterTerm}
-                end,
-            ?log_debug("Rewriting ~s term ~p as ~p",
-                       [LogAs, SanitizedBefore, SanitizedAfter]),
-            AfterTerm
-    end.
+    maybe_log_updated_term(LogAs, BeforeTerm, AfterTerm).
 
 read_term_from_file(Path) ->
     {ok, Data} = file:read_file(Path),
@@ -285,7 +290,8 @@ rewrite_chronicle_rsm_snapshot(Seqno, Snapshot,
 
 rewrite_chronicle_snapshot_term(?CHRONICLE_KV_SNAPSHOT, Term, Args) ->
     Msg = io_lib:format("chronicle ~s snapshot", [?CHRONICLE_KV_SNAPSHOT]),
-    rewrite_chronicle_snapshot_term(Msg, Term, Args);
+    TransformedTerm = maybe_rewrite_chronicle_kv_snapshot(Msg, Term, Args),
+    rewrite_chronicle_snapshot_term(Msg, TransformedTerm, Args);
 rewrite_chronicle_snapshot_term(?CHRONICLE_CONFIG_RSM_SNAPSHOT, Term, Args) ->
     Msg = io_lib:format("chronicle ~s snapshot",
                         [?CHRONICLE_CONFIG_RSM_SNAPSHOT]),
@@ -341,30 +347,39 @@ rewrite_chronicle_log_command({command, Packed},
     {command, Repacked}.
 
 maybe_rewrite_chronicle_rsm_command(
-  #rsm_command{payload = Payload} = RSMCommand, State) ->
+  #rsm_command{rsm_name = RsmName, payload = Payload} = RSMCommand,
+  Msg, State) ->
     case Payload of
         %% Nothing to do for noops
         noop -> RSMCommand;
         %% Commands are compressed terms and need to be unpacked
         %% to be rewritten
         {command, _} = Command ->
-            NewPayload = rewrite_chronicle_log_command(Command, State),
+            Command1 = case RsmName =:= kv of
+                           true ->
+                               maybe_rewrite_kv_command(Command, Msg,
+                                                        maps:get(args, State));
+                           false -> Command
+                       end,
+            NewPayload = rewrite_chronicle_log_command(Command1, State),
             RSMCommand#rsm_command{payload = NewPayload}
     end.
 
 maybe_rewrite_chronicle_log_append_value(#log_entry{value = Value} = LogEntry,
+                                         Msg,
                                          State) ->
     case Value of
         #rsm_command{} = RSMCommand ->
             LogEntry#log_entry{
-              value = maybe_rewrite_chronicle_rsm_command(RSMCommand, State)};
+              value = maybe_rewrite_chronicle_rsm_command(RSMCommand, Msg,
+                                                          State)};
         _ -> LogEntry
     end.
 
-maybe_rewrite_chronicle_log_append_command(Entry, State) ->
+maybe_rewrite_chronicle_log_append_command(Entry, Msg, State) ->
     chronicle_storage:map_append(
       fun(LogEntry) ->
-              maybe_rewrite_chronicle_log_append_value(LogEntry, State)
+              maybe_rewrite_chronicle_log_append_value(LogEntry, Msg, State)
       end, Entry).
 
 rewrite_chronicle_log_entry(Entry, #{log_file := Log,
@@ -382,7 +397,8 @@ rewrite_chronicle_log_entry(Entry, #{log_file := Log,
                          %% contains the config values that we set in ns_server.
                          %% Those commands are compressed terms which we need to
                          %% uncompress to rewrite.
-                         maybe_rewrite_chronicle_log_append_command(_, State),
+                         maybe_rewrite_chronicle_log_append_command(_, Msg,
+                                                                    State),
                          %% Now overwrite any metadata associated with the log
                          %% entry
                          rewrite_term(_, Msg, Args)]),
@@ -416,6 +432,95 @@ rewrite_chronicle_log(Path, #{output_path := OutputDir} = Args) ->
                                       fun(_H, S) -> S end,
                                       fun(_E, S) -> S end,
                                       []).
+
+maybe_rewrite_chronicle_kv_snapshot(
+  Msg, {snapshot, Seqno, HistoryId, RSM, SnapshotMap, Config},
+  #{rewrite := Rewrites} = _Args) when Rewrites =/= [] ->
+    NewMap =
+        maps:map(
+          fun(Key, {Value, Rev}) ->
+                  {rewrite_and_log(Msg, Key, Value, Rewrites), Rev}
+          end, SnapshotMap),
+    {snapshot, Seqno, HistoryId, RSM, NewMap, Config};
+maybe_rewrite_chronicle_kv_snapshot(_Msg, Term, _Args) ->
+    Term.
+
+%% TODO: Support some kind of wildcard
+key_matches(Same, Same) ->
+    true;
+key_matches(_Key, _Pattern) ->
+    false.
+
+rewrite(Key, Value, Rewrites) ->
+    %% First we iterate all of our args (potential matches) to progress them
+    PotentialMatches =
+        lists:filtermap(
+          fun({[FirstKey | Rest], DesiredValue}) ->
+                  case key_matches(Key, FirstKey) of
+                      true -> {true, {Rest, DesiredValue}};
+                      false -> false
+                  end;
+             ({[], _Value}) ->
+                  false
+          end, Rewrites),
+
+    case PotentialMatches of
+        [] ->
+            %% Exhausted all of our arg progressions, time to return
+            Value;
+        [{[], New}] ->
+            %% We've got a single match, take the new value
+            New;
+        _ ->
+            case Value of
+                _ when is_list(Value) ->
+                    lists:map(
+                      fun({K, V}) ->
+                              {K, rewrite(K, V, PotentialMatches)};
+                         (Other) ->
+                              Other
+                      end, Value);
+                _ when is_map(Value) ->
+                    maps:map(
+                      fun(K, V) ->
+                              rewrite(K, V, PotentialMatches)
+                      end, Value)
+            end
+    end.
+
+rewrite_and_log(LogAs, Key, Value, Rewrites) ->
+    After = rewrite(Key, Value, Rewrites),
+    maybe_log_updated_term(LogAs, {Key, Value}, {Key, After}),
+    After.
+
+rewrite_kv_command({transaction, Conditions, Updates}, Msg,
+                   #{rewrite := Rewrites} = _Map) ->
+    NewUpdates =
+        lists:map(
+          fun({set, K, V}) ->
+                  {set, K, rewrite_and_log(Msg, K, V, Rewrites)};
+             (Update) ->
+                  Update
+          end, Updates),
+    {transaction, Conditions, NewUpdates};
+rewrite_kv_command({set, Key, Value, Rev}, Msg,
+                   #{rewrite := Rewrites} = _Map) ->
+    {set, Key, rewrite_and_log(Msg, Key, Value, Rewrites), Rev};
+rewrite_kv_command({add, Key, Value}, Msg, #{rewrite := Rewrites} = _Map) ->
+    {add, Key, rewrite_and_log(Msg, Key, Value, Rewrites)};
+rewrite_kv_command(Command, _Msg, _Map) ->
+    Command.
+
+maybe_rewrite_kv_command({command, Packed}, Msg, Map) ->
+    Unpacked = chronicle_rsm:unpack_command(Packed),
+    case rewrite_kv_command(Unpacked, Msg, Map) of
+        Unpacked ->
+            {command, Packed};
+        Transformed ->
+            {command, chronicle_rsm:pack_command(Transformed)}
+    end;
+maybe_rewrite_kv_command(Command, _Msg, _Args) ->
+    Command.
 
 rewrite_string_file(File, #{?INITARGS_DATA_DIR := InputDir,
                             output_path := OutputDir,
@@ -552,7 +657,8 @@ default_args() ->
       remove_alternate_addresses => false,
       disable_auto_failover => false,
       node_map => #{},
-      kv_map => #{}}.
+      kv_map => #{},
+      rewrite => []}.
 
 -spec parse_args(list(), map()) -> map().
 parse_args(["--output-path", Path | Rest], Map) ->
@@ -587,10 +693,29 @@ parse_args(["--remove-alternate-addresses" | Rest], Map) ->
     parse_args(Rest, Map#{remove_alternate_addresses => true});
 parse_args(["--disable-auto-failover" | Rest], Map) ->
     parse_args(Rest, Map#{disable_auto_failover => true});
+parse_args(["--rewrite", PathArg, ValueArg | Rest], Map) ->
+    Keys = parse_rewrite_path(PathArg, [PathArg, ValueArg]),
+    Value =
+        case string_to_term(ValueArg) of
+            {ok, Term} -> Term;
+            {error, _} -> usage([PathArg, ValueArg])
+        end,
+    {ok, Current} = maps:find(rewrite, Map),
+    parse_args(Rest, Map#{rewrite => Current ++ [{Keys, Value}]});
+parse_args(["--rewrite" | Args], _Map) ->
+    usage(Args);
 parse_args([], Map) ->
     Map;
 parse_args(Args, _Map) ->
     usage(Args).
+
+%% Parse the --rewrite path argument, an Erlang list of key components,
+%% e.g. "[fusion_config, state]".
+parse_rewrite_path(Arg, AllArgs) ->
+    case string_to_term(Arg) of
+        {ok, Path} when is_list(Path) -> Path;
+        _ -> usage(AllArgs)
+    end.
 
 string_to_term(String) when is_list(String) ->
     case erl_scan:string(String ++ ".") of

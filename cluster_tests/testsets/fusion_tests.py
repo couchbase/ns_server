@@ -23,6 +23,8 @@ import re
 from testlib import ClusterRequirements
 from testlib.util import Service
 
+from testsets.config_remap_tests import ConfigRemapTest
+
 class FusionTests(testlib.BaseTestSet):
 
     def setup(self):
@@ -628,6 +630,37 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.eject_node(second_node, second_node)
         self.cluster.rebalance(wait = True)
         self.check_uploaders('test')
+
+    def disable_fusion_via_config_remap_test(self):
+        self.init_fusion()
+        self.create_bucket('test', 1)
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+
+        print(f"Shutting down original cluster at node index "
+              f"{self.cluster.first_node_index}")
+
+        self.cluster.stop_all_nodes()
+
+        print(f"Shut down original cluster at node index "
+              f"{self.cluster.first_node_index}")
+
+        wrapper_args = [
+            '--just-disable-auto-failover',
+            '--rewrite', '[fusion_config, state]', 'disabling',
+            '--rewrite', '[fusion_config, log_store_uri]', '"local://002"',
+            '--rewrite', '[fusion_config, enable_sync_threshold_mb]', '1000']
+
+        ConfigRemapTest.run_config_remap(self, self.cluster, wrapper_args)
+
+        print(f"Starting original cluster at node index "
+              f"{self.cluster.first_node_index}")
+
+        self.cluster.restart_all_nodes()
+
+        self.wait_for_state('disabling', 'disabled')
+
 
 def assert_buckets_error(json, expected):
     error_message = get_json_error(json, 'buckets')
