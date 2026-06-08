@@ -650,7 +650,9 @@ class FusionTests(testlib.BaseTestSet):
             '--just-disable-auto-failover',
             '--rewrite', '[fusion_config, state]', 'disabling',
             '--rewrite', '[fusion_config, log_store_uri]', '"local://002"',
-            '--rewrite', '[fusion_config, enable_sync_threshold_mb]', '1000']
+            '--rewrite', '[fusion_config, enable_sync_threshold_mb]', '1000',
+            '--rewrite', '[{bucket, _, props}, magma_fusion_state]',
+            'disabling']
 
         ConfigRemapTest.run_config_remap(self, self.cluster, wrapper_args)
 
@@ -660,6 +662,7 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.restart_all_nodes()
 
         self.wait_for_state('disabling', 'disabled')
+        self.assert_bucket_state('test', 'disabled')
 
 
 def assert_buckets_error(json, expected):

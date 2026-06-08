@@ -34,6 +34,11 @@
 -define(CHRONICLE_KV_SNAPSHOT, "kv.snapshot").
 -define(CHRONICLE_CONFIG_RSM_SNAPSHOT, "chronicle_config_rsm.snapshot").
 
+%% Sentinel used in --rewrite key paths to match any key at a given level.
+%% Users pass "_" on the command line; string_to_term/1 cannot parse a bare
+%% variable, so the --rewrite parser translates "_" into this atom.
+-define(RW_WILDCARD, '$rw_wildcard').
+
 maybe_log_updated_term(LogAs, BeforeTerm, AfterTerm) ->
     %% We should avoid writing too much to the log that isn't useful, only log
     %% if different.
@@ -440,7 +445,17 @@ maybe_rewrite_chronicle_kv_snapshot(
 maybe_rewrite_chronicle_kv_snapshot(_Msg, Term, _Args) ->
     Term.
 
-%% TODO: Support some kind of wildcard
+%% A pattern matches an actual config key if the pattern is the wildcard
+%% sentinel, or they are structurally equal with wildcards allowed anywhere
+%% within the structure (tuples and lists are compared element-wise). This lets
+%% patterns like {bucket, '_', props} match {bucket, "test", props}.
+key_matches(_Key, ?RW_WILDCARD) ->
+    true;
+key_matches(Key, Pattern)
+  when is_tuple(Key), is_tuple(Pattern) ->
+    key_matches(tuple_to_list(Key), tuple_to_list(Pattern));
+key_matches([KH | KT], [PH | PT]) ->
+    key_matches(KH, PH) andalso key_matches(KT, PT);
 key_matches(Same, Same) ->
     true;
 key_matches(_Key, _Pattern) ->
@@ -688,13 +703,26 @@ parse_args([], Map) ->
 parse_args(Args, _Map) ->
     usage(Args).
 
-%% Parse the --rewrite path argument, an Erlang list of key components,
-%% e.g. "[fusion_config, state]".
+%% Parse the --rewrite path argument, an Erlang list of key components.
+%% "_" may appear anywhere as a wildcard, e.g. "[{bucket, _, props}, state]".
+%% erl_parse:parse_term/1 cannot parse a bare variable, so rewrite '_' tokens
+%% into the wildcard sentinel atom before parsing.
 parse_rewrite_path(Arg, AllArgs) ->
-    case string_to_term(Arg) of
-        {ok, Path} when is_list(Path) -> Path;
-        _ -> usage(AllArgs)
+    case erl_scan:string(Arg ++ ".") of
+        {ok, Tokens, _} ->
+            case erl_parse:parse_term([rewrite_wildcard_token(T)
+                                       || T <- Tokens]) of
+                {ok, Path} when is_list(Path) -> Path;
+                _ -> usage(AllArgs)
+            end;
+        {error, _, _} ->
+            usage(AllArgs)
     end.
+
+rewrite_wildcard_token({var, Anno, '_'}) ->
+    {atom, Anno, ?RW_WILDCARD};
+rewrite_wildcard_token(Token) ->
+    Token.
 
 string_to_term(String) when is_list(String) ->
     case erl_scan:string(String ++ ".") of

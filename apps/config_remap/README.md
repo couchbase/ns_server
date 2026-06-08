@@ -37,7 +37,8 @@ crc hash that needs regenerating. Log files are iterated term by term and a new
 log is built as we process these terms.
 6) The --rewrite option can be specified to rewrite configuration keys stored in
 chronicle. It takes a path of keys specified as an erlang list to allow for the
-modification of nested configuration such as bucket configuration.
+modification of nested configuration such as bucket configuration. A wildcard
+'_' can be specified in the key path to allow rewriting all buckets props.
 
 ## How to run:
 
