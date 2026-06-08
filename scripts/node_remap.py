@@ -17,6 +17,7 @@ def run_config_remap(initargs,
                      output_path,
                      extra_args,
                      rewrite=None,
+                     rewrite_if=None,
                      log_level='info',
                      capture_output=False,
                      root_dir=basedir()):
@@ -24,6 +25,10 @@ def run_config_remap(initargs,
         for one in rewrite:
             print(f"rewrite: {one}")
             extra_args += ['--rewrite'] + one
+    if rewrite_if is not None:
+        for path, old, new in rewrite_if:
+            print(f"rewrite-if: {path} {old} -> {new}")
+            extra_args += ['--rewrite-if', path, old, new]
 
     escript_path = find_valid_binary('escript', root_dir)
     escript_wrapper_path = find_valid_binary('escript-wrapper', root_dir)
@@ -51,6 +56,7 @@ def run_config_remap_via_escript_wrapper(initargs,
                                          output_path,
                                          remap,
                                          rewrite=None,
+                                         rewrite_if=None,
                                          log_level='info',
                                          capture_output=False,
                                          root_dir=basedir()):
@@ -64,15 +70,16 @@ def run_config_remap_via_escript_wrapper(initargs,
                   '--remove-alternate-addresses',
                   '--disable-auto-failover'] + extra_args
 
-    run_config_remap(initargs, output_path, extra_args,
-                     rewrite, log_level, capture_output, root_dir)
+    run_config_remap(initargs, output_path, extra_args, rewrite, rewrite_if,
+                     log_level, capture_output, root_dir)
 
 def disable_afo_via_config_remap(initargs,
                                  output_path,
                                  rewrite=None,
+                                 rewrite_if=None,
                                  log_level='info',
                                  capture_output=False,
                                  root_dir=basedir()):
     extra_args = ['--disable-auto-failover']
-    run_config_remap(initargs, output_path, extra_args,
-                     rewrite, log_level, capture_output, root_dir)
+    run_config_remap(initargs, output_path, extra_args, rewrite, rewrite_if,
+                     log_level, capture_output, root_dir)

@@ -465,12 +465,12 @@ rewrite(Key, Value, Rewrites) ->
     %% First we iterate all of our args (potential matches) to progress them
     PotentialMatches =
         lists:filtermap(
-          fun({[FirstKey | Rest], DesiredValue}) ->
+          fun({[FirstKey | Rest], Cond, DesiredValue}) ->
                   case key_matches(Key, FirstKey) of
-                      true -> {true, {Rest, DesiredValue}};
+                      true -> {true, {Rest, Cond, DesiredValue}};
                       false -> false
                   end;
-             ({[], _Value}) ->
+             ({[], _Cond, _DesiredValue}) ->
                   false
           end, Rewrites),
 
@@ -478,23 +478,49 @@ rewrite(Key, Value, Rewrites) ->
         [] ->
             %% Exhausted all of our arg progressions, time to return
             Value;
-        [{[], New}] ->
+        [{[], any, New}] ->
             %% We've got a single match, take the new value
             New;
+        [{[], {eq, Old}, New}] when Value =:= Old ->
+            New;
+        [{[], {eq, _Old}, _New}] ->
+            Value;
         _ ->
-            case Value of
-                _ when is_list(Value) ->
-                    lists:map(
-                      fun({K, V}) ->
-                              {K, rewrite(K, V, PotentialMatches)};
-                         (Other) ->
-                              Other
-                      end, Value);
-                _ when is_map(Value) ->
-                    maps:map(
-                      fun(K, V) ->
-                              rewrite(K, V, PotentialMatches)
-                      end, Value)
+            %% We need to filter out anything that might match
+            Filtered = lists:filter(
+                         fun({[], any, _}) ->
+                                 true;
+                            ({[], {eq, Old}, _}) ->
+                                 Value =:= Old;
+                            (_) ->
+                                 false
+                         end, PotentialMatches),
+
+            case Filtered of
+                [] ->
+                    %% No match
+                    case Value of
+                        _ when is_list(Value) ->
+                            lists:map(
+                              fun({K, V}) ->
+                                      {K, rewrite(K, V, PotentialMatches)};
+                                 (Other) ->
+                                      Other
+                              end, Value);
+                        _ when is_map(Value) ->
+                            maps:map(
+                              fun(K, V) ->
+                                      rewrite(K, V, PotentialMatches)
+                              end, Value);
+                        _ ->
+                            Value
+                    end;
+                [{[], _, New}] ->
+                    New;
+                _ ->
+                    ?log_error("Multiple valid matches for rewrite found ~p. "
+                               "This is not supported.", [PotentialMatches]),
+                    erlang:halt(1)
             end
     end.
 
@@ -687,21 +713,32 @@ parse_args(["--remove-alternate-addresses" | Rest], Map) ->
     parse_args(Rest, Map#{remove_alternate_addresses => true});
 parse_args(["--disable-auto-failover" | Rest], Map) ->
     parse_args(Rest, Map#{disable_auto_failover => true});
+parse_args(["--rewrite-if", PathArg, OldArg, NewArg | Rest], Map) ->
+    Keys = parse_rewrite_path(PathArg, [PathArg, OldArg, NewArg]),
+    OldValue = parse_rewrite_value(OldArg, [PathArg, OldArg, NewArg]),
+    Value = parse_rewrite_value(NewArg, [PathArg, OldArg, NewArg]),
+    {ok, Current} = maps:find(rewrite, Map),
+    parse_args(Rest,
+               Map#{rewrite => Current ++ [{Keys, {eq, OldValue}, Value}]});
+parse_args(["--rewrite-if" | Args], _Map) ->
+    usage(Args);
 parse_args(["--rewrite", PathArg, ValueArg | Rest], Map) ->
     Keys = parse_rewrite_path(PathArg, [PathArg, ValueArg]),
-    Value =
-        case string_to_term(ValueArg) of
-            {ok, Term} -> Term;
-            {error, _} -> usage([PathArg, ValueArg])
-        end,
+    Value = parse_rewrite_value(ValueArg, [PathArg, ValueArg]),
     {ok, Current} = maps:find(rewrite, Map),
-    parse_args(Rest, Map#{rewrite => Current ++ [{Keys, Value}]});
+    parse_args(Rest, Map#{rewrite => Current ++ [{Keys, any, Value}]});
 parse_args(["--rewrite" | Args], _Map) ->
     usage(Args);
 parse_args([], Map) ->
     Map;
 parse_args(Args, _Map) ->
     usage(Args).
+
+parse_rewrite_value(Arg, FullArg) ->
+    case string_to_term(Arg) of
+        {ok, T} -> T;
+        {error, _} -> usage(FullArg)
+    end.
 
 %% Parse the --rewrite path argument, an Erlang list of key components.
 %% "_" may appear anywhere as a wildcard, e.g. "[{bucket, _, props}, state]".

@@ -39,6 +39,9 @@ log is built as we process these terms.
 chronicle. It takes a path of keys specified as an erlang list to allow for the
 modification of nested configuration such as bucket configuration. A wildcard
 '_' can be specified in the key path to allow rewriting all buckets props.
+7) The --rewrite-if option works similarly to --rewrite, but takes an
+additional value. The configured value must match the first specified in the arg
+to replace it with the second specified arg.
 
 ## How to run:
 
