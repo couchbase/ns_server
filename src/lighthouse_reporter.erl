@@ -53,6 +53,8 @@ build_settings() ->
 %%%===================================================================
 
 init([]) ->
+    Self = self(),
+    ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
     State = init_state(),
     self() ! report,
     {ok, State}.
@@ -73,6 +75,8 @@ handle_info(report, State) ->
     {noreply, State};
 handle_info(report_done, State) ->
     {noreply, State#state{report_pid = undefined}};
+handle_info(config_change, State) ->
+    {noreply, update_config(State)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -86,6 +90,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
+handle_config_event(Self, {?CONFIG_KEY, _}) ->
+    Self ! config_change;
+handle_config_event(_, _) ->
+    ok.
+
 init_state() ->
     Config = build_settings(),
 
@@ -93,6 +102,9 @@ init_state() ->
 
     %% Update the reporter state
     #state{enabled = Enabled}.
+
+update_config(#state{report_pid = ReportPid}) ->
+    (init_state())#state{report_pid = ReportPid}.
 
 default_config() ->
     #{reporting_enabled => true,
