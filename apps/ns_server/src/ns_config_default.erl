@@ -274,7 +274,8 @@ default(Vsn) ->
        {snapshot_download_throttle_bytes, 0},
        {magma_compaction_rate_limit, 0},
        {magma_enable_compaction_dataonly_ratelimiting, false},
-       {sync_writes_return_committed_seqno, true}]},
+       {sync_writes_return_committed_seqno, true},
+       {snapshot_download_fadvise, <<"normal">>}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -386,7 +387,9 @@ default(Vsn) ->
         {read_unit_size, read_unit_size},
         {write_unit_size, write_unit_size},
         {node_capacity, node_capacity},
-        {sync_writes_return_committed_seqno, sync_writes_return_committed_seqno}
+        {sync_writes_return_committed_seqno,
+         sync_writes_return_committed_seqno},
+        {snapshot_download_fadvise, snapshot_download_fadvise}
        ]}},
 
      {memory_quota, KvQuota},
