@@ -58,17 +58,12 @@ maybe_log_updated_term(LogAs, BeforeTerm, AfterTerm) ->
             AfterTerm
     end.
 
-rewrite_term(BeforeTerm, #{node_map := NodeMap, kv_map := KVMap}) ->
-    WithNodesRewritten =
-        maps:fold(
-          fun(OldNode, NewNode, Acc) ->
-                  misc:rewrite_value(list_to_atom(OldNode),
-                                     list_to_atom(NewNode), Acc)
-          end, BeforeTerm, NodeMap),
+rewrite_term(BeforeTerm, #{node_map := NodeMap}) ->
     maps:fold(
-      fun(Key, NewValue, Acc) ->
-              misc:rewrite_key_value_tuple(Key, NewValue, Acc)
-      end, WithNodesRewritten, KVMap).
+      fun(OldNode, NewNode, Acc) ->
+              misc:rewrite_value(list_to_atom(OldNode),
+                                 list_to_atom(NewNode), Acc)
+      end, BeforeTerm, NodeMap).
 
 rewrite_term(BeforeTerm, LogAs, Args) when is_map(BeforeTerm) ->
     %% We can't maps:map here because we might rewrite keys as well as values
@@ -657,7 +652,6 @@ default_args() ->
       remove_alternate_addresses => false,
       disable_auto_failover => false,
       node_map => #{},
-      kv_map => #{},
       rewrite => []}.
 
 -spec parse_args(list(), map()) -> map().
@@ -668,21 +662,6 @@ parse_args(["--log-level", Level | Rest], Map) ->
 parse_args(["--remap", A, B | Rest], Map) ->
     {ok, CurrentNodeMap} = maps:find(node_map, Map),
     parse_args(Rest, Map#{node_map => CurrentNodeMap#{A => B}});
-parse_args(["--rewrite-key-value", Key, Value | Rest] = Args, Map) ->
-    {ok, CurrentKVMap} = maps:find(kv_map, Map),
-    case string_to_term(Key) of
-        {error, _} ->
-            usage(Args);
-        {ok, KeyTerm} ->
-            case string_to_term(Value) of
-                {error, _} ->
-                    usage(Args);
-                {ok, ValueTerm} ->
-                    parse_args(
-                      Rest,
-                      Map#{kv_map => CurrentKVMap#{KeyTerm => ValueTerm}})
-            end
-    end;
 parse_args(["--initargs-path", Path | Rest], Map) ->
     parse_args(Rest, Map#{initargs_path => Path});
 parse_args(["--regenerate-cookie" | Rest], Map) ->
