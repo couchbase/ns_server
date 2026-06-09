@@ -3973,3 +3973,15 @@ interval_to_string_test() ->
     ?assertEqual("1 hour 2 seconds",
                  interval_to_string(0, 1, 0, 2)).
 -endif.
+
+compat_version_to_binary(Version) ->
+    [V1, V2] = lists:map(
+                 integer_to_list(_),
+                 Version),
+    list_to_binary(V1 ++ "." ++ V2).
+
+-ifdef(TEST).
+compat_version_test() ->
+    VerBin = compat_version_to_binary([8, 0]),
+    ?assertEqual(<<"8.0">>, VerBin).
+-endif.

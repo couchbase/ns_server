@@ -146,6 +146,11 @@ decode_json_response_ext({ok, {{200 = _StatusCode, _} = _StatusLine,
              {Type, What, Stack}}
     end;
 
+decode_json_response_ext({ok, {{204 = _StatusCode, _} = _StatusLine,
+                               _Headers, _} = _Result},
+                         _Method, _Request) ->
+    ok;
+
 decode_json_response_ext({ok, {{400 = _StatusCode, _} = _StatusLine,
                                _Headers, Body} = _Result} = Response,
                          Method, Request) ->
@@ -159,17 +164,31 @@ decode_json_response_ext({ok, {{400 = _StatusCode, _} = _StatusLine,
 decode_json_response_ext(Response, Method, Request) ->
     ns_error_messages:decode_json_response_error(Response, Method, Request).
 
--spec json_request_hilevel(atom(),
-                           {atom(), string(), string() | integer(), string(), string(), iolist()}
-                           | {atom(), string(), string() | integer(), string()},
-                           fun(() -> client_cert_auth | {basic_auth, string(), string()}),
-                           [any()]) ->
-                                  %% json response payload
-                                  {ok, any()} |
-                                  %% json payload of 400
-                                  {client_error, term()} |
-                                  %% english error message and nested error
-                                  {error, rest_error, binary(), {error, term()} | {bad_status, integer(), string()}}.
+-spec json_request_hilevel(Method,
+                           {Scheme, Host, Port, Path, MimeType, Payload} |
+                           {Scheme, Host, Port, Path},
+                           HiddenAuth,
+                           HttpOptions) -> Result when
+      Method :: atom(),
+      Scheme :: atom(),
+      Host :: string(),
+      Port :: string() | integer(),
+      Path :: string(),
+      MimeType :: string(),
+      Payload :: iolist(),
+      HiddenAuth :: fun(() -> client_cert_auth |
+                              {basic_auth, string(), string()}),
+      HttpOptions :: [any()],
+      Result ::
+        %% 204 No Content response payload
+        ok |
+        %% json response payload
+        {ok, any()} |
+        %% json payload of 400
+        {client_error, term()} |
+        %% english error message and nested error
+        {error, rest_error, binary(),
+         {error, term()} | {bad_status, integer(), string()}}.
 json_request_hilevel(Method, {Scheme, Host, Port, Path, MimeType, Payload} = R,
                      HiddenAuth, HTTPOptions) ->
     RealPayload = binary_to_list(iolist_to_binary(Payload)),
