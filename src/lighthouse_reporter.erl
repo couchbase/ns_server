@@ -148,13 +148,13 @@ send_report(Config) ->
       end).
 
 post(URL, Body, Timeout) ->
-    %% TODO: Switch to https once AV-131457 is implemented in lighthouse
-    Scheme = http,
+    Scheme = https,
     Request = {Scheme, URL, 8080, "/api/v1/ingest/telemetry",
                "application/json", Body},
     try menelaus_rest:json_request_hilevel(post, Request,
                                            ?HIDE({basic_auth, "", ""}),
-                                           [{connect_timeout, Timeout}]) of
+                                           [{connect_timeout, Timeout},
+                                            {server_verification, false}]) of
         ok ->
             ?log_debug("Lighthouse report sent successfuly");
         {error, rest_error, Reason, _} ->
