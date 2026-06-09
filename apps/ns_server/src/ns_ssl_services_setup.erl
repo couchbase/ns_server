@@ -466,6 +466,38 @@ ns_server_ciphers() ->
 configured_ciphers_names(Service, Config) ->
     ciphers:only_known(get_sec_setting(Service, cipher_suites, Config, [])).
 
+%% If cipher suites are explicitly configured, disable TLS versions that none
+%% of the configured ciphers can be used with. For instance, if only TLS 1.2
+%% ciphers are configured, TLS 1.3 is disabled (every TLS 1.3 handshake would
+%% fail anyway, as TLS 1.3 cipher suites are distinct from earlier ones), and
+%% vice versa.
+filter_versions_by_configured_ciphers(Versions) ->
+    filter_versions_by_ciphers(
+      Versions, configured_ciphers_names(ns_server, ns_config:latest())).
+
+filter_versions_by_ciphers(Versions, []) ->
+    Versions;
+filter_versions_by_ciphers(Versions, CipherNames) ->
+    {TLS13Ciphers, Pre13Ciphers} =
+        lists:partition(fun ciphers:is_tls13_cipher/1, CipherNames),
+    Filtered = lists:filter(
+                 fun ('tlsv1.3') -> TLS13Ciphers =/= [];
+                     (_) -> Pre13Ciphers =/= []
+                 end, Versions),
+    case Filtered of
+        [] ->
+            %% None of the configured ciphers can be used with any of the
+            %% allowed TLS versions. Disabling all versions would prevent the
+            %% listener from starting, so keep the versions as is (handshakes
+            %% will fail until the configuration is fixed).
+            ?log_warning("None of the configured cipher suites ~p are usable "
+                         "with TLS versions ~p. Leaving all versions enabled.",
+                         [CipherNames, Versions]),
+            Versions;
+        _ ->
+            Filtered
+    end.
+
 configured_ciphers(Service, Config) ->
     [ciphers:code(N) || N <- configured_ciphers_names(Service, Config)].
 
@@ -544,7 +576,8 @@ ssl_server_opts() ->
     %% the following behavior:
     %% web server doesn't load new CA (after cert rotation) until
     %% all connections to the server are closed
-    Versions = supported_versions(ssl_minimum_protocol(ns_server)),
+    Versions = filter_versions_by_configured_ciphers(
+                 supported_versions(ssl_minimum_protocol(ns_server))),
     CertAuth = list_to_atom(proplists:get_value(state, client_cert_auth())),
     RawTLSOptions =
         ssl_auth_options(CertAuth) ++
@@ -1438,6 +1471,28 @@ extract_user_name_test() ->
                                    "www.", "."), {error, not_found}),
     ?assertEqual(extract_user_name(["xyz.abc.com"], "", "-"), "xyz.abc.com"),
     meck:unload(menelaus_users).
+
+filter_versions_by_ciphers_test() ->
+    TLS13Cipher = <<"TLS_AES_256_GCM_SHA384">>,
+    TLS12Cipher = <<"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384">>,
+    Versions = ['tlsv1.2', 'tlsv1.3'],
+    %% No ciphers configured, all versions remain enabled
+    ?assertEqual(Versions, filter_versions_by_ciphers(Versions, [])),
+    %% Ciphers for both versions configured
+    ?assertEqual(Versions,
+                 filter_versions_by_ciphers(Versions,
+                                            [TLS12Cipher, TLS13Cipher])),
+    %% Only TLS 1.2 ciphers configured, TLS 1.3 is disabled
+    ?assertEqual(['tlsv1.2'],
+                 filter_versions_by_ciphers(Versions, [TLS12Cipher])),
+    %% Only TLS 1.3 ciphers configured, TLS 1.2 is disabled
+    ?assertEqual(['tlsv1.3'],
+                 filter_versions_by_ciphers(Versions, [TLS13Cipher])),
+    %% No usable ciphers for the allowed versions, versions are left as is
+    ?assertEqual(['tlsv1.3'],
+                 filter_versions_by_ciphers(['tlsv1.3'], [TLS12Cipher])),
+    ?assertEqual(['tlsv1.2'],
+                 filter_versions_by_ciphers(['tlsv1.2'], [TLS13Cipher])).
 -endif.
 
 security_config_update_warning(Version, MinVersion) ->
