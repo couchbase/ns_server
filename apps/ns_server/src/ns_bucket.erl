@@ -596,13 +596,23 @@ node_storage_mode(Node, BucketConfig) ->
             NodeStorageMode
     end.
 
+default_membase_storage_mode() ->
+    case cluster_compat_mode:is_cluster_79() andalso
+         cluster_compat_mode:is_enterprise() of
+        true ->
+            magma;
+        false ->
+            couchstore
+    end.
+
 -spec storage_mode(proplists:proplist()) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(storage_mode, BucketConfig, couchstore)
+            proplists:get_value(storage_mode, BucketConfig,
+                                default_membase_storage_mode())
     end.
 
 autocompaction_settings(BucketConfig) ->
