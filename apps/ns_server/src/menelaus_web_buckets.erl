@@ -5907,7 +5907,7 @@ parse_validate_storage_mode_test__(
     end.
 
 parse_validate_storage_mode_teardown() ->
-    meck:unload(cluster_compat_mode),
+    meck:unload(),
     config_profile:unload_profile_for_test().
 
 parse_validate_storage_mode_test_() ->
