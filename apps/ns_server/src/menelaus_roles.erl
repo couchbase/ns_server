@@ -1450,14 +1450,18 @@ get_roles_for_identity(?ANONYMOUS_IDENTITY) ->
         true ->
             []
     end;
-get_roles_for_identity({[$@ | _] = User, admin}) ->
+get_roles_for_identity({[$@ | Name], admin}) ->
     case cluster_compat_mode:is_cluster_totoro() of
         true ->
             %% service_admin omits credential permissions. Ongoing work to
             %% narrow service_admin to an explicit allow-list is tracked in
             %% MB-71508.
-            CanonicalUser = misc:canonical_admin_identity(User),
-            [<<"service_admin">> | get_service_roles(CanonicalUser)];
+            StoredRoles =
+                case misc:identity_name_to_service(Name) of
+                    unknown -> [];
+                    ServiceId -> get_service_roles(ServiceId)
+                end,
+            [<<"service_admin">> | StoredRoles];
         false -> [<<"admin">>]
     end;
 get_roles_for_identity({_User, admin}) ->
@@ -1897,17 +1901,17 @@ delete_role(RoleId) ->
         {error, _} = Err -> Err
     end.
 
--spec get_all_service_roles() -> #{string() => [rbac_role()]}.
+-spec get_all_service_roles() -> #{misc:service_id() => [rbac_role()]}.
 get_all_service_roles() ->
     chronicle_compat:get(?SERVICE_ROLES_KEY, #{default => #{}}).
 
--spec get_service_roles(string()) -> [rbac_role()].
+-spec get_service_roles(misc:service_id()) -> [rbac_role()].
 get_service_roles(ServiceId) ->
     maps:get(ServiceId, get_all_service_roles(), []).
 
 %% @doc Set the granted roles for a service, returning whether the grant
 %% was added or updated (the distinction only matters for auditing).
--spec store_service_roles(string(), [rbac_role()]) -> added | updated.
+-spec store_service_roles(misc:service_id(), [rbac_role()]) -> added | updated.
 store_service_roles(ServiceId, Roles) ->
     {ok, _, Reason} =
         chronicle_kv:transaction(
@@ -1924,7 +1928,7 @@ store_service_roles(ServiceId, Roles) ->
           end, #{}),
     Reason.
 
--spec delete_service_roles(string()) -> ok | {error, not_found}.
+-spec delete_service_roles(misc:service_id()) -> ok | {error, not_found}.
 delete_service_roles(ServiceId) ->
     Result =
         chronicle_kv:transaction(

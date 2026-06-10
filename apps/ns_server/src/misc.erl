@@ -22,7 +22,7 @@
 
 -compile(nowarn_export_all).
 -compile(export_all).
--export_type([timer/0, timer/1]).
+-export_type([timer/0, timer/1, service_id/0]).
 
 -define(GREGORIAN_SECONDS_TO_UNIX_EPOCH, 62167219200).
 
@@ -4075,12 +4075,13 @@ snake_to_camel_test_() ->
 
 -endif.
 
+-type service_id() :: n1ql | backup | index | xdcr | fts | eventing | cbas |
+                      ns_server.
+
 %% Service identity mapping - single source of truth.
 %% Maps user-facing service atom to:
 %%   identity     - the auth identity name (without @) used by the service
 %%   auth_aliases - additional identity names that map to this service
-%%   canonical    - the canonical @-prefixed identity for role storage
-%%                  (defaults to @<identity> if not specified)
 service_definitions() ->
     %% "n1ql"/"query" aliases let credential-store allowedServices resolve
     %% dev/test scripts in the query and indexing repos that use those revrpc
@@ -4095,16 +4096,15 @@ service_definitions() ->
       cbas     => #{identity => "cbas"},
       ns_server => #{identity => "ns_server"}}.
 
-%% @doc Convert a user-facing service name (string) to the internal @-prefixed
-%% admin-domain identity.
-%% e.g. "backup" -> {ok, "@backup"}, "n1ql" -> {ok, "@cbq-engine"}.
--spec service_name_to_identity(string()) -> {ok, string()} | error.
+%% @doc Convert a user-facing service name (string) to the canonical service_id
+%% atom. e.g. "backup" -> {ok, backup}, "n1ql" -> {ok, n1ql}.
+-spec service_name_to_identity(string()) -> {ok, service_id()} | error.
 service_name_to_identity(ServiceName) ->
     try list_to_existing_atom(ServiceName) of
         Atom ->
-            case maps:find(Atom, service_definitions()) of
-                {ok, #{identity := Id}} -> {ok, "@" ++ Id};
-                error -> error
+            case maps:is_key(Atom, service_definitions()) of
+                true -> {ok, Atom};
+                false -> error
             end
     catch _:_ ->
             error
@@ -4124,28 +4124,12 @@ identity_name_to_service(IdentityName) ->
             #{}, service_definitions()),
     maps:get(IdentityName, Map, unknown).
 
-%% @doc Convert an admin-domain identity to its canonical form for role lookups.
-%% e.g. "@cbcontbk" -> "@backup", "@backup" -> "@backup".
--spec canonical_admin_identity(string()) -> string().
-canonical_admin_identity(Identity) ->
-    Map = maps:fold(
-            fun(_Svc, #{identity := Id} = Props, Acc) ->
-                    Canonical = "@" ++ Id,
-                    Aliases = maps:get(auth_aliases, Props, []),
-                    lists:foldl(
-                      fun(Alias, A) ->
-                              A#{"@" ++ Alias => Canonical}
-                      end, Acc, Aliases)
-            end,
-            #{}, service_definitions()),
-    maps:get(Identity, Map, Identity).
-
 -ifdef(TEST).
 service_identity_mapping_test_() ->
-    [?_assertEqual({ok, "@cbq-engine"}, service_name_to_identity("n1ql")),
-     ?_assertEqual({ok, "@backup"}, service_name_to_identity("backup")),
-     ?_assertEqual({ok, "@index"}, service_name_to_identity("index")),
-     ?_assertEqual({ok, "@goxdcr"}, service_name_to_identity("xdcr")),
+    [?_assertEqual({ok, n1ql}, service_name_to_identity("n1ql")),
+     ?_assertEqual({ok, backup}, service_name_to_identity("backup")),
+     ?_assertEqual({ok, index}, service_name_to_identity("index")),
+     ?_assertEqual({ok, xdcr}, service_name_to_identity("xdcr")),
      ?_assertEqual(error, service_name_to_identity("cbcontbk")),
      ?_assertEqual(error, service_name_to_identity("bogus")),
      ?_assertEqual(n1ql, identity_name_to_service("cbq-engine")),
@@ -4154,10 +4138,5 @@ service_identity_mapping_test_() ->
      ?_assertEqual(backup, identity_name_to_service("cbcontbk")),
      ?_assertEqual(backup, identity_name_to_service("backup")),
      ?_assertEqual(index, identity_name_to_service("projector")),
-     ?_assertEqual(unknown, identity_name_to_service("bogus")),
-     ?_assertEqual("@backup", canonical_admin_identity("@cbcontbk")),
-     ?_assertEqual("@backup", canonical_admin_identity("@backup")),
-     ?_assertEqual("@cbq-engine", canonical_admin_identity("@n1ql")),
-     ?_assertEqual("@cbq-engine", canonical_admin_identity("@query")),
-     ?_assertEqual("@cbq-engine", canonical_admin_identity("@cbq-engine"))].
+     ?_assertEqual(unknown, identity_name_to_service("bogus"))].
 -endif.
