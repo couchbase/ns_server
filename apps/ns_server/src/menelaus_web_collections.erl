@@ -176,7 +176,16 @@ collection_validators(DefaultAllowed, BucketConfig) ->
 set_manifest_collection_validators(BucketConfig) ->
     collection_modifiable_validators(BucketConfig) ++
         [validator:boolean(external, _)] ++
-        scope_validators(special_allowed).
+        scope_validators_without_unsupported(
+          ["_default", ?SYSTEM_SCOPE_NAME] ++
+              collections:system_collections()) ++
+        [unsupported_if_not_external(_)].
+
+unsupported_if_not_external(State) ->
+    case validator:get_value(external, State) of
+        true -> State;
+        _ -> validator:unsupported(State)
+    end.
 
 external_collection_validators() ->
     [validator:no_duplicate_keys(_),
@@ -376,16 +385,33 @@ handle_set_manifest(Bucket, Req) ->
         validator:handle(
           fun (KVList) ->
                   Scopes = proplists:get_value(scopes, KVList),
-                  AuthnRes = menelaus_auth:get_authn_res(Req),
-                  RV = collections:set_manifest(Bucket, AuthnRes, Scopes,
-                                                ValidOnUid),
-                  InputManifest = mochiweb_request:recv_body(Req),
-                  maybe_audit(RV, Req,
-                              ns_audit:set_manifest(_, Bucket, InputManifest,
-                                                    ValidOnUid, _)),
-                  %% Add event logs for each of the specific operation performed
-                  maybe_add_event_log(RV, Bucket, []),
-                  handle_rv(RV, manifest_set, Req)
+                  maybe
+                      {ok, ValidatedScopes} ?=
+                          validate_manifest_scopes(Bucket, Scopes),
+                      AuthnRes = menelaus_auth:get_authn_res(Req),
+                      RV = collections:set_manifest(
+                             Bucket, AuthnRes, ValidatedScopes,
+                             ValidOnUid),
+                      InputManifest =
+                          mochiweb_request:recv_body(Req),
+                      maybe_audit(
+                        RV, Req,
+                        ns_audit:set_manifest(
+                          _, Bucket, InputManifest,
+                          ValidOnUid, _)),
+                      %% Add event logs for each specific operation
+                      maybe_add_event_log(RV, Bucket, []),
+                      handle_rv(RV, manifest_set, Req)
+                  else
+                      no_query_node ->
+                          reply_global_error(
+                            Req,
+                            "Must have a query node to configure "
+                            "an external collection",
+                            400);
+                      {errors, Errors} ->
+                          reply_validation_errors(Req, Errors)
+                  end
           end, Req, json,
           [validator:required(scopes, _),
            validate_scopes(scopes, BucketConf, _),
@@ -630,7 +656,68 @@ get_collection_filter(Req) ->
         _ -> couchbase
     end.
 
+%% Validate the scopes for a collections manifest. Performs any required
+%% external collection validation.
+validate_manifest_scopes(Bucket, Scopes) ->
+    validate_manifest_scopes(Bucket, Scopes, []).
+
+validate_manifest_scopes(_Bucket, [], Acc) ->
+    {ok, Acc};
+validate_manifest_scopes(Bucket, [{ScopeProps} | Rest], Acc) ->
+    maybe
+        ScopeName = proplists:get_value(name, ScopeProps),
+        Collections = proplists:get_value(collections, ScopeProps, []),
+        {ok, ValidatedCols} ?=
+            validate_manifest_collections(Bucket, ScopeName, Collections),
+        NewScopeProps =
+            lists:keyreplace(collections, 1, ScopeProps,
+                             {collections, ValidatedCols}),
+        validate_manifest_scopes(Bucket, Rest, [{NewScopeProps} | Acc])
+    else
+        no_query_node -> no_query_node;
+        {errors, _} = E -> E
+    end.
+
+validate_manifest_collections(Bucket, ScopeName, Collections) ->
+    validate_manifest_collections(Bucket, ScopeName, Collections, []).
+
+validate_manifest_collections(_Bucket, _ScopeName, [], Acc) ->
+    {ok, Acc};
+validate_manifest_collections(Bucket, ScopeName, [{ColProps} | Rest], Acc) ->
+    case proplists:get_bool(external, ColProps) of
+        false ->
+            validate_manifest_collections(
+                Bucket, ScopeName, Rest, [{ColProps} | Acc]);
+        true ->
+            Params = collection_params(ColProps),
+            case Params of
+                [] ->
+                    validate_manifest_collections(
+                        Bucket, ScopeName, Rest, [{ColProps} | Acc]);
+                _ ->
+                    case validate_manifest_external_collection(
+                        Bucket, ScopeName, Params, ColProps) of
+                        {ok, F} ->
+                            validate_manifest_collections(
+                                Bucket, ScopeName, Rest, F ++ Acc);
+                        E -> E
+                    end
+            end
+    end.
+
 %% External collection validation
+validate_manifest_external_collection(Bucket, ScopeName, Params, ColProps) ->
+    maybe
+        {ok, ServiceOKs} ?=
+            validate_external_collection_with_service(Bucket, ScopeName,
+                                                      Params),
+        ValidProps = build_collection_props(Params, ServiceOKs),
+        AtomKeyProps = [KV || {K, _} = KV <- ColProps, is_atom(K)],
+        {ok, [{AtomKeyProps ++ ValidProps}]}
+    else
+        no_query_node -> no_query_node;
+        {errors, _} = E -> E
+    end.
 
 validate_external_collection_with_service(Bucket, Scope, Params) ->
     CollectionConfig = {menelaus_web_external_catalogs:binary_params(Params) ++
@@ -672,17 +759,16 @@ validate_collection_against_query_nodes([FirstNode | _], CollectionConfig,
         %% query supports). We can inject our own values for the sake of
         %% testing.
         ForcedValidationResults =
-            ns_config:read_key_fast(
-              forced_external_collection_validation_results, #{}),
+            ns_config:search(forced_external_collection_validation_results),
 
-        case maps:size(ForcedValidationResults) of
-            0 ->
+        case ForcedValidationResults of
+            false ->
                 case maps:size(Errors) of
                     0 -> {ok, OKs};
                     _ -> {errors, maps:to_list(Errors)}
                 end;
-            _ ->
-                {ok, ForcedValidationResults}
+            {value, V} ->
+                V
         end
     else
         {error, {_, _, _, Bad} = Error} ->
@@ -718,7 +804,7 @@ build_collection_props(Values, ServiceOKs) ->
               BKey = list_to_binary(Key),
               case maps:is_key(BKey, ServiceOKs) of
                   false -> false;
-                  true -> {true, {BKey, list_to_binary(Value)}}
+                  true -> {true, {BKey, iolist_to_binary(Value)}}
               end
       end, Values).
 

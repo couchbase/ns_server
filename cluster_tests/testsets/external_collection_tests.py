@@ -85,12 +85,21 @@ class ExternalCollectionTests(testlib.BaseTestSet):
             include_services=[testlib.Service.QUERY])
 
     def setup(self):
+        self.set_forced_validation_results()
+        pass
+
+    def set_forced_validation_results(self):
         testlib.diag_eval(self.cluster,
                           'ns_config:set(' \
                           'forced_external_collection_validation_results, ' \
-                          '#{<<"param1">> => <<"value1">>,' \
-                          '  <<"param2">> => <<"value2">>})')
-        pass
+                          '{ok, #{<<"param1">> => <<"value1">>,' \
+                          '       <<"param2">> => <<"value2">>}})')
+
+    def set_forced_validation_results_error(self):
+        testlib.diag_eval(self.cluster,
+                          'ns_config:set(' \
+                          'forced_external_collection_validation_results, ' \
+                          '{errors, [{<<"param1">>, <<"Unsupported">>}]})')
 
     def teardown(self):
         pass
@@ -943,13 +952,15 @@ class ExternalCollectionTests(testlib.BaseTestSet):
                      "collections": [
                          {"name": "regular-col"},
                          {"name": "ext-col",
-                          "external": True}]}]})
+                          "external": True,
+                          "param1": "value1"}]}]})
 
         # External collection should exist
         ext_col = get_collection_from_manifest(
             self.cluster, bucket_name,
             scope_name, "ext-col", external=True)
         testlib.assert_not_eq(None, ext_col)
+        testlib.assert_eq("value1", ext_col["param1"])
 
         # Couchbase collection should still exist
         reg_col = get_collection_from_manifest(
@@ -962,3 +973,52 @@ class ExternalCollectionTests(testlib.BaseTestSet):
             self.cluster, bucket_name, external=True)
         testlib.assert_not_eq(ext_uid_before,
                               ext_uid_after)
+
+    def put_manifest_invalid_external_collection_params_test(
+            self):
+        bucket_name = "put-invalid-ext-bucket"
+        scope_name = "put-invalid-ext-scope"
+
+        self.create_bucket(bucket_name)
+        self.create_scope(bucket_name, scope_name)
+
+        ext_uid_before = get_manifest_uid(
+            self.cluster, bucket_name, external=True)
+
+        # Make the query service reject the params
+        self.set_forced_validation_results_error()
+
+        manifest = get_manifest(
+            self.cluster, bucket_name)
+        uid = manifest["uid"]
+
+        # PUT manifest with an external collection whose params
+        # fail query service validation should be rejected
+        testlib.put_fail(
+            self.cluster,
+            f"{manifest_path(bucket_name)}"
+            f"?validOnUid={uid}",
+            expected_code=400,
+            json={
+                "scopes": [
+                    {"name": "_default",
+                     "collections": [
+                         {"name": "_default"}]},
+                    {"name": scope_name,
+                     "collections": [
+                         {"name": "ext-col",
+                          "external": True,
+                          "param1": "value3"}]}]})
+
+        self.set_forced_validation_results()
+
+        # External collection should not have been created
+        ext_col = get_collection_from_manifest(
+            self.cluster, bucket_name,
+            scope_name, "ext-col", external=True)
+        testlib.assert_eq(None, ext_col)
+
+        # External manifest uid should be unchanged
+        ext_uid_after = get_manifest_uid(
+            self.cluster, bucket_name, external=True)
+        testlib.assert_eq(ext_uid_before, ext_uid_after)
