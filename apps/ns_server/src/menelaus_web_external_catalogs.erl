@@ -20,6 +20,7 @@
 -export([handle_get_catalogs/1,
          handle_get_catalog/2,
          handle_post_catalog/1,
+         handle_put_catalogs/1,
          handle_put_catalog/2,
          handle_patch_catalog/2,
          handle_delete_catalog/2,
@@ -91,6 +92,81 @@ handle_post_catalog(Req) ->
                         Req, Errors)
               end
       end, Req, form, [validator:prohibited(rev, _) | name_validators()]).
+
+handle_put_catalogs(Req) ->
+    menelaus_util:assert_is_totoro(),
+    validator:handle(
+      fun (CatalogsList) ->
+              Entries = catalog_list_to_entries(CatalogsList),
+              do_put_catalogs(Req, Entries)
+      end,
+      Req, json_map,
+      [validator:string(key, _),
+       validator:length(key, 1, ?MAX_NAME_LENGTH, _),
+       menelaus_web_collections:name_validator(key, _),
+       check_key_not_uid(_)]).
+
+%% Replaces the full catalog set atomically.
+do_put_catalogs(Req, CatalogEntries) ->
+    %% The resulting count is exactly the number of supplied entries, so
+    %% the limit can be checked up front rather than inside the txn.
+    case length(CatalogEntries) > max_catalogs() of
+        true ->
+            reply_too_many_catalogs(Req);
+        false ->
+            case validate_catalog_manifest(CatalogEntries, #{}) of
+                no_query_node ->
+                    reply_no_query_node(Req);
+                {catalog_errors, Errors} ->
+                    reply_validation_errors(Req, Errors);
+                {ok, ValidatedCatalogs} ->
+                    {ok, _, NewState} =
+                        set_all_catalogs(ValidatedCatalogs),
+                    ns_audit:set_external_catalog_manifest(
+                      Req, get_uid(NewState)),
+                    menelaus_util:reply_json(
+                      Req, format_catalogs(NewState), 200)
+            end
+    end.
+
+%% Converts the json_map prepared-params list into a list of
+%% {BinName, BinaryProps} entries suitable for validate_with_service.
+catalog_list_to_entries(CatalogsList) ->
+    lists:map(
+      fun (Props) ->
+              %% key was normalised to a string by validator:string/2
+              Name = list_to_binary(proplists:get_value(key, Props)),
+              BinaryProps =
+                  [{list_to_binary(K), V}
+                   || {K, V} <- proplists:delete(key, Props)],
+              {Name, BinaryProps}
+      end, CatalogsList).
+
+check_key_not_uid(State) ->
+    validator:validate(
+      fun ("uid") ->
+              {error, <<"uid is set by the server">>};
+          (_) ->
+              ok
+      end, key, State).
+
+%% Validates each catalog entry against the query service.
+%% Returns {ok, Map} or no_query_node or {catalog_errors, Errors}.
+%% Recursing here allows us to use maybe to simplify the error handling.
+validate_catalog_manifest([], Acc) ->
+    {ok, Acc};
+validate_catalog_manifest([{Name, Params} | Rest], Acc) ->
+    maybe
+        {ok, ServiceOKs} ?= validate_with_service(Params),
+        Catalog = build_catalog(ServiceOKs, Params),
+        validate_catalog_manifest(Rest, Acc#{Name => Catalog})
+    else
+        no_query_node -> no_query_node;
+        {errors, Errors} ->
+            {catalog_errors,
+                [{Name, {[{K, V} || {K, V} <- Errors]}}]}
+
+    end.
 
 handle_put_catalog(Name, Req) ->
     menelaus_util:assert_is_totoro(),
@@ -249,17 +325,16 @@ validate_against_query_nodes([FirstNode | _], CatalogConfig,
         %% query supports). We can inject our own values for the sake of
         %% testing.
         ForcedValidationResults =
-            ns_config:read_key_fast(forced_external_catalog_validation_results,
-                                    #{}),
+            ns_config:search(forced_external_catalog_validation_results),
 
-        case maps:size(ForcedValidationResults) of
-            0 ->
+        case ForcedValidationResults of
+            false ->
                 case maps:size(Errors) of
                     0 -> {ok, OKs};
                     _ -> {errors, maps:to_list(Errors)}
                 end;
-            _ ->
-                {ok, ForcedValidationResults}
+            {value, V} ->
+                V
         end
     else
         {error, {_, _, _, Bad} = Error} ->
@@ -387,6 +462,20 @@ delete_catalog(Name) ->
               end
       end).
 
+set_all_catalogs(NewCatalogsWithoutRevs) ->
+    chronicle_kv:transaction(
+      kv, [?CHRONICLE_KEY],
+      fun (Snapshot) ->
+              State = get_state(Snapshot),
+              NewUid = get_uid(State) + 1,
+              NewCatalogs = maps:map(
+                              fun (_Name, Catalog) ->
+                                      [{rev, NewUid} | Catalog]
+                              end, NewCatalogsWithoutRevs),
+              NewState = #{uid => NewUid, catalogs => NewCatalogs},
+              {commit, set_state(NewUid, NewCatalogs), NewState}
+      end).
+
 %% Internal helpers
 
 find_catalog(Name, Catalogs) ->
@@ -472,10 +561,8 @@ reply_too_many_catalogs(Req) ->
       400).
 
 reply_validation_errors(Req, Errors) ->
-    ErrorJson =
-        {[{Key, Msg} || {Key, Msg} <- Errors]},
     menelaus_util:reply_json(
-      Req, {[{errors, ErrorJson}]}, 400).
+      Req, {[{errors, {Errors}}]}, 400).
 
 name_validators() ->
     [validator:required(name, _),

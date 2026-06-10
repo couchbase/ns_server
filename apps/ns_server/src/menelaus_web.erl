@@ -1454,6 +1454,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["pools", "default", "serverGroups", GroupUUID] ->
                     {{[server_groups], write},
                      fun menelaus_web_groups:handle_server_group_update/2, [GroupUUID]};
+                ["pools", "default", "externalCatalogs"] ->
+                    {{[admin, catalogs], write},
+                     fun menelaus_web_external_catalogs:handle_put_catalogs/1};
                 ["pools", "default", "externalCatalogs", Name] ->
                     {{[admin, catalogs], write},
                      fun menelaus_web_external_catalogs:handle_put_catalog/2,

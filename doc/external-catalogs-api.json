@@ -50,6 +50,73 @@
           }
         }
       },
+      "put": {
+        "summary": "Set the entire external catalog manifest",
+        "operationId": "setExternalCatalogManifest",
+        "description": "Atomically replaces all external catalogs with the provided set. Each catalog in the request body is validated against the query service; the manifest is only applied if all catalogs are valid. The manifest uid is set by the server and cannot be supplied in the request body.\n",
+        "tags": [
+          "External Catalogs"
+        ],
+        "security": [
+          {
+            "basicAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManifestInput"
+              },
+              "example": {
+                "my-catalog": {
+                  "param1": "value1"
+                },
+                "other-catalog": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The new manifest, with a server-assigned uid and each catalog's rev set to that uid.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogList"
+                },
+                "example": {
+                  "uid": 5,
+                  "my-catalog": {
+                    "rev": 5,
+                    "param1": "value1"
+                  },
+                  "other-catalog": {
+                    "rev": 5
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body is not a valid JSON object; a catalog name is invalid (empty, too long, contains invalid characters, or is the reserved name `uid`); a catalog value is not a JSON object; the number of catalogs exceeds the limit; no query node is available; or one or more catalogs failed query service validation.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManifestError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        }
+      },
       "post": {
         "summary": "Create a new external catalog",
         "operationId": "createExternalCatalog",
@@ -408,6 +475,58 @@
             "example": "my-catalog"
           }
         }
+      },
+      "ManifestInput": {
+        "type": "object",
+        "description": "A map of catalog names to their service parameters. Each key is a catalog name (1–256 characters, matching `^[0-9A-Za-z_%\\-]+$`). The reserved name `uid` is not allowed. Each value must be a JSON object whose properties are passed to the query service for validation.\n",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "ManifestError": {
+        "description": "Error response for PUT manifest. The `errors` field is either an array (one object per catalog entry, for name-validation failures) or an object keyed by catalog name (for query-service validation failures on a specific catalog).\n",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "errors": {
+                "type": "array",
+                "description": "Per-entry name validation errors. Each element corresponds to one catalog entry in the request; entries without errors are empty objects.\n",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "example": [
+                  {"key": "Can only contain characters A-Z, a-z, 0-9 and the following symbols _ - %"},
+                  {}
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "properties": {
+              "errors": {
+                "type": "object",
+                "description": "Per-catalog query-service validation errors, keyed by catalog name.\n",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                },
+                "example": {
+                  "my-catalog": {
+                    "param1": "Unsupported parameter"
+                  }
+                }
+              }
+            }
+          }
+        ]
       },
       "Error": {
         "type": "object",

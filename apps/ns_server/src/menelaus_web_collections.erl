@@ -29,7 +29,8 @@
          assert_api_available/1,
          get_formatted_err_msg/1,
          handle_ensure_manifest/3,
-         name_validator/1]).
+         name_validator/1,
+         name_validator/2]).
 
 -define(PATCH_RETRIES, ?get_param(patch_retries, 5)).
 
@@ -478,11 +479,14 @@ name_first_char_validator(State, Exceptions) ->
               end
       end, name, State).
 
-name_validator(State) ->
+name_validator(Key, State) ->
     validator:string(
-      name, "^[0-9A-Za-z_%\-]+$", [dollar_endonly],
-      "Can only contain characters A-Z, a-z, 0-9 and the following symbols "
-      "_ - %", State).
+        Key, "^[0-9A-Za-z_%\\-]+$", [dollar_endonly],
+        "Can only contain characters A-Z, a-z, 0-9 and the following symbols "
+        "_ - %", State).
+
+name_validator(State) ->
+    name_validator(name, State).
 
 convert_uid(Uid) ->
     try collections:convert_uid_from_memcached(Uid) of

@@ -104,6 +104,7 @@
          create_external_catalog/3,
          modify_external_catalog/3,
          delete_external_catalog/2,
+         set_external_catalog_manifest/2,
          create_external_collection/5,
          modify_external_collection/5,
          drop_external_collection/5
@@ -561,12 +562,14 @@ code(modify_external_catalog) ->
     8301;
 code(delete_external_catalog) ->
     8302;
-code(create_external_collection) ->
+code(set_external_catalog_manifest) ->
     8303;
-code(modify_external_collection) ->
+code(create_external_collection) ->
     8304;
+code(modify_external_collection) ->
+    8305;
 code(drop_external_collection) ->
-    8305.
+    8306.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1161,6 +1164,10 @@ modify_external_catalog(Req, Name, Rev) ->
 delete_external_catalog(Req, Name) ->
     put(delete_external_catalog, Req,
         [{catalog_name, Name}]).
+
+set_external_catalog_manifest(Req, Uid) ->
+    put(set_external_catalog_manifest, Req,
+        [{manifest_uid, Uid}]).
 
 create_external_collection(Req, BucketName, ScopeName,
                            CollectionName, Uid) ->
