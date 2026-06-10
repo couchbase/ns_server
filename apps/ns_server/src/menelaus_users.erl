@@ -24,7 +24,6 @@
 -export([
          %% User management:
          store_user/7,
-         store_service_roles/2,
          store_users/2,
          delete_user/1,
          select_users/1,
@@ -529,17 +528,6 @@ store_user(Identity, Name, PasswordOrAuth, Roles, Groups, Locked,
         {error, _} = Error -> Error
     end.
 
--spec store_service_roles(rbac_identity(), [rbac_role()]) ->
-          ok | {error, {roles_validation, _}} | {error, too_many}.
-store_service_roles({_User, admin} = Identity, Roles) ->
-    Props = [{pass_or_auth, {password, ""}},
-             {roles, Roles},
-             {locked, false}],
-    case store_users([{Identity, Props}], true) of
-        {ok, _} -> ok;
-        {error, _} = Error -> Error
-    end.
-
 store_users(Users, CanOverwrite) ->
     Snapshot = menelaus_roles:get_roles_snapshot(),
     case prepare_store_users_docs(Snapshot, Users, CanOverwrite) of
@@ -637,7 +625,6 @@ prepare_store_user(Snapshot, CanOverwrite, {{_, Domain} = Identity, Props}) ->
 
             Auth =
                 case {Domain, PasswordOrAuth} of
-                    {admin, _} -> same;
                     {external, _} -> same;
                     {local, {password, Password}} ->
                         CurrentAuth = replicated_dets:get(storage_name(),
@@ -827,8 +814,6 @@ delete_user({_, Domain} = Identity) ->
                          {delete, profile_key(Identity)},
                          {delete, {locked, Identity}},
                          {delete, {activity, Identity}}];
-                    admin ->
-                        [];
                     external ->
                         []
                 end,
@@ -1144,7 +1129,6 @@ get_dirty_groups(Id, Props) ->
     LocalGroups = proplists:get_value(groups, Props, []),
     ExternalGroups =
         case Id of
-            {_, admin} -> [];
             {_, local} -> [];
             {User, external} ->
                 case ldap_util:get_setting(authorization_enabled) of
@@ -1304,6 +1288,7 @@ cleanup_credential_roles(CredId) ->
 cleanup_invalid_roles(Trigger, Snapshot) ->
     ?log_debug("Delete all roles invalidated by deletion of ~p", [Trigger]),
     Definitions = menelaus_roles:get_definitions(all),
+    ok = menelaus_roles:cleanup_service_roles(Definitions, Snapshot),
     UpdateFun =
         fun ({Type, Key}, Props) when Type == user; Type == group ->
                 case filter_out_invalid_roles(Props, Definitions, Snapshot) of

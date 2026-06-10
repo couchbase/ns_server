@@ -51,6 +51,8 @@
 
 -define(DEFAULT_EXTERNAL_ROLES_POLLING_INTERVAL, 10*60*1000).
 
+-define(SERVICE_ROLES_KEY, service_roles).
+
 -export([get_definitions/1,
          get_public_definitions/1,
          is_allowed/2,
@@ -84,7 +86,12 @@
          set_role/1,
          delete_role/1,
          diff_roles/2,
-         get_roles_snapshot/0]).
+         get_roles_snapshot/0,
+         get_all_service_roles/0,
+         get_service_roles/1,
+         store_service_roles/2,
+         delete_service_roles/1,
+         cleanup_service_roles/2]).
 
 -export([start_compiled_roles_cache/0]).
 
@@ -1450,12 +1457,7 @@ get_roles_for_identity({[$@ | _] = User, admin}) ->
             %% narrow service_admin to an explicit allow-list is tracked in
             %% MB-71508.
             CanonicalUser = misc:canonical_admin_identity(User),
-            StoredRoles =
-                try menelaus_users:get_roles({CanonicalUser, admin})
-                catch _:_ ->
-                        []
-                end,
-            [<<"service_admin">> | StoredRoles];
+            [<<"service_admin">> | get_service_roles(CanonicalUser)];
         false -> [<<"admin">>]
     end;
 get_roles_for_identity({_User, admin}) ->
@@ -1489,6 +1491,8 @@ start_compiled_roles_cache() ->
                 true;
             (rest_creds) ->
                 true;
+            (?SERVICE_ROLES_KEY) ->
+                true;
             (K) when K =:= CatalogsKey ->
                 true;
             (Key) ->
@@ -1500,6 +1504,7 @@ start_compiled_roles_cache() ->
                 {cluster_compat_mode:get_compat_version(),
                  menelaus_users:get_users_version(),
                  menelaus_users:get_groups_version(),
+                 get_all_service_roles(),
                  ns_config_auth:is_system_provisioned(),
                  params_version()}
         end,
@@ -1890,6 +1895,89 @@ delete_role(RoleId) ->
     case Result of
         {ok, _} -> ok;
         {error, _} = Err -> Err
+    end.
+
+-spec get_all_service_roles() -> #{string() => [rbac_role()]}.
+get_all_service_roles() ->
+    chronicle_compat:get(?SERVICE_ROLES_KEY, #{default => #{}}).
+
+-spec get_service_roles(string()) -> [rbac_role()].
+get_service_roles(ServiceId) ->
+    maps:get(ServiceId, get_all_service_roles(), []).
+
+%% @doc Set the granted roles for a service, returning whether the grant
+%% was added or updated (the distinction only matters for auditing).
+-spec store_service_roles(string(), [rbac_role()]) -> added | updated.
+store_service_roles(ServiceId, Roles) ->
+    {ok, _, Reason} =
+        chronicle_kv:transaction(
+          kv, [?SERVICE_ROLES_KEY],
+          fun (Snapshot) ->
+                  Grants = service_roles_from_snapshot(Snapshot),
+                  R = case maps:is_key(ServiceId, Grants) of
+                          true -> updated;
+                          false -> added
+                      end,
+                  {commit,
+                   [{set, ?SERVICE_ROLES_KEY, Grants#{ServiceId => Roles}}],
+                   R}
+          end, #{}),
+    Reason.
+
+-spec delete_service_roles(string()) -> ok | {error, not_found}.
+delete_service_roles(ServiceId) ->
+    Result =
+        chronicle_kv:transaction(
+          kv, [?SERVICE_ROLES_KEY],
+          fun (Snapshot) ->
+                  Grants = service_roles_from_snapshot(Snapshot),
+                  case maps:is_key(ServiceId, Grants) of
+                      true ->
+                          {commit, [{set, ?SERVICE_ROLES_KEY,
+                                     maps:remove(ServiceId, Grants)}]};
+                      false ->
+                          {abort, {error, not_found}}
+                  end
+          end, #{}),
+    case Result of
+        {ok, _} -> ok;
+        {error, not_found} = Err -> Err
+    end.
+
+%% @doc Drop roles that are no longer valid (e.g. reference a deleted
+%% credential) from all service grants. Snapshot is the roles snapshot to
+%% validate against, with the deleted entity already removed from it.
+-spec cleanup_service_roles([rbac_role_def()], map()) -> ok.
+cleanup_service_roles(Definitions, Snapshot) ->
+    Result =
+        chronicle_kv:transaction(
+          kv, [?SERVICE_ROLES_KEY],
+          fun (TxnSnapshot) ->
+                  Grants = service_roles_from_snapshot(TxnSnapshot),
+                  NewGrants =
+                      maps:map(
+                        fun (_ServiceId, Roles) ->
+                                filter_out_invalid_roles(Roles, Definitions,
+                                                         Snapshot)
+                        end, Grants),
+                  case NewGrants =:= Grants of
+                      true ->
+                          {abort, ok};
+                      false ->
+                          ?log_debug("Changing service role grants from ~p "
+                                     "to ~p", [Grants, NewGrants]),
+                          {commit, [{set, ?SERVICE_ROLES_KEY, NewGrants}]}
+                  end
+          end, #{}),
+    case Result of
+        ok -> ok;
+        {ok, _} -> ok
+    end.
+
+service_roles_from_snapshot(Snapshot) ->
+    case maps:find(?SERVICE_ROLES_KEY, Snapshot) of
+        {ok, {Grants, _Rev}} -> Grants;
+        error -> #{}
     end.
 
 diff_roles(NewRoles, OldRoles) ->

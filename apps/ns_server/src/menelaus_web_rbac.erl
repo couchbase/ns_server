@@ -1255,8 +1255,7 @@ do_get_service_roles(ServiceName, Req) ->
         error ->
             reply_unknown_service_error(Req);
         {ok, InternalId} ->
-            Identity = {InternalId, admin},
-            Roles = menelaus_users:get_roles(Identity),
+            Roles = menelaus_roles:get_service_roles(InternalId),
             ns_audit:rbac_info_retrieved(Req, users),
             menelaus_util:reply_json(
               Req, {[{roles, [{role_to_json(R)} || R <- Roles]}]})
@@ -1282,12 +1281,11 @@ do_put_service_roles(ServiceName, Req) ->
             menelaus_util:reply_global_error(
               Req, iolist_to_binary(
                      io_lib:format("Unknown service: ~s", [ServiceName])));
-        {ok, UserId} ->
-            Identity = {UserId, admin},
+        {ok, ServiceId} ->
             CompatVer = cluster_compat_mode:get_compat_version(),
             validator:handle(
               fun (Values) ->
-                      reply(do_store_service_roles(Identity, Values, Req), Req)
+                      reply(do_store_service_roles(ServiceId, Values, Req), Req)
               end, Req, form, service_role_validators(CompatVer))
     end.
 
@@ -1314,22 +1312,14 @@ is_credential_consumer_role({<<"credential_consumer">>, _}) ->
 is_credential_consumer_role(_) ->
     false.
 
-do_store_service_roles({User, admin} = Identity, Props, Req) ->
+do_store_service_roles(ServiceId, Props, Req) ->
     Roles = proplists:get_value(roles, Props, []),
     UniqueRoles = lists:usort(Roles),
-    Reason = case menelaus_users:user_exists(Identity) of
-                 true -> updated;
-                 false -> added
-             end,
-    case menelaus_users:store_service_roles(Identity, UniqueRoles) of
-        ok ->
-            ns_audit:set_user(Req, Identity, UniqueRoles, undefined, undefined,
-                              false, false, Reason),
-            ?log_debug("Service roles updated for ~p.", [User]),
-            Reason;
-        {error, Error} ->
-            {error, Error}
-    end.
+    Reason = menelaus_roles:store_service_roles(ServiceId, UniqueRoles),
+    ns_audit:set_user(Req, {ServiceId, service}, UniqueRoles, undefined,
+                      undefined, false, false, Reason),
+    ?log_debug("Service roles updated for ~p.", [ServiceId]),
+    Reason.
 
 validator_verify_security_roles_access(RolesName, Req, Permission,
                                        ExtraRolesFun, State) ->
@@ -1473,12 +1463,11 @@ do_delete_service_roles(ServiceName, Req) ->
         error ->
             reply_unknown_service_error(Req);
         {ok, InternalId} ->
-            Identity = {InternalId, admin},
-            case menelaus_users:delete_user(Identity) of
-                {commit, _} ->
-                    ns_audit:delete_user(Req, Identity),
+            case menelaus_roles:delete_service_roles(InternalId) of
+                ok ->
+                    ns_audit:delete_user(Req, {InternalId, service}),
                     reply_put_delete_users(Req);
-                {abort, {error, not_found}} ->
+                {error, not_found} ->
                     %% No service-specific roles were found - not an error
                     reply_put_delete_users(Req)
             end
@@ -1804,6 +1793,7 @@ handle_check_permissions_post(Req) ->
 check_permissions_url_version(Snapshot) ->
     B = term_to_binary(
           [cluster_compat_mode:get_compat_version(),
+           menelaus_roles:get_all_service_roles(),
            menelaus_users:get_users_version(),
            menelaus_users:get_groups_version(),
            menelaus_roles:params_version(Snapshot)]),

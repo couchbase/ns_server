@@ -193,6 +193,7 @@ is_interesting(rest_creds) -> true;
 is_interesting(cluster_compat_version) -> true;
 is_interesting({node, _, is_enterprise}) -> true;
 is_interesting(user_roles) -> true;
+is_interesting(service_roles) -> true;
 is_interesting(cipher_suites) -> true;
 is_interesting(honor_cipher_order) -> true;
 is_interesting(ssl_minimum_protocol) -> true;
