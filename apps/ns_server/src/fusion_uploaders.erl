@@ -48,7 +48,8 @@
          cleanup_mounted_volumes/2,
          init_namespace/1,
          enable_bucket/1,
-         wait_for_uploaders_state/3]).
+         wait_for_uploaders_state/3,
+         validate_mounted_volumes/2]).
 
 %% used via rpc:call
 -export([do_get_snapshots/4, do_delete_snapshots/3]).
@@ -1377,6 +1378,24 @@ do_wait_for_uploaders_state(BucketName, Tries, ConditionFun) ->
             {error, bucket_not_found};
         Error ->
             {error, Error}
+    end.
+
+-spec validate_mounted_volumes(
+        [node()], list()) -> {error, {need_nodes, [string()]} |
+                              {extra_nodes, [string()]}} | {ok, list()}.
+validate_mounted_volumes(Nodes, Volumes) ->
+    PlanNodeNames = [atom_to_list(N) || N <- Nodes],
+    PassedNodeNames = [N || {N, _} <- Volumes],
+    case PlanNodeNames -- PassedNodeNames of
+        Missing when Missing =/= [] ->
+            {error, {need_nodes, Missing}};
+        [] ->
+            case PassedNodeNames -- PlanNodeNames of
+                Extra when Extra =/= [] ->
+                    {error, {extra_nodes, Extra}};
+                [] ->
+                    {ok, [{list_to_atom(N), V} || {N, V} <- Volumes]}
+            end
     end.
 
 -ifdef(TEST).

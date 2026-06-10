@@ -1353,19 +1353,13 @@ idle({fusion_upload_mounted_volumes, PlanUUID, Volumes}, From, _State) ->
             proplists:get_value(type, RebalancePlan) =:= rebalance orelse
                 throw(not_found),
             Nodes = proplists:get_value(nodes, RebalancePlan),
-            PlanNodeNames = [atom_to_list(N) || N <- Nodes],
-            PassedNodeNames = [N || {N, _} <- Volumes],
-            case PlanNodeNames -- PassedNodeNames of
-                Missing when Missing =/= [] ->
-                    throw({need_nodes, Missing});
-                [] -> ok
-            end,
-            case PassedNodeNames -- PlanNodeNames of
-                Extra when Extra =/= [] ->
-                    throw({extra_nodes, Extra});
-                [] -> ok
-            end,
-            PreparedVolumes = [{list_to_atom(N), V} || {N, V} <- Volumes],
+            PreparedVolumes =
+                case fusion_uploaders:validate_mounted_volumes(
+                       Nodes, Volumes) of
+                    {ok, PV} -> PV;
+                    {error, Error} ->
+                        throw(Error)
+                end,
             ale:info(?USER_LOGGER,
                      "Uploading mounted volumes ~p to rebalance plan ~p",
                      [PreparedVolumes, PlanUUID]),
