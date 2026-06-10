@@ -240,10 +240,7 @@ handle_post_settings(Path, Req) ->
 
 apply_props(Path, PropList, Req, Type) ->
     OldProps = ns_config:read_key_fast(stats_settings, []),
-    NewProps = lists:foldl(
-                 fun ({KeyTokens, Value}, Acc) ->
-                     apply_value(KeyTokens, Value, Acc)
-                 end, OldProps, PropList),
+    NewProps = menelaus_web_settings2:apply_changes(OldProps, PropList),
     validate_metrics_settings(prometheus_cfg:with_applied_defaults(NewProps)),
     ns_config:set(stats_settings, NewProps),
     case Type of
@@ -275,17 +272,6 @@ validate_metrics_settings(Settings) ->
               true -> ok
           end
       end, proplists:get_value(services, Settings, [])).
-
-apply_value([], Value, _PropList) -> Value;
-apply_value([Key | Tail], Value, PropList) ->
-    Res = misc:key_update(Key, PropList,
-                          fun (SubProplist) ->
-                              apply_value(Tail, Value, SubProplist)
-                          end),
-    case Res of
-        false -> [{Key, apply_value(Tail, Value, [])} | PropList];
-        _ -> Res
-    end.
 
 handle_range_post(Req) ->
     PermFilters =
