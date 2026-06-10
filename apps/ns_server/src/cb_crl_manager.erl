@@ -248,9 +248,14 @@ sync_uploaded_files() ->
     gen_server:call(?SERVER, sync_uploaded_files, 60000).
 
 %% Called via RPC by nodes that need to download a CRL file from this node.
--spec read_uploaded_crl_file(string()) -> {ok, binary()} | {error, term()}.
+-spec read_uploaded_crl_file(string()) ->
+    {ok, {compressed, binary()}} | {error, term()}.
 read_uploaded_crl_file(Filename) ->
-    file:read_file(filename:join(crls_dir(), filename:basename(Filename))).
+    FilePath = filename:join([crls_dir(), Filename]),
+    case file:read_file(FilePath) of
+        {ok, B} -> {ok, {compressed, zlib:compress(B)}};
+        {error, _} = Error -> Error
+    end.
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -496,35 +501,44 @@ download_from_nodes([Node | Rest], FilenameBin, ExpectedChecksum) ->
         {FilenameBin, ExpectedChecksum} ->
             Filename = binary_to_list(FilenameBin),
             ?log_debug("CRL ~p: trying node ~p", [Filename, Node]),
-            case rpc:call(Node, cb_crl_manager, read_uploaded_crl_file,
-                          [Filename], ?DOWNLOAD_TIMEOUT_MS) of
-                {ok, Binary} ->
-                    case file_checksum(Binary) of
-                        ExpectedChecksum ->
-                            ?log_debug("CRL ~p: downloaded from ~p "
-                                       "(~b bytes)",
-                                       [Filename, Node,
-                                        byte_size(Binary)]),
-                            {ok, Binary};
-                        Got ->
-                            ?log_warning(
-                               "CRL ~p downloaded from ~p: checksum "
-                               "mismatch (got ~p expected ~p)",
-                               [Filename, Node, Got,
-                                ExpectedChecksum]),
-                            download_from_nodes(
-                              Rest, FilenameBin, ExpectedChecksum)
-                    end;
+            maybe
+                {ok, MaybeCompressed} ?=
+                    rpc:call(Node, cb_crl_manager, read_uploaded_crl_file,
+                             [Filename], ?DOWNLOAD_TIMEOUT_MS),
+                {ok, Binary} ?=
+                    case MaybeCompressed of
+                        {compressed, B} ->
+                            try zlib:uncompress(B) of
+                                UB -> {ok, UB}
+                            catch
+                                _:E -> {error, {uncompress_error, E}}
+                            end;
+                        %% Support uncompressed just in case future
+                        %% versions decide to stop compressing files
+                        {uncompressed, B} -> {ok, B};
+                        _ -> {error, unexpected_response}
+                    end,
+                case file_checksum(Binary) of
+                    ExpectedChecksum ->
+                        ?log_debug("CRL ~p: downloaded from ~p (~b bytes)",
+                                   [Filename, Node, byte_size(Binary)]),
+                        {ok, Binary};
+                    Got ->
+                        ?log_warning("CRL ~p downloaded from ~p: checksum "
+                                     "mismatch (got ~p expected ~p)",
+                                    [Filename, Node, Got, ExpectedChecksum]),
+                        download_from_nodes(
+                            Rest, FilenameBin, ExpectedChecksum)
+                end
+            else
                 {badrpc, Reason} ->
                     ?log_warning("CRL ~p: RPC to ~p failed: ~p",
                                  [Filename, Node, Reason]),
-                    download_from_nodes(
-                      Rest, FilenameBin, ExpectedChecksum);
-                {error, _} = Err ->
-                    ?log_warning("CRL ~p: read from ~p returned: ~p",
+                    download_from_nodes(Rest, FilenameBin, ExpectedChecksum);
+                {error, Err} ->
+                    ?log_warning("CRL ~p: read from ~p failed: ~p",
                                  [Filename, Node, Err]),
-                    download_from_nodes(
-                      Rest, FilenameBin, ExpectedChecksum)
+                    download_from_nodes(Rest, FilenameBin, ExpectedChecksum)
             end;
         _ ->
             ?log_debug("CRL ~p: node ~p does not have the file",
