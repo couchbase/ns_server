@@ -285,6 +285,18 @@
             }
         ]
     },
+    "cm_lighthouse_telemetry_sends_total": {
+        "type": "counter",
+        "help": "Number of times lighthouse telemetry sends were attempted",
+        "added": "7.6.12",
+        "stability": "internal",
+        "labels": [
+            {
+                "name": "result",
+                "help": "Whether the report was a success or a failure"
+            }
+        ]
+    },
     "cm_logs_total": {
         "type": "counter",
         "help": "Total number of logs logged",

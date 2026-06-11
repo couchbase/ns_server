@@ -31,6 +31,7 @@
          terminate/2, code_change/3]).
 
 -define(CONFIG_KEY, lighthouse).
+-define(SENDS_METRIC, <<"lighthouse_telemetry_sends">>).
 
 -record(state, {
                 enabled = true :: boolean(),
@@ -59,6 +60,7 @@ build_settings() ->
 init([]) ->
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
+    create_metric(),
     {ok, update_config(#state{})}.
 
 handle_call(_Call, _From, State) ->
@@ -96,6 +98,17 @@ handle_config_event(Self, {?CONFIG_KEY, _}) ->
     Self ! config_change;
 handle_config_event(_, _) ->
     ok.
+
+create_metric() ->
+    lists:foreach(
+        fun (Result) ->
+                ns_server_stats:create_counter(
+                  {?SENDS_METRIC, [{result, Result}]})
+        end, [success, failure]).
+
+update_metric(Result) ->
+    ns_server_stats:notify_counter(
+      {?SENDS_METRIC, [{result, Result}]}).
 
 update_config(State0) ->
     Config = build_settings(),
@@ -143,7 +156,8 @@ send_report(Config) ->
               Report = create_report(),
               Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
                                                   Config)),
-              post(URL, Report, Timeout),
+              Result = post(URL, Report, Timeout),
+              update_metric(Result),
               Parent ! report_done
       end).
 
@@ -156,23 +170,27 @@ post(URL, Body, Timeout) ->
                                            [{connect_timeout, Timeout},
                                             {server_verification, false}]) of
         ok ->
-            ?log_debug("Lighthouse report sent successfuly");
+            ?log_debug("Lighthouse report sent successfuly"),
+            success;
         {error, rest_error, Reason, _} ->
             %% When the lighthouse isn't available, we will usually get an
             %% nxdomain error, so we don't need to log it at error level
-            ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]);
+            ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]),
+            failure;
         {Error, Stacktrace} ->
             Reason = case Error of
                          ok -> bad_value;
                          _ -> Error
                      end,
             ?log_error("Sending lighthouse report failed. Error: ~p",
-                       [{Reason, Stacktrace}])
+                       [{Reason, Stacktrace}]),
+            failure
     catch
         _:Error:Stack ->
             ?log_error("Sending lighthouse report crashed with error: ~p"
                        "~nStacktrace: ~p",
-                       [Error, Stack])
+                       [Error, Stack]),
+            failure
     end.
 
 build_product() ->
