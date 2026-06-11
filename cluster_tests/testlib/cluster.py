@@ -856,8 +856,8 @@ class Cluster:
             # We should not have unmet requirements at this point.
             # If we do, it is a bug in make_met() or in is_met()
             if len(unmet:=what_to_repair.get_unmet_requirements(self)) > 0:
-                raise RuntimeError('Internal error. Unmet requirements: ' +
-                                   str(unmet))
+                raise InconsistentClusterError(
+                        'Internal error. Unmet requirements: ' + str(unmet))
             return []
         return unsatisfied
 
