@@ -51,9 +51,10 @@ verify(OtpCert, Event, CRLScope, State) ->
 %% verify_fun implementation.  Runs on the ns_server node (directly, or via the
 %% RPC in verify/4).
 %%
-%% CRL checking is performed only for valid_peer — the leaf cert
-%% presented by the connecting client.  Intermediate-cert events
-%% (valid) pass through unchanged.
+%% CRL checking is performed for valid_peer (the leaf cert) and,
+%% when check_intermediate_certs is enabled in the CRL config, also
+%% for valid events (intermediate CA certs).  The same per-scope
+%% policy applies to both.
 -spec verify_local(OtpCert  :: #'OTPCertificate'{},
                    Event    :: term(),
                    CRLScope :: atom(),
@@ -95,18 +96,43 @@ verify_local(_OtpCert, {bad_cert, _} = Reason, _CRLScope, _State) ->
     {fail, Reason};
 verify_local(_OtpCert, {extension, _}, _CRLScope, State) ->
     {unknown, State};
-verify_local(_OtpCert, valid, _CRLScope, State) ->
-    {valid, State}.
+verify_local(OtpCert, valid, CRLScope, State) ->
+    case wait_for_check_intermediate_certs(5000) of
+        {ok, false} ->
+            {valid, State};
+        {ok, true} ->
+            case public_key:pkix_is_self_signed(OtpCert) of
+                true ->
+                    %% Root certs can't be revoked by definition
+                    {valid, State};
+                false ->
+                    %% The CRL check is pretty much the same as for the leaf
+                    %% cert, so just call verify/4 recursively with valid_peer
+                    verify_local(OtpCert, valid_peer, CRLScope, State)
+            end;
+        timeout ->
+            ?log_debug("Rejecting: check_intermediate_certs flag not yet "
+                       "available; expected only during startup."),
+            {fail, {bad_cert, crl_policy_not_available_yet}}
+    end.
 
 wait_for_crl_policy(Scope, Remaining) ->
-    case cb_crl_cache:get_policy(Scope) of
+    wait_for_value(fun () -> cb_crl_cache:get_policy(Scope) end, Remaining).
+
+wait_for_check_intermediate_certs(Remaining) ->
+    wait_for_value(fun cb_crl_cache:get_check_intermediate_certs/0, Remaining).
+
+%% Poll GetFun/0 every 100 ms until it returns a value other than 'unknown',
+%% or until Remaining milliseconds have elapsed.
+wait_for_value(GetFun, Remaining) ->
+    case GetFun() of
         unknown when Remaining > 0 ->
             timer:sleep(100),
-            wait_for_crl_policy(Scope, max(0, Remaining - 100));
+            wait_for_value(GetFun, max(0, Remaining - 100));
         unknown ->
             timeout;
-        Policy ->
-            {ok, Policy}
+        Value ->
+            {ok, Value}
     end.
 
 %% Perform the actual CRL revocation check and map the result to a

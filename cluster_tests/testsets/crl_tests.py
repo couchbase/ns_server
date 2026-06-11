@@ -236,6 +236,116 @@ class CRLTests(testlib.BaseTestSet):
                                       'dropUploadedCertificates': 'true'})
             shutil.rmtree(crl_dir, ignore_errors=True)
 
+    def intermediate_cert_crl_test(self):
+        """CRL check applied to a revoked intermediate CA certificate.
+
+        When checkIntermediateCerts is enabled, a client cert whose chain
+        contains a revoked intermediate CA is rejected even if the leaf
+        cert is not explicitly listed in any CRL.
+        """
+        node = self.cluster.connected_nodes[0]
+        ca_ids = []
+
+        try:
+            user = testlib.random_str(8)
+            password = testlib.random_str(8)
+
+            # PKI: Root CA -> Intermediate CA -> client leaf cert.
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem,
+                cn='Test Revoked Inter CA')
+            client_cert_pem, client_key_pem = generate_client_cert_cn(
+                inter_ca_pem, inter_ca_key_pem, user)
+
+            testlib.put_succ(
+                self.cluster, f'/settings/rbac/users/local/{user}',
+                data={'roles': 'ro_admin', 'password': password})
+
+            testlib.toggle_client_cert_auth(
+                node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+
+            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca_pem])
+
+            # Root CA issues a CRL that revokes the intermediate CA cert.
+            root_crl = generate_crl(root_ca_pem, root_ca_key_pem,
+                                    [inter_ca_pem])
+            upload_crl_file(node, 'root_crl.pem', root_crl)
+
+            with client_cert_file(client_cert_pem, inter_ca_pem,
+                                  client_key_pem) as cert_path:
+                # Step 1: checkIntermediateCerts disabled (default).
+                # Permissive policy: leaf cert has no CRL (undetermined
+                # status), which permissive mode allows.
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Permissive',
+                                      'nodeToNode': 'Disabled'},
+                    check_intermediate_certs=False)
+                assert_crl_status(self.cluster, expected_status='active')
+                r = try_client_auth(node, cert_path)
+                testlib.assert_eq(
+                    r.status_code, 200,
+                    name='allowed without intermediate cert check')
+                print("Connection allowed "
+                      "(checkIntermediateCerts=false)")
+
+                # Step 2: enable checkIntermediateCerts.
+                # The intermediate CA cert is in the Root CA's CRL,
+                # so the connection must be rejected.
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Permissive',
+                                      'nodeToNode': 'Disabled'},
+                    check_intermediate_certs=True)
+                assert_cert_rejected(
+                    lambda: try_client_auth(node, cert_path))
+                print("Connection rejected "
+                      "(intermediate CA is revoked)")
+
+                # Step 3: disable intermediate cert checking again.
+                # the connection is rejected because leaf cert status
+                # is undetermined (not listed in CRL)
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Require',
+                                      'nodeToNode': 'Disabled'},
+                    check_intermediate_certs=False)
+                assert_cert_rejected(
+                    lambda: try_client_auth(node, cert_path))
+                print("Connection rejected (leaf cert is undetermined)")
+
+                # Step 4: generate a CRL for leaf cert (issued by intermediate
+                # CA) and check connection is allowed again.
+                int_crl = generate_crl(inter_ca_pem, inter_ca_key_pem, [])
+                upload_crl_file(node, 'inter_crl.pem', int_crl)
+
+                r = try_client_auth(node, cert_path)
+                testlib.assert_eq(
+                    r.status_code, 200,
+                    name='allowed after disabling intermediate check')
+                print("Connection allowed again "
+                      "(checkIntermediateCerts=false)")
+
+        finally:
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             check_intermediate_certs=False,
+                             directory="")
+            testlib.toggle_client_cert_auth(node, enabled=False)
+            testlib.ensure_deleted(
+                self.cluster,
+                f'/settings/rbac/users/local/{user}')
+            for ca_id in ca_ids:
+                testlib.delete(
+                    node,
+                    f'/pools/default/trustedCAs/{ca_id}')
+            for f in get_crl_files(node):
+                delete_crl_file(node, f['filename'])
+
     def _run_crl_revocation_checks(self, setup_crl, update_crl,
                                    use_directory=True):
         """Shared test body for CRL revocation tests with policy matrix.
@@ -912,7 +1022,8 @@ def try_client_auth(node, cert_path):
 
 
 def set_crl_settings(cluster, policy_per_scope=None, directory=None,
-                     poll_interval_ms=None):
+                     poll_interval_ms=None,
+                     check_intermediate_certs=None):
     """POST /settings/crl to configure CRL settings."""
     body = {}
     if policy_per_scope is not None:
@@ -921,6 +1032,8 @@ def set_crl_settings(cluster, policy_per_scope=None, directory=None,
         body['directory'] = directory
     if poll_interval_ms is not None:
         body['dirPollIntervalMs'] = poll_interval_ms
+    if check_intermediate_certs is not None:
+        body['checkIntermediateCerts'] = check_intermediate_certs
     return testlib.post_succ(cluster, '/settings/crl', json=body).json()
 
 
@@ -1575,6 +1688,7 @@ class CRLNodeToNodeTests(testlib.BaseTestSet):
         set_crl_settings(self.cluster,
                          policy_per_scope={'clientAuth': 'Disabled',
                                            'nodeToNode': 'Disabled'},
+                         check_intermediate_certs=False,
                          directory="")
 
         # Wait for nodes to reconnect

@@ -37,7 +37,9 @@ config_to_json(Cfg) ->
        {[{scope_to_json(K), mode_to_json(V)}
          || {K, V} <- maps:to_list(maps:get(policy_per_scope, Cfg, #{}))]}},
       {dirPollIntervalMs, maps:get(poll_interval_ms, Cfg, undefined)},
-      {directory, dir_to_json(maps:get(poll_directory, Cfg, undefined))}]}.
+      {directory, dir_to_json(maps:get(poll_directory, Cfg, undefined))},
+      {checkIntermediateCerts,
+       maps:get(check_intermediate_certs, Cfg, false)}]}.
 
 scope_to_json(client_auth) -> <<"clientAuth">>;
 scope_to_json(node_to_node) -> <<"nodeToNode">>.
@@ -79,6 +81,7 @@ post_validators() ->
      validator:integer(dirPollIntervalMs, 1000, 24 * 3600 * 1000, _),
      validator:validate(fun (V) -> parse_pps_value(V) end,
                         policyPerScope, _),
+     validator:boolean(checkIntermediateCerts, _),
      validator:unsupported(_)].
 
 parse_pps_value({Props}) when is_list(Props) ->
@@ -118,9 +121,13 @@ build_config(Values) ->
                undefined -> Cfg1;
                PPS when is_map(PPS) -> Cfg1#{policy_per_scope => PPS}
            end,
-    case proplists:get_value(dirPollIntervalMs, Values) of
-        undefined -> Cfg2;
-        I -> Cfg2#{poll_interval_ms => I}
+    Cfg3 = case proplists:get_value(dirPollIntervalMs, Values) of
+               undefined -> Cfg2;
+               I -> Cfg2#{poll_interval_ms => I}
+           end,
+    case proplists:get_value(checkIntermediateCerts, Values) of
+        undefined -> Cfg3;
+        V -> Cfg3#{check_intermediate_certs => V}
     end.
 
 %%%===================================================================

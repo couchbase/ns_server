@@ -195,6 +195,7 @@ get_status() ->
 -spec get_push_config() ->
     #{policy_per_scope => [{crl_scope(), crl_policy()}],
       files => [binary()],
+      check_intermediate_certs => boolean(),
       version => integer()}.
 get_push_config() ->
     gen_server:call(?SERVER, get_push_config, ?GET_PUSH_CONFIG_TIMEOUT).
@@ -317,12 +318,15 @@ handle_call(get_push_config, _From,
                    uploaded       = Uploaded} = State) ->
     Cfg = get_config(),
     PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
+    CheckInterm = maps:get(check_intermediate_certs, Cfg, false),
     FileVersions = build_file_versions(LoadedLocally, Uploaded),
     Files = [F || {F, _} <- FileVersions],
-    Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions)}),
+    Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions),
+                             CheckInterm}),
     Result = #{policy_per_scope => PolicyPerScope,
                files => Files,
-               version => Version},
+               version => Version,
+               check_intermediate_certs => CheckInterm},
     {reply, Result, State};
 
 handle_call({upload_crl_file, Filename, Binary}, _From, State) ->
@@ -758,7 +762,8 @@ default_config() ->
           #{client_auth => disabled,
             node_to_node => disabled},
       delta_crls => false,
-      poll_interval_ms => ?DEFAULT_POLL_INTERVAL_MS}.
+      poll_interval_ms => ?DEFAULT_POLL_INTERVAL_MS,
+      check_intermediate_certs => false}.
 
 %% Apply a new configuration to State without creating a window where the
 %% cache is empty and without the race where a non-disabled policy is
@@ -789,16 +794,23 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
     NewPollDir  = maps:get(poll_directory, Cfg),
     NewInterval = maps:get(poll_interval_ms, Cfg),
     NewPolicies = maps:get(policy_per_scope, Cfg),
+    CheckInterm = maps:get(check_intermediate_certs, Cfg, false),
     State1 = State#state{poll_directory = NewPollDir,
                          poll_interval_ms = NewInterval},
 
     %% Phase 1: disable scopes whose new policy is 'disabled'.
+    %% Also disable intermediate-cert checking here when the new value is
+    %% false, so no check runs against a partially-updated cache.
     maps:foreach(
       fun (Scope, disabled) ->
               cb_crl_cache:set_policy(Scope, disabled);
           (_Scope, _Policy) ->
               ok
       end, NewPolicies),
+    case CheckInterm of
+        false -> cb_crl_cache:set_check_intermediate_certs(false);
+        true  -> ok
+    end,
 
     %% Phase 2: update CRL data.
     State2 =
@@ -825,6 +837,7 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
     %% Phase 3: enable / update scopes whose new policy is not 'disabled'.
     %% CRL data is now in the cache, so the verify_fun will find what it
     %% needs as soon as it reads the new policy from ETS.
+    %% Also enable intermediate-cert checking here, after CRL data is ready.
     maps:foreach(
       fun (_Scope, disabled) ->
               %% Already written in Phase 1; skip.
@@ -832,6 +845,10 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
           (Scope, Policy) ->
               cb_crl_cache:set_policy(Scope, Policy)
       end, NewPolicies),
+    case CheckInterm of
+        true  -> cb_crl_cache:set_check_intermediate_certs(true);
+        false -> ok
+    end,
 
     State2.
 

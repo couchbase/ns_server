@@ -2930,10 +2930,13 @@ create_fusion_namespace(BucketName) ->
 
 crl_config_opts() ->
     #{policy_per_scope := PolicyPerScope,
-      files := Files} = cb_crl_manager:get_push_config(),
+      files := Files,
+      check_intermediate_certs := CheckInterm} =
+        cb_crl_manager:get_push_config(),
     PolicyJson = {[{S, crl_mode_to_binary(M)} || {S, M} <- PolicyPerScope]},
     [{<<"crl_policies">>, PolicyJson},
-     {<<"crl_files">>, Files}].
+     {<<"crl_files">>, Files},
+     {<<"crl_check_intermediate">>, CheckInterm}].
 
 crl_mode_to_binary(disabled) -> <<"Disabled">>;
 crl_mode_to_binary(permissive) -> <<"Permissive">>;

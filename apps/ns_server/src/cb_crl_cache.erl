@@ -33,7 +33,9 @@
          get_all_file_paths/0,
          get_file_crls/1,
          set_policy/2,
-         get_policy/1]).
+         get_policy/1,
+         set_check_intermediate_certs/1,
+         get_check_intermediate_certs/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -141,6 +143,23 @@ get_policy(Scope) ->
         case ets:lookup(?ETS, {policy, Scope}) of
             [{{policy, _}, Policy}] -> Policy;
             []                      -> unknown
+        end
+    catch
+        error:badarg -> unknown
+    end.
+
+%% Store the check_intermediate_certs flag.
+%% Called exclusively by cb_crl_manager, after CRL data and policies are set.
+-spec set_check_intermediate_certs(boolean()) -> ok.
+set_check_intermediate_certs(V) ->
+    gen_server:call(?SERVER, {set_check_intermediate_certs, V}).
+
+-spec get_check_intermediate_certs() -> boolean() | unknown.
+get_check_intermediate_certs() ->
+    try
+        case ets:lookup(?ETS, check_intermediate_certs) of
+            [{_, V}] -> V;
+            []       -> unknown
         end
     catch
         error:badarg -> unknown
@@ -304,8 +323,8 @@ handle_call({remove_file, Path}, _From, State) ->
     {reply, ok, State};
 
 handle_call(remove_all_crls, _From, State) ->
-    %% Delete only crl_file and issuer records; policy entries are managed
-    %% independently by cb_crl_manager and must not be removed here.
+    %% Delete only crl_file and issuer records; policy and flag entries
+    %% are managed independently by cb_crl_manager and must not be removed.
     ets:match_delete(?ETS, {{crl_file, '_'}, '_'}),
     ets:match_delete(?ETS, {{issuer,    '_'}, '_'}),
     {reply, ok, State};
@@ -313,6 +332,10 @@ handle_call(remove_all_crls, _From, State) ->
 handle_call({set_policy, Scope, Policy}, _From, State) ->
     ?log_debug("Setting policy '~p' for scope '~p'", [Policy, Scope]),
     ets:insert(?ETS, {{policy, Scope}, Policy}),
+    {reply, ok, State};
+
+handle_call({set_check_intermediate_certs, V}, _From, State) ->
+    ets:insert(?ETS, {check_intermediate_certs, V}),
     {reply, ok, State};
 
 handle_call(Req, _From, State) ->
