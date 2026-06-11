@@ -11,6 +11,8 @@ import os
 import sys
 import time
 import re
+from datetime import datetime, timezone
+from math import floor
 from typing import List
 
 import requests
@@ -224,6 +226,29 @@ class Cluster:
                    get_terminal_attrs())
         remove_cluster_from_auto_kill(self.index)
         self.processes = None
+
+    def collect_logs(self, log_collection_regex):
+        collect_start_time = time.time_ns()
+        self.wait_nodes_up()
+        for node in self._nodes:
+            if node not in self.connected_nodes:
+                try:
+                    testlib.wait_for_ejected_node(node)
+                except AssertionError:
+                    print(
+                        f"Wait for ejected node {node} "
+                        f"to be ejected timed-out, "
+                        f"attempting to collect logs "
+                        f"anyway")
+            start_time = floor(
+                datetime.now(timezone.utc).timestamp())
+            testlib.start_log_collection(
+                node, taskRegexp=log_collection_regex)
+            path = testlib.wait_for_log_collection(
+                node, start_time)
+            print(
+                f"Collected logs for {node.url}: {path}")
+        return time.time_ns() - collect_start_time
 
     def stop_all_nodes(self):
         assert not self.is_existing_cluster(), "Can't stop pre-existing cluster"

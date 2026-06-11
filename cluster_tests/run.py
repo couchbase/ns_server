@@ -17,8 +17,7 @@ import sys
 import getopt
 import shutil
 import inspect
-from datetime import datetime, timezone
-from math import floor
+from datetime import datetime
 from difflib import get_close_matches
 
 import requests
@@ -1210,28 +1209,16 @@ def run_testsets(cluster, testsets, total_num, log_collection_regex, seed=None,
                 errors[testset['name']] = []
             errors[testset['name']].extend(testset_errors)
 
-    if collect_logs and len(errors) > 0:
-        collect_start_time = time.time_ns()
-        # Attempt a cbcollect for the cluster, in order to get all info
-        # that might be useful for debugging
-        with testlib.no_output("start log collection"):
-            cluster.wait_nodes_up()
+            if collect_logs:
+                # Attempt a cbcollect for the cluster, in order to get all
+                # info that might be useful for debugging
+                log_time, _, _ = testlib.safe_test_function_call(
+                    cluster, 'collect_logs',
+                    [log_collection_regex], 0,
+                    report_name=True)
+                if log_time is not None:
+                    log_collection_time += log_time
 
-            for node in cluster._nodes:
-                if node not in cluster.connected_nodes:
-                    try:
-                        testlib.wait_for_ejected_node(node)
-                    except AssertionError:
-                        print(f"Wait for ejected node {node} to be ejected "
-                              f"timed-out, attempting to collect logs anyway")
-                start_time = floor(datetime.now(timezone.utc).timestamp())
-                testlib.start_log_collection(node,
-                                             taskRegexp=log_collection_regex)
-
-                path = testlib.wait_for_log_collection(node, start_time)
-                print(f"Collected logs for {node.url}: {path}")
-
-        log_collection_time += (time.time_ns() - collect_start_time)
     return executed, errors, not_ran, log_collection_time, cluster
 
 
