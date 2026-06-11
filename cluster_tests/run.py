@@ -95,11 +95,14 @@ from testsets import \
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")
 
-log_collection_default_regex = (".*diags"
-                                "|master events"
-                                "|memcached.*"
-                                "|Collecting .*/snapshots"
-                                "|Chronicle dump")
+log_collection_default_regex = (r".*diags"
+                                r"|master events"
+                                r"|couchbase logs \(memcached.*\)"
+                                r"|Collecting .*/snapshots"
+                                r"|Chronicle dump"
+                                r"|couchbase logs \(debug.log\)"
+                                r"|couchbase logs \(json_rpc.log\)"
+                                r"|cbcollect_info.log")
 
 code_coverage_excluded_modules = ["ale_transform", "cut" ,
                                   "ns_server_testrunner_api"]
