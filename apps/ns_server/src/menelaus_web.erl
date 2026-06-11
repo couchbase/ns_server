@@ -32,6 +32,7 @@
          webconfig/0,
          webconfig/1,
          get_uuid/0,
+         get_uuid_formatted/0,
          get_addr/2,
          init/1,
          response_time_ms/1]).
@@ -1627,6 +1628,9 @@ get_uuid() ->
         {value, Uuid2} ->
             Uuid2
     end.
+
+get_uuid_formatted() ->
+    list_to_binary(misc:format_v4uuid(get_uuid())).
 
 %% log categorizing, every logging line should be unique, and most
 %% should be categorized
