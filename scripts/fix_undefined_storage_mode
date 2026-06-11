@@ -25,6 +25,16 @@
 #   scan
 #       Read-only. Reports membase buckets with no persisted storage_mode.
 #
+#   scan_ep_backend
+#       Read-only. For each affected bucket (undefined storage_mode, as found
+#       by 'scan'), reports the live 'ep_backend' memcached stat from every KV
+#       node hosting the bucket. 'ep_backend' is a per-node stat (it reflects
+#       the backend the data files on that node were actually created with), so
+#       it is fetched from each node and reported per node. Each per-node fetch
+#       has its own timeout (default 5s, --ep-backend-timeout); a node that does
+#       not answer in time is reported as 'Timeout'. Restrict to specific
+#       bucket(s) with --bucket.
+#
 #   dry_run_fix_pre_8_0
 #       Read-only. For clusters at compat version < 8.0 only. Reports what
 #       'fix_pre_8_0' would persist without changing anything. As an extra
@@ -53,6 +63,10 @@
 # Usage:
 #   # Report buckets missing a persisted storage_mode:
 #   ./fix_undefined_storage_mode scan -c localhost:8091 \
+#       -u <Username> -p <password>
+#
+#   # Report the per-node 'ep_backend' stat for affected buckets:
+#   ./fix_undefined_storage_mode scan_ep_backend -c localhost:8091 \
 #       -u <Username> -p <password>
 #
 #   # (compat < 8.0) Show what would be persisted without changing anything:
@@ -96,6 +110,91 @@ Missing = [list_to_binary(Name) ||
 COMPAT_80_SNIPPET = "cluster_compat_mode:is_cluster_80()."
 
 
+# Default per-node timeout (seconds) for fetching the 'ep_backend' stat in
+# scan_ep_backend mode. Overridable with --ep-backend-timeout.
+EP_BACKEND_TIMEOUT_SECS = 5.0
+
+
+# Erlang snippet evaluated via /diag/eval for scan_ep_backend mode. For a single
+# bucket (__BUCKET__) it fetches the 'ep_backend' memcached stat from every KV
+# node the bucket lives on. Each node is queried with its own rpc timeout
+# (__TIMEOUT_MS__ milliseconds) so a slow or unresponsive node is reported as
+# 'Timeout' rather than blocking the whole scan. Returns a JSON object mapping
+# node name -> ep_backend value (or "Timeout"), or the JSON string
+# "not_present" if the bucket no longer exists.
+EP_BACKEND_SNIPPET = """
+TimeoutMs = __TIMEOUT_MS__,
+BucketName = __BUCKET__,
+case ns_bucket:get_bucket(BucketName) of
+    {ok, BC} ->
+        Nodes = ns_bucket:get_servers(BC),
+        Results =
+            [begin
+                 R = case rpc:call(N, ns_memcached, stats,
+                                   [BucketName, <<>>], TimeoutMs) of
+                         {ok, Stats} ->
+                             case lists:keyfind(<<"ep_backend">>, 1, Stats) of
+                                 {_, V} -> V;
+                                 false -> <<"<not found>">>
+                             end;
+                         {badrpc, timeout} -> <<"Timeout">>;
+                         Other ->
+                             iolist_to_binary(io_lib:format("~p", [Other]))
+                     end,
+                 {atom_to_binary(N, utf8), R}
+             end || N <- Nodes],
+        {json, {Results}};
+    not_present ->
+        {json, <<"not_present">>}
+end.
+"""
+
+
+# Next-step guidance printed when a bucket is in (or confirmed to be in) the
+# benign state: it resolves to couchstore and every node's data files are still
+# couchstore, so it can be fixed normally with the dry-run/fix modes.
+NEXT_STEPS_MSG = (
+    "Next, run the matching dry-run mode to see exactly what would\n"
+    "change before applying anything.\n"
+    "\n"
+    "For clusters at compat version < 8.0:\n"
+    "  1. Run 'dry_run_fix_pre_8_0' to preview changes\n"
+    "  2. Run 'fix_pre_8_0' to persist the current storageBackend")
+
+
+# Conclusion printed by scan_ep_backend when the bucket resolves to magma from
+# /pools/default but every node's data files are still couchstore (ep_backend ==
+# couchdb): no data loss yet and still preventable, but only via a direct config
+# write, never through the public storage-backend endpoint.
+EP_CONCLUSION_PREVENTABLE = (
+    "No data loss yet, and this is the only state where it is still "
+    "preventable. The fix is a direct config write of storage_mode = "
+    "couchstore — contact dev/escalate. Do NOT change the storage backend "
+    "through public endpoints: that starts a storage-mode migration, which "
+    "makes this worse. Until fixed: do not restart nodes, change bucket "
+    "settings or rebalance — any of those can trigger the data loss.")
+
+
+# Conclusion printed by scan_ep_backend when any node's data files are already
+# magma (ep_backend == magma): the dangerous mismatch has already taken effect
+# on at least one node.
+EP_CONCLUSION_DATA_LOSS = (
+    "Possible or actual data loss. Save the couchstore files from all nodes, "
+    "escalate. Do not restart nodes, modify bucket settings, or rebalance.")
+
+
+# Conclusion printed by scan_ep_backend when ep_backend could not be retrieved
+# from at least one node (timeout or any other error), so no determination can
+# be made for the bucket.
+EP_CONCLUSION_INCONCLUSIVE = "Inconclusive."
+
+
+def _erl_string(s):
+    # Render a Python string as an Erlang double-quoted string literal, escaping
+    # backslashes and quotes so a bucket name can be embedded safely.
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 class ClusterClient:
     def __init__(self, args):
         scheme = "https" if args.ssl else "http"
@@ -104,11 +203,12 @@ class ClusterClient:
         self.verify = not args.no_verify
         self.timeout = args.timeout
 
-    def diag_eval(self, snippet):
+    def diag_eval(self, snippet, timeout=None):
         resp = requests.post(f"{self.base}/diag/eval",
                              data=snippet.encode("utf-8"),
                              auth=self.auth, verify=self.verify,
-                             timeout=self.timeout)
+                             timeout=timeout if timeout is not None
+                             else self.timeout)
         resp.raise_for_status()
         return resp
 
@@ -174,13 +274,126 @@ def do_scan(client, args):
                   "or change bucket settings")
             warning_printed = True
     if not warning_printed:
-        print("\nNext, run the matching dry-run mode to see exactly what "
-              "would\n"
-              "change before applying anything.\n"
-              "\n"
-              "For clusters at compat version < 8.0:\n"
-              "  1. Run 'dry_run_fix_pre_8_0' to preview changes\n"
-              "  2. Run 'fix_pre_8_0' to persist the current storageBackend")
+        print("\n" + NEXT_STEPS_MSG)
+    return 0
+
+
+def get_ep_backend(client, bucket, timeout_ms):
+    snippet = (EP_BACKEND_SNIPPET
+               .replace("__TIMEOUT_MS__", str(timeout_ms))
+               .replace("__BUCKET__", _erl_string(bucket)))
+    # The snippet queries each KV node sequentially with a per-node rpc timeout,
+    # so the whole eval can legitimately take up to (#nodes * per-node timeout).
+    # Give the HTTP request enough headroom (16 nodes' worth, plus a buffer) on
+    # top of the normal request timeout so a slow node doesn't trip the HTTP
+    # timeout before the per-node 'Timeout' result can be returned.
+    http_timeout = max(client.timeout,
+                       (timeout_ms / 1000.0) * 16 + 15)
+    resp = client.diag_eval(snippet, timeout=http_timeout)
+    try:
+        return resp.json()
+    except ValueError:
+        sys.exit(f"Unexpected /diag/eval response (expected a JSON object of "
+                 f"node -> ep_backend for bucket {bucket!r}):\n{resp.text}")
+
+
+def ep_backend_conclusion(pools_backend, node_values):
+    """Return the per-bucket conclusion for scan_ep_backend mode.
+
+    pools_backend: the storageBackend the bucket resolves to from
+                   /pools/default, or None if it could not be read.
+    node_values:   list of the per-node 'ep_backend' stat values. couchstore
+                   files report 'couchdb'; magma files report 'magma'; a node
+                   that could not be reached reports 'Timeout' (or some other
+                   non-backend marker).
+    """
+    # A node already reporting magma is definitive evidence the dangerous
+    # mismatch has taken effect somewhere, so it outranks an unreadable node.
+    if any(v == "magma" for v in node_values):
+        return EP_CONCLUSION_DATA_LOSS
+    # Every node must report couchstore (couchdb) on disk to draw any of the
+    # remaining conclusions; otherwise a node was unreadable -> inconclusive.
+    all_couchdb = bool(node_values) and all(v == "couchdb"
+                                            for v in node_values)
+    if all_couchdb:
+        if pools_backend == "couchstore":
+            return NEXT_STEPS_MSG
+        if pools_backend == "magma":
+            return EP_CONCLUSION_PREVENTABLE
+    return EP_CONCLUSION_INCONCLUSIVE
+
+
+def do_scan_ep_backend(client, args):
+    buckets = find_buckets_missing_storage_mode(client)
+    if args.bucket:
+        requested = set(args.bucket)
+        # Same safeguard as the fix modes: only buckets that 'scan' reports
+        # (undefined storage_mode) are in scope for this mode. Refuse an
+        # unrecognized --bucket rather than silently reporting nothing.
+        ineligible = requested - set(buckets)
+        if ineligible:
+            sys.exit(
+                f"ERROR: refusing to run: the following --bucket value(s) are "
+                f"not in the set of buckets with an undefined storage_mode: "
+                f"{', '.join(sorted(ineligible))}. Only buckets that 'scan' "
+                f"reports may be queried in this mode. Run 'scan' to see the "
+                f"eligible buckets.")
+        buckets = [b for b in buckets if b in requested]
+
+    if not buckets:
+        print("No buckets with an undefined storage_mode were found. "
+              "Nothing to report.")
+        return 0
+
+    timeout_ms = int(args.ep_backend_timeout * 1000)
+    print(f"Querying the 'ep_backend' stat from each KV node for "
+          f"{len(buckets)} bucket(s) with an undefined storage_mode "
+          f"(per-node timeout {args.ep_backend_timeout}s):")
+    for i, name in enumerate(buckets):
+        # Throttle per-bucket queries against live production clusters so we
+        # don't issue all the requests back-to-back.
+        if i > 0:
+            time.sleep(PER_BUCKET_DELAY_SECS)
+
+        # The backend the bucket resolves to from /pools/default. This tells
+        # apart the still-preventable state (resolves to magma while every node
+        # is still couchstore on disk) from the benign one (resolves to
+        # couchstore). If it can't be read, the conclusion falls back to
+        # inconclusive.
+        pools_backend = None
+        try:
+            pools_backend = client.get_bucket(name).get("storageBackend")
+        except requests.RequestException:
+            pools_backend = None
+
+        try:
+            result = get_ep_backend(client, name, timeout_ms)
+        except requests.RequestException as e:
+            print(f"\n  {name}:")
+            print(f"    <error querying ep_backend: {e}>")
+            # ep_backend could not be retrieved -> no determination possible.
+            print(f"\n    CONCLUSION: {EP_CONCLUSION_INCONCLUSIVE}\n")
+            continue
+
+        print(f"\n  {name}:")
+        if result == "not_present":
+            print("    <bucket no longer present>")
+            print(f"\n    CONCLUSION: {EP_CONCLUSION_INCONCLUSIVE}\n")
+            continue
+        if not result:
+            print("    <no KV nodes host this bucket>")
+            print(f"\n    CONCLUSION: {EP_CONCLUSION_INCONCLUSIVE}\n")
+            continue
+        for node in sorted(result):
+            print(f"    {node}: {result[node]}")
+
+        backend_display = (pools_backend if pools_backend is not None
+                           else "<unknown>")
+        print(f"    (resolves to storageBackend={backend_display} from "
+              f"/pools/default)")
+        conclusion = ep_backend_conclusion(pools_backend,
+                                           list(result.values()))
+        print(f"\n    CONCLUSION: {conclusion}\n")
     return 0
 
 
@@ -270,9 +483,11 @@ def parse_args():
         description="Detect and fix membase buckets with an undefined "
                     "storage_mode in chronicle (MB-72097).")
     parser.add_argument("mode",
-                        choices=["scan",
+                        choices=["scan", "scan_ep_backend",
                                  "dry_run_fix_pre_8_0", "fix_pre_8_0"],
                         help="scan: report affected buckets. "
+                             "scan_ep_backend: report the per-node 'ep_backend' "
+                             "stat for affected buckets. "
                              "dry_run_fix_pre_8_0: (compat < 8.0) report what "
                              "fix_pre_8_0 would persist, changing nothing. "
                              "fix_pre_8_0: (compat < 8.0) persist the current "
@@ -290,11 +505,17 @@ def parse_args():
     parser.add_argument("--no-verify", action="store_true",
                         help="Do not verify TLS certificates (https only).")
     parser.add_argument("--bucket", action="append", metavar="NAME",
-                        help="(dry_run_)fix_pre_8_0: restrict to this bucket; "
-                             "may be repeated; default is all affected "
-                             "buckets.")
+                        help="scan_ep_backend / (dry_run_)fix_pre_8_0: restrict "
+                             "to this bucket; may be repeated; default is all "
+                             "affected buckets.")
     parser.add_argument("--timeout", type=float, default=60.0,
                         help="Per-request timeout in seconds (default: 60).")
+    parser.add_argument("--ep-backend-timeout", type=float,
+                        default=EP_BACKEND_TIMEOUT_SECS,
+                        help="scan_ep_backend: per-node timeout in seconds for "
+                             "fetching the 'ep_backend' stat; a node that does "
+                             "not answer in time is reported as 'Timeout' "
+                             f"(default: {EP_BACKEND_TIMEOUT_SECS:g}).")
     args = parser.parse_args()
     if args.password is None:
         args.password = getpass.getpass(
@@ -308,6 +529,8 @@ def main():
     try:
         if args.mode == "scan":
             return do_scan(client, args)
+        if args.mode == "scan_ep_backend":
+            return do_scan_ep_backend(client, args)
         return do_fix_pre_8_0(
             client, args, dry_run=args.mode == "dry_run_fix_pre_8_0")
     except requests.RequestException as e:
