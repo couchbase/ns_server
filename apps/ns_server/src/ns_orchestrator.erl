@@ -27,6 +27,19 @@
                 in_buckets_shutdown |
                 {running_op, op()}.
 
+-type bucket_create_error() ::
+        {error, {already_exists, nonempty_string()}} |
+        {error, {still_exists, nonempty_string()}} |
+        {error, {port_conflict, integer()}} |
+        {error, {need_more_space, list()}} |
+        {error, {incorrect_parameters, nonempty_string()}} |
+        {error, {kek_not_found, nonempty_string()}} |
+        {error, secret_not_found} |
+        {error, secret_not_allowed} |
+        {error, encryption_is_incompatible_with_fusion} |
+        {error, cannot_enable_fusion} |
+        {error, {throttle_error, binary()}}.
+
 -export_type([busy/0]).
 
 %% Constants and definitions
@@ -198,17 +211,7 @@ get_state(Timeout) ->
     gen_statem:call(?SERVER, get_state, Timeout).
 
 -spec create_bucket(memcached|membase, nonempty_string(), list()) ->
-          ok | {error, {already_exists, nonempty_string()}} |
-          {error, {still_exists, nonempty_string()}} |
-          {error, {port_conflict, integer()}} |
-          {error, {need_more_space, list()}} |
-          {error, {incorrect_parameters, nonempty_string()}} |
-          {error, {kek_not_found, nonempty_string()}} |
-          {error, secret_not_found} |
-          {error, secret_not_allowed} |
-          {error, encryption_is_incompatible_with_fusion} |
-          {error, cannot_enable_fusion} |
-          {error, {throttle_error, binary()}} | busy().
+          ok | bucket_create_error() | busy().
 create_bucket(BucketType, BucketName, NewConfig) ->
     call({create_bucket, BucketType, BucketName, NewConfig}, infinity).
 
