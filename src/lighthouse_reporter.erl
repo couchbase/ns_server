@@ -24,13 +24,16 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, config_key/0, build_settings/0]).
+-export([start_link/0, config_key/0, build_settings/0, ingest/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-define(SERVER, {via, leader_registry, ?MODULE}).
+
 -define(CONFIG_KEY, lighthouse).
+-define(TABLE, external_payloads).
 -define(SENDS_METRIC, <<"lighthouse_telemetry_sends">>).
 
 -record(state, {
@@ -53,6 +56,9 @@ build_settings() ->
     Settings = ns_config:read_key_fast(?CONFIG_KEY, #{}),
     maps:merge(default_config(), Settings).
 
+ingest(Opts, Payload) ->
+    gen_server:call(?SERVER, {ingest, Opts, Payload}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -61,8 +67,11 @@ init([]) ->
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
     create_metric(),
+    ets:new(?TABLE, [named_table, set]),
     {ok, update_config(#state{})}.
 
+handle_call({ingest, Opts, Payload}, _From, State) ->
+    {reply, ingest_external_payload(Opts, Payload), State};
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
 
@@ -109,6 +118,11 @@ create_metric() ->
 update_metric(Result) ->
     ns_server_stats:notify_counter(
       {?SENDS_METRIC, [{result, Result}]}).
+
+ingest_external_payload(#{product_name := ProductName, instance_id := Instance},
+                        Payload) ->
+    ets:insert(?TABLE, {{list_to_binary(ProductName), Instance}, Payload}),
+    ok.
 
 update_config(State0) ->
     Config = build_settings(),

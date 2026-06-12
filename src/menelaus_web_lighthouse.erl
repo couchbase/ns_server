@@ -16,7 +16,8 @@
 
 %% API
 -export([handle_get_settings/2,
-         handle_post_settings/2]).
+         handle_post_settings/2,
+         handle_ingest/1]).
 
 %%%===================================================================
 %%% API
@@ -59,3 +60,23 @@ apply_props(Path, NewProps, Req) ->
     ns_config:set(lighthouse_reporter:config_key(),
                   maps:from_list(MergedProps)),
     handle_get_settings(Path, Req).
+
+handle_ingest(Req) ->
+    validator:handle(
+      fun (Params) ->
+              Opts = maps:from_list(Params),
+              validator:handle(
+                fun (Payload) ->
+                        PayloadEncoded = ejson:encode({Payload}),
+                        ok = lighthouse_reporter:ingest(Opts, PayloadEncoded),
+                        %% Respond with 204 (No Content), consistent
+                        %% with the lighthouse portal itself
+                        menelaus_util:reply(Req, 204)
+                end, Req, json, [])
+      end, Req, qs, ingest_validators()).
+
+ingest_validators() ->
+    [validator:required(product_name, _),
+     validator:string(product_name, _),
+     validator:required(instance_id, _),
+     validator:string(instance_id, _)].
