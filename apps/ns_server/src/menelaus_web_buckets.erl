@@ -1140,6 +1140,31 @@ need_more_space_error(Zones) ->
     iolist_to_binary(
       io_lib:format("Need more space in availability zones ~p.", [Zones])).
 
+bucket_create_reply({error, {already_exists, _}}) ->
+    {400, [{name, "Bucket with given name already exists"}]};
+bucket_create_reply({error, {still_exists, _}}) ->
+    {500, [{'_', "Bucket with given name still exists"}]};
+bucket_create_reply({error, {need_more_space, Zones}}) ->
+    {400, [{'_', need_more_space_error(Zones)}]};
+bucket_create_reply({error, {incorrect_parameters, Error}}) ->
+    {400, [{'_', Error}]};
+bucket_create_reply({error, {kek_not_found, _}}) ->
+    {400, [{encryptionAtRestKeyId, "Encryption key does not exist"}]};
+bucket_create_reply({error, secret_not_found}) ->
+    {400, [{encryptionAtRestKeyId, "Encryption key does not exist"}]};
+bucket_create_reply({error, secret_not_allowed}) ->
+    {400, [{encryptionAtRestKeyId,
+            "Encryption key can't encrypt this bucket"}]};
+bucket_create_reply({error, encryption_is_incompatible_with_fusion}) ->
+    {400, [{encryptionAtRestKeyId,
+            "Encryption is incompatible with fusion"}]};
+bucket_create_reply({error, cannot_enable_fusion}) ->
+    {400, [{?FUSION_ENABLED, ?CANNOT_ENABLE_FUSION}]};
+bucket_create_reply({error, {throttle_error, Msg}}) ->
+    {400, [{'_', Msg}]};
+bucket_create_reply(_) ->
+    undefined.
+
 do_bucket_create(Req, Name, ParsedProps) ->
     BucketType = proplists:get_value(bucketType, ParsedProps),
     StorageMode = proplists:get_value(storage_mode, ParsedProps, undefined),
@@ -1152,38 +1177,17 @@ do_bucket_create(Req, Name, ParsedProps) ->
             ?MENELAUS_WEB_LOG(?BUCKET_CREATED, "Created bucket \"~s\" of type: ~s~n~p",
                               [Name, DisplayBucketType, BucketProps]),
             ok;
-        {error, {already_exists, _}} ->
-            {errors, 400,
-             [{name, <<"Bucket with given name already exists">>}]};
-        {error, {still_exists, _}} ->
-            {errors, 500, [{'_', <<"Bucket with given name still exists">>}]};
-        {error, {need_more_space, Zones}} ->
-            {errors, 400, [{'_', need_more_space_error(Zones)}]};
-        {error, {incorrect_parameters, Error}} ->
-            {errors, 400, [{'_', list_to_binary(Error)}]};
-        {error, {kek_not_found, _}} ->
-            {errors, 400, [{encryptionAtRestKeyId,
-                            <<"Encryption key does not exist">>}]};
-        {error, secret_not_found} ->
-            {errors, 400, [{encryptionAtRestKeyId,
-                            <<"Encryption key does not exist">>}]};
-        {error, secret_not_allowed} ->
-            {errors, 400, [{encryptionAtRestKeyId,
-                            <<"Encryption key can't encrypt this bucket">>}]};
-        {error, encryption_is_incompatible_with_fusion} ->
-            {errors, 400, [{encryptionAtRestKeyId,
-                            <<"Encryption is incompatible with fusion">>}]};
-        {error, cannot_enable_fusion} ->
-            {errors, 400, [{list_to_atom(?FUSION_ENABLED),
-                            ?CANNOT_ENABLE_FUSION}]};
-        {error, {throttle_error, Msg}} ->
-            {errors, 400, [{'_', Msg}]};
         Other ->
             case menelaus_web_cluster:busy_reply("create bucket", Other) of
                 {Code, Msg} ->
                     {errors, Code, [{"_", iolist_to_binary(Msg)}]};
-                undefined ->
-                    exit(Other)
+                _ ->
+                    case bucket_create_reply(Other) of
+                        {Code, [{Field, Msg}]} ->
+                            {errors, Code, [{Field, iolist_to_binary(Msg)}]};
+                        undefined ->
+                            exit(Other)
+                    end
             end
     end.
 
