@@ -93,6 +93,9 @@ handle_info(report, State) ->
     %% a report is already in progress
     {noreply, State};
 handle_info(report_done, State) ->
+    %% Clear the external payloads now they've been sent to the lighthouse which
+    %% should retain the information
+    ets:delete_all_objects(?TABLE),
     {noreply, State#state{report_pid = undefined}};
 handle_info(config_change, State) ->
     {noreply, update_config(State)};
@@ -251,6 +254,15 @@ build_services(Node) ->
     lists:map(fun ns_cluster_membership:json_service_name/1,
               ns_cluster_membership:node_active_services(Node)).
 
+build_external_nodes() ->
+    ets:foldl(
+      fun ({{Product, _Instance}, PayloadEncoded}, Acc) ->
+              PayloadDecoded = json:decode(PayloadEncoded),
+              maps:update_with(Product, [PayloadDecoded | _],
+                               [PayloadDecoded], Acc)
+
+      end, #{}, ?TABLE).
+
 create_report() ->
     Config = ns_config:get(),
     Nodes = ns_node_disco:nodes_actual(),
@@ -299,9 +311,11 @@ create_report() ->
     CollectedAt = list_to_binary(misc:timestamp_iso8601(Now, utc)),
     Product = build_product(),
     ClusterUuid = menelaus_web:get_uuid_formatted(),
+    ExternalNodes = build_external_nodes(),
     BasePayload = #{collectedAt => CollectedAt,
                     product => Product,
-                    clusterUuid => ClusterUuid},
+                    clusterUuid => ClusterUuid,
+                    externalNodes => ExternalNodes},
     ClusterDetails = #{nodes => NodesData},
     Payload1 = maps:merge(BasePayload, ClusterDetails),
     json:encode(Payload1).
@@ -312,7 +326,8 @@ report_keys() ->
     [<<"clusterUuid">>,
      <<"collectedAt">>,
      <<"nodes">>,
-     <<"product">>].
+     <<"product">>,
+     <<"externalNodes">>].
 
 node_keys() ->
     [<<"cpuLogicalCores">>,
@@ -338,9 +353,11 @@ create_report_test_() ->
              {ok, NsDoctorPid} = ns_doctor:start_link(),
              PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
              meck:expect(ns_node_disco, nodes_actual, 0, [node()]),
+             ets:new(?TABLE, [named_table, set]),
              PidMap2
      end,
      fun (PidMap) ->
+             ets:delete(?TABLE),
              %% Shut down ns_heart first, as it depends on other processes
              mock_helpers:teardown(
                maps:filter(fun (Key, _) -> Key =:= ns_heart end, PidMap)),
