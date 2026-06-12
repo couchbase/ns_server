@@ -51,6 +51,7 @@
          find_vbucket_state/2,
          check_bucket_ready/3,
          apply_new_bucket_config/4,
+         apply_new_bucket_config/5,
          mark_bucket_warmed/2,
          maybe_set_data_ingress/3,
          delete_vbucket_copies/4,
@@ -306,13 +307,20 @@ warmed_timeout() ->
     %% Allow overriding
     ?get_timeout(warmed, Default).
 
-apply_new_bucket_config(Bucket, Servers, NewBucketConfig, undefined_timeout) ->
-    apply_new_bucket_config(Bucket, Servers, NewBucketConfig,
-                            ?APPLY_NEW_CONFIG_TIMEOUT);
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Timeout) ->
+    apply_new_bucket_config(Bucket, Servers, NewBucketConfig, [], Timeout).
+
+apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Options,
+                        undefined_timeout) ->
+    apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Options,
+                            ?APPLY_NEW_CONFIG_TIMEOUT);
+apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Options, Timeout) ->
+    ApplyCall = case cluster_compat_mode:is_cluster_totoro() of
+                    false -> {apply_new_config, NewBucketConfig};
+                    true -> {apply_new_config, NewBucketConfig, Options}
+                end,
     functools:sequence_(
-      [?cut(call_on_servers(Bucket, Servers,
-                            {apply_new_config, NewBucketConfig}, Timeout)),
+      [?cut(call_on_servers(Bucket, Servers, ApplyCall, Timeout)),
        ?cut(call_on_servers(Bucket, Servers,
                             {apply_new_config_replicas_phase, NewBucketConfig},
                             Timeout))]).
@@ -340,7 +348,8 @@ maybe_set_data_ingress(Bucket, Status, Servers) ->
             {errors, BadReplies}
     end.
 
--spec mount_volumes(ns_bucket:name(), [{node(), list()}], map(), pid()) ->
+-spec mount_volumes(ns_bucket:name(), [{node(), list()}], map(),
+                    pid() | undefined) ->
           ok | {error, {failed_nodes, [node()]}}.
 mount_volumes(Bucket, VolumesToMount, NodesMap, RebalancerPid) ->
     NodesCalls =
@@ -922,7 +931,10 @@ do_handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
     delegate_apply_vbucket_state(Call, From, NewState);
 do_handle_call({apply_new_config, NewBucketConfig}, _From, State) ->
-    handle_apply_new_config(NewBucketConfig, State);
+    %% backwards compat with pre-Totoro
+    handle_apply_new_config(NewBucketConfig, [], State);
+do_handle_call({apply_new_config, NewBucketConfig, Options}, _From, State) ->
+    handle_apply_new_config(NewBucketConfig, Options, State);
 do_handle_call({apply_new_config_replicas_phase, NewBucketConfig},
                _From, State) ->
     handle_apply_new_config_replicas_phase(NewBucketConfig, State);
@@ -1512,12 +1524,12 @@ perform_query_vbuckets(Keys, VBs, BucketName) ->
 stop_all_replications(Bucket) ->
     replication_manager:set_incoming_replication_map(Bucket, []).
 
-handle_apply_new_config(NewBucketConfig, State) ->
-    check_for_node_rename(apply_new_config,
-                          NewBucketConfig, State,
-                          fun handle_apply_new_config/3).
+handle_apply_new_config(NewBucketConfig, Options, State) ->
+    check_for_node_rename(
+      apply_new_config, NewBucketConfig, State,
+      handle_apply_new_config(_, NewBucketConfig, Options, State)).
 
-handle_apply_new_config(Node, NewBucketConfig,
+handle_apply_new_config(Node, NewBucketConfig, Options,
                         #state{bucket_name = BucketName} = State) ->
     {ok, VBDetails} = get_state_and_topology(BucketName),
     Map = proplists:get_value(map, NewBucketConfig),
@@ -1558,11 +1570,12 @@ handle_apply_new_config(Node, NewBucketConfig,
                                 active ->
                                     {VBucket + 1,
                                      [{VBucket, WantedState,
-                                       [{topology, [Chain]}]} | ToSet],
+                                       [{topology, [Chain]} | Options]}
+                                     | ToSet],
                                      ToDelete, NewWanted};
                                 _ ->
                                     {VBucket + 1,
-                                     [{VBucket, WantedState, []} | ToSet],
+                                     [{VBucket, WantedState, Options} | ToSet],
                                      ToDelete, NewWanted}
                             end
                     end
@@ -1610,7 +1623,8 @@ handle_apply_new_config(Node, NewBucketConfig,
 handle_apply_new_config_replicas_phase(NewBucketConfig, State) ->
     check_for_node_rename(apply_new_config_replicas_phase,
                           NewBucketConfig, State,
-                          fun handle_apply_new_config_replicas_phase/3).
+                          handle_apply_new_config_replicas_phase(
+                            _, NewBucketConfig, State)).
 
 handle_apply_new_config_replicas_phase(Node, NewBucketConfig,
                                        #state{bucket_name =
@@ -1645,7 +1659,7 @@ check_for_node_rename(Call, BucketConfig, State, Body) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     case lists:member(Node, Servers) of
         true ->
-            RV = Body(Node, BucketConfig, State),
+            RV = Body(Node),
 
             NewNode = node(),
             case NewNode =:= Node of
