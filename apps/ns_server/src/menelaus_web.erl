@@ -1211,7 +1211,7 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, internal], all},
                      fun menelaus_web_encr_at_rest:handle_deks_drop_complete/1};
                 ["_cbauth", "importEaRDEK"] ->
-                    {{[admin, security], write},
+                    {{[admin, internal], all},
                      fun menelaus_web_encr_at_rest:handle_import_ear_dek/1};
                 ["_log"] ->
                     {{[admin, internal], all}, fun menelaus_web_misc:handle_log_post/1};
