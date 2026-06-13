@@ -627,13 +627,28 @@ node_storage_mode(Node, BucketConfig) ->
             NodeStorageMode
     end.
 
+default_membase_storage_mode() ->
+    case cluster_compat_mode:is_cluster_79() andalso
+         cluster_compat_mode:is_enterprise() of
+        true ->
+            magma;
+        false ->
+            couchstore
+    end.
+
 -spec storage_mode(config()) -> atom().
 storage_mode(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
             undefined;
         membase ->
-            proplists:get_value(storage_mode, BucketConfig, couchstore)
+            case proplists:get_value(storage_mode, BucketConfig) of
+                undefined ->
+                    %% doing lazy execution here to avoid mocking in the tests
+                    default_membase_storage_mode();
+                StorageMode ->
+                    StorageMode
+            end
     end.
 
 autocompaction_settings(BucketConfig) ->
@@ -4254,6 +4269,7 @@ upgrade_to_79_test() ->
 
 upgrade_to_totoro_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
 
