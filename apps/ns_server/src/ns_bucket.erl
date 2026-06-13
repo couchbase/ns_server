@@ -3626,9 +3626,10 @@ get_force_encryption_timestamp_test() ->
                 end,
 
         Assert = fun (Expected, ForceDT, DropDT, LastToggleDT) ->
-                     ?assertEqual({ok, Expected},
-                                  get_force_encryption_timestamp(
-                                    BUUID, Snapshot(ForceDT, DropDT, LastToggleDT)))
+                     ?assertEqual(
+                        {ok, Expected},
+                        get_force_encryption_timestamp(
+                          BUUID, Snapshot(ForceDT, DropDT, LastToggleDT)))
                  end,
 
         Assert(NewDate, NewDate, OldDate, SuperOldDate),
@@ -3734,19 +3735,25 @@ min_live_copies_test() ->
 
 get_expected_servers_test() ->
     meck:new(ns_cluster_membership, [passthrough]),
-    meck:expect(ns_cluster_membership, service_active_nodes,
-                fun (_) -> [node1, node2] end),
-    %% By default get the servers list
-    ?assertEqual([node1], get_expected_servers([{servers, [node1]}])),
-    %% When servers is not yet populated, check desired servers
-    ?assertEqual([node1], get_expected_servers([{servers, []},
-                                                {desired_servers, [node1]}])),
-    %% Default to all kv nodes, when desired_servers is undefined
-    ?assertEqual([node1, node2], get_expected_servers([{servers, []}])),
-    %% Current server's list takes precedent over desired_servers when populated
-    ?assertEqual([node1], get_expected_servers([{servers, [node1]},
-                                                {desired_servers, [node2]}])),
-    meck:unload(ns_cluster_membership).
+    try
+        meck:expect(ns_cluster_membership, service_active_nodes,
+                    fun (_) -> [node1, node2] end),
+        %% By default get the servers list
+        ?assertEqual([node1], get_expected_servers([{servers, [node1]}])),
+        %% When servers is not yet populated, check desired servers
+        ?assertEqual([node1], get_expected_servers([{servers, []},
+                                                    {desired_servers,
+                                                     [node1]}])),
+        %% Default to all kv nodes, when desired_servers is undefined
+        ?assertEqual([node1, node2], get_expected_servers([{servers, []}])),
+        %% Current server's list takes precedent over desired_servers when
+        %% populated
+        ?assertEqual([node1], get_expected_servers([{servers, [node1]},
+                                                    {desired_servers,
+                                                     [node2]}]))
+    after
+        meck:unload(ns_cluster_membership)
+    end.
 
 drift_thresholds_test() ->
     %% When conflict_resolution_type != lww and history_retention_seconds == 0,
@@ -3780,193 +3787,203 @@ drift_thresholds_test() ->
 
 update_bucket_props_allowed_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_80,
-                fun () -> true end),
+    try
+        meck:expect(cluster_compat_mode, is_cluster_80,
+                    fun () -> true end),
 
-    %% No per-node override keys set in the BucketConfig.
-    %% Expectation: Bucket updates allowed.
-    NewProps = [{storage_mode, magma},
-                {foo, blah}],
-    BucketConfig = [{storage_mode, couchstore},
-                    {type, membase},
-                    {ram_quota, 1024},
+        %% No per-node override keys set in the BucketConfig.
+        %% Expectation: Bucket updates allowed.
+        NewProps = [{storage_mode, magma},
                     {foo, blah}],
-    ?assert(update_bucket_props_allowed(NewProps, BucketConfig, [])),
+        BucketConfig = [{storage_mode, couchstore},
+                        {type, membase},
+                        {ram_quota, 1024},
+                        {foo, blah}],
+        ?assert(update_bucket_props_allowed(NewProps, BucketConfig, [])),
 
-    %% per-node override keys set in the BucketConfig.
-    %% Expectation: storage_mode update allowed.
-    BucketConfig1 = BucketConfig ++ [{{node, n1, storage_mode}, magma}],
-    ?assert(update_bucket_props_allowed(NewProps, BucketConfig1, [])),
+        %% per-node override keys set in the BucketConfig.
+        %% Expectation: storage_mode update allowed.
+        BucketConfig1 = BucketConfig ++ [{{node, n1, storage_mode}, magma}],
+        ?assert(update_bucket_props_allowed(NewProps, BucketConfig1, [])),
 
-    %% per-node override keys set in the BucketConfig.
-    %% Expectation: ram_quota update allowed.
-    NewProps1 = [{ram_quota, 2048}],
-    ?assert(update_bucket_props_allowed(NewProps1, BucketConfig1, [])),
+        %% per-node override keys set in the BucketConfig.
+        %% Expectation: ram_quota update allowed.
+        NewProps1 = [{ram_quota, 2048}],
+        ?assert(update_bucket_props_allowed(NewProps1, BucketConfig1, [])),
 
-    NewProps2 = [{foo, not_blah}],
+        NewProps2 = [{foo, not_blah}],
 
-    %% per-node override keys set in the BucketConfig.
-    %% Expectation: can not change any bucket props.
-    ?assertEqual({false, {storage_mode_migration, in_progress}},
-                 update_bucket_props_allowed(NewProps2, BucketConfig1, [])),
+        %% per-node override keys set in the BucketConfig.
+        %% Expectation: can not change any bucket props.
+        ?assertEqual({false, {storage_mode_migration, in_progress}},
+                     update_bucket_props_allowed(NewProps2, BucketConfig1,
+                                                 [])),
 
-    %% per-node override keys set in the BucketConfig.
-    %% Expectation: can not add any new bucket props.
-    NewProps3 = [{bar, blah}],
-    ?assertEqual({false, {storage_mode_migration, in_progress}},
-                 update_bucket_props_allowed(NewProps3, BucketConfig1, [])),
-
-    meck:unload(cluster_compat_mode).
+        %% per-node override keys set in the BucketConfig.
+        %% Expectation: can not add any new bucket props.
+        NewProps3 = [{bar, blah}],
+        ?assertEqual({false, {storage_mode_migration, in_progress}},
+                     update_bucket_props_allowed(NewProps3, BucketConfig1,
+                                                 []))
+    after
+        meck:unload(cluster_compat_mode)
+    end.
 
 update_override_props_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_79,
-                fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_80,
-                fun () -> true end),
-    meck:expect(cluster_compat_mode, is_enterprise,
-                fun () -> true end),
+    try
+        meck:expect(cluster_compat_mode, is_cluster_79,
+                    fun () -> true end),
+        meck:expect(cluster_compat_mode, is_cluster_80,
+                    fun () -> true end),
+        meck:expect(cluster_compat_mode, is_enterprise,
+                    fun () -> true end),
 
-    Servers = [n0, n1],
+        Servers = [n0, n1],
 
-    MagmaACSettings = [{magma_fragement_percentage, 60}],
-    CouchstoreACSettings =
-        [{parallel_db_and_view_compaction,false},
-                          {database_fragmentation_threshold,{30,undefined}},
-                          {view_fragmentation_threshold,{30,undefined}}],
-    BucketConfig = [{type, membase},
-                    {storage_mode, couchstore},
-                    {eviction_policy, value_only},
-                    {servers, Servers},
-                    {autocompaction, CouchstoreACSettings}],
+        MagmaACSettings = [{magma_fragement_percentage, 60}],
+        CouchstoreACSettings =
+            [{parallel_db_and_view_compaction, false},
+             {database_fragmentation_threshold, {30, undefined}},
+             {view_fragmentation_threshold, {30, undefined}}],
+        BucketConfig = [{type, membase},
+                        {storage_mode, couchstore},
+                        {eviction_policy, value_only},
+                        {servers, Servers},
+                        {autocompaction, CouchstoreACSettings}],
 
-    %% Retain original eviction policy.
-    Props = [{storage_mode, magma},
-             {autocompaction, false}],
-    ExpectedProps =
-        Props ++
-        lists:foldl(
-          fun (N, Acc) ->
-                  [{{node, N, storage_mode}, couchstore},
-                   {{node, N, autocompaction}, CouchstoreACSettings} | Acc]
-          end, [], Servers),
+        %% Retain original eviction policy.
+        Props = [{storage_mode, magma},
+                 {autocompaction, false}],
+        ExpectedProps =
+            Props ++
+            lists:foldl(
+              fun (N, Acc) ->
+                      [{{node, N, storage_mode}, couchstore},
+                       {{node, N, autocompaction}, CouchstoreACSettings}
+                       | Acc]
+              end, [], Servers),
 
-    {NewProps, DK} = update_override_props_for_keys(Props, BucketConfig, [],
-                                                    override_keys()),
+        {NewProps, DK} = update_override_props_for_keys(
+                           Props, BucketConfig, [], override_keys()),
 
-    ?assertEqual(lists:sort(ExpectedProps), lists:sort(NewProps)),
-    ?assertEqual(DK, []),
+        ?assertEqual(lists:sort(ExpectedProps), lists:sort(NewProps)),
+        ?assertEqual(DK, []),
 
-    %% node n1 has been migrated to magma, now revert the storage_mode back to
-    %% couchstore, no change to eviction policy.
-    BucketConfig1 = [{type, membase},
-                     {storage_mode, magma},
-                     {eviction_policy, value_only},
-                     {autocompaction, MagmaACSettings},
-                     {servers, Servers},
-                     {{node, n0, storage_mode}, couchstore},
-                     {{node, n0, autocompaction}, CouchstoreACSettings}],
+        %% node n1 has been migrated to magma, now revert the storage_mode
+        %% back to couchstore, no change to eviction policy.
+        BucketConfig1 = [{type, membase},
+                         {storage_mode, magma},
+                         {eviction_policy, value_only},
+                         {autocompaction, MagmaACSettings},
+                         {servers, Servers},
+                         {{node, n0, storage_mode}, couchstore},
+                         {{node, n0, autocompaction}, CouchstoreACSettings}],
 
-    Props1 = [{storage_mode, couchstore}],
-    ExpectedProps1 = [{storage_mode, couchstore},
-                      {autocompaction, CouchstoreACSettings},
-                      {{node, n1, storage_mode}, magma},
-                      {{node, n1, autocompaction}, MagmaACSettings}],
-    DeleteKeys = [{node, n0, storage_mode},
-                  {node, n0, autocompaction}],
-    {NewProps1, DK1} =
-        update_override_props_for_keys(Props1, BucketConfig1, [],
-                                       override_keys()),
+        Props1 = [{storage_mode, couchstore}],
+        ExpectedProps1 = [{storage_mode, couchstore},
+                          {autocompaction, CouchstoreACSettings},
+                          {{node, n1, storage_mode}, magma},
+                          {{node, n1, autocompaction}, MagmaACSettings}],
+        DeleteKeys = [{node, n0, storage_mode},
+                      {node, n0, autocompaction}],
+        {NewProps1, DK1} =
+            update_override_props_for_keys(Props1, BucketConfig1, [],
+                                           override_keys()),
 
-    ?assertListsEqual(NewProps1, ExpectedProps1),
-    ?assertListsEqual(DK1, DeleteKeys),
+        ?assertListsEqual(NewProps1, ExpectedProps1),
+        ?assertListsEqual(DK1, DeleteKeys),
 
-    %% Change storage_mode to magma and eviction_policy to full_eviction.
-    Props2 = [{storage_mode, magma},
-              {autocompaction, false},
-              {eviction_policy, full_eviction}],
-    ExpectedProps2 =
-        Props2 ++
-        lists:foldl(
-          fun (N, Acc) ->
-                  [{{node, N, storage_mode}, couchstore},
-                   {{node, N, autocompaction}, CouchstoreACSettings},
-                   {{node, N, eviction_policy}, value_only} | Acc]
-          end, [], Servers),
+        %% Change storage_mode to magma and eviction_policy to full_eviction.
+        Props2 = [{storage_mode, magma},
+                  {autocompaction, false},
+                  {eviction_policy, full_eviction}],
+        ExpectedProps2 =
+            Props2 ++
+            lists:foldl(
+              fun (N, Acc) ->
+                      [{{node, N, storage_mode}, couchstore},
+                       {{node, N, autocompaction}, CouchstoreACSettings},
+                       {{node, N, eviction_policy}, value_only} | Acc]
+              end, [], Servers),
 
-    {NewProps2, DK2} = update_override_props_for_keys(Props2, BucketConfig, [],
-                                                      override_keys()),
+        {NewProps2, DK2} = update_override_props_for_keys(
+                             Props2, BucketConfig, [], override_keys()),
 
-    ?assertEqual(lists:sort(ExpectedProps2), lists:sort(NewProps2)),
-    ?assertEqual(DK2, []),
+        ?assertEqual(lists:sort(ExpectedProps2), lists:sort(NewProps2)),
+        ?assertEqual(DK2, []),
 
-    %% node n1 has been migrated to magma, now revert the storage_mode back to
-    %% couchstore (but don't change eviction policy).
-    BucketConfig3 = [{type, membase},
-                     {storage_mode, magma},
-                     {eviction_policy, full_eviction},
-                     {autocompaction, MagmaACSettings},
-                     {servers, Servers},
-                     {{node, n0, storage_mode}, couchstore},
-                     {{node, n0, autocompaction}, CouchstoreACSettings},
-                     {{node, n0, eviction_policy}, value_only}],
+        %% node n1 has been migrated to magma, now revert the storage_mode
+        %% back to couchstore (but don't change eviction policy).
+        BucketConfig3 = [{type, membase},
+                         {storage_mode, magma},
+                         {eviction_policy, full_eviction},
+                         {autocompaction, MagmaACSettings},
+                         {servers, Servers},
+                         {{node, n0, storage_mode}, couchstore},
+                         {{node, n0, autocompaction}, CouchstoreACSettings},
+                         {{node, n0, eviction_policy}, value_only}],
 
-    Props3 = [{storage_mode, couchstore}],
+        Props3 = [{storage_mode, couchstore}],
 
-    ExpectedProps3 = [{storage_mode, couchstore},
-                      {autocompaction, CouchstoreACSettings},
-                      {{node, n1, storage_mode}, magma},
-                      {{node, n1, autocompaction}, MagmaACSettings}],
-    DeleteKeys3 = [{node, n0, storage_mode},
-                   {node, n0, autocompaction}],
-    {NewProps3, DK3} =
-        update_override_props_for_keys(Props3, BucketConfig3, [],
-                                       override_keys()),
+        ExpectedProps3 = [{storage_mode, couchstore},
+                          {autocompaction, CouchstoreACSettings},
+                          {{node, n1, storage_mode}, magma},
+                          {{node, n1, autocompaction}, MagmaACSettings}],
+        DeleteKeys3 = [{node, n0, storage_mode},
+                       {node, n0, autocompaction}],
+        {NewProps3, DK3} =
+            update_override_props_for_keys(Props3, BucketConfig3, [],
+                                           override_keys()),
 
-    ?assertListsEqual(NewProps3, ExpectedProps3),
-    ?assertListsEqual(DK3, DeleteKeys3),
+        ?assertListsEqual(NewProps3, ExpectedProps3),
+        ?assertListsEqual(DK3, DeleteKeys3),
 
-    %% Repeat revert of storage_mode to couchstore, but this time with
-    %% eviction policy change.
-    Props4 = [{storage_mode, couchstore},
-              {eviction_policy, value_only}],
-    ExpectedProps4 = [{storage_mode, couchstore},
-                      {autocompaction, CouchstoreACSettings},
-                      {eviction_policy, value_only},
-                      {{node, n1, storage_mode}, magma},
-                      {{node, n1, autocompaction}, MagmaACSettings},
-                      {{node, n1, eviction_policy}, full_eviction}],
-    DeleteKeys4 = [{node, n0, storage_mode},
-                   {node, n0, autocompaction},
-                   {node, n0, eviction_policy}],
-    {NewProps4, DK4} = update_override_props_for_keys(Props4, BucketConfig3,
-                                                      [], override_keys()),
-    ?assertListsEqual(NewProps4, ExpectedProps4),
-    ?assertListsEqual(DK4, DeleteKeys4),
-
-    meck:unload(cluster_compat_mode).
+        %% Repeat revert of storage_mode to couchstore, but this time with
+        %% eviction policy change.
+        Props4 = [{storage_mode, couchstore},
+                  {eviction_policy, value_only}],
+        ExpectedProps4 = [{storage_mode, couchstore},
+                          {autocompaction, CouchstoreACSettings},
+                          {eviction_policy, value_only},
+                          {{node, n1, storage_mode}, magma},
+                          {{node, n1, autocompaction}, MagmaACSettings},
+                          {{node, n1, eviction_policy}, full_eviction}],
+        DeleteKeys4 = [{node, n0, storage_mode},
+                       {node, n0, autocompaction},
+                       {node, n0, eviction_policy}],
+        {NewProps4, DK4} = update_override_props_for_keys(
+                             Props4, BucketConfig3, [], override_keys()),
+        ?assertListsEqual(NewProps4, ExpectedProps4),
+        ?assertListsEqual(DK4, DeleteKeys4)
+    after
+        meck:unload(cluster_compat_mode)
+    end.
 
 remove_override_props_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_80,
-                fun () -> true end),
+    try
+        meck:expect(cluster_compat_mode, is_cluster_80,
+                    fun () -> true end),
 
-    Props = [{type, membase},
-             {storage_mode, magma},
-             {autocompaction, magma_compaction_settings},
-             {servers, [n0, n1, n2]},
-             {{node, n1, storage_mode}, couchstore},
-             {{node, n2, storage_mode}, couchstore},
-             {{node, n1, autocompaction}, couchstore_compaction_settings},
-             {{node, n2, autocompaction}, couchstore_compaction_settings}],
-    RemoveNodes = [n1],
-    ExpectedProps =
-        Props -- [{{node, n1, storage_mode}, couchstore},
-                  {{node, n1, autocompaction}, couchstore_compaction_settings}],
-    ?assertEqual(ExpectedProps,
-                 remove_override_props(Props, RemoveNodes)),
-
-    meck:unload(cluster_compat_mode).
+        Props = [{type, membase},
+                 {storage_mode, magma},
+                 {autocompaction, magma_compaction_settings},
+                 {servers, [n0, n1, n2]},
+                 {{node, n1, storage_mode}, couchstore},
+                 {{node, n2, storage_mode}, couchstore},
+                 {{node, n1, autocompaction}, couchstore_compaction_settings},
+                 {{node, n2, autocompaction}, couchstore_compaction_settings}],
+        RemoveNodes = [n1],
+        ExpectedProps =
+            Props -- [{{node, n1, storage_mode}, couchstore},
+                      {{node, n1, autocompaction},
+                       couchstore_compaction_settings}],
+        ?assertEqual(ExpectedProps,
+                     remove_override_props(Props, RemoveNodes))
+    after
+        meck:unload(cluster_compat_mode)
+    end.
 
 node_autocompaction_settings_test() ->
     ?assertEqual([],
@@ -4223,49 +4240,52 @@ uuid2bucket_key_test() ->
 
 upgrade_to_79_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
+    try
+        meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
+        meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
 
-    %% Normal upgrade
-    BC1 = [{type, membase},
-           {num_vbuckets, 16},
-           {servers, [node1, node2]},
-           {ram_quota, 100 * ?MIB},
-           {storage_mode, magma}],
-    AddProps1 = props_to_add_for_79(BC1),
-    NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
-    ?assertEqual(attribute_default(expiry_pager_sleep_time),
-                 proplists:get_value(expiry_pager_sleep_time, NewBC1)),
-    ?assertEqual(attribute_default(memory_low_watermark),
-                 proplists:get_value(memory_low_watermark, NewBC1)),
-    ?assertEqual(attribute_default(memory_high_watermark),
-                 proplists:get_value(memory_high_watermark, NewBC1)),
-    ?assertEqual(attribute_default(access_scanner_enabled),
-                 proplists:get_value(access_scanner_enabled, NewBC1)),
-    ?assertEqual(attribute_default(warmup_behavior),
-                 proplists:get_value(warmup_behavior, NewBC1)),
+        %% Normal upgrade
+        BC1 = [{type, membase},
+               {num_vbuckets, 16},
+               {servers, [node1, node2]},
+               {ram_quota, 100 * ?MIB},
+               {storage_mode, magma}],
+        AddProps1 = props_to_add_for_79(BC1),
+        NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
+        ?assertEqual(attribute_default(expiry_pager_sleep_time),
+                     proplists:get_value(expiry_pager_sleep_time, NewBC1)),
+        ?assertEqual(attribute_default(memory_low_watermark),
+                     proplists:get_value(memory_low_watermark, NewBC1)),
+        ?assertEqual(attribute_default(memory_high_watermark),
+                     proplists:get_value(memory_high_watermark, NewBC1)),
+        ?assertEqual(attribute_default(access_scanner_enabled),
+                     proplists:get_value(access_scanner_enabled, NewBC1)),
+        ?assertEqual(attribute_default(warmup_behavior),
+                     proplists:get_value(warmup_behavior, NewBC1)),
 
-    %% Bucket with preset values.
-    BC2 = [{type, membase},
-           {num_vbuckets, 16},
-           {servers, [node1, node2]},
-           {ram_quota, 100 * ?MIB},
-           {storage_mode, magma},
-           %% Preset values
-           {access_scanner_enabled, false},
-           {expiry_pager_sleep_time, 300},
-           {memory_high_watermark, 90},
-           {memory_low_watermark, 89},
-           {warmup_behavior, blocking}],
-    AddProps2 = props_to_add_for_79(BC2),
-    NewBC2 = check_for_preset_bucket_settings(AddProps2, BC2),
-    ?assertEqual(300, proplists:get_value(expiry_pager_sleep_time, NewBC2)),
-    ?assertEqual(89, proplists:get_value(memory_low_watermark, NewBC2)),
-    ?assertEqual(90, proplists:get_value(memory_high_watermark, NewBC2)),
-    ?assertEqual(false, proplists:get_value(access_scanner_enabled, NewBC2)),
-    ?assertEqual(blocking, proplists:get_value(warmup_behavior, NewBC2)),
-
-    meck:unload().
+        %% Bucket with preset values.
+        BC2 = [{type, membase},
+               {num_vbuckets, 16},
+               {servers, [node1, node2]},
+               {ram_quota, 100 * ?MIB},
+               {storage_mode, magma},
+               %% Preset values
+               {access_scanner_enabled, false},
+               {expiry_pager_sleep_time, 300},
+               {memory_high_watermark, 90},
+               {memory_low_watermark, 89},
+               {warmup_behavior, blocking}],
+        AddProps2 = props_to_add_for_79(BC2),
+        NewBC2 = check_for_preset_bucket_settings(AddProps2, BC2),
+        ?assertEqual(300, proplists:get_value(expiry_pager_sleep_time, NewBC2)),
+        ?assertEqual(89, proplists:get_value(memory_low_watermark, NewBC2)),
+        ?assertEqual(90, proplists:get_value(memory_high_watermark, NewBC2)),
+        ?assertEqual(false, proplists:get_value(access_scanner_enabled,
+                                                NewBC2)),
+        ?assertEqual(blocking, proplists:get_value(warmup_behavior, NewBC2))
+    after
+        meck:unload(cluster_compat_mode)
+    end.
 
 upgrade_to_80_test() ->
     fake_chronicle_kv:setup(),
@@ -4296,44 +4316,46 @@ upgrade_to_80_test() ->
 
 upgrade_to_totoro_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
+    try
+        meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
+        meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
+        meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
 
-    %% Normal upgrade
-    BC1 = [{type, membase},
-           {num_vbuckets, 16},
-           {servers, [node1, node2]},
-           {ram_quota, 100 * ?MIB},
-           {storage_mode, magma}],
-    AddProps1 = props_to_add_for_totoro(BC1),
-    NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
-    ?assertEqual(attribute_default(continuous_backup_retention_period),
-                 proplists:get_value(continuous_backup_retention_period,
-                                     NewBC1)),
-    ?assertEqual(attribute_default(throttle_reserved),
-                 proplists:get_value(throttle_reserved, NewBC1)),
-    ?assertEqual(attribute_default(throttle_hard_limit),
-                 proplists:get_value(throttle_hard_limit, NewBC1)),
+        %% Normal upgrade
+        BC1 = [{type, membase},
+               {num_vbuckets, 16},
+               {servers, [node1, node2]},
+               {storage_mode, magma},
+               {ram_quota, 100 * ?MIB}],
+        AddProps1 = props_to_add_for_totoro(BC1),
+        NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
+        ?assertEqual(attribute_default(continuous_backup_retention_period),
+                     proplists:get_value(continuous_backup_retention_period,
+                                         NewBC1)),
+        ?assertEqual(attribute_default(throttle_reserved),
+                     proplists:get_value(throttle_reserved, NewBC1)),
+        ?assertEqual(attribute_default(throttle_hard_limit),
+                     proplists:get_value(throttle_hard_limit, NewBC1)),
 
-    %% Bucket with preset values.
-    BC2 = [{type, membase},
-           {num_vbuckets, 16},
-           {servers, [node1, node2]},
-           {ram_quota, 100 * ?MIB},
-           {storage_mode, magma},
-           %% Preset values
-           {continuous_backup_retention_period, 147},
-           {throttle_reserved, 500},
-           {throttle_hard_limit, 1000}],
-    AddProps2 = props_to_add_for_totoro(BC2),
-    NewBC2 = check_for_preset_bucket_settings(AddProps2, BC2),
-    ?assertEqual(147, proplists:get_value(continuous_backup_retention_period,
-                                          NewBC2)),
-    ?assertEqual(500, proplists:get_value(throttle_reserved, NewBC2)),
-    ?assertEqual(1000, proplists:get_value(throttle_hard_limit, NewBC2)),
-
-    meck:unload().
+        %% Bucket with preset values.
+        BC2 = [{type, membase},
+               {num_vbuckets, 16},
+               {servers, [node1, node2]},
+               {ram_quota, 100 * ?MIB},
+               {storage_mode, magma},
+               %% Preset values
+               {continuous_backup_retention_period, 147},
+               {throttle_reserved, 500},
+               {throttle_hard_limit, 1000}],
+        AddProps2 = props_to_add_for_totoro(BC2),
+        NewBC2 = check_for_preset_bucket_settings(AddProps2, BC2),
+        ?assertEqual(147, proplists:get_value(
+                            continuous_backup_retention_period, NewBC2)),
+        ?assertEqual(500, proplists:get_value(throttle_reserved, NewBC2)),
+        ?assertEqual(1000, proplists:get_value(throttle_hard_limit, NewBC2))
+    after
+        meck:unload(cluster_compat_mode)
+    end.
 -endif.
 
 is_encryption_enabled(BucketConfig) ->
