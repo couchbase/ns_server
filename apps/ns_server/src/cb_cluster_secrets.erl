@@ -4565,10 +4565,10 @@ import_deks_into_state(_Kind, [], _EncrMethod, _Snapshot, _SkipCountersInc,
 import_deks_into_state(Kind, [Path | Tail], EncrMethod, Snapshot,
                        SkipCountersInc, State) ->
     maybe
-        {ok, {NewSkipCountersInc, NewState}} ?=
+        {ok, {ActualEncrMethod, NewSkipCountersInc, NewState}} ?=
             import_dek_into_state(Kind, Path, EncrMethod, Snapshot,
                                   SkipCountersInc, State),
-        import_deks_into_state(Kind, Tail, EncrMethod, Snapshot,
+        import_deks_into_state(Kind, Tail, ActualEncrMethod, Snapshot,
                                NewSkipCountersInc, NewState)
     else
         {error, Error} ->
@@ -4578,7 +4578,8 @@ import_deks_into_state(Kind, [Path | Tail], EncrMethod, Snapshot,
 -spec import_dek_into_state(cb_deks:dek_kind(), string(),
                             cb_deks:encryption_method(), chronicle_snapshot(),
                             boolean(), #state{}) ->
-          {ok, {boolean(), #state{}}} | {error, term()}.
+          {ok, {cb_deks:encryption_method(), boolean(), #state{}}} |
+          {error, term()}.
 import_dek_into_state(Kind, Path, EncrMethod, Snapshot, SkipCountersInc,
                       OldState) ->
     maybe
@@ -4612,9 +4613,30 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, SkipCountersInc,
 
         #{info := NewKeyInfo} = NewKey,
         ToImport = NewKey#{info => NewKeyInfo#{imported => true}},
+
+        %% Encryption is disabled but we still need to persist an imported DEK
+        %% (e.g. during rebalance when encrypted files arrive after encryption
+        %% was turned off). Find the owning secret via the DEK's current
+        %% encryption key, then re-save with that secret's active KEK.
+        %% Returns the resolved encryption method so the caller can reuse it
+        %% for all remaining DEKs in the same batch.
+        {ok, NotDisabledEncrMethod} ?=
+            case EncrMethod of
+                disabled ->
+                    KekId = maps:get(encryption_key_id, NewKeyInfo),
+                    KekSecretMap = cb_cluster_secrets:get_secret_by_kek_id_map(
+                                     Snapshot),
+                    case maps:find(KekId, KekSecretMap) of
+                        {ok, S} -> {ok, {secret, S}};
+                        error -> {error, {no_secret_for_kek, KekId}}
+                    end;
+                {secret, _} ->
+                    {ok, EncrMethod}
+            end,
+
         %% Put the dek into the proper folder, where other deks of this Kind
         %% are stored.
-        {ok, DekId} ?= cb_deks:save_dek(Kind, ToImport, EncrMethod,
+        {ok, DekId} ?= cb_deks:save_dek(Kind, ToImport, NotDisabledEncrMethod,
                                         SkipCountersInc, Snapshot),
         %% Note that if import fails later, this key will need to be
         %% garbage-collected
@@ -4625,7 +4647,8 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, SkipCountersInc,
         #state{deks_info = AllDeks = #{Kind := KindDeks}} = State,
         NewKindDeks = KindDeks#{deks => [NewDek | maps:get(deks, KindDeks)]},
         notify_kind_counter(<<"encr_at_rest_deks_imported">>, Kind),
-        {ok, {true, State#state{deks_info = AllDeks#{Kind => NewKindDeks}}}}
+        {ok, {NotDisabledEncrMethod, true,
+              State#state{deks_info = AllDeks#{Kind => NewKindDeks}}}}
     else
         {error, Reason} ->
             notify_kind_counter(<<"encr_at_rest_deks_import_failures">>, Kind),
@@ -4634,7 +4657,7 @@ import_dek_into_state(Kind, Path, EncrMethod, Snapshot, SkipCountersInc,
             notify_kind_counter(<<"encr_at_rest_deks_import_skipped">>, Kind),
             ?log_debug("Skipping import of DEK ~p because it already "
                         "exists in state", [SkippedDekId]),
-            {ok, {SkipCountersInc, OldState}}
+            {ok, {EncrMethod, SkipCountersInc, OldState}}
     end.
 
 -spec should_renew_secrets_usage_info() -> boolean().
