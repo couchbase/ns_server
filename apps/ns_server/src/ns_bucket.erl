@@ -4267,6 +4267,33 @@ upgrade_to_79_test() ->
 
     meck:unload().
 
+upgrade_to_80_test() ->
+    fake_chronicle_kv:setup(),
+    Buckets =
+        [{b1, [{type, memcached}]},
+         {b2, [{type, membase}]},
+         {b3, [{type, membase}, {storage_mode, magma}]}],
+
+    try
+        fake_chronicle_kv:update_snapshot(root(), [BN || {BN, _} <- Buckets]),
+        [fake_chronicle_kv:update_snapshot(sub_key(BN, props), BC) ||
+            {BN, BC} <- Buckets],
+        RV = chronicle_kv:txn(
+               kv,
+               fun (Txn) ->
+                       chronicle_upgrade:build_commit(
+                         chronicle_upgrade_to_80({#{}, Txn}))
+               end),
+
+        ?assertMatch({ok, _}, RV),
+        NewBuckets = lists:sort(get_buckets()),
+        ?assertEqual([none, couchstore, magma],
+                     [proplists:get_value(storage_mode, BC, none) ||
+                         {_, BC} <- NewBuckets])
+    after
+        fake_chronicle_kv:teardown()
+    end.
+
 upgrade_to_totoro_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
