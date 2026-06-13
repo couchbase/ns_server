@@ -3162,10 +3162,9 @@ props_to_add_for_totoro(BucketConfig) ->
         memcached ->
             [];
         membase ->
-            [{throttle_reserved,
-              attribute_default(throttle_reserved)},
-             {throttle_hard_limit,
-              attribute_default(throttle_hard_limit)}] ++
+            [{throttle_reserved, attribute_default(throttle_reserved)},
+             {throttle_hard_limit, attribute_default(throttle_hard_limit)},
+             {storage_mode, magma}] ++
             case ns_bucket:is_magma(BucketConfig) of
                 true ->
                     [{continuous_backup_retention_period,
@@ -4325,7 +4324,6 @@ upgrade_to_totoro_test() ->
         BC1 = [{type, membase},
                {num_vbuckets, 16},
                {servers, [node1, node2]},
-               {storage_mode, magma},
                {ram_quota, 100 * ?MIB}],
         AddProps1 = props_to_add_for_totoro(BC1),
         NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
@@ -4336,6 +4334,7 @@ upgrade_to_totoro_test() ->
                      proplists:get_value(throttle_reserved, NewBC1)),
         ?assertEqual(attribute_default(throttle_hard_limit),
                      proplists:get_value(throttle_hard_limit, NewBC1)),
+        ?assertEqual(magma, proplists:get_value(storage_mode, NewBC1)),
 
         %% Bucket with preset values.
         BC2 = [{type, membase},
@@ -4352,7 +4351,17 @@ upgrade_to_totoro_test() ->
         ?assertEqual(147, proplists:get_value(
                             continuous_backup_retention_period, NewBC2)),
         ?assertEqual(500, proplists:get_value(throttle_reserved, NewBC2)),
-        ?assertEqual(1000, proplists:get_value(throttle_hard_limit, NewBC2))
+        ?assertEqual(1000, proplists:get_value(throttle_hard_limit, NewBC2)),
+
+        %% couchstore is not overwritten
+        BC3 = [{type, membase},
+               {num_vbuckets, 16},
+               {servers, [node1, node2]},
+               {ram_quota, 100 * ?MIB},
+               {storage_mode, couchstore}],
+        AddProps3 = props_to_add_for_totoro(BC3),
+        NewBC3 = check_for_preset_bucket_settings(AddProps3, BC3),
+        ?assertEqual(couchstore, proplists:get_value(storage_mode, NewBC3))
     after
         meck:unload(cluster_compat_mode)
     end.
