@@ -1441,14 +1441,6 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             'name': self.sample_bucket,
             'encryptionAtRestKeyId': new_secret_id
         })
-        # Deleting old secret, so all keys that not maintained properly should
-        # become not decryptable
-        # Need polling because bucket reencryption takes some time and should
-        # happen on all nodes, and delete_secret will only work when there is no
-        # bucket DEKs encrypted with that secret
-        testlib.poll_for_condition(
-            lambda: delete_secret(self.random_node(), prev_secret_id),
-            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
 
     @tag(Tag.LowUrgency)
     def node_readd_test(self):
@@ -1483,6 +1475,15 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                               verbose=True)
 
         self.modify_encryption_for_node_readd_testing(node_to_remove, secret_id)
+        # Deleting old secret, so all keys that not maintained properly should
+        # become not decryptable
+        # Need polling because bucket reencryption takes some time and should
+        # happen on all nodes, and delete_secret will only work when there is no
+        # bucket DEKs encrypted with that secret
+        testlib.poll_for_condition(
+            lambda: delete_secret(self.random_node(), secret_id),
+            sleep_time=1, attempts=50, retry_on_assert=True, verbose=True)
+
         # Node is added back, and it still contains the bucket data directory
         # (it will be removed only during rebalance)
         # Try rotating config encryption DEK here to make sure those bucket
