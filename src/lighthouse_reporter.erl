@@ -210,7 +210,8 @@ build_edition(Node, Config) ->
     end.
 
 build_services(Node) ->
-    ns_cluster_membership:node_active_services(Node).
+    lists:map(fun ns_cluster_membership:json_service_name/1,
+              ns_cluster_membership:node_active_services(Node)).
 
 create_report() ->
     Config = ns_config:get(),
