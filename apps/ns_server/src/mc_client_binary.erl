@@ -44,7 +44,6 @@
          set_vbucket/3,
          set_vbucket/4,
          set_vbuckets/2,
-         stats/1,
          stats/4,
          get_meta/4,
          update_with_rev/7,
@@ -579,9 +578,6 @@ compact_vbucket(Sock, VBucket, PurgeBeforeTS, PurgeBeforeSeqNo, DropDeletes,
             ok;
         Response -> process_error_response(Response)
     end.
-
-stats(Sock) ->
-    stats(Sock, <<>>, fun (K, V, Acc) -> [{K, V}|Acc] end, []).
 
 -spec stats(port(), binary(), recv_callback(), any()) ->
           {ok, any()} | mc_error().
