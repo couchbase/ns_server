@@ -177,14 +177,16 @@ post(URL, Body, Timeout) ->
             %% nxdomain error, so we don't need to log it at error level
             ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]),
             failure;
-        {Error, Stacktrace} ->
-            Reason = case Error of
-                         ok -> bad_value;
-                         _ -> Error
-                     end,
-            ?log_error("Sending lighthouse report failed. Error: ~p",
-                       [{Reason, Stacktrace}]),
-            failure
+        {client_error, JsonResponse} ->
+            %% Error from lighthouse itself
+            ?log_debug("Lighthouse report rejected by portal. Error: ~s",
+                       [ejson:encode(JsonResponse)]),
+            failure;
+        {ok, _JsonResponse} ->
+            %% Ignore unexpected success payload
+            ?log_debug("Lighthouse report sent successfuly. Ignored unexpected "
+                       "response"),
+            success
     catch
         _:Error:Stack ->
             ?log_error("Sending lighthouse report crashed with error: ~p"
