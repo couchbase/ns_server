@@ -124,13 +124,15 @@ default_config() ->
     #{reporting_enabled => true,
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
-      reporting_endpoint => <<"lighthouse.couchbase.internal">>}.
+      reporting_endpoint => <<"lighthouse.couchbase.internal">>,
+      reporting_port => 8080}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
              reporting_interval_hours |
              reporting_timeout_seconds |
-             reporting_endpoint,
+             reporting_endpoint |
+             reporting_port,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
@@ -153,17 +155,18 @@ send_report(Config) ->
       fun () ->
               Endpoint = get_setting(reporting_endpoint, Config),
               URL = binary_to_list(Endpoint),
+              Port = get_setting(reporting_port, Config),
               Report = create_report(),
               Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
                                                   Config)),
-              Result = post(URL, Report, Timeout),
+              Result = post(URL, Port, Report, Timeout),
               update_metric(Result),
               Parent ! report_done
       end).
 
-post(URL, Body, Timeout) ->
+post(URL, Port, Body, Timeout) ->
     Scheme = https,
-    Request = {Scheme, URL, 8080, "/api/v1/ingest/telemetry",
+    Request = {Scheme, URL, Port, "/api/v1/ingest/telemetry",
                "application/json", Body},
     try menelaus_rest:json_request_hilevel(post, Request,
                                            ?HIDE({basic_auth, "", ""}),
