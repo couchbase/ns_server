@@ -1647,6 +1647,42 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         self.cluster.rebalance(wait=True, verbose=True)
 
     @tag(Tag.LowUrgency)
+    def rebalance_with_encrypted_bucket_after_disable_encryption_test(self):
+        # Load a non-empty sample bucket
+        self.load_and_assert_sample_bucket(self.cluster, self.sample_bucket)
+
+        # Create a CB-managed secret and enable bucket encryption
+        secret = cb_managed_secret(usage=['bucket-encryption'])
+        secret_id = create_secret(self.random_node(), secret)
+        self.cluster.update_bucket({'name': self.sample_bucket,
+                                    'encryptionAtRestKeyId': secret_id})
+
+        # Wait for encryption to start, then force all data to be encrypted
+        force_bucket_encryption(self.random_node(), self.sample_bucket)
+        poll_verify_cluster_bucket_dek_info(self.cluster, self.sample_bucket,
+                                            data_statuses=['encrypted'],
+                                            dek_number=1)
+
+        # Disable encryption without decrypting the data —
+        # files on disk remain encrypted
+        self.cluster.update_bucket({'name': self.sample_bucket,
+                                    'encryptionAtRestKeyId': -1})
+
+        # Rebalance out a KV node; encrypted vbuckets move to the remaining
+        # KV node, which must import their DEKs even though encryption is
+        # now disabled for the bucket
+        node_to_remove = kv_nodes(self.cluster)[0]
+        original_services = node_to_remove.get_services()
+        self.cluster.rebalance(ejected_nodes=[node_to_remove], wait=True,
+                               verbose=True, wait_for_ejected_nodes=True)
+
+        # Add the node back
+        self.cluster.add_node(node_to_remove, services=original_services,
+                              verbose=True)
+        # Rebalance to complete node addition
+        self.cluster.rebalance(wait=True, verbose=True)
+
+    @tag(Tag.LowUrgency)
     def node_failover_and_add_back_delta_test(self):
         self.node_failover_and_add_back_base(recovery_type="delta")
 
