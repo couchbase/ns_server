@@ -125,7 +125,7 @@ default_config() ->
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>,
-      reporting_port => 8080}.
+      reporting_port => 443}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
