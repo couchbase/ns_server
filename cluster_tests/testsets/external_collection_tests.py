@@ -1022,3 +1022,24 @@ class ExternalCollectionTests(testlib.BaseTestSet):
         ext_uid_after = get_manifest_uid(
             self.cluster, bucket_name, external=True)
         testlib.assert_eq(ext_uid_before, ext_uid_after)
+
+    def create_external_collection_503_when_query_down_test(self):
+        bucket_name = "query-down-bucket"
+        scope_name = "query-down-scope"
+
+        self.create_bucket(bucket_name)
+        self.create_scope(bucket_name, scope_name)
+
+        testlib.diag_eval(
+            self.cluster,
+            'ns_config:set('
+            'forced_external_collection_validation_results, '
+            'service_unavailable)')
+        testlib.post_fail(
+            self.cluster,
+            f"{collections_path(bucket_name, scope_name)}"
+            "?external=1",
+            expected_code=503,
+            data={"name": "query-down-col"})
+
+        self.set_forced_validation_results()

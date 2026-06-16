@@ -692,3 +692,18 @@ class ExternalCatalogTests(testlib.BaseTestSet):
         body = r.json()
         testlib.assert_in("externalCatalogsManifestUid", body)
         testlib.assert_eq(rev + 1, body["externalCatalogsManifestUid"])
+
+    def create_catalog_503_when_query_down_test(self):
+        testlib.diag_eval(self.cluster,
+                          'ns_config:set('
+                          'forced_external_catalog_validation_results, '
+                          'service_unavailable)')
+        testlib.post_fail(
+            self.cluster, BASE_PATH,
+            expected_code=503,
+            data={"name": "query-down-catalog",
+                    "catalogType": "ICEBERG",
+                    "catalogSource": "AWS_GLUE",
+                    "credentialId": "awsid"})
+
+        self.set_forced_validation_results()

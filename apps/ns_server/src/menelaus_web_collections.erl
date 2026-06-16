@@ -776,7 +776,7 @@ validate_collection_against_query_nodes([FirstNode | _], CollectionConfig,
                "Error validating external collection "
                "config with query service: ~p",
                [Error]),
-            case service_agent:check_agent_not_ready(Bad) of
+            case lists:any(fun service_agent:check_agent_not_ready/1, Bad) of
                 true ->
                     service_unavailable;
                 _ ->

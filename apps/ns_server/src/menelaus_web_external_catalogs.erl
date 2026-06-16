@@ -329,8 +329,8 @@ validate_against_query_nodes([FirstNode | _], CatalogConfig,
     maybe
         %% Whilst we could validate on all nodes, there is currently no need.
         %% The code should handle multiple already though, just in case.
-        {ok, Results} = service_agent:validate_external_catalog_config(
-                          n1ql, [FirstNode], CatalogConfig, ServiceOptions),
+        {ok, Results} ?= service_agent:validate_external_catalog_config(
+                           n1ql, [FirstNode], CatalogConfig, ServiceOptions),
 
         ValidationOptions = #{filter_internal => false,
                               filter_unsupported => false},
@@ -361,7 +361,7 @@ validate_against_query_nodes([FirstNode | _], CatalogConfig,
                "Error validating external catalog config with query service: "
                "~p",
                [Error]),
-            case service_agent:check_agent_not_ready(Bad) of
+            case lists:any(fun service_agent:check_agent_not_ready/1, Bad) of
                 true ->
                     service_unavailable;
                 _ ->
