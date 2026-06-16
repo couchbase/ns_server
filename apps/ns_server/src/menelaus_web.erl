@@ -1245,6 +1245,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_lighthouseCollector", "ingest"] ->
                     {{[lighthouse_telemetry], write},
                      fun menelaus_web_lighthouse:handle_ingest/1, []};
+                ["_cbauth", "crlsValidate"] ->
+                    {{[admin, internal], all},
+                     fun menelaus_cbauth:handle_crls_validate_post/1};
                 ["_log"] ->
                     {{[admin, internal], all}, fun menelaus_web_misc:handle_log_post/1};
                 ["_event"] ->

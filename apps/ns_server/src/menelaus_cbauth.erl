@@ -12,6 +12,7 @@
 
 -export([handle_cbauth_post/1,
          handle_extract_user_from_cert_post/1,
+         handle_crls_validate_post/1,
          handle_rpc_connect/3]).
 
 -behaviour(gen_server).
@@ -395,6 +396,7 @@ build_node_info(N, User, Config, Snapshot) ->
 -define(AUTH_CHECK_ENDPOINT, "/_cbauth").
 -define(PERM_CHECK_ENDPOINT, "/_cbauth/checkPermission").
 -define(EXTRACT_USER_ENDPOINT, "/_cbauth/extractUserFromCert").
+-define(CRLS_VALIDATE_ENDPOINT, "/_cbauth/crlsValidate").
 
 versions() ->
     [internal, ?VERSION_1].
@@ -463,6 +465,7 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
     DeksDropCompleteURL = misc:local_url(Port, "/_cbauth/deksDropComplete", []),
     ImportDeksURL = misc:local_url(Port, "/_cbauth/importEaRDEK", []),
     GetCredentialBaseURL = misc:local_url(Port, "/_cbauth/getCredential", []),
+    CRLsValidateURL = misc:local_url(Port, ?CRLS_VALIDATE_ENDPOINT, []),
     ClusterDataEncrypt = misc:should_cluster_data_be_encrypted(),
     DisableNonSSLPorts = misc:disable_non_ssl_ports(),
     TLSServices = menelaus_web_settings:services_with_security_settings(),
@@ -488,6 +491,7 @@ build_auth_info(internal, {AuthVersion, PermissionsVersion, CcaState, Config,
      {clusterEncryptionConfig, {[{encryptData, ClusterDataEncrypt},
                                  {disableNonSSLPorts, DisableNonSSLPorts}]}},
      {specialPasswords, SpecialPasswordsBin},
+     {crlsValidateUrl, list_to_binary(CRLsValidateURL)},
      {tlsConfig, [tls_config(S, Config) || S <- TLSServices]},
      {cacheConfig, build_cache_size_overrides(Config)},
      {guardrailStatuses, build_guardrail_statuses(Config)}].
@@ -633,6 +637,82 @@ handle_extract_user_from_cert_post(Req) ->
             ns_server_stats:notify_counter(<<"rest_request_auth_failure">>),
             menelaus_util:reply_json(Req, <<"Auth failure">>, 401)
     end.
+
+handle_crls_validate_post(Req) ->
+    validator:handle(
+      fun (Params) ->
+              DerCerts = proplists:get_value(certs, Params),
+              ScopeStr = proplists:get_value(scope, Params),
+              Scope = crl_scope_from_string(ScopeStr),
+              Statuses =
+                  case DerCerts of
+                      [] ->
+                          [];
+                      [Leaf | Rest] ->
+                          [verify_cert_crl(Leaf, Scope, valid_peer) |
+                           [verify_cert_crl(D, Scope, valid)
+                            || D <- Rest]]
+                  end,
+              menelaus_util:reply_json(
+                Req, {[{statuses, Statuses}]})
+      end,
+      Req, json,
+      [validator:required(certs, _),
+       validator:string_array(
+         certs,
+         fun (C) ->
+                 try {value, base64:decode(list_to_binary(C))}
+                 catch _:_ -> {error, "Invalid base64 encoding"}
+                 end
+         end, _),
+       validator:validate(
+          fun (L) ->
+              case length(L) > 100 of
+                  true -> {error, "too many certificates in chain"};
+                  false -> ok
+              end
+          end, certs, _),
+       validator:required(scope, _),
+       validator:string(scope, _),
+       validator:one_of(scope, ["clientAuth", "nodeToNode"], _),
+       validator:unsupported(_)]).
+
+verify_cert_crl(Der, Scope, Event) ->
+    try public_key:pkix_decode_cert(Der, otp) of
+        OtpCert ->
+            Subject = list_to_binary(
+                        ns_server_cert:get_subject(OtpCert)),
+            case cb_crl:verify(OtpCert, Event, Scope, []) of
+                {valid, _} ->
+                    {[{status, <<"valid">>},
+                      {subject, Subject}]};
+                {fail, {bad_cert, {revoked, Reason}}} ->
+                    {[{status, <<"revoked">>},
+                      {subject, Subject},
+                      {details, format_crl_details(Reason)}]};
+                {fail, {bad_cert,
+                        {revocation_status_undetermined, Info}}} ->
+                    {[{status, <<"undetermined">>},
+                      {subject, Subject},
+                      {details, format_crl_details(Info)}]};
+                {fail, {bad_cert, Reason}} ->
+                    {[{status, <<"failed">>},
+                      {subject, Subject},
+                      {details, format_crl_details(Reason)}]}
+            end
+    catch
+        C:E:ST ->
+            ?log_error("cbauth crl status check crashed: ~p:~p~nStacktrace: ~p",
+                       [C, E, ST]),
+            {[{status, <<"failed">>},
+              {details, <<"cert decode error">>}]}
+    end.
+
+format_crl_details(Term) ->
+    iolist_to_binary(io_lib:format("~p", [Term])).
+
+crl_scope_from_string("clientAuth") -> client_auth;
+crl_scope_from_string("nodeToNode") -> node_to_node.
 
 is_cbauth_connection(Label) ->
     lists:suffix("-cbauth", Label).
