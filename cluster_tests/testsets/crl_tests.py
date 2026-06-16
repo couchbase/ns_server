@@ -32,14 +32,63 @@ class CRLTests(testlib.BaseTestSet):
         return testlib.ClusterRequirements(edition='Enterprise')
 
     def setup(self):
-        pass
+        set_allow_expired_crls(self.cluster, True)
 
     def teardown(self):
-        pass
+        set_allow_expired_crls(self.cluster, False)
 
     def client_cert_crl_test(self):
         """Test CRL revocation using a full (base) CRL."""
         self._run_crl_revocation_checks(_setup_full_crl, _update_full_crl)
+
+    def client_cert_upload_crl_test(self):
+        """Test CRL revocation using the REST file upload API."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_upload_crl_ops(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=False)
+
+    def client_cert_upload_rename_test(self):
+        """Upload-based CRL test where update uses a different filename."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_upload_crl_ops_rename(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=False)
+
+    def client_cert_upload_delta_test(self):
+        """Delta CRL test: both base and delta uploaded via REST API."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_upload_delta_crl_ops(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=False)
+
+    def client_cert_upload_delta_rename_test(self):
+        """Delta CRL test where delta update uses a different filename."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_upload_delta_crl_ops_rename(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=False)
+
+    def client_cert_base_dir_delta_upload_test(self):
+        """Base CRL deployed via directory; delta CRL uploaded via API."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_hybrid_base_dir_delta_upload_ops(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=True)
+
+    def client_cert_dir_setup_upload_update_test(self):
+        """Initial CRL via directory; update switches to REST API upload."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_hybrid_dir_setup_upload_update_ops(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=True)
+
+    def client_cert_upload_setup_dir_update_test(self):
+        """Initial CRL uploaded via API; update writes to directory."""
+        node = self.cluster.connected_nodes[0]
+        setup_fn, update_fn = _make_hybrid_upload_setup_dir_update_ops(node)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        use_directory=True)
 
     def delta_crl_base_and_delta_test(self):
         """Test delta CRL: cert1 revoked in base CRL, cert2 in delta CRL."""
@@ -187,13 +236,19 @@ class CRLTests(testlib.BaseTestSet):
                                       'dropUploadedCertificates': 'true'})
             shutil.rmtree(crl_dir, ignore_errors=True)
 
-    def _run_crl_revocation_checks(self, setup_crl, update_crl):
+    def _run_crl_revocation_checks(self, setup_crl, update_crl,
+                                   use_directory=True):
         """Shared test body for CRL revocation tests with policy matrix.
 
         setup_crl(crl_dir, ca_pem, ca_key, revoked_certs) -> state
             writes initial CRL file(s) revoking the given certs
         update_crl(crl_dir, ca_pem, ca_key, extra_certs, state)
             adds extra_certs to the revoked list and rewrites CRL file(s)
+
+        use_directory: when False the CRL source directory is not configured
+            (upload-based tests keep files in the server via the REST API).
+            reload_crl() calls are skipped because uploaded files are active
+            immediately.
 
         PKI structure:
           Root CA
@@ -303,13 +358,14 @@ class CRLTests(testlib.BaseTestSet):
                                        expired=True)
 
                 # --------------------------------------------------------------
-                # Step 7: Configure CRL directory (policy set per iteration)
+                # Step 7: Configure CRL settings (policy set per iteration)
                 # --------------------------------------------------------------
+                dir_arg = crl_dir if use_directory else ""
                 set_crl_settings(self.cluster,
                                  policy_per_scope={'clientAuth': 'Disabled',
                                                    'nodeToNode': 'Disabled'},
                                  poll_interval_ms=5000,
-                                 directory=crl_dir)
+                                 directory=dir_arg)
 
                 # --------------------------------------------------------------
                 # Step 8: Test each policy after setup_crl (cert1 revoked)
@@ -342,8 +398,9 @@ class CRLTests(testlib.BaseTestSet):
                         self.cluster,
                         policy_per_scope={'clientAuth': policy,
                                           'nodeToNode': 'Disabled'},
-                        directory=crl_dir)
-                    reload_crl(node)
+                        directory=dir_arg)
+                    if use_directory:
+                        reload_crl(node)
 
                     for cert_name, should_allow in expectations.items():
                         print(f"Testing {cert_name} (should_allow={should_allow})...")
@@ -384,8 +441,9 @@ class CRLTests(testlib.BaseTestSet):
                         self.cluster,
                         policy_per_scope={'clientAuth': policy,
                                           'nodeToNode': 'Disabled'},
-                        directory=crl_dir)
-                    reload_crl(node)
+                        directory=dir_arg)
+                    if use_directory:
+                        reload_crl(node)
 
                     for cert_name, should_allow in expectations.items():
                         print(f"Testing {cert_name} (should_allow={should_allow})...")
@@ -409,6 +467,11 @@ class CRLTests(testlib.BaseTestSet):
                                                'nodeToNode': 'Disabled'},
                              directory="")
 
+            # Clean up any files uploaded via the REST API (upload-based
+            # and hybrid tests leave files that poll teardown misses).
+            for f in get_crl_files(node):
+                delete_crl_file(node, f['filename'])
+
             shutil.rmtree(crl_dir, ignore_errors=True)
 
     def _check_cert_access(self, node, cert_path, expected_user,
@@ -424,6 +487,304 @@ class CRLTests(testlib.BaseTestSet):
         else:
             assert_cert_rejected(lambda: try_client_auth(node, cert_path))
             print(f"  {label}: REJECT (as expected)")
+
+
+# =============================================================================
+# Upload API helpers
+# =============================================================================
+
+
+def upload_crl_file(node, filename, crl_pem):
+    """Upload a CRL file via POST /settings/crl/files (multipart/form-data).
+
+    Returns the requests.Response (body: updated list of uploaded files).
+    """
+    if isinstance(crl_pem, str):
+        crl_pem = crl_pem.encode()
+    files = {'crl': (filename, crl_pem, 'application/x-pem-file')}
+    return testlib.post_succ(node, '/settings/crl/files', files=files)
+
+
+def get_crl_files(node):
+    """GET /settings/crl/files.
+
+    Returns the parsed JSON list of uploaded file-metadata dicts.
+    Each dict has: filename, checksum, uploadTimestamp, entries.
+    """
+    return testlib.get_succ(node, '/settings/crl/files').json()
+
+
+def delete_crl_file(node, filename):
+    """DELETE /settings/crl/files/:filename."""
+    return testlib.delete_succ(node, f'/settings/crl/files/{filename}')
+
+
+# =============================================================================
+# Upload CRL callbacks
+# =============================================================================
+
+
+def _initial_this_update():
+    """Return a thisUpdate value for initial CRL generation (now - 2 days)."""
+    return (datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=2))
+
+
+def _next_this_update(prev):
+    """Return a thisUpdate strictly after prev (prev + 1 second)."""
+    return prev + datetime.timedelta(seconds=1)
+
+
+def _make_upload_crl_ops(node):
+    """Return (setup_fn, update_fn) callbacks that upload CRLs via the REST API.
+
+    The returned functions have the same signature as _setup_full_crl /
+    _update_full_crl and are drop-in replacements inside
+    _run_crl_revocation_checks (with use_directory=False).
+    The crl_dir argument is accepted but ignored — no directory needs to be
+    configured on the server when using the upload API.
+    """
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_pem = generate_crl(ca_pem, ca_key_pem, revoked_certs,
+                               expired=expired, this_update=this_update)
+        upload_crl_file(node, filename, crl_pem)
+        return {'filename': filename, 'revoked': list(revoked_certs),
+                'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs, state,
+               expired=False):
+        state['revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        crl_pem = generate_crl(ca_pem, ca_key_pem, state['revoked'],
+                               expired=expired, this_update=this_update)
+        upload_crl_file(node, state['filename'], crl_pem)
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
+
+
+# =============================================================================
+# Upload CRL callbacks — rename on update
+# =============================================================================
+
+
+def _make_upload_crl_ops_rename(node):
+    """Upload-based CRL ops where update deletes the old file and uploads
+    a fresh CRL under a new filename."""
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_pem = generate_crl(ca_pem, ca_key_pem, revoked_certs,
+                               expired=expired, this_update=this_update)
+        upload_crl_file(node, filename, crl_pem)
+        return {'filename': filename, 'revoked': list(revoked_certs),
+                'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        delete_crl_file(node, state['filename'])
+        new_filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_pem = generate_crl(ca_pem, ca_key_pem, state['revoked'],
+                               expired=expired, this_update=this_update)
+        upload_crl_file(node, new_filename, crl_pem)
+        state['filename'] = new_filename
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
+
+
+# =============================================================================
+# Upload delta CRL callbacks
+# =============================================================================
+
+
+def _make_upload_delta_crl_ops(node):
+    """Upload-based delta CRL ops: base and delta both uploaded via API.
+
+    setup:  upload base CRL (revoked_certs in base) + empty delta
+    update: overwrite delta in-place (same filename, extra_revoked added)
+    """
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        base_filename = f'base_{testlib.random_str(8)}.pem'
+        delta_filename = f'delta_{testlib.random_str(8)}.pem'
+        base_pem, base_num = generate_crl_with_number(
+            ca_pem, ca_key_pem, revoked_certs,
+            expired=expired, this_update=this_update)
+        upload_crl_file(node, base_filename, base_pem)
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, base_num, [],
+            expired=expired, this_update=this_update)
+        upload_crl_file(node, delta_filename, delta_pem)
+        return {'base_filename': base_filename,
+                'delta_filename': delta_filename,
+                'base_num': base_num,
+                'delta_revoked': [],
+                'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['delta_revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, state['base_num'],
+            state['delta_revoked'], expired=expired,
+            this_update=this_update)
+        upload_crl_file(node, state['delta_filename'], delta_pem)
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
+
+
+def _make_upload_delta_crl_ops_rename(node):
+    """Upload-based delta CRL ops where delta update uses a new filename."""
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        base_filename = f'base_{testlib.random_str(8)}.pem'
+        delta_filename = f'delta_{testlib.random_str(8)}.pem'
+        base_pem, base_num = generate_crl_with_number(
+            ca_pem, ca_key_pem, revoked_certs,
+            expired=expired, this_update=this_update)
+        upload_crl_file(node, base_filename, base_pem)
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, base_num, [],
+            expired=expired, this_update=this_update)
+        upload_crl_file(node, delta_filename, delta_pem)
+        return {'base_filename': base_filename,
+                'delta_filename': delta_filename,
+                'base_num': base_num,
+                'delta_revoked': [],
+                'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['delta_revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        delete_crl_file(node, state['delta_filename'])
+        new_delta = f'delta_{testlib.random_str(8)}.pem'
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, state['base_num'],
+            state['delta_revoked'], expired=expired,
+            this_update=this_update)
+        upload_crl_file(node, new_delta, delta_pem)
+        state['delta_filename'] = new_delta
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
+
+
+# =============================================================================
+# Hybrid CRL callbacks (directory + upload mixed)
+# =============================================================================
+
+
+def _make_hybrid_base_dir_delta_upload_ops(node):
+    """Base CRL written to poll directory; delta CRL uploaded via REST API.
+
+    Tests that directory-loaded and API-uploaded CRLs coexist in the cache
+    and are both used by the OTP delta-CRL matching logic.
+    """
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        base_filename = f'base_{testlib.random_str(8)}.pem'
+        delta_filename = f'delta_{testlib.random_str(8)}.pem'
+        base_pem, base_num = generate_crl_with_number(
+            ca_pem, ca_key_pem, revoked_certs,
+            expired=expired, this_update=this_update)
+        with open(os.path.join(crl_dir, base_filename), 'w') as f:
+            f.write(base_pem)
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, base_num, [],
+            expired=expired, this_update=this_update)
+        upload_crl_file(node, delta_filename, delta_pem)
+        return {'base_filename': base_filename,
+                'delta_filename': delta_filename,
+                'base_num': base_num,
+                'delta_revoked': [],
+                'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['delta_revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        # Base stays in directory; only the uploaded delta is updated.
+        delta_pem = generate_delta_crl(
+            ca_pem, ca_key_pem, state['base_num'],
+            state['delta_revoked'], expired=expired,
+            this_update=this_update)
+        upload_crl_file(node, state['delta_filename'], delta_pem)
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
+
+
+def _make_hybrid_dir_setup_upload_update_ops(node):
+    """Initial CRL written to directory; update deletes it and uploads."""
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_filepath = os.path.join(crl_dir, filename)
+        generate_crl_to_file(crl_filepath, ca_pem, ca_key_pem, revoked_certs,
+                             expired=expired, this_update=this_update)
+        return {'filename': filename, 'revoked': list(revoked_certs),
+                'in_dir': True, 'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        new_filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_pem = generate_crl(ca_pem, ca_key_pem, state['revoked'],
+                               expired=expired, this_update=this_update)
+        upload_crl_file(node, new_filename, crl_pem)
+        state['filename'] = new_filename
+        state['in_dir'] = False
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
+
+
+def _make_hybrid_upload_setup_dir_update_ops(node):
+    """Initial CRL uploaded via REST API; update writes to directory.
+
+    Because the updated CRL has a strictly later thisUpdate than the setup
+    CRL, the sort in build_dps_and_crls guarantees OTP sees the directory
+    version first — no need to delete the uploaded copy.
+    """
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+        this_update = _initial_this_update()
+        upload_filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_pem = generate_crl(ca_pem, ca_key_pem, revoked_certs,
+                               expired=expired, this_update=this_update)
+        upload_crl_file(node, upload_filename, crl_pem)
+        return {'upload_filename': upload_filename,
+                'dir_filename': None,
+                'revoked': list(revoked_certs),
+                'last_this_update': this_update}
+
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['revoked'].extend(extra_revoked_certs)
+        this_update = _next_this_update(state['last_this_update'])
+        dir_filename = f'crl_{testlib.random_str(8)}.pem'
+        crl_filepath = os.path.join(crl_dir, dir_filename)
+        generate_crl_to_file(crl_filepath, ca_pem, ca_key_pem, state['revoked'],
+                             expired=expired, this_update=this_update)
+        state['dir_filename'] = dir_filename
+        state['last_this_update'] = this_update
+        return state
+
+    return setup, update
 
 
 # =============================================================================
@@ -561,6 +922,23 @@ def set_crl_settings(cluster, policy_per_scope=None, directory=None,
     if poll_interval_ms is not None:
         body['dirPollIntervalMs'] = poll_interval_ms
     return testlib.post_succ(cluster, '/settings/crl', json=body).json()
+
+
+def set_allow_expired_crls(cluster, value):
+    """Set the allow_expired_crls diag/eval param on all nodes.
+
+    ?get_param(allow_expired_crls, false) expands to:
+      ns_config:search_node_with_default({cb_crl_manager, allow_expired_crls},
+                                         false)
+    which looks up {node, node(), {cb_crl_manager, allow_expired_crls}}.
+    We must use the same nested-key form when setting.
+    """
+    erlang_bool = 'true' if value else 'false'
+    expr = (f'ns_config:set('
+            f'{{node, node(), {{cb_crl_manager, allow_expired_crls}}}}, '
+            f'{erlang_bool}).')
+    for node in cluster.connected_nodes:
+        testlib.diag_eval(node, expr)
 
 
 def get_crl_settings(cluster):
@@ -767,18 +1145,23 @@ def generate_crl_to_file(filepath, *args, **kwargs):
         f.write(crl_pem)
 
 
-def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False):
+def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
+                 this_update=None):
     """Return a PEM-encoded CRL signed by the given CA.
 
     If expired=True, generates a CRL with nextUpdate in the past (expired).
+    If this_update is given it is used as thisUpdate (last_update); otherwise
+    defaults to now - 2 days.
     """
     pem, _ = generate_crl_with_number(ca_cert_pem, ca_key_pem,
-                                       revoked_cert_pems, expired=expired)
+                                       revoked_cert_pems, expired=expired,
+                                       this_update=this_update)
     return pem
 
 
 def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
-                             expired=False, freshest_crl_uri=None):
+                             expired=False, freshest_crl_uri=None,
+                             this_update=None):
     """Return (pem, crl_number) for a CRL signed by the given CA.
 
     revoked_cert_pems is a list of PEM strings whose serial numbers will be
@@ -799,6 +1182,8 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
                                                 password=None,
                                                 backend=default_backend())
     now = datetime.datetime.now(datetime.timezone.utc)
+    if this_update is None:
+        this_update = now - datetime.timedelta(days=2)
 
     # Authority Key Identifier from the CA's public key
     aki = x509.AuthorityKeyIdentifier.from_issuer_public_key(
@@ -824,7 +1209,7 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
     builder = (
         x509.CertificateRevocationListBuilder()
         .issuer_name(ca_cert.subject)
-        .last_update(now - datetime.timedelta(days=2))
+        .last_update(this_update)
         .next_update(next_update)
         .add_extension(x509.CRLNumber(crl_num), critical=False)
         .add_extension(aki, critical=False)
@@ -858,7 +1243,7 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
 
 
 def generate_delta_crl(ca_cert_pem, ca_key_pem, base_crl_number,
-                       revoked_cert_pems, expired=False):
+                       revoked_cert_pems, expired=False, this_update=None):
     """Return a PEM-encoded delta CRL referencing the given base CRL.
 
     The delta CRL contains revocations added since the base CRL was issued.
@@ -875,6 +1260,8 @@ def generate_delta_crl(ca_cert_pem, ca_key_pem, base_crl_number,
                                                 password=None,
                                                 backend=default_backend())
     now = datetime.datetime.now(datetime.timezone.utc)
+    if this_update is None:
+        this_update = now - datetime.timedelta(days=2)
 
     # Authority Key Identifier from the CA's public key
     aki = x509.AuthorityKeyIdentifier.from_issuer_public_key(
@@ -902,7 +1289,7 @@ def generate_delta_crl(ca_cert_pem, ca_key_pem, base_crl_number,
     builder = (
         x509.CertificateRevocationListBuilder()
         .issuer_name(ca_cert.subject)
-        .last_update(now - datetime.timedelta(days=2))
+        .last_update(this_update)
         .next_update(next_update)
         .add_extension(x509.CRLNumber(crl_num), critical=False)
         .add_extension(aki, critical=False)
