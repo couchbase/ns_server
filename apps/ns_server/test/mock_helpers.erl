@@ -9,28 +9,30 @@
 %%
 %% @doc
 %% This file contains a set of functions to help with starting up various
-%% ns_server processes for the sake of testing. For example, we may want to
+%% ns_server modules for the sake of testing. For example, we may want to
 %% test auto-failover, or rebalance, and to do so we need to start up the
 %% orchestrator which requires it's own set of processes (or mocks). We may
-%% start processes or mock them, depending on general complexity and the needs
-%% of the test(s) calling the functions in this module.
+%% start processes, mock them, or perform other forms of module setup, depending
+%% on general complexity and the needs of the test(s) calling the functions in
+%% this module.
 %%
 %% The functions in this module are intended to set up processes in a generally
 %% minimal and re-usable way, but this may not always be possible.
 %%
 %% To accomplish this in something of a re-usable way, we establish a pattern
 %% where we:
-%% 1. Export functions to set up some process
+%% 1. Export functions to set up some module
 %% 2. These functions may compose other functions to set up their requirements
-%% 3. These functions take, and return, a map of pids (accumulator style) which
-%%    is used to track the pids of the processes they create, or the mocks that
-%%    they set up. This lets us call each function multiple times and skip
-%%    setting up a process that has already been set up, simplying test setup
-%%    when we want to re-use certain functions.
-%%    In addition, the mocking can be overriden by the caller, for some given
-%%    function, if needed, by setting that key in the map of pids.
-%% 4. We can shut down any processes set up by the functions in this module by
-%%    calling `shutdown_processes/1' with the map of pids.
+%% 3. These functions take, and return, a map of modules (accumulator style)
+%%    which is used to track the pids of the processes they create, the mocks
+%%    that they set up, or teardown function where applicable. This lets us call
+%%    each function multiple times and skip setting up a process that has
+%%    already been set up, simplifying test setup when we want to re-use certain
+%%    functions.
+%%    In addition, the mocking can be overridden by the caller, for some given
+%%    function, if needed, by setting that key in the map.
+%% 4. We can teardown any processes (and call any unload function) set up by the
+%%    functions in this module by calling `teardown/1' with the map of pids.
 %%
 %% This file is a work in progress, I'm not 100% sure that this is the best way
 %% to do this, but it exists such that we can share these mocks between tests;
@@ -69,13 +71,15 @@ setup_mocks(Modules, PidMap) ->
                     [setup_mock(Module, _) || Module <- Modules]).
 
 %% Shuts down all the processes that were set up by the functions in this
-%% module.
--spec shutdown_processes(map()) -> ok.
-shutdown_processes(PidMap) ->
+%% module, and calls any unload functions.
+-spec teardown(map()) -> ok.
+teardown(PidMap) ->
     maps:foreach(
       fun(_Process, Pid) when is_pid(Pid) ->
               erlang:unlink(Pid),
               misc:terminate_and_wait(Pid, shutdown);
+         (_, Fun) when is_function(Fun, 0) ->
+             Fun();
          (_, _) ->
               ok
       end, PidMap).
@@ -176,6 +180,14 @@ user_storage_events(PidMap) ->
 ssl_service_events(PidMap) ->
     {ok, SslServiceEventsPid} = gen_event:start_link({local, ?FUNCTION_NAME}),
     PidMap#{?FUNCTION_NAME => SslServiceEventsPid}.
+
+config_profile(PidMap) ->
+    %% We don't want to mock this module, as it can be used as-is just by
+    %% loading the default profile
+    config_profile:load_default_profile_for_test(),
+    %% We still need to unload the profile, but there's no pid to associate with
+    %% this, so we need to track the unload function instead
+    PidMap#{?FUNCTION_NAME => fun config_profile:unload_profile_for_test/0}.
 
 %%%===================================================================
 %%% Mock setup functions

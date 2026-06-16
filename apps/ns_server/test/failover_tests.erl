@@ -77,7 +77,7 @@ manual_failover_test_setup(SetupConfig) ->
                               janitor_agent]).
 
 failover_test_teardown(_Config, PidMap) ->
-    mock_helpers:shutdown_processes(PidMap),
+    mock_helpers:teardown(PidMap),
 
     meck:unload(),
 
