@@ -128,12 +128,44 @@ mb_master_advertised_version() ->
         undefined ->
             case get_pretend_version() of
                 undefined ->
-                    ?MASTER_ADVERTISED_VERSION;
+                    master_advertised_version();
                 Version ->
                     Version ++ [0]
             end;
         Version ->
             Version ++ [0]
+    end.
+
+%% The master advertised version is [Major, Minor, Maintenance], derived from
+%% the version stamped into the ns_server application 'vsn' from
+%% NS_SERVER_VERSION at build time. Deriving it from the build version (rather
+%% than a hand-maintained constant) ensures the maintenance digit can never be
+%% forgotten on a maintenance release. Unversioned (e.g. dev) builds carry the
+%% default "0.0.0" 'vsn' and fall back to ?MASTER_ADVERTISED_VERSION_FALLBACK.
+master_advertised_version() ->
+    case node_advertised_version() of
+        [Major, Minor, Maintenance | _] ->
+            [Major, Minor, Maintenance];
+        undefined ->
+            ?MASTER_ADVERTISED_VERSION_FALLBACK
+    end.
+
+node_advertised_version() ->
+    case application:get_key(ns_server, vsn) of
+        {ok, VsnStr} ->
+            try misc:parse_version(VsnStr) of
+                %% A leading 0 indicates the "0.0.0" placeholder of an
+                %% unversioned build.
+                {[0 | _], _Type, _Offset} ->
+                    undefined;
+                {BaseVersion, _Type, _Offset} ->
+                    BaseVersion
+            catch
+                _:_ ->
+                    undefined
+            end;
+        undefined ->
+            undefined
     end.
 
 is_enabled_at(undefined = _ClusterVersion, _FeatureVersion) ->
@@ -505,7 +537,18 @@ is_goxdcr_enabled() ->
 
 -ifdef(TEST).
 mb_master_advertised_version_test() ->
-    true = mb_master_advertised_version() >= ?LATEST_VERSION_NUM ++ [0].
+    true = mb_master_advertised_version() >= ?LATEST_VERSION_NUM ++ [0],
+    %% When a real version is stamped into 'vsn' (as the build does via
+    %% NS_SERVER_VERSION), it must be the source of the advertised version
+    %% rather than the fallback.
+    case node_advertised_version() of
+        undefined ->
+            ?assertEqual(?MASTER_ADVERTISED_VERSION_FALLBACK,
+                         mb_master_advertised_version());
+        [Major, Minor, Maintenance | _] ->
+            ?assertEqual([Major, Minor, Maintenance],
+                         mb_master_advertised_version())
+    end.
 
 -define(WOMBAT_PROD, "wombat").
 -define(WOMBAT_PROD_NAME, "Wombat").

@@ -279,7 +279,12 @@
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
 -define(LATEST_VERSION_NUM, ?VERSION_TOTORO).
--define(MASTER_ADVERTISED_VERSION, [8, 1, 0]).
+%% The master advertised version is derived at runtime from the ns_server
+%% application 'vsn' (i.e. NS_SERVER_VERSION) - see
+%% cluster_compat_mode:mb_master_advertised_version/0. This constant is only the
+%% fallback used for unversioned (e.g. dev) builds, where no real version has
+%% been stamped into 'vsn'.
+-define(MASTER_ADVERTISED_VERSION_FALLBACK, ?LATEST_VERSION_NUM ++ [0]).
 
 %% We use 'prod' and 'prod_name' during compatibility checks when validating
 %% joining nodes. 'prod' is a short string that is used to identify the
