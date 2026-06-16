@@ -154,6 +154,10 @@ handle_enable(Req) ->
                       reply_wrong_state(Req, State, States);
                   {wrong_buckets, BucketErrors} ->
                       reply_wrong_buckets(Req, BucketErrors);
+                  pending_namespace_deletes ->
+                      menelaus_util:reply_text(
+                        Req, "Wait for all the namespaces to be deleted and "
+                        "try again", 503);
                   not_initialized ->
                       menelaus_util:reply_text(
                         Req, "Fusion should be initialized", 503);

@@ -95,7 +95,7 @@
         unknown | non_magma | continuous_backup_enabled.
 -type enable_error() ::
         not_initialized | {not_allowed, string()} | wrong_state_error() |
-        {failed_nodes, [node()]} |
+        {failed_nodes, [node()]} | pending_namespace_deletes |
         {wrong_buckets, [{ns_bucket:name(), bucket_validation_error()}]}.
 -type disable_or_stop_error() :: wrong_state_error().
 
@@ -687,6 +687,10 @@ post_enable(Buckets) ->
 enable(BucketUploaders, MagmaBucketNames) ->
     BucketsToEnable = [BN || {BN, _} <- BucketUploaders],
     BucketsNotToEnable = MagmaBucketNames -- BucketsToEnable,
+    AllowedStates = [disabled, disabling, stopped, stopping],
+    DeletionInfo = get_deletion_state(get_state()),
+    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+
     chronicle_kv:transaction(
       kv,
       [config_key() | [ns_bucket:sub_key(BN, props) || BN <- MagmaBucketNames]],
@@ -697,8 +701,12 @@ enable(BucketUploaders, MagmaBucketNames) ->
                                       Config) =/= undefined orelse
                       throw(not_initialized),
                   State = proplists:get_value(state, Config),
-                  (State == disabled) orelse (State == stopped) orelse
-                      throw({wrong_state, State, [disabled, stopped]}),
+                  lists:member(State, AllowedStates) orelse
+                      throw({wrong_state, State, AllowedStates}),
+
+                  State =/= disabling orelse
+                      check_deletion_info(KVNodes, disabling, DeletionInfo)
+                      orelse throw(pending_namespace_deletes),
 
                   {DisablingBucketSets, DisablingBuckets} =
                       update_bucket_state_sets(
@@ -933,6 +941,7 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
                     ExtraCheck) ->
     FusionBuckets = ns_bucket:get_fusion_buckets(),
     DeletionInfo = get_deletion_state(State),
+    KVNodes = ns_cluster_membership:service_active_nodes(kv),
 
     case fetch_fusion_stats(FusionBuckets, #{}) of
         error ->
@@ -950,7 +959,7 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
                                       Sets;
                                   true ->
                                       case can_advance_fusion_state(
-                                             Txn, State, DeletionInfo,
+                                             KVNodes, State, DeletionInfo,
                                              ?cut(ExtraCheck(FusionBuckets,
                                                              FusionStats))) of
                                           true ->
@@ -979,8 +988,6 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
             end
     end.
 
-get_deletion_state(stopping) ->
-    undefined;
 get_deletion_state(State) when State =:= enabling orelse State =:= disabling ->
     KVNodes = ns_cluster_membership:service_active_nodes(kv),
     case fusion_local_agent:get_states(KVNodes, ?GET_DELETION_STATE_TIMEOUT) of
@@ -990,27 +997,27 @@ get_deletion_state(State) when State =:= enabling orelse State =:= disabling ->
             error;
         {ok, Results} ->
             maps:from_list(Results)
-    end.
+    end;
+get_deletion_state(_) ->
+    undefined.
 
-can_advance_fusion_state(_Txn, stopping, _, _) ->
+can_advance_fusion_state(_KVNodes, stopping, _, _) ->
     true;
-can_advance_fusion_state(_Txn, disabling, error, _) ->
+can_advance_fusion_state(_KVNodes, disabling, error, _) ->
     false;
-can_advance_fusion_state(Txn, disabling, DeletionInfo, _) ->
-    check_deletion_info(Txn, disabling, DeletionInfo);
-can_advance_fusion_state(_Txn, enabling, error, _) ->
+can_advance_fusion_state(KVNodes, disabling, DeletionInfo, _) ->
+    check_deletion_info(KVNodes, disabling, DeletionInfo);
+can_advance_fusion_state(_KVNodes, enabling, error, _) ->
     false;
-can_advance_fusion_state(Txn, enabling, DeletionInfo, ExtraCheck) ->
-    case check_deletion_info(Txn, enabling, DeletionInfo) of
+can_advance_fusion_state(KVNodes, enabling, DeletionInfo, ExtraCheck) ->
+    case check_deletion_info(KVNodes, enabling, DeletionInfo) of
         true ->
             ExtraCheck();
         false ->
             false
     end.
 
-check_deletion_info(Txn, State, DeletionInfo) ->
-    Snapshot = ns_cluster_membership:fetch_snapshot(Txn),
-    KVNodes = ns_cluster_membership:service_active_nodes(Snapshot, kv),
+check_deletion_info(KVNodes, State, DeletionInfo) ->
     %% We check 2 things here:
     %%   1. current fusion status (disabling or enabling) propagated to all
     %%      local agents (which means that all of them started deleting stuff)
