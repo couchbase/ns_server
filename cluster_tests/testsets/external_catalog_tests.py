@@ -579,6 +579,45 @@ class ExternalCatalogTests(testlib.BaseTestSet):
         assert uid_after > uid_before, \
             f"uid should increase: {uid_before} -> {uid_after}"
 
+    def put_manifest_valid_on_uid_match_test(self):
+        r = testlib.get_succ(self.cluster, BASE_PATH)
+        uid = r.json()["uid"]
+
+        # PUT with a matching validOnUid should succeed
+        r = testlib.put_succ(
+            self.cluster,
+            f"{BASE_PATH}?validOnUid={uid}",
+            json={"vou-match": {}})
+        body = r.json()
+        catalogs = get_catalogs_from_response(body)
+        testlib.assert_in("vou-match", catalogs)
+        testlib.assert_eq(uid + 1, body["uid"])
+
+    def put_manifest_valid_on_uid_mismatch_test(self):
+        r = testlib.get_succ(self.cluster, BASE_PATH)
+        uid = r.json()["uid"]
+
+        # PUT with a stale validOnUid should fail and not modify
+        # the manifest
+        testlib.put_fail(
+            self.cluster,
+            f"{BASE_PATH}?validOnUid={uid + 1}",
+            expected_code=400,
+            json={"vou-stale": {}})
+
+        r = testlib.get_succ(self.cluster, BASE_PATH)
+        body = r.json()
+        catalogs = get_catalogs_from_response(body)
+        testlib.assert_not_in("vou-stale", catalogs)
+        testlib.assert_eq(uid, body["uid"])
+
+    def put_manifest_valid_on_uid_invalid_test(self):
+        testlib.put_fail(
+            self.cluster,
+            f"{BASE_PATH}?validOnUid=notanumber",
+            expected_code=400,
+            json={"vou-bad": {}})
+
     def put_manifest_invalid_name_test(self):
         testlib.put_fail(
             self.cluster, BASE_PATH,

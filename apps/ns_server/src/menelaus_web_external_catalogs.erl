@@ -95,10 +95,12 @@ handle_post_catalog(Req) ->
 
 handle_put_catalogs(Req) ->
     menelaus_util:assert_is_totoro(),
+    ValidOnUid = proplists:get_value("validOnUid",
+                                     mochiweb_request:parse_qs(Req)),
     validator:handle(
       fun (CatalogsList) ->
               Entries = catalog_list_to_entries(CatalogsList),
-              do_put_catalogs(Req, Entries)
+              do_put_catalogs(Req, Entries, ValidOnUid)
       end,
       Req, json_map,
       [validator:string(key, _),
@@ -106,27 +108,44 @@ handle_put_catalogs(Req) ->
        menelaus_web_collections:name_validator(key, _),
        check_key_not_uid(_)]).
 
-%% Replaces the full catalog set atomically.
-do_put_catalogs(Req, CatalogEntries) ->
-    %% The resulting count is exactly the number of supplied entries, so
-    %% the limit can be checked up front rather than inside the txn.
-    case length(CatalogEntries) > max_catalogs() of
-        true ->
-            reply_too_many_catalogs(Req);
-        false ->
-            case validate_catalog_manifest(CatalogEntries, #{}) of
-                no_query_node ->
-                    reply_no_query_node(Req);
-                {catalog_errors, Errors} ->
-                    reply_validation_errors(Req, Errors);
-                {ok, ValidatedCatalogs} ->
-                    {ok, _, NewState} =
-                        set_all_catalogs(ValidatedCatalogs),
-                    ns_audit:set_external_catalog_manifest(
-                      Req, get_uid(NewState)),
-                    menelaus_util:reply_json(
-                      Req, format_catalogs(NewState), 200)
-            end
+%% Replaces the full catalog set atomically. If ValidOnUid is specified the
+%% manifest is only replaced if it matches the currently stored uid.
+do_put_catalogs(Req, CatalogEntries, ValidOnUid) ->
+    maybe
+        {ok, Uid} ?= parse_valid_on_uid(ValidOnUid),
+        %% The resulting count is exactly the number of supplied entries,
+        %% so the limit can be checked up front rather than inside the txn.
+        case length(CatalogEntries) > max_catalogs() of
+            true ->
+                reply_too_many_catalogs(Req);
+            false ->
+                case validate_catalog_manifest(CatalogEntries, #{}) of
+                    no_query_node ->
+                        reply_no_query_node(Req);
+                    {catalog_errors, Errors} ->
+                        reply_validation_errors(Req, Errors);
+                    {ok, ValidatedCatalogs} ->
+                        reply_set_all_catalogs(
+                          Req, set_all_catalogs(ValidatedCatalogs, Uid))
+                end
+        end
+    else
+        {error, invalid_uid} -> reply_invalid_uid(Req)
+    end.
+
+reply_set_all_catalogs(Req, uid_mismatch) ->
+    reply_uid_mismatch(Req);
+reply_set_all_catalogs(Req, {ok, _, NewState}) ->
+    ns_audit:set_external_catalog_manifest(Req, get_uid(NewState)),
+    menelaus_util:reply_json(Req, format_catalogs(NewState), 200).
+
+parse_valid_on_uid(undefined) ->
+    {ok, undefined};
+parse_valid_on_uid(Str) ->
+    try
+        {ok, list_to_integer(Str)}
+    catch error:badarg ->
+            {error, invalid_uid}
     end.
 
 %% Converts the json_map prepared-params list into a list of
@@ -462,18 +481,24 @@ delete_catalog(Name) ->
               end
       end).
 
-set_all_catalogs(NewCatalogsWithoutRevs) ->
+set_all_catalogs(NewCatalogsWithoutRevs, ValidOnUid) ->
     chronicle_kv:transaction(
       kv, [?CHRONICLE_KEY],
       fun (Snapshot) ->
               State = get_state(Snapshot),
-              NewUid = get_uid(State) + 1,
-              NewCatalogs = maps:map(
-                              fun (_Name, Catalog) ->
-                                      [{rev, NewUid} | Catalog]
-                              end, NewCatalogsWithoutRevs),
-              NewState = #{uid => NewUid, catalogs => NewCatalogs},
-              {commit, set_state(NewUid, NewCatalogs), NewState}
+              case ValidOnUid =:= undefined orelse
+                  ValidOnUid =:= get_uid(State) of
+                  false ->
+                      {abort, uid_mismatch};
+                  true ->
+                      NewUid = get_uid(State) + 1,
+                      NewCatalogs = maps:map(
+                                      fun (_Name, Catalog) ->
+                                              [{rev, NewUid} | Catalog]
+                                      end, NewCatalogsWithoutRevs),
+                      NewState = #{uid => NewUid, catalogs => NewCatalogs},
+                      {commit, set_state(NewUid, NewCatalogs), NewState}
+              end
       end).
 
 %% Internal helpers
@@ -563,6 +588,15 @@ reply_too_many_catalogs(Req) ->
 reply_validation_errors(Req, Errors) ->
     menelaus_util:reply_json(
       Req, {[{errors, {Errors}}]}, 400).
+
+reply_invalid_uid(Req) ->
+    menelaus_util:reply_json(Req, <<"Invalid validOnUid">>, 400).
+
+reply_uid_mismatch(Req) ->
+    menelaus_util:reply_json(
+      Req,
+      <<"validOnUid doesn't match the current manifest Uid">>,
+      400).
 
 name_validators() ->
     [validator:required(name, _),

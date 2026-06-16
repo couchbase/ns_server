@@ -53,13 +53,24 @@
       "put": {
         "summary": "Set the entire external catalog manifest",
         "operationId": "setExternalCatalogManifest",
-        "description": "Atomically replaces all external catalogs with the provided set. Each catalog in the request body is validated against the query service; the manifest is only applied if all catalogs are valid. The manifest uid is set by the server and cannot be supplied in the request body.\n",
+        "description": "Atomically replaces all external catalogs with the provided set. Each catalog in the request body is validated against the query service; the manifest is only applied if all catalogs are valid. The manifest uid is set by the server and cannot be supplied in the request body. The optional `validOnUid` query parameter provides compare-and-swap semantics: the manifest is replaced only if its current uid matches the supplied value.\n",
         "tags": [
           "External Catalogs"
         ],
         "security": [
           {
             "basicAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "validOnUid",
+            "in": "query",
+            "required": false,
+            "description": "If supplied, the manifest is replaced only when its current uid equals this value; otherwise the request fails with 400. Must be a non-negative integer.\n",
+            "schema": {
+              "type": "integer"
+            }
           }
         ],
         "requestBody": {
@@ -100,7 +111,7 @@
             }
           },
           "400": {
-            "description": "The request body is not a valid JSON object; a catalog name is invalid (empty, too long, contains invalid characters, or is the reserved name `uid`); a catalog value is not a JSON object; the number of catalogs exceeds the limit; no query node is available; or one or more catalogs failed query service validation.\n",
+            "description": "The request body is not a valid JSON object; a catalog name is invalid (empty, too long, contains invalid characters, or is the reserved name `uid`); a catalog value is not a JSON object; the number of catalogs exceeds the limit; no query node is available; one or more catalogs failed query service validation; `validOnUid` is not a valid integer; or `validOnUid` does not match the current manifest uid.\n",
             "content": {
               "application/json": {
                 "schema": {
