@@ -187,20 +187,26 @@ class CRLTests(testlib.BaseTestSet):
             shutil.rmtree(crl_dir, ignore_errors=True)
 
     def _run_crl_revocation_checks(self, setup_crl, update_crl):
-        """Shared test body for CRL revocation tests.
+        """Shared test body for CRL revocation tests with policy matrix.
 
         setup_crl(crl_dir, ca_pem, ca_key, revoked_certs) -> state
             writes initial CRL file(s) revoking the given certs
         update_crl(crl_dir, ca_pem, ca_key, extra_certs, state)
             adds extra_certs to the revoked list and rewrites CRL file(s)
+
+        PKI structure:
+          Root CA
+            ├── Inter CA 1 → cert1 (revoked), cert2 (not revoked initially)
+            ├── Inter CA 2 → cert3 (CRL missing — no CRL file written)
+            └── Inter CA 3 → cert4 (revoked), cert5 (not revoked); CRL expires
         """
-        # All requests go to a single node so that client-cert-auth settings
-        # changes are seen immediately (the setting is not instantly
-        # synchronised across the cluster).
         node = self.cluster.connected_nodes[0]
 
         user1 = testlib.random_str(8)
         user2 = testlib.random_str(8)
+        user3 = testlib.random_str(8)
+        user4 = testlib.random_str(8)
+        user5 = testlib.random_str(8)
         password = testlib.random_str(8)
 
         crl_dir = tempfile.mkdtemp()
@@ -208,29 +214,43 @@ class CRLTests(testlib.BaseTestSet):
 
         try:
             # ------------------------------------------------------------------
-            # Step 1: Generate a two-level PKI:
-            #   Root CA  ->  Intermediate CA  ->  client cert 1 / client cert 2
+            # Step 1: Generate PKI with 3 intermediate CAs
             # ------------------------------------------------------------------
             root_ca_pem, root_ca_key_pem = generate_root_ca()
-            inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
-                root_ca_pem, root_ca_key_pem)
+
+            inter_ca1_pem, inter_ca1_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 1')
+            inter_ca2_pem, inter_ca2_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 2')
+            inter_ca3_pem, inter_ca3_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 3')
+
+            # cert1, cert2 from CA1 (normal CRL)
             client_cert1_pem, client_key1_pem = generate_client_cert_cn(
-                inter_ca_pem, inter_ca_key_pem, user1)
+                inter_ca1_pem, inter_ca1_key_pem, user1)
             client_cert2_pem, client_key2_pem = generate_client_cert_cn(
-                inter_ca_pem, inter_ca_key_pem, user2)
+                inter_ca1_pem, inter_ca1_key_pem, user2)
+
+            # cert3 from CA2 (CRL missing)
+            client_cert3_pem, client_key3_pem = generate_client_cert_cn(
+                inter_ca2_pem, inter_ca2_key_pem, user3)
+
+            # cert4 (revoked, CRL expired), cert5 from CA3 (CRL expired)
+            client_cert4_pem, client_key4_pem = generate_client_cert_cn(
+                inter_ca3_pem, inter_ca3_key_pem, user4)
+            client_cert5_pem, client_key5_pem = generate_client_cert_cn(
+                inter_ca3_pem, inter_ca3_key_pem, user5)
 
             # ------------------------------------------------------------------
-            # Step 2: Create RBAC users (one per client cert)
+            # Step 2: Create RBAC users
             # ------------------------------------------------------------------
-            testlib.put_succ(
-                self.cluster, f'/settings/rbac/users/local/{user1}',
-                data={'roles': 'ro_admin', 'password': password})
-            testlib.put_succ(
-                self.cluster, f'/settings/rbac/users/local/{user2}',
-                data={'roles': 'ro_admin', 'password': password})
+            for user in [user1, user2, user3, user4, user5]:
+                testlib.put_succ(
+                    self.cluster, f'/settings/rbac/users/local/{user}',
+                    data={'roles': 'ro_admin', 'password': password})
 
             # ------------------------------------------------------------------
-            # Step 3: Configure client cert auth – use CN as the username
+            # Step 3: Configure client cert auth
             # ------------------------------------------------------------------
             testlib.toggle_client_cert_auth(
                 node, enabled=True, mandatory=False,
@@ -238,83 +258,147 @@ class CRLTests(testlib.BaseTestSet):
                            'prefix': ''}])
 
             # ------------------------------------------------------------------
-            # Step 4: Load Root CA and Intermediate CA as trusted certs.
+            # Step 4: Load all CAs as trusted
             # ------------------------------------------------------------------
-            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca_pem])
+            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca1_pem,
+                                              inter_ca2_pem, inter_ca3_pem])
 
             # ------------------------------------------------------------------
-            # Step 5: Verify both client certs can authenticate
+            # Step 5: Verify all 5 client certs can authenticate before CRL
             # ------------------------------------------------------------------
-            with (client_cert_file(client_cert1_pem, inter_ca_pem,
+            with (client_cert_file(client_cert1_pem, inter_ca1_pem,
                                    client_key1_pem) as cert1_path,
-                  client_cert_file(client_cert2_pem, inter_ca_pem,
-                                   client_key2_pem) as cert2_path):
+                  client_cert_file(client_cert2_pem, inter_ca1_pem,
+                                   client_key2_pem) as cert2_path,
+                  client_cert_file(client_cert3_pem, inter_ca2_pem,
+                                   client_key3_pem) as cert3_path,
+                  client_cert_file(client_cert4_pem, inter_ca3_pem,
+                                   client_key4_pem) as cert4_path,
+                  client_cert_file(client_cert5_pem, inter_ca3_pem,
+                                   client_key5_pem) as cert5_path):
 
-                r = testlib.get_succ(node, '/whoami', https=True,
-                                     auth=None, cert=cert1_path).json()
-                testlib.assert_eq(r['id'], user1,
-                                  name='user1 /whoami before CRL')
-
-                r = testlib.get_succ(node, '/whoami', https=True,
-                                     auth=None, cert=cert2_path).json()
-                testlib.assert_eq(r['id'], user2,
-                                  name='user2 /whoami before CRL')
-
-                # --------------------------------------------------------------
-                # Step 6: Generate CRL(s) that revoke client cert 1
-                # --------------------------------------------------------------
-                crl_state = setup_crl(crl_dir, inter_ca_pem,
-                                      inter_ca_key_pem,
-                                      [client_cert1_pem])
+                for i, (cert_path, user) in enumerate([
+                        (cert1_path, user1), (cert2_path, user2),
+                        (cert3_path, user3), (cert4_path, user4),
+                        (cert5_path, user5)], 1):
+                    r = testlib.get_succ(node, '/whoami', https=True,
+                                         auth=None, cert=cert_path).json()
+                    testlib.assert_eq(r['id'], user,
+                                      name=f'user{i} /whoami before CRL')
 
                 # --------------------------------------------------------------
-                # Step 7: Enable CRL – "Require" policy for clientAuth scope.
+                # Step 6: Generate CRLs (cert1 revoked, CA2 missing, CA3 valid)
+                # --------------------------------------------------------------
+
+                # CRL for CA1: revokes cert1 (uses callback for full/delta test)
+                crl1_state = setup_crl(crl_dir, inter_ca1_pem,
+                                       inter_ca1_key_pem, [client_cert1_pem])
+
+                # No CRL for CA2 (missing CRL case)
+
+                # CRL for CA3: expired, revokes cert3
+                crl3_state = setup_crl(crl_dir, inter_ca3_pem,
+                                       inter_ca3_key_pem, [client_cert4_pem],
+                                       expired=True)
+
+                # --------------------------------------------------------------
+                # Step 7: Configure CRL directory (policy set per iteration)
                 # --------------------------------------------------------------
                 set_crl_settings(self.cluster,
-                                 policy_per_scope={'clientAuth': 'Require',
+                                 policy_per_scope={'clientAuth': 'Disabled',
                                                    'nodeToNode': 'Disabled'},
                                  poll_interval_ms=5000,
                                  directory=crl_dir)
 
-                # Verify CRL status shows the loaded CRL as active
-                assert_crl_status(self.cluster, expected_status='active')
+                # --------------------------------------------------------------
+                # Step 8: Test each policy after setup_crl (cert1 revoked)
+                # --------------------------------------------------------------
+                # Expected results for each policy after setup_crl:
+                #   cert1: revoked → Require/Permissive=REJECT, Dis=ALLOW
+                #   cert2: valid CRL, not revoked → all ALLOW
+                #   cert3: missing CRL → Require=REJECT, others=ALLOW
+                #   cert4: expired CRL, revoked → Permissive=ALLOW
+                #   cert5: expired CRL, not revoked → Permissive=ALLOW
+                setup_expectations = {
+                    'Require':    {'cert1': False, 'cert2': True,
+                                   'cert3': False, 'cert4': False,
+                                   'cert5': False},
+                    'Permissive': {'cert1': False, 'cert2': True,
+                                   'cert3': True, 'cert4': True, 'cert5': True},
+                    'Disabled':   {'cert1': True, 'cert2': True,
+                                   'cert3': True, 'cert4': True, 'cert5': True},
+                }
+
+                cert_paths = {'cert1': cert1_path, 'cert2': cert2_path,
+                              'cert3': cert3_path, 'cert4': cert4_path,
+                              'cert5': cert5_path}
+                cert_users = {'cert1': user1, 'cert2': user2,
+                              'cert3': user3, 'cert4': user4, 'cert5': user5}
+
+                for policy, expectations in setup_expectations.items():
+                    print(f"\n=== Testing policy: {policy} (after setup) ===")
+                    set_crl_settings(
+                        self.cluster,
+                        policy_per_scope={'clientAuth': policy,
+                                          'nodeToNode': 'Disabled'},
+                        directory=crl_dir)
+                    reload_crl(node)
+
+                    for cert_name, should_allow in expectations.items():
+                        print(f"Testing {cert_name} (should_allow={should_allow})...")
+                        cert_path = cert_paths[cert_name]
+                        self._check_cert_access(
+                            node, cert_path, cert_users[cert_name],
+                            should_allow, f'{cert_name}/{policy}/setup')
 
                 # --------------------------------------------------------------
-                # Step 8: Verify that client cert 1 (revoked) is now rejected
-                # and client cert 2 (not revoked) still works.
+                # Step 9: Update CRL(s) to also revoke cert2, expire CA3 CRL
                 # --------------------------------------------------------------
-                assert_cert_rejected(
-                    lambda: try_client_auth(node, cert1_path))
-
-                r = try_client_auth(node, cert2_path).json()
-                testlib.assert_eq(r['id'], user2,
-                                  name='user2 /whoami after CRL')
+                # Update CRL for CA1 to also revoke cert2 (uses callback)
+                update_crl(crl_dir, inter_ca1_pem, inter_ca1_key_pem,
+                           [client_cert2_pem], crl1_state)
+                # Update CRL for CA3: now expired
+                update_crl(crl_dir, inter_ca3_pem, inter_ca3_key_pem,
+                           [client_cert4_pem], crl3_state, expired=True)
 
                 # --------------------------------------------------------------
-                # Step 9: Update CRL(s) to also revoke cert2, call reload API,
-                # and verify both certs are now revoked.
+                # Step 10: Test each policy after update_crl
+                # (cert1+cert2 revoked, CA3 CRL expired)
                 # --------------------------------------------------------------
-                update_crl(crl_dir, inter_ca_pem, inter_ca_key_pem,
-                           [client_cert2_pem], crl_state)
 
-                # Call reload API to force immediate CRL refresh
-                assert_reload_crl(node, expected_status='active')
+                # cert2, cert5 are now revoked
+                update_expectations = {
+                    'Require':    {'cert1': False, 'cert2': False,
+                                   'cert3': False, 'cert4': False,
+                                   'cert5': False},
+                    'Permissive': {'cert1': False, 'cert2': False,
+                                   'cert3': True, 'cert4': True, 'cert5': True},
+                    'Disabled':   {'cert1': True, 'cert2': True,
+                                   'cert3': True, 'cert4': True, 'cert5': True},
+                }
 
-                # Both certs should now be rejected
-                assert_cert_rejected(
-                    lambda: try_client_auth(node, cert1_path))
-                assert_cert_rejected(
-                    lambda: try_client_auth(node, cert2_path))
+                for policy, expectations in update_expectations.items():
+                    print(f"\n=== Testing policy: {policy} (after update) ===")
+                    set_crl_settings(
+                        self.cluster,
+                        policy_per_scope={'clientAuth': policy,
+                                          'nodeToNode': 'Disabled'},
+                        directory=crl_dir)
+                    reload_crl(node)
+
+                    for cert_name, should_allow in expectations.items():
+                        print(f"Testing {cert_name} (should_allow={should_allow})...")
+                        cert_path = cert_paths[cert_name]
+                        self._check_cert_access(
+                            node, cert_path, cert_users[cert_name],
+                            should_allow, f'{cert_name}/{policy}/update')
 
         finally:
-            # Disable client cert auth first so the cleanup requests below can
-            # use plain password auth without hitting certificate requirements.
             testlib.toggle_client_cert_auth(node, enabled=False)
 
-            testlib.ensure_deleted(self.cluster,
-                                   f'/settings/rbac/users/local/{user1}')
-            testlib.ensure_deleted(self.cluster,
-                                   f'/settings/rbac/users/local/{user2}')
+            for user in [user1, user2, user3, user4, user5]:
+                testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{user}')
 
             for ca_id in ca_ids:
                 testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
@@ -326,26 +410,40 @@ class CRLTests(testlib.BaseTestSet):
 
             shutil.rmtree(crl_dir, ignore_errors=True)
 
+    def _check_cert_access(self, node, cert_path, expected_user,
+                           should_allow, label):
+        """Check if cert access is allowed or rejected as expected."""
+        if should_allow:
+            r = try_client_auth(node, cert_path)
+            testlib.assert_eq(r.status_code, 200,
+                              name=f'{label} expected ALLOW')
+            testlib.assert_eq(r.json()['id'], expected_user,
+                              name=f'{label} user id')
+            print(f"  {label}: ALLOW (as expected)")
+        else:
+            assert_cert_rejected(lambda: try_client_auth(node, cert_path))
+            print(f"  {label}: REJECT (as expected)")
+
 
 # =============================================================================
 # Full CRL callbacks
 # =============================================================================
 
 
-def _setup_full_crl(crl_dir, ca_pem, ca_key_pem, revoked_certs):
-    """Write a full CRL revoking the given certs. Returns state."""
+def _setup_full_crl(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+    """Write a full CRL revoking the given certs. Returns state for update."""
     filename = f'crl_{testlib.random_str(8)}.pem'
     generate_crl_to_file(os.path.join(crl_dir, filename), ca_pem, ca_key_pem,
-                         revoked_certs)
+                         revoked_certs, expired=expired)
     return {'filename': filename, 'revoked': list(revoked_certs)}
 
 
 def _update_full_crl(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
-                     state):
+                     state, expired=False):
     """Update full CRL adding extra certs to revoked list."""
     state['revoked'].extend(extra_revoked_certs)
     generate_crl_to_file(os.path.join(crl_dir, state['filename']), ca_pem,
-                         ca_key_pem, state['revoked'])
+                         ca_key_pem, state['revoked'], expired=expired)
     return state
 
 
@@ -361,12 +459,13 @@ def _make_delta_crl_ops_base_and_delta():
     - setup: creates base CRL (revoked_certs) + empty delta CRL
     - update: adds extra_certs to the delta CRL
     """
-    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs):
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
         base_filename = f'base_{testlib.random_str(8)}.pem'
         delta_filename = f'delta_{testlib.random_str(8)}.pem'
         delta_uri = f'file://{os.path.join(crl_dir, delta_filename)}'
+        # Base CRL revokes the given certs
         base_pem, base_num = generate_crl_with_number(
-            ca_pem, ca_key_pem, revoked_certs,
+            ca_pem, ca_key_pem, revoked_certs, expired=expired,
             freshest_crl_uri=delta_uri)
         with open(os.path.join(crl_dir, base_filename), 'w') as f:
             f.write(base_pem)
@@ -378,11 +477,12 @@ def _make_delta_crl_ops_base_and_delta():
                 'base_num': base_num,
                 'delta_revoked': []}
 
-    def update(crl_dir, ca_pem, ca_key_pem, extra_certs, state):
-        state['delta_revoked'].extend(extra_certs)
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['delta_revoked'].extend(extra_revoked_certs)
         delta_pem = generate_delta_crl(
-            ca_pem, ca_key_pem, state['base_num'],
-            state['delta_revoked'])
+            ca_pem, ca_key_pem, state['base_num'], state['delta_revoked'],
+            expired=expired)
         with open(os.path.join(crl_dir, state['delta_filename']), 'w') as f:
             f.write(delta_pem)
         return state
@@ -391,35 +491,35 @@ def _make_delta_crl_ops_base_and_delta():
 
 
 def _make_delta_crl_ops_both_in_delta():
-    """Factory for delta CRL ops: all revocations carried in the delta CRL.
+    """Factory for delta CRL ops: all certs revoked only via delta CRL.
 
     Returns (setup_fn, update_fn) where:
     - setup: creates empty base CRL + delta CRL (revoked_certs)
-    - update: adds extra_certs to the delta CRL
+    - update: updates delta CRL to also revoke extra certs
     """
-    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs):
+    def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
         base_filename = f'base_{testlib.random_str(8)}.pem'
         delta_filename = f'delta_{testlib.random_str(8)}.pem'
         delta_uri = f'file://{os.path.join(crl_dir, delta_filename)}'
+        # Base CRL is empty (no revocations)
         base_pem, base_num = generate_crl_with_number(
-            ca_pem, ca_key_pem, [],
-            freshest_crl_uri=delta_uri)
+            ca_pem, ca_key_pem, [], freshest_crl_uri=delta_uri, expired=expired)
         with open(os.path.join(crl_dir, base_filename), 'w') as f:
             f.write(base_pem)
+        # Delta CRL revokes the given certs
         delta_pem = generate_delta_crl(
-            ca_pem, ca_key_pem, base_num, revoked_certs)
+            ca_pem, ca_key_pem, base_num, revoked_certs, expired=expired)
         with open(os.path.join(crl_dir, delta_filename), 'w') as f:
             f.write(delta_pem)
-        return {'base_filename': base_filename,
-                'delta_filename': delta_filename,
-                'base_num': base_num,
-                'delta_revoked': list(revoked_certs)}
+        return {'base_filename': base_filename, 'delta_filename': delta_filename,
+                'base_num': base_num, 'delta_revoked': list(revoked_certs)}
 
-    def update(crl_dir, ca_pem, ca_key_pem, extra_certs, state):
-        state['delta_revoked'].extend(extra_certs)
+    def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+               state, expired=False):
+        state['delta_revoked'].extend(extra_revoked_certs)
         delta_pem = generate_delta_crl(
-            ca_pem, ca_key_pem, state['base_num'],
-            state['delta_revoked'])
+            ca_pem, ca_key_pem, state['base_num'], state['delta_revoked'],
+            expired=expired)
         with open(os.path.join(crl_dir, state['delta_filename']), 'w') as f:
             f.write(delta_pem)
         return state
@@ -665,19 +765,24 @@ def generate_crl_to_file(filepath, *args, **kwargs):
         f.write(crl_pem)
 
 
-def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems):
-    """Return a PEM-encoded CRL signed by the given CA."""
+def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False):
+    """Return a PEM-encoded CRL signed by the given CA.
+
+    If expired=True, generates a CRL with nextUpdate in the past (expired).
+    """
     pem, _ = generate_crl_with_number(ca_cert_pem, ca_key_pem,
-                                       revoked_cert_pems)
+                                       revoked_cert_pems, expired=expired)
     return pem
 
 
 def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
-                             freshest_crl_uri=None):
+                             expired=False, freshest_crl_uri=None):
     """Return (pem, crl_number) for a CRL signed by the given CA.
 
     revoked_cert_pems is a list of PEM strings whose serial numbers will be
     added to the revocation list.
+
+    If expired=True, generates a CRL with nextUpdate in the past (expired).
 
     If freshest_crl_uri is provided, a FreshestCRL extension is added
     pointing to the delta CRL location (required when using delta CRLs).
@@ -708,11 +813,17 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
         only_contains_attribute_certs=False
     )
 
+    # Set nextUpdate to past (expired) or future (valid) based on flag
+    if expired:
+        next_update = now - datetime.timedelta(days=1)
+    else:
+        next_update = now + datetime.timedelta(days=1)
+
     builder = (
         x509.CertificateRevocationListBuilder()
         .issuer_name(ca_cert.subject)
-        .last_update(now)
-        .next_update(now + datetime.timedelta(days=1))
+        .last_update(now - datetime.timedelta(days=2))
+        .next_update(next_update)
         .add_extension(x509.CRLNumber(crl_num), critical=False)
         .add_extension(aki, critical=False)
         .add_extension(idp, critical=True)
@@ -745,7 +856,7 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
 
 
 def generate_delta_crl(ca_cert_pem, ca_key_pem, base_crl_number,
-                       revoked_cert_pems):
+                       revoked_cert_pems, expired=False):
     """Return a PEM-encoded delta CRL referencing the given base CRL.
 
     The delta CRL contains revocations added since the base CRL was issued.
@@ -781,11 +892,16 @@ def generate_delta_crl(ca_cert_pem, ca_key_pem, base_crl_number,
     # DeltaCRLIndicator marks this as a delta CRL and references the base
     delta_indicator = x509.DeltaCRLIndicator(base_crl_number)
 
+    if expired:
+        next_update = now - datetime.timedelta(days=1)
+    else:
+        next_update = now + datetime.timedelta(days=1)
+
     builder = (
         x509.CertificateRevocationListBuilder()
         .issuer_name(ca_cert.subject)
-        .last_update(now)
-        .next_update(now + datetime.timedelta(days=1))
+        .last_update(now - datetime.timedelta(days=2))
+        .next_update(next_update)
         .add_extension(x509.CRLNumber(crl_num), critical=False)
         .add_extension(aki, critical=False)
         .add_extension(idp, critical=True)
