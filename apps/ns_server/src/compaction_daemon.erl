@@ -95,17 +95,6 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-get_last_rebalance_or_failover_timestamp() ->
-    case chronicle_kv:get(kv, counters) of
-        {ok, {Counters, _Rev}} ->
-            case [TS || {_Name, {TS, _V}} <- Counters] of
-                [] -> 0;
-                TSList -> lists:max(TSList)
-            end;
-        {error, not_found} ->
-            0
-    end.
-
 global_magma_frag_percent() ->
     GlobalSettings = get_autocompaction_settings(),
     %% The default value is needed as changing a different autocompaction
@@ -686,17 +675,7 @@ spawn_dbs_compactor(BucketName, Config, Force, OriginalTarget,
                           Interval0 = compaction_api:get_purge_interval(BucketName) * 3600 * 24,
                           Interval = erlang:round(Interval0),
 
-                          PurgeTS0 = NowEpoch - Interval,
-
-                          RebTS = get_last_rebalance_or_failover_timestamp(),
-
-                          PurgeTS = case RebTS > PurgeTS0 of
-                                        true ->
-                                            RebTS - Interval;
-                                        false ->
-                                            PurgeTS0
-                                    end,
-
+                          PurgeTS = NowEpoch - Interval,
                           {{PurgeTS, 0, false, ObsoleteKeyIds},
                            ns_couchdb_api:get_safe_purge_seqs(BucketName)}
                   end,
