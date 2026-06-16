@@ -127,7 +127,11 @@ bucket_error_to_str(unknown) ->
 bucket_error_to_str(non_magma) ->
     "not a Magma bucket";
 bucket_error_to_str(continuous_backup_enabled) ->
-    "bucket with continuous backup enabled".
+    "bucket with continuous backup enabled";
+bucket_error_to_str(disabling) ->
+    "bucket is in a disabling state";
+bucket_error_to_str(stopping) ->
+    "bucket is in a stopping state".
 
 reply_wrong_buckets(Req, BucketErrors) ->
     validator:report_errors_for_one(

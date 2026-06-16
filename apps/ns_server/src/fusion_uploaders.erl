@@ -92,7 +92,7 @@
         disabled | disabling | enabled | enabling | stopped | stopping.
 -type wrong_state_error() :: {wrong_state, state(), [state()]}.
 -type bucket_validation_error() ::
-        unknown | non_magma | continuous_backup_enabled.
+        unknown | non_magma | continuous_backup_enabled | disabling | stopping.
 -type enable_error() ::
         not_initialized | {not_allowed, string()} | wrong_state_error() |
         {failed_nodes, [node()]} | pending_namespace_deletes |
@@ -685,8 +685,8 @@ post_enable(Buckets) ->
     ok.
 
 enable(BucketUploaders, MagmaBucketNames) ->
-    BucketsToEnable = [BN || {BN, _} <- BucketUploaders],
-    BucketsNotToEnable = MagmaBucketNames -- BucketsToEnable,
+    BucketsNamesToEnable = [BN || {BN, _} <- BucketUploaders],
+    BucketsNamesNotToEnable = MagmaBucketNames -- BucketsNamesToEnable,
     AllowedStates = [disabled, disabling, stopped, stopping],
     DeletionInfo = get_deletion_state(get_state()),
     KVNodes = ns_cluster_membership:service_active_nodes(kv),
@@ -708,10 +708,28 @@ enable(BucketUploaders, MagmaBucketNames) ->
                       check_deletion_info(KVNodes, disabling, DeletionInfo)
                       orelse throw(pending_namespace_deletes),
 
+                  BucketsNotToEnable =
+                      ns_bucket:get_buckets(Snapshot, BucketsNamesNotToEnable),
+
+                  DisablingOrStoppingBucketsNotToEnable =
+                      lists:filtermap(
+                        fun ({BucketName, BucketConfig}) ->
+                                FS = ns_bucket:get_fusion_state(BucketConfig),
+                                case lists:member(FS, [disabling, stopping]) of
+                                    true ->
+                                        {true, {BucketName, FS}};
+                                    false ->
+                                        false
+                                end
+                        end, BucketsNotToEnable),
+
+                  DisablingOrStoppingBucketsNotToEnable =:= [] orelse
+                      throw({wrong_buckets,
+                             DisablingOrStoppingBucketsNotToEnable}),
+
                   {DisablingBucketSets, DisablingBuckets} =
-                      update_bucket_state_sets(
-                        ns_bucket:get_buckets(Snapshot, BucketsNotToEnable),
-                        [stopped], disabling),
+                      update_bucket_state_sets(BucketsNotToEnable, [stopped],
+                                               disabling),
 
                   {EnablingBucketSets, EnablingBuckets} =
                       start_enabling_buckets(Snapshot, BucketUploaders),
