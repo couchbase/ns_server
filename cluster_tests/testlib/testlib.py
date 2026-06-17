@@ -770,6 +770,17 @@ def metakv_delete_fail(cluster, key, expected_code, **kwargs):
 def diag_eval(cluster, code, **kwargs):
     return post_succ(cluster, '/diag/eval', data=code, **kwargs)
 
+def testconditions_set(cluster, key, value, **kwargs):
+    return diag_eval(cluster,
+                     f'testconditions:set({key}, {value}).',
+                     **kwargs)
+
+def testconditions_delete(cluster, key, **kwargs):
+    return diag_eval(cluster, f'testconditions:delete({key}).', **kwargs)
+
+def testconditions_clear(cluster, **kwargs):
+    return diag_eval(cluster, 'testconditions:clear().', **kwargs)
+
 def get_prometheus_metrics(cluster):
     r = get_succ(cluster, '/metrics')
     return parse_prometheus_to_label_value_dict(r.text)
