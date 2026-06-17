@@ -191,17 +191,18 @@ handle_effective_get(Name, Req) ->
     with_parsed_node(
       Name, Req,
       fun (Node) ->
-              KVsGlobal = build_setting_kvs(memcached_config_global),
-              KVsLocal = build_setting_kvs({memcached_config_node, Node}),
-              KVsDefault =
-                  build_ns_config_default_setting_kvs(Node) ++
-                  ?MCD_SETTINGS_CHRONICLE_DEFAULTS,
-              KVs = lists:foldl(
-                      fun ({K, V}, Acc) ->
-                              lists:keystore(K, 1, Acc, {K, V})
-                      end, [], lists:append([KVsDefault, KVsGlobal, KVsLocal])),
-              reply_json(Req, {KVs}, 200)
+              reply_json(Req, {effective_setting_kvs(Node)}, 200)
       end).
+
+%% The settings effective on a node: defaults < global < node, with later
+%% layers overriding earlier ones.
+effective_setting_kvs(Node) ->
+    KVsGlobal = build_setting_kvs(memcached_config_global),
+    KVsLocal = build_setting_kvs({memcached_config_node, Node}),
+    KVsDefault =
+        build_ns_config_default_setting_kvs(Node) ++
+        ?MCD_SETTINGS_CHRONICLE_DEFAULTS,
+    merge_setting_kvs([KVsDefault, KVsGlobal, KVsLocal]).
 
 handle_node_get(Name, Req) ->
     with_parsed_node(
@@ -232,6 +233,14 @@ map_settings(SettingNames, Settings) ->
                       [{Name, Value}]
               end
       end, SettingNames).
+
+%% Merge setting layers into a single proplist, with later layers overriding
+%% earlier ones (e.g. defaults < global < node < request).
+merge_setting_kvs(Layers) ->
+    lists:foldl(
+      fun ({K, V}, Acc) ->
+              lists:keystore(K, 1, Acc, {K, V})
+      end, [], lists:append(Layers)).
 
 build_ns_config_default_setting_kvs(Node) ->
     {value, McdSettings} =
@@ -348,6 +357,7 @@ continue_handle_post(Req, Params, ConfigType) ->
     maybe
         [] ?= InvalidParams,
         KVs0 = [{K, V} || {K, {ok, V}} <- ParsedParams],
+        ok ?= validate_connection_settings(ConfigType, KVs0),
         %% We are encoding our base64 parameters directly into the config
         %% rather than storing the raw value. This lets us handle parameters
         %% on this node even if other nodes in the cluster are an older
@@ -413,6 +423,8 @@ continue_handle_post(Req, Params, ConfigType) ->
     else
         [_|_] = InvalidParamsErrors ->
             reply_json(Req, {InvalidParamsErrors}, 400);
+        {error, {_Key, _Msg} = ConnError} ->
+            reply_json(Req, {[ConnError]}, 400);
         {_, _, [_|_] = InvalidParamsErrors}  ->
             reply_json(Req, {InvalidParamsErrors}, 400)
     end.
@@ -615,6 +627,31 @@ validate_node_capacity(CapacityValue, Snapshot) ->
             ok
     end.
 
+%% system_connections reserves a slice of max_connections for system/internal
+%% use, so it must always be strictly lower than max_connections. Either value
+%% (or both) may be changing in this POST, and either may be unset for this
+%% config type (falling back to the global setting or the built-in default), so
+%% we validate against the node's effective settings with the POSTed values
+%% merged on top, rather than just the POSTed ones.
+validate_connection_settings(ConfigType, KVs) ->
+    Node = case ConfigType of
+               memcached_config_global -> node();
+               {memcached_config_node, N} -> N
+           end,
+    Effective = merge_setting_kvs([effective_setting_kvs(Node), KVs]),
+    check_connection_settings(
+      proplists:get_value(max_connections, Effective),
+      proplists:get_value(system_connections, Effective)).
+
+check_connection_settings(MaxConn, SysConn)
+  when is_integer(MaxConn), is_integer(SysConn), SysConn >= MaxConn ->
+    Msg = io_lib:format(
+            "system_connections (~p) must be lower than max_connections (~p)",
+            [SysConn, MaxConn]),
+    {error, {system_connections, iolist_to_binary(Msg)}};
+check_connection_settings(_MaxConn, _SysConn) ->
+    ok.
+
 do_delete_chronicle(ChronicleKey, Setting) ->
     Rv =
         chronicle_kv:transaction(kv, [ChronicleKey],
@@ -814,6 +851,23 @@ validate_node_capacity_test() ->
         #{bucket_names => {["b1"], 0},
           ns_bucket:sub_key("b1", props) => {[{throttle_reserved, 0}], 0}},
     ?assertEqual(ok, validate_node_capacity(1, Snapshot2)).
+
+check_connection_settings_test() ->
+    %% system_connections strictly lower than max_connections => ok
+    ?assertEqual(ok, check_connection_settings(2000, 1000)),
+
+    %% Equal => error
+    ?assertMatch({error, {system_connections, _}},
+                 check_connection_settings(2000, 2000)),
+
+    %% system_connections greater => error
+    ?assertMatch({error, {system_connections, _}},
+                 check_connection_settings(2000, 3000)),
+
+    %% Missing either value => nothing to compare, so ok
+    ?assertEqual(ok, check_connection_settings(undefined, 1000)),
+    ?assertEqual(ok, check_connection_settings(2000, undefined)),
+    ?assertEqual(ok, check_connection_settings(undefined, undefined)).
 
 get_effective_node_capacity_test() ->
     %% No settings at all => returns default
