@@ -56,6 +56,7 @@ class FusionTests(testlib.BaseTestSet):
                           'chronicle_kv:delete(kv, fusion_config).')
         testlib.diag_eval(self.cluster,
                           'chronicle_kv:delete(kv, fusion_storage_snapshots).')
+        testlib.testconditions_clear(self.cluster)
 
     @staticmethod
     def requirements():
@@ -424,10 +425,9 @@ class FusionTests(testlib.BaseTestSet):
         return json.loads(resp.text)
 
     def assert_namespaces(self, expected):
-        nspaces0 = self.get_namespaces(self.cluster.connected_nodes[0])
-        nspaces1 = self.get_namespaces(self.cluster.connected_nodes[1])
-        assert nspaces0 == expected
-        assert nspaces1 == expected
+        for node in self.cluster.connected_nodes:
+            namespaces = self.get_namespaces(node)
+            assert namespaces == expected
 
     def enable_disable_stop_test(self):
         self.init_fusion()
@@ -502,6 +502,48 @@ class FusionTests(testlib.BaseTestSet):
                              (('bucket', 'test1'), ('state', 'enabled')),
                              (('bucket', 'test1'), ('state', 'disabling')),
                              (('bucket', 'test1'), ('state', 'disabled'))])
+
+    def enable_from_disabling_test(self):
+        self.init_fusion()
+
+        self.create_bucket('test', 1)
+        self.create_bucket('test1', 1)
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+        self.assert_bucket_state('test', 'enabled')
+        self.assert_bucket_state('test1', 'enabled')
+        self.assert_namespaces(['test', 'test1'])
+
+        testlib.testconditions_set(self.cluster, 'maybe_advance_state',
+                                   '{return, disabling, skip}')
+
+        testlib.post_succ(self.cluster, '/fusion/disable')
+        self.assert_bucket_state('test', 'disabling')
+        self.assert_bucket_state('test1', 'disabling')
+
+        def got_400():
+            resp = testlib.post(self.cluster, '/fusion/enable',
+                                data={'buckets': 'test'})
+            if resp.status_code == 400:
+                return True
+            assert resp.status_code == 503, \
+                testlib.format_http_error(resp, [503, 400])
+            return False
+
+        testlib.poll_for_condition(
+            got_400, 1, attempts=60,
+            msg='Wait for /fusion/enable code to change from 503 to 400')
+
+        self.assert_bucket_state('test', 'disabling')
+        self.assert_bucket_state('test1', 'disabling')
+        self.assert_namespaces([])
+
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+        self.assert_bucket_state('test', 'enabled')
+        self.assert_bucket_state('test1', 'enabled')
+        self.assert_namespaces(['test', 'test1'])
 
     def get_snapshot_uuids(self):
         resp = testlib.diag_eval(

@@ -951,7 +951,13 @@ maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
                     stopping ->
                         stopped
                 end,
-    maybe_advance_state(State, NextState, State, NextState, undefined);
+    case testconditions:check_test_condition(
+           ?NS_SERVER_LOGGER, maybe_advance_state, State, undefined, []) of
+        skip ->
+            ok;
+        ok ->
+            maybe_advance_state(State, NextState, State, NextState, undefined)
+    end;
 maybe_advance_state(_) ->
     nothing_to_do.
 
