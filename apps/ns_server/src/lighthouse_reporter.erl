@@ -24,7 +24,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, build_settings/0]).
+-export([start_link/0, config_key/0, build_settings/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -44,6 +44,9 @@
 
 start_link() ->
     misc:start_singleton(gen_server, ?MODULE, [], []).
+
+config_key() ->
+    ?CONFIG_KEY.
 
 build_settings() ->
     Settings = ns_config:read_key_fast(?CONFIG_KEY, #{}),
@@ -101,19 +104,19 @@ update_config(State0) ->
     State1 = State0#state{enabled = Enabled},
 
     %% Update the reporter state
-    ReportIntervalMs = get_setting(reporting_interval_milliseconds, Config),
-    restart_timer(State1, ReportIntervalMs).
+    ReportIntervalHours = get_setting(reporting_interval_hours, Config),
+    restart_timer(State1, round(timer:hours(ReportIntervalHours))).
 
 default_config() ->
     #{reporting_enabled => true,
-      reporting_interval_milliseconds => 7_200_000,  %% 2 hours
-      reporting_timeout_milliseconds => 1000,
+      reporting_interval_hours => 2,
+      reporting_timeout_seconds => 1,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
-             reporting_interval_milliseconds |
-             reporting_timeout_milliseconds |
+             reporting_interval_hours |
+             reporting_timeout_seconds |
              reporting_endpoint,
       Value :: term().
 get_setting(Key, Config) ->
@@ -138,7 +141,8 @@ send_report(Config) ->
               Endpoint = get_setting(reporting_endpoint, Config),
               URL = binary_to_list(Endpoint),
               Report = create_report(),
-              Timeout = get_setting(reporting_timeout_milliseconds, Config),
+              Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
+                                                  Config)),
               post(URL, Report, Timeout),
               Parent ! report_done
       end).
