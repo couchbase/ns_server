@@ -189,6 +189,34 @@ config_profile(PidMap) ->
     %% this, so we need to track the unload function instead
     PidMap#{?FUNCTION_NAME => fun config_profile:unload_profile_for_test/0}.
 
+sigar(PidMap) ->
+    os:putenv("NS_SERVER_BABYSITTER_PID", os:getpid()),
+    {ok, SigarPid} = ?FUNCTION_NAME:start_link(),
+    PidMap#{?FUNCTION_NAME => SigarPid}.
+
+ns_disksup(PidMap) ->
+    {ok, NsDisksupPid} = ?FUNCTION_NAME:start_link(),
+    PidMap#{?FUNCTION_NAME => NsDisksupPid}.
+
+buckets_events(PidMap) ->
+    {ok, BucketEventsPid} = gen_event:start_link({local, ?FUNCTION_NAME}),
+    PidMap#{?FUNCTION_NAME => BucketEventsPid}.
+
+ns_heart(PidMap0) ->
+    fake_chronicle_kv:update_snapshot(#{bucket_names => []}),
+    ns_config_auth:set_admin_credentials(foo, "bar"),
+    PidMap1 = mock_helpers:setup_mocks([prometheus_cfg,
+                                        ns_couchdb_api,
+                                        local_tasks,
+                                        samples_loader_tasks,
+                                        ns_storage_conf,
+                                        service_agent,
+                                        sigar,
+                                        ns_disksup,
+                                        buckets_events], PidMap0),
+    {ok, NsHeartPid} = ?FUNCTION_NAME:start_link(),
+    PidMap1#{?FUNCTION_NAME => NsHeartPid}.
+
 %%%===================================================================
 %%% Mock setup functions
 %%%
@@ -310,4 +338,32 @@ ns_secrets(PidMap) ->
 
 dist_manager(PidMap) ->
     meck:expect(?FUNCTION_NAME, get_rename_txn_pid, fun () -> undefined end),
+    PidMap#{?FUNCTION_NAME => mocked}.
+
+prometheus_cfg(PidMap0) ->
+    PidMap1 = setup_mocks([config_profile], PidMap0),
+    meck:expect(?FUNCTION_NAME, settings,
+                fun () ->
+                        prometheus_cfg:with_applied_defaults([{enabled, false}])
+                end),
+    PidMap1#{?FUNCTION_NAME => mocked}.
+
+ns_couchdb_api(PidMap) ->
+    meck:expect(?FUNCTION_NAME, get_tasks, fun (_, Default) -> Default end),
+    PidMap#{?FUNCTION_NAME => mocked}.
+
+local_tasks(PidMap) ->
+    meck:expect(?FUNCTION_NAME, all, fun () -> [] end),
+    PidMap#{?FUNCTION_NAME => mocked}.
+
+samples_loader_tasks(PidMap) ->
+    meck:expect(?FUNCTION_NAME, get_tasks, fun (_) -> [] end),
+    PidMap#{?FUNCTION_NAME => mocked}.
+
+ns_storage_conf(PidMap) ->
+    meck:expect(?FUNCTION_NAME, query_storage_conf, fun () -> [] end),
+    PidMap#{?FUNCTION_NAME => mocked}.
+
+service_agent(PidMap) ->
+    meck:expect(?FUNCTION_NAME, get_status, fun (_, _) -> [] end),
     PidMap#{?FUNCTION_NAME => mocked}.
