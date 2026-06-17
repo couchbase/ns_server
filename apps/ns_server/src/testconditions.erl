@@ -24,6 +24,7 @@
          check_test_condition/2,
          check_test_condition/3,
          check_test_condition/4,
+         check_test_condition/5,
          trigger_failure/3,
          trigger_delay/4]).
 
@@ -77,39 +78,45 @@ check_test_condition(Logger, Step, Kind) ->
 -spec check_test_condition(atom(), term(), term(),
                            undefined | fun((term()) -> term())) -> term().
 check_test_condition(Logger, Step, Kind, ExtendedHandler) ->
+    check_test_condition(Logger, Step, Kind, ExtendedHandler, [{once, true}]).
+
+-spec check_test_condition(
+        atom(), term(), term(),
+        undefined | fun((term()) -> term()), list()) -> term().
+check_test_condition(Logger, Step, Kind, ExtendedHandler, Options) ->
     case testconditions:get(Step) of
         fail ->
             %% E.g. fail rebalance at the start.
             %% Triggered by: testconditions:set(rebalance_start, fail)
-            trigger_failure(Logger, Step, []);
+            trigger_failure(Logger, Step, [], Options);
         {delay, Sleep} ->
             %% E.g. delay rebalance by 60s at the start.
             %% Triggered by:
             %%  testconditions:set(rebalance_start, {delay, 60000})
-            trigger_delay(Logger, Step, [], Sleep);
+            trigger_delay(Logger, Step, [], Options, Sleep);
         {return, Value} ->
             %% E.g. return a timeout for bucket shutdown wait.
             %% Triggered by:
             %% testconditions:set(wait_for_bucket_shutdown,
             %%                    {return, {shutdown_failed, [foo]}})
-            trigger_return(Logger, Step, [], Value);
+            trigger_return(Logger, Step, [], Options, Value);
         {fail, Kind} ->
             %% E.g. fail verify_replication for bucket "test".
             %% Triggered by:
             %%  testconditions:set(verify_replication, {fail, “test”})
-            trigger_failure(Logger, Step, Kind);
+            trigger_failure(Logger, Step, Kind, Options);
         {delay, Kind, Sleep} ->
             %% E.g. delay service_rebalance_start by 1s for index service.
             %% Triggered by:
             %%  testconditions:set(service_rebalance_start,
             %%                     {delay, index, 1000})
-            trigger_delay(Logger, Step, Kind, Sleep);
+            trigger_delay(Logger, Step, Kind, Options, Sleep);
         {return, Kind, Value} ->
             %% E.g. return a timeout for bucket shutdown wait.
             %% Triggered by:
             %% testconditions:set({wait_for_bucket_shutdown, \"bucket-1\"},
             %%                    {return, {shutdown_failed, [foo]}})
-            trigger_return(Logger, Step, Kind, Value);
+            trigger_return(Logger, Step, Kind, Options, Value);
         Condition ->
             case ExtendedHandler of
                 undefined -> ok;
@@ -117,7 +124,18 @@ check_test_condition(Logger, Step, Kind, ExtendedHandler) ->
             end
     end.
 
+maybe_delete(Step, Options) ->
+    case proplists:get_bool(once, Options) of
+        true ->
+            testconditions:delete(Step);
+        false ->
+            ok
+    end.
+
 trigger_failure(Logger, Step, Kind) ->
+    trigger_failure(Logger, Step, Kind, [{once, true}]).
+
+trigger_failure(Logger, Step, Kind, Options) ->
     Msg = case Kind of
               [] ->
                   io_lib:format("Failure triggered by test during ~p", [Step]);
@@ -126,10 +144,13 @@ trigger_failure(Logger, Step, Kind) ->
                       [Step, Kind])
           end,
     ale:error(Logger, "~s", [lists:flatten(Msg)]),
-    testconditions:delete(Step),
+    maybe_delete(Step, Options),
     fail_by_test_condition.
 
 trigger_delay(Logger, Step, Kind, Sleep) ->
+    trigger_delay(Logger, Step, Kind, [{once, true}], Sleep).
+
+trigger_delay(Logger, Step, Kind, Options, Sleep) ->
     Msg = case Kind of
               [] ->
                   io_lib:format("Delay triggered by test during ~p. "
@@ -140,10 +161,10 @@ trigger_delay(Logger, Step, Kind, Sleep) ->
           end,
     ale:error(Logger, "~s", [lists:flatten(Msg)]),
 
-    testconditions:delete(Step),
+    maybe_delete(Step, Options),
     timer:sleep(Sleep).
 
-trigger_return(Logger, Step, Kind, Value) ->
+trigger_return(Logger, Step, Kind, Options, Value) ->
     Msg = case Kind of
               [] ->
                   io_lib:format("Returning value ~p during ~p", [Value, Step]);
@@ -152,5 +173,5 @@ trigger_return(Logger, Step, Kind, Value) ->
                       [Value, Step, Kind])
           end,
     ale:error(Logger, "~s", [lists:flatten(Msg)]),
-    testconditions:delete(Step),
+    maybe_delete(Step, Options),
     Value.
