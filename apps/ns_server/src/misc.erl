@@ -3985,3 +3985,31 @@ compat_version_test() ->
     VerBin = compat_version_to_binary([8, 0]),
     ?assertEqual(<<"8.0">>, VerBin).
 -endif.
+
+-spec get_disk_data(ns_disksup:disk_stats()) ->
+          {ok, ns_disksup:disk_stat()} | {error, disk_stats_error()}.
+get_disk_data(Mounts) ->
+    case ns_storage_conf:this_node_dbdir() of
+        {ok, DbDir} ->
+            case misc:realpath(DbDir, "/") of
+                {ok, RealFile} ->
+                    case ns_storage_conf:extract_disk_stats_for_path(
+                           Mounts, RealFile) of
+                        {ok, _} = DiskData ->
+                            DiskData;
+                        none ->
+                            ?log_error("Couldn't check disk space as ~p "
+                                       "wasn't found in ~p",
+                                       [RealFile, Mounts]),
+                            {error, no_disk_stats_found}
+                    end;
+                Error ->
+                    ?log_error("Couldn't check disk space as ~p doesn't "
+                               "appear to be a valid path. Error: ~p",
+                               [DbDir, Error]),
+                    {error, {dbdir_path_error, Error}}
+            end;
+        {error, not_found} ->
+            ?log_error("Couldn't check disk usage as node db dir is missing"),
+            {error, no_dbdir}
+    end.

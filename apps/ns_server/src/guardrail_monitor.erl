@@ -52,11 +52,6 @@
                   index_severity().
 -export_type([status/0]).
 
--type disk_stats_error() :: no_dbdir
-                          | {dbdir_path_error, term()}
-                          | no_disk_stats_found
-                          | service_not_active_on_this_node.
-
 -spec is_enabled() -> boolean().
 is_enabled() ->
     cluster_compat_mode:is_cluster_phoenix()
