@@ -33,7 +33,8 @@
 -define(CONFIG_KEY, lighthouse).
 
 -record(state, {
-                enabled :: boolean(),
+                enabled = true :: boolean(),
+                report_timer_ref :: undefined | timer:tref(),
                 report_pid :: undefined | pid()
                }).
 
@@ -53,9 +54,9 @@ build_settings() ->
 %%%===================================================================
 
 init([]) ->
-    State = init_state(),
-    self() ! report,
-    {ok, State}.
+    Self = self(),
+    ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
+    {ok, update_config(#state{})}.
 
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
@@ -64,15 +65,17 @@ handle_cast(_Info, State) ->
     {noreply, State}.
 
 handle_info(report, #state{enabled = true,
-                           report_pid = undefined} = State0) ->
+                           report_pid = undefined} = State) ->
     NewReportPid = send_report(build_settings()),
-    {noreply, State0#state{report_pid = NewReportPid}};
+    {noreply, State#state{report_pid = NewReportPid}};
 handle_info(report, State) ->
-    %% Ignore unexpected report message, when either reporting is disabled, or
+    %% Ignore unnecessary report message, when either reporting is disabled, or
     %% a report is already in progress
     {noreply, State};
 handle_info(report_done, State) ->
     {noreply, State#state{report_pid = undefined}};
+handle_info(config_change, State) ->
+    {noreply, update_config(State)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -86,26 +89,47 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-init_state() ->
+handle_config_event(Self, {?CONFIG_KEY, _}) ->
+    Self ! config_change;
+handle_config_event(_, _) ->
+    ok.
+
+update_config(State0) ->
     Config = build_settings(),
 
     Enabled = get_setting(reporting_enabled, Config),
+    State1 = State0#state{enabled = Enabled},
 
     %% Update the reporter state
-    #state{enabled = Enabled}.
+    ReportIntervalMs = get_setting(reporting_interval_milliseconds, Config),
+    restart_timer(State1, ReportIntervalMs).
 
 default_config() ->
     #{reporting_enabled => true,
+      reporting_interval_milliseconds => 7_200_000,  %% 2 hours
       reporting_timeout_milliseconds => 1000,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
+             reporting_interval_milliseconds |
              reporting_timeout_milliseconds |
              reporting_endpoint,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
+
+restart_timer(#state{report_timer_ref = undefined} = State,
+              ReportIntervalMs) ->
+    %% Immediately start a report after re-configuring
+    self() ! report,
+    {ok, Ref} = timer:send_interval(ReportIntervalMs, report),
+    State#state{report_timer_ref = Ref};
+restart_timer(#state{report_timer_ref = TRef} = State, ReportIntervalMs) ->
+    %% We need to make sure there is only one timer at any given moment,
+    %% otherwise the system would be fragile to future changes or diag/evals
+    timer:cancel(TRef),
+    restart_timer(State#state{report_timer_ref = undefined}, ReportIntervalMs).
 
 send_report(Config) ->
     Parent = self(),
@@ -157,25 +181,59 @@ build_name() ->
 build_version() ->
     misc:compat_version_to_binary(cluster_compat_mode:get_compat_version()).
 
-build_resource_telemetry(_Statuses) ->
-    %% TODO: Resource telemetry
-    StorageBytesUsed = 0,
-    StorageBytesTotal = 0,
-    RamBytesUsed = 0,
-    RamBytesTotal = 0,
-    CpuPhysicalCores = 0,
-    CpuLogicalCores = 0,
-    #{storageBytesUsed => StorageBytesUsed,
-      storageBytesTotal => StorageBytesTotal,
-      ramBytesUsed => RamBytesUsed,
-      ramBytesTotal => RamBytesTotal,
-      cpuPhysicalCores => CpuPhysicalCores,
-      cpuLogicalCores => CpuLogicalCores}.
+build_edition(Node, Config) ->
+    case cluster_compat_mode:is_node_enterprise(Node, Config) of
+        true -> <<"enterprise">>;
+        false -> <<"community">>
+    end.
 
-build_services() ->
-    [].
+build_services(Node) ->
+    ns_cluster_membership:node_active_services(Node).
 
 create_report() ->
+    Config = ns_config:get(),
+    Nodes = ns_node_disco:nodes_actual(),
+    NodesData =
+        lists:map(
+          fun (Node) ->
+                  Props = ns_doctor:get_node(Node),
+                  Os = iolist_to_binary(
+                         proplists:get_value(system_arch, Props, "unknown")),
+                  Hostname = iolist_to_binary(misc:extract_node_address(Node)),
+                  IsEnterprise = build_edition(Node, Config),
+                  UptimeSeconds = proplists:get_value(wall_clock, Props, 0),
+                  CoresLogical = proplists:get_value(cpu_count, Props, 0),
+                  SystemStats = proplists:get_value(system_stats, Props, []),
+                  CoresPhysical = proplists:get_value(cpu_host_cores_available,
+                                                      Props, 0),
+                  RamBytesTotal = proplists:get_value(mem_total,
+                                                      SystemStats, 0),
+                  RamBytesUsed = proplists:get_value(mem_actual_used,
+                                                     SystemStats, 0),
+                  CgroupRamBytesTotal = proplists:get_value(mem_cgroup_limit,
+                                                            SystemStats, 0),
+                  CgroupRamBytesUsed = proplists:get_value(mem_cgroup_used,
+                                                           SystemStats, 0),
+                  StorageBytesTotal =
+                      proplists:get_value(data_disk_bytes_available, Props, 0),
+                  StorageBytesUsed =
+                      proplists:get_value(data_disk_bytes_used, Props, 0),
+                  Services = build_services(Node),
+                  #{os => Os,
+                    hostname => Hostname,
+                    edition => IsEnterprise,
+                    uptimeSeconds => UptimeSeconds,
+                    cpuLogicalCores => CoresLogical,
+                    cpuPhysicalCores => CoresPhysical,
+                    ramBytesTotal => RamBytesTotal,
+                    ramBytesUsed => RamBytesUsed,
+                    cgroupRamBytesTotal => CgroupRamBytesTotal,
+                    cgroupRamBytesUsed => CgroupRamBytesUsed,
+                    storageBytesTotal => StorageBytesTotal,
+                    storageBytesUsed => StorageBytesUsed,
+                    services => Services}
+          end, Nodes),
+
     Now = os:timestamp(),
     CollectedAt = list_to_binary(misc:timestamp_iso8601(Now, utc)),
     Product = build_product(),
@@ -183,35 +241,50 @@ create_report() ->
     BasePayload = #{collectedAt => CollectedAt,
                     product => Product,
                     clusterUuid => ClusterUuid},
-    ResourceTelemetry = build_resource_telemetry([]),
-    Payload1 = maps:merge(BasePayload, ResourceTelemetry),
-    ClusterDetails = #{services => build_services(),
-                       nodes => []},
-    Payload2 = maps:merge(Payload1, ClusterDetails),
-    json:encode(Payload2).
+    ClusterDetails = #{nodes => NodesData},
+    Payload1 = maps:merge(BasePayload, ClusterDetails),
+    json:encode(Payload1).
 
 -ifdef(TEST).
 
 report_keys() ->
     [<<"clusterUuid">>,
      <<"collectedAt">>,
-     <<"cpuLogicalCores">>,
-     <<"cpuPhysicalCores">>,
      <<"nodes">>,
-     <<"product">>,
+     <<"product">>].
+
+node_keys() ->
+    [<<"cpuLogicalCores">>,
+     <<"cpuPhysicalCores">>,
+     <<"hostname">>,
+     <<"os">>,
+     <<"edition">>,
      <<"ramBytesTotal">>,
      <<"ramBytesUsed">>,
+     <<"cgroupRamBytesTotal">>,
+     <<"cgroupRamBytesUsed">>,
      <<"services">>,
      <<"storageBytesTotal">>,
-     <<"storageBytesUsed">>].
+     <<"storageBytesUsed">>,
+     <<"uptimeSeconds">>].
 
 create_report_test_() ->
     {setup,
      fun () ->
              fake_ns_config:setup(),
-             fake_chronicle_kv:setup()
+             fake_chronicle_kv:setup(),
+             PidMap1 = mock_helpers:setup_mocks([ns_heart]),
+             {ok, NsDoctorPid} = ns_doctor:start_link(),
+             PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
+             meck:expect(ns_node_disco, nodes_actual, 0, [node()]),
+             PidMap2
      end,
-     fun (_) ->
+     fun (PidMap) ->
+             %% Shut down ns_heart first, as it depends on other processes
+             mock_helpers:teardown(
+               maps:filter(fun (Key, _) -> Key =:= ns_heart end, PidMap)),
+             %% It's now safe to shut down the rest without crashing ns_heart
+             mock_helpers:teardown(PidMap),
              fake_chronicle_kv:teardown(),
              fake_ns_config:teardown(),
              meck:unload()
@@ -220,7 +293,9 @@ create_report_test_() ->
              Report = create_report(),
              %% Convert back to maps for validation
              ReportMap = json:decode(list_to_binary(Report)),
-             ?assertListsEqual(report_keys(), maps:keys(ReportMap))
+             ?assertListsEqual(report_keys(), maps:keys(ReportMap)),
+             [NodeMap] = maps:get(<<"nodes">>, ReportMap),
+             ?assertListsEqual(node_keys(), maps:keys(NodeMap))
      end}.
 
 -endif.
