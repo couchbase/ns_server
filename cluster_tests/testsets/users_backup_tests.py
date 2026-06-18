@@ -605,6 +605,90 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert (res["errors"]["backup"]["compat_version"] ==
                 'Value must be json string')
 
+    def credential_consumer_grants_dropped_on_restore_test(self):
+        # A backup may carry credential_consumer grants naming credentials that
+        # don't exist on the target (e.g. a backup taken on another cluster).
+        # Credentials have no restore path, so rather than aborting the whole
+        # restore, such grants are dropped while the principal is kept --
+        # converging to the same end-state that credential deletion enforces.
+        # Wildcard grants ('[*]') need no existing credential and survive.
+        cc_user = testlib.random_str(16)
+        cc_group = testlib.random_str(16)
+        password = testlib.random_str(16)
+        user_path = f'/settings/rbac/users/local/{cc_user}'
+        group_path = f'/settings/rbac/groups/{cc_group}'
+
+        # credential_consumer[*] is accepted at PUT time (wildcard needs no
+        # existing credential); ro_admin is an unrelated role we expect kept.
+        put_user(self.cluster, 'local', cc_user, password=password,
+                 roles='ro_admin,credential_consumer[*]')
+        testlib.put_succ(self.cluster, group_path,
+                         data={'roles': 'ro_admin,credential_consumer[*]',
+                               'description': 'cc'})
+        try:
+            backup = testlib.get_succ(self.cluster,
+                                      '/settings/rbac/backup').json()
+
+            # Inject grants naming credentials absent on this cluster -- a
+            # concrete id and a prefix matching nothing. These can't be added
+            # via PUT (it validates), but a cross-cluster backup legitimately
+            # carries them.
+            absent = ['credential_consumer[does/not/exist]',
+                      'credential_consumer[no/such/prefix/*]']
+            inject_roles(backup['users'], 'id', cc_user, absent)
+            inject_roles(backup['groups'], 'name', cc_group, absent)
+
+            # Remove the live principals so restore recreates them fresh.
+            testlib.ensure_deleted(self.cluster, user_path)
+            testlib.ensure_deleted(self.cluster, group_path)
+
+            res = testlib.put_succ(self.cluster, '/settings/rbac/backup',
+                                   data={'backup': json.dumps(backup),
+                                         'canOverwrite': 'false'}).json()
+
+            # The absent grants are reported as dropped for both principals;
+            # the kept ro_admin/wildcard are not reported.
+            dropped = res['credentialGrantsDropped']
+            assert sorted(dropped_roles_for(dropped['users'], cc_user)) == \
+                sorted(absent), dropped['users']
+            assert sorted(dropped_roles_for(dropped['groups'], cc_group)) == \
+                sorted(absent), dropped['groups']
+            assert res['stats']['credentialGrantsDropped'] == 4, res['stats']
+
+            # The principals were restored (not aborted), keeping ro_admin and
+            # the single surviving wildcard grant, without the absent grants.
+            for path in (user_path, group_path):
+                roles = roles_of(self.cluster, path)
+                assert 'ro_admin' in roles, roles
+                assert 'credential_consumer[does/not/exist]' not in roles, roles
+                assert 'credential_consumer[no/such/prefix/*]' not in roles, \
+                    roles
+                cc = [r for r in roles if r.startswith('credential_consumer')]
+                assert len(cc) == 1, f'wildcard grant not preserved: {roles}'
+        finally:
+            testlib.ensure_deleted(self.cluster, user_path)
+            testlib.ensure_deleted(self.cluster, group_path)
+
+
+def roles_of(cluster, path):
+    info = testlib.get_succ(cluster, path).json()
+    return [role["role"] for role in info.get("roles", [])]
+
+
+def inject_roles(entries, key, name, extra_roles):
+    for e in entries:
+        if e.get(key) == name:
+            e["roles"] = e.get("roles", []) + extra_roles
+            return
+    raise AssertionError(f"{name} not found in backup")
+
+
+def dropped_roles_for(dropped_list, name):
+    for e in dropped_list:
+        if e.get("name") == name:
+            return e["rolesDropped"]
+    raise AssertionError(f"{name} not in dropped report")
+
 
 def verify_roles(cluster, username, expected_roles):
     path = f'/settings/rbac/users/local/{username}'

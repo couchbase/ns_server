@@ -1147,8 +1147,8 @@ put_user_validators(Req, GetUserIdFun, GroupCheckFun, ValidatePassword,
     [validator:touch(name, _),
      validate_user_groups(groups, GroupCheckFun, Req, _),
      validator:default(roles, [], _),
-     validate_roles(roles, CompatVer, _)] ++
-    [validator_verify_security_roles_access(
+     validate_roles(roles, CompatVer, DoingRestore, _)] ++
+        [validator_verify_security_roles_access(
        roles, Req, ?LOCAL_WRITE, ExtraRolesFun, _) || not DoingRestore] ++
     [validator:valid_in_enterprise_only(locked, _),
      validator:valid_in_enterprise_only(temporaryPassword, _)] ++
@@ -1198,6 +1198,9 @@ parse_groups(GroupsStr) ->
     [string:trim(G) || G <- GroupsTokens].
 
 validate_roles(Name, CompatVer, State) ->
+    validate_roles(Name, CompatVer, false, State).
+
+validate_roles(Name, CompatVer, DoingRestore, State) ->
     validator:validate(
       fun (RawRoles) ->
               Roles = parse_roles(RawRoles),
@@ -1205,8 +1208,22 @@ validate_roles(Name, CompatVer, State) ->
               GoodRoles0 = Roles -- BadRoles,
               GoodRoles = menelaus_users:maybe_upgrade_user_roles(GoodRoles0,
                                                                   CompatVer),
-              {_, MoreBadRoles} =
-                  menelaus_roles:validate_roles(GoodRoles),
+              Snapshot = menelaus_roles:get_roles_snapshot(),
+              {_, MoreBadRoles0} =
+                  menelaus_roles:validate_roles(GoodRoles, public, Snapshot),
+              %% On restore, credential_consumer grants naming a credential
+              %% absent on this cluster are not a hard error: they would
+              %% otherwise abort the whole restore, and credentials have no
+              %% restore path. They are accepted here and dropped (and
+              %% reported) later -- see drop_credential_grants_for_restore/2.
+              MoreBadRoles =
+                  case DoingRestore of
+                      true ->
+                          MoreBadRoles0 --
+                              droppable_credential_grants(GoodRoles, Snapshot);
+                      false ->
+                          MoreBadRoles0
+                  end,
               case {BadRoles, MoreBadRoles} of
                   {[], []} ->
                       {value, Roles};
@@ -2020,7 +2037,7 @@ put_group_validators(Req, GetGroupNameFun, DoingRestore, CompatVer) ->
                     end,
     [validator:touch(description, _),
      validator:required(roles, _),
-     validate_roles(roles, CompatVer, _),
+     validate_roles(roles, CompatVer, DoingRestore, _),
      validator_verify_security_roles_access(roles, Req, ?SECURITY_WRITE,
                                             ExtraRolesFun, _),
      validator_verify_security_roles_access(roles, Req, ?LOCAL_WRITE,
@@ -2719,34 +2736,51 @@ handle_backup_restore_validated(Req, Params) ->
                     false -> created
                 end
         end,
-    Groups = proplists:get_value(groups, Backup),
-    {GroupsSkipped, GroupsUpdated} =
-        lists:foldl(
-          fun ({GroupProps}, {SAcc, OAcc}) ->
-                  GroupId = proplists:get_value(name, GroupProps),
-                  case maybe_store_group_check_ldap_restore(
-                         GroupId, proplists:delete(name, GroupProps),
-                         CanOverwrite, true, VersionFromRestoredData, Req) of
-                      added -> {SAcc, OAcc};
-                      updated -> {SAcc, [GroupId | OAcc]};
-                      {error, insufficient_perms} -> {[GroupId | SAcc], OAcc};
-                      {error, already_exists} -> {[GroupId | SAcc], OAcc}
-                  end
-          end, {[], []}, Groups),
+    %% Snapshot used to drop credential_consumer grants that name credentials
+    %% absent on this cluster (see drop_credential_grants_for_restore/2).
+    Snapshot = menelaus_roles:get_roles_snapshot(),
 
-    Users = lists:map(
-              fun ({UserProps}) ->
-                      Auth = proplists:get_value(auth, UserProps, []),
-                      Id = proplists:get_value(id, UserProps),
-                      Domain = proplists:get_value(domain, UserProps),
-                      Identity = {Id, Domain},
-                      %% If restoring a backup from an older release there
-                      %% may be tweaks needed to the data.
-                      UserProps1 =
-                        menelaus_users:maybe_upgrade_roles_for_restore(
-                          UserProps, VersionFromRestoredData),
-                      {Identity, [{pass_or_auth, {auth, Auth}} | UserProps1]}
-              end, proplists:get_value(users, Backup)),
+    Groups = proplists:get_value(groups, Backup),
+    {GroupsSkipped, GroupsUpdated, GroupGrantsDropped} =
+        lists:foldl(
+          fun ({GroupProps}, {SAcc, OAcc, DAcc}) ->
+                  GroupId = proplists:get_value(name, GroupProps),
+                  {GroupProps1, Dropped} =
+                      drop_credential_grants_for_restore(
+                        proplists:delete(name, GroupProps), Snapshot),
+                  case maybe_store_group_check_ldap_restore(
+                         GroupId, GroupProps1,
+                         CanOverwrite, true, VersionFromRestoredData, Req) of
+                      added ->
+                          {SAcc, OAcc,
+                           add_grants_dropped(GroupId, Dropped, DAcc)};
+                      updated ->
+                          {SAcc, [GroupId | OAcc],
+                           add_grants_dropped(GroupId, Dropped, DAcc)};
+                      {error, insufficient_perms} ->
+                          {[GroupId | SAcc], OAcc, DAcc};
+                      {error, already_exists} ->
+                          {[GroupId | SAcc], OAcc, DAcc}
+                  end
+          end, {[], [], []}, Groups),
+
+    {Users, UserGrantsDropped} =
+        lists:mapfoldl(
+          fun ({UserProps}, DAcc) ->
+                  Auth = proplists:get_value(auth, UserProps, []),
+                  Id = proplists:get_value(id, UserProps),
+                  Domain = proplists:get_value(domain, UserProps),
+                  Identity = {Id, Domain},
+                  %% If restoring a backup from an older release there
+                  %% may be tweaks needed to the data.
+                  UserProps1 =
+                      menelaus_users:maybe_upgrade_roles_for_restore(
+                        UserProps, VersionFromRestoredData),
+                  {UserProps2, Dropped} =
+                      drop_credential_grants_for_restore(UserProps1, Snapshot),
+                  {{Identity, [{pass_or_auth, {auth, Auth}} | UserProps2]},
+                   add_grants_dropped(Identity, Dropped, DAcc)}
+          end, [], proplists:get_value(users, Backup)),
 
     %% If we don't have the proper security permission we have to filter out
     %% any roles being restored that are security roles.
@@ -2840,10 +2874,38 @@ handle_backup_restore_validated(Req, Params) ->
          || AdminRes == overwritten] ++
         [FormatUser(U) || {updated, {U, _}} <- UpdatedUsers],
 
+    %% Report credential_consumer grants dropped on restore, but only for
+    %% principals that were actually stored (created/overwritten). Skipped or
+    %% permission-filtered users were left untouched, so reporting drops for
+    %% them would be misleading. Group drops are already collected only on the
+    %% added/updated branches above.
+    UsersGrantsDropped =
+        lists:filtermap(
+          fun ({Status, {U, _}}) when Status =:= added; Status =:= updated ->
+                  case proplists:get_value(U, UserGrantsDropped, []) of
+                      [] -> false;
+                      Dropped -> {true,
+                                  format_grants_dropped(FormatUser(U), Dropped)}
+                  end;
+              (_) ->
+                  false
+          end, UpdatedUsers),
+    GroupsGrantsDropped =
+        [format_grants_dropped({[{name, list_to_binary(G)}]}, Dropped)
+         || {G, Dropped} <- GroupGrantsDropped],
+
     GroupsUpdatedCount = length(GroupsUpdated),
     GroupsSkippedCount = length(GroupsSkipped),
     GroupsCreatedCount = length(Groups) - GroupsUpdatedCount -
         GroupsSkippedCount,
+
+    CountRolesDropped =
+        fun ({Principal}) ->
+                length(proplists:get_value(rolesDropped, Principal, []))
+        end,
+    TotalGrantsDropped =
+        lists:sum(lists:map(CountRolesDropped, UsersGrantsDropped)) +
+        lists:sum(lists:map(CountRolesDropped, GroupsGrantsDropped)),
 
     menelaus_util:reply_json(
       Req, {[{stats,
@@ -2852,11 +2914,47 @@ handle_backup_restore_validated(Req, Params) ->
                 {usersSkipped, length(UsersSkipped)},
                 {groupsCreated, GroupsCreatedCount},
                 {groupsOverwritten, GroupsUpdatedCount},
-                {groupsSkipped, GroupsSkippedCount}]}},
+                {groupsSkipped, GroupsSkippedCount},
+                {credentialGrantsDropped, TotalGrantsDropped}]}},
              {usersSkipped, UsersSkipped},
              {usersOverwritten, UsersOverwritten},
              {groupsSkipped, [list_to_binary(G) || G <- GroupsSkipped]},
-             {groupsOverwritten, [list_to_binary(G) || G <- GroupsUpdated]}]}).
+             {groupsOverwritten, [list_to_binary(G) || G <- GroupsUpdated]},
+             {credentialGrantsDropped,
+              {[{users, UsersGrantsDropped},
+                {groups, GroupsGrantsDropped}]}}]}).
+
+%% On restore, drop credential_consumer grants naming credentials that do not
+%% exist on this cluster (credentials have no restore path, so such a grant
+%% would otherwise abort the whole restore). Returns the possibly-trimmed props
+%% and the list of dropped roles. See
+%% menelaus_roles:drop_unrestorable_credential_grants/2.
+drop_credential_grants_for_restore(Props, Snapshot) ->
+    Roles = proplists:get_value(roles, Props, []),
+    case menelaus_roles:drop_unrestorable_credential_grants(Roles, Snapshot) of
+        {_, []} ->
+            {Props, []};
+        {Kept, Dropped} ->
+            {lists:keystore(roles, 1, Props, {roles, Kept}), Dropped}
+    end.
+
+%% The credential_consumer grants that a restore would drop -- i.e. those
+%% naming a credential absent on this cluster. Used by the backup-payload
+%% validator to accept them (rather than 400) so the restore can proceed.
+droppable_credential_grants(Roles, Snapshot) ->
+    {_, Droppable} =
+        menelaus_roles:drop_unrestorable_credential_grants(Roles, Snapshot),
+    Droppable.
+
+add_grants_dropped(_Id, [], Acc) ->
+    Acc;
+add_grants_dropped(Id, Dropped, Acc) ->
+    [{Id, Dropped} | Acc].
+
+format_grants_dropped({Principal}, DroppedRoles) ->
+    {Principal ++
+         [{rolesDropped,
+           [list_to_binary(role_to_string(R)) || R <- DroppedRoles]}]}.
 
 validate_compat_version(State) ->
     validator:validate(

@@ -63,6 +63,7 @@
          validate_roles/1,
          validate_roles/2,
          validate_roles/3,
+         drop_unrestorable_credential_grants/2,
          params_version/1,
          filter_out_invalid_roles/3,
          is_data_vertex/1,
@@ -1760,6 +1761,32 @@ validate_roles(Roles, Scope, Snapshot) ->
                         end
                 end, {[], []}, Roles).
 
+%% @doc Restore-only: drop `credential_consumer' grants that name a specific
+%% credential id (or a prefix matching nothing) which does not exist on this
+%% cluster. Such a grant would otherwise fail `validate_roles' and abort the
+%% entire restore. Credentials have no restore path in Totoro.
+%%
+%% Wildcard grants (`[*]'/`any') and grants for existing credentials are kept.
+%% If `credential_consumer' is not even a visible role on this cluster, nothing
+%% is dropped and the grant flows on to `validate_roles', which aborts the
+%% restore -- consistent with every other unsupported role.
+-spec drop_unrestorable_credential_grants([rbac_role()], map()) ->
+          {Kept :: [rbac_role()], Dropped :: [rbac_role()]}.
+drop_unrestorable_credential_grants(Roles, Snapshot) ->
+    case lists:keyfind(<<"credential_consumer">>, 1,
+                       get_visible_role_definitions()) of
+        false ->
+            {Roles, []};
+        _ ->
+            Ids = cb_credentials_store:get_index(Snapshot),
+            lists:partition(
+              fun ({<<"credential_consumer">>, [Param]}) ->
+                      is_valid_credential_id(Param, Ids);
+                  (_) ->
+                      true
+              end, Roles)
+    end.
+
 -spec get_security_roles(map()) -> [rbac_role()].
 get_security_roles(Snapshot) ->
     %% A role is security-classified if it grants any operation on
@@ -2152,6 +2179,47 @@ is_valid_credential_id_test() ->
     ?assertEqual(false, is_valid_credential_id("nomatch/*", Ids)),
     ?assertEqual(false, is_valid_credential_id("backup/*", [])),
     ?assertEqual(false, is_valid_credential_id(<<"foo">>, Ids)).
+
+drop_unrestorable_credential_grants_test__() ->
+    Snapshot = toy_buckets(),
+    %% Existing ids in the toy snapshot: "backup/prod/s3", "backup/dev/test",
+    %% "other/key", "test".
+    CC = fun (Param) -> {<<"credential_consumer">>, [Param]} end,
+
+    Kept = [<<"admin">>,
+            {<<"bucket_admin">>, [{"default", <<"default_id">>}]},
+            CC(any),
+            CC("*"),
+            CC("backup/prod/s3"),
+            CC("backup/*"),
+            CC("backup/prod/*")],
+    Dropped = [CC("does/not/exist"),
+               CC("nomatch/*")],
+
+    ?assertEqual(
+       {Kept, Dropped},
+       drop_unrestorable_credential_grants(Kept ++ Dropped, Snapshot)),
+
+    ?assertEqual({Kept, []},
+                 drop_unrestorable_credential_grants(Kept, Snapshot)),
+
+    %% Non-credential_consumer roles are never dropped, even if invalid as a
+    %% bucket grant -- only validate_roles judges those.
+    Other = [{<<"bucket_admin">>, [{"gone", <<"gone_id">>}]}],
+    ?assertEqual({Other, []},
+                 drop_unrestorable_credential_grants(Other, Snapshot)),
+
+    %% When credential_consumer is not a visible role on this cluster (e.g. CE),
+    %% nothing is dropped here -- validate_roles handles it (aborting), keeping
+    %% behavior consistent with every other unsupported role.
+    meck:expect(cluster_compat_mode, is_enterprise, fun () -> false end),
+    try
+        AllCC = [CC("does/not/exist"), CC(any)],
+        ?assertEqual({AllCC, []},
+                     drop_unrestorable_credential_grants(AllCC, Snapshot))
+    after
+        meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end)
+    end.
 
 toy_buckets_props() ->
     [{"test", [{uuid, <<"test_id">>}, {props, toy_props()}]},
@@ -3469,6 +3537,7 @@ default_profile_test_() ->
       fun replication_admin_test__/0,
       {generator, fun produce_roles_by_permission_test__/0},
       fun get_security_roles_test__/0,
+      fun drop_unrestorable_credential_grants_test__/0,
       fun params_version_test__/0,
       fun validate_role_test__/0,
       fun roles_format_test__/0,
