@@ -163,7 +163,7 @@
          rebalancing/2, rebalancing/3,
          recovery/2, recovery/3,
          bucket_hibernation/3,
-         running_op/3,
+         running_op/2, running_op/3,
          buckets_shutdown/3,
          ejecting/2]).
 
@@ -972,6 +972,11 @@ idle(_Event, _State) ->
 janitor_running({request_janitor_run, Item}, State) ->
     do_request_janitor_run(Item, janitor_running, State);
 janitor_running(_Event, _State) ->
+    keep_state_and_data.
+
+running_op({request_janitor_run, Item}, State) ->
+    do_request_janitor_run(Item, running_op, State);
+running_op(_Event, _State) ->
     keep_state_and_data.
 
 %% Synchronous idle events
