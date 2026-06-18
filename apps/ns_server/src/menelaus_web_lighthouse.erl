@@ -36,7 +36,13 @@ type_spec(endpoint) ->
     #{validators => [string, validate_endpoint()]}.
 
 validate_endpoint() ->
-    validator:convert(_, fun list_to_binary/1, _).
+    validator:validate(
+      fun (Endpoint) ->
+              case misc:is_valid_hostname(Endpoint) of
+                  true -> {value, list_to_binary(Endpoint)};
+                  false -> {error, "invalid hostname"}
+              end
+      end, _, _).
 
 handle_get_settings(Path, Req) ->
     Settings = maps:to_list(lighthouse_reporter:build_settings()),

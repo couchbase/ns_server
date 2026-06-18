@@ -151,9 +151,10 @@ decode_json_response_ext({ok, {{204 = _StatusCode, _} = _StatusLine,
                          _Method, _Request) ->
     ok;
 
-decode_json_response_ext({ok, {{400 = _StatusCode, _} = _StatusLine,
+decode_json_response_ext({ok, {{StatusCode, _} = _StatusLine,
                                _Headers, Body} = _Result} = Response,
-                         Method, Request) ->
+                         Method, Request) when StatusCode =:= 400;
+                                               StatusCode =:= 422->
     try ejson:decode(Body) of
         X -> {client_error, X}
     catch

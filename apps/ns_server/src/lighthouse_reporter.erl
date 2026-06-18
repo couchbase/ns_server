@@ -124,13 +124,15 @@ default_config() ->
     #{reporting_enabled => true,
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
-      reporting_endpoint => <<"lighthouse.couchbase.internal">>}.
+      reporting_endpoint => <<"lighthouse.couchbase.internal">>,
+      reporting_port => 443}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
              reporting_interval_hours |
              reporting_timeout_seconds |
-             reporting_endpoint,
+             reporting_endpoint |
+             reporting_port,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
@@ -153,17 +155,18 @@ send_report(Config) ->
       fun () ->
               Endpoint = get_setting(reporting_endpoint, Config),
               URL = binary_to_list(Endpoint),
+              Port = get_setting(reporting_port, Config),
               Report = create_report(),
               Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
                                                   Config)),
-              Result = post(URL, Report, Timeout),
+              Result = post(URL, Port, Report, Timeout),
               update_metric(Result),
               Parent ! report_done
       end).
 
-post(URL, Body, Timeout) ->
+post(URL, Port, Body, Timeout) ->
     Scheme = https,
-    Request = {Scheme, URL, 8080, "/api/v1/ingest/telemetry",
+    Request = {Scheme, URL, Port, "/api/v1/ingest/telemetry",
                "application/json", Body},
     try menelaus_rest:json_request_hilevel(post, Request,
                                            ?HIDE({basic_auth, "", ""}),
@@ -177,14 +180,16 @@ post(URL, Body, Timeout) ->
             %% nxdomain error, so we don't need to log it at error level
             ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]),
             failure;
-        {Error, Stacktrace} ->
-            Reason = case Error of
-                         ok -> bad_value;
-                         _ -> Error
-                     end,
-            ?log_error("Sending lighthouse report failed. Error: ~p",
-                       [{Reason, Stacktrace}]),
-            failure
+        {client_error, JsonResponse} ->
+            %% Error from lighthouse itself
+            ?log_debug("Lighthouse report rejected by portal. Error: ~s",
+                       [ejson:encode(JsonResponse)]),
+            failure;
+        {ok, _JsonResponse} ->
+            %% Ignore unexpected success payload
+            ?log_debug("Lighthouse report sent successfuly. Ignored unexpected "
+                       "response"),
+            success
     catch
         _:Error:Stack ->
             ?log_error("Sending lighthouse report crashed with error: ~p"
@@ -210,7 +215,8 @@ build_edition(Node, Config) ->
     end.
 
 build_services(Node) ->
-    ns_cluster_membership:node_active_services(Node).
+    lists:map(fun ns_cluster_membership:json_service_name/1,
+              ns_cluster_membership:node_active_services(Node)).
 
 create_report() ->
     Config = ns_config:get(),
