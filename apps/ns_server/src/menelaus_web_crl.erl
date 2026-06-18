@@ -38,8 +38,9 @@ config_to_json(Cfg) ->
          || {K, V} <- maps:to_list(maps:get(policy_per_scope, Cfg, #{}))]}},
       {dirPollIntervalMs, maps:get(poll_interval_ms, Cfg, undefined)},
       {directory, dir_to_json(maps:get(poll_directory, Cfg, undefined))},
-      {checkIntermediateCerts,
-       maps:get(check_intermediate_certs, Cfg, false)}]}.
+      {checkIntermediateCerts, maps:get(check_intermediate_certs, Cfg, false)},
+      {urls, [iolist_to_binary(U) || U <- maps:get(crl_urls, Cfg, [])]},
+      {urlPollIntervalMs, maps:get(url_poll_interval_ms, Cfg, undefined)}]}.
 
 scope_to_json(client_auth) -> <<"clientAuth">>;
 scope_to_json(node_to_node) -> <<"nodeToNode">>.
@@ -82,6 +83,8 @@ post_validators() ->
      validator:validate(fun (V) -> parse_pps_value(V) end,
                         policyPerScope, _),
      validator:boolean(checkIntermediateCerts, _),
+     validator:validate(fun parse_urls_value/1, urls, _),
+     validator:integer(urlPollIntervalMs, 1000, 24 * 3600 * 1000, _),
      validator:unsupported(_)].
 
 parse_pps_value({Props}) when is_list(Props) ->
@@ -102,6 +105,35 @@ parse_pps(_, _) ->
 scope_atom(<<"clientAuth">>) -> client_auth;
 scope_atom(<<"nodeToNode">>) -> node_to_node;
 scope_atom(_) -> undefined.
+
+parse_urls_value(Arr) when is_list(Arr) ->
+    parse_url_list(Arr, []);
+parse_urls_value(_) ->
+    {error, "urls must be a JSON array"}.
+
+parse_url_list([], Acc) ->
+    Res = lists:uniq(lists:reverse(Acc)),
+    Max = ?get_param(max_crl_url_num, 100),
+    case length(Res) =< Max of
+        true -> {value, Res};
+        false -> {error, io_lib:format("maximum number of URLs is ~b", [Max])}
+    end;
+parse_url_list([U | Rest], Acc) when is_binary(U) ->
+    Validation = fun (S) ->
+                     case lists:member(S, [<<"http">>, <<"https">>]) of
+                         true  -> valid;
+                         false -> {error, invalid_scheme}
+                     end
+                 end,
+    case misc:parse_url(binary_to_list(U),
+                        [{scheme_validation_fun, Validation}]) of
+        {ok, _} ->
+            parse_url_list(Rest, [U | Acc]);
+        {error, _} ->
+            {error, io_lib:format("invalid URL: ~s", [U])}
+    end;
+parse_url_list(_, _) ->
+    {error, "urls entries must be strings"}.
 
 mode_atom(<<"Disabled">>) -> disabled;
 mode_atom(<<"Permissive">>) -> permissive;
@@ -125,9 +157,17 @@ build_config(Values) ->
                undefined -> Cfg2;
                I -> Cfg2#{poll_interval_ms => I}
            end,
-    case proplists:get_value(checkIntermediateCerts, Values) of
-        undefined -> Cfg3;
-        V -> Cfg3#{check_intermediate_certs => V}
+    Cfg4 = case proplists:get_value(checkIntermediateCerts, Values) of
+               undefined -> Cfg3;
+               V -> Cfg3#{check_intermediate_certs => V}
+           end,
+    Cfg5 = case proplists:get_value(urls, Values) of
+               undefined -> Cfg4;
+               Urls -> Cfg4#{crl_urls => Urls}
+           end,
+    case proplists:get_value(urlPollIntervalMs, Values) of
+        undefined -> Cfg5;
+        I2 -> Cfg5#{url_poll_interval_ms => I2}
     end.
 
 %%%===================================================================
@@ -136,14 +176,8 @@ build_config(Values) ->
 
 handle_reload_crl(Req) ->
     assert_supported(),
-    case cb_crl_manager:reload() of
-        {error, not_configured} ->
-            menelaus_util:reply_json(
-              Req,
-              {[{error, <<"No CRL source directory is configured">>}]}, 400);
-        {ok, StatusList} ->
-            menelaus_util:reply_json(Req, format_status_map(StatusList))
-    end.
+    StatusList = cb_crl_manager:reload(),
+    menelaus_util:reply_json(Req, format_status_map(StatusList)).
 
 %%%===================================================================
 %%% POST /settings/crl/diagnostics/status
@@ -274,7 +308,8 @@ file_status_to_json(#{filename    := Filename,
       {lastReload,  last_reload_to_json(LastReload)}]}.
 
 file_source_to_json(local_dir) -> <<"localDir">>;
-file_source_to_json(uploaded)  -> <<"uploaded">>.
+file_source_to_json(uploaded)  -> <<"uploaded">>;
+file_source_to_json(url)       -> <<"url">>.
 
 %% Serialise the per-entry breakdown of the active copy.
 status_entry_to_json(#{issuer      := Issuer,

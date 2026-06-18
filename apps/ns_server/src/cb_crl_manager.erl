@@ -36,12 +36,15 @@
 -define(CHRONICLE_KEY, crl_settings).
 -define(CRL_FILES_KEY, crl_files).
 -define(DEFAULT_POLL_INTERVAL_MS, 60000).
+-define(DEFAULT_URL_POLL_INTERVAL_MS, 3600000).
 -define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
 -define(STATUS_TIMEOUT, ?get_timeout(status_timeout, 60000)).
 -define(SYNC_TIMEOUT, ?get_timeout(sync_timeout, 60000)).
 -define(GET_PUSH_CONFIG_TIMEOUT, ?get_timeout(get_push_config_timeout, 60000)).
 -define(DOWNLOAD_TIMEOUT_MS, ?get_timeout(download_timeout_ms, 30000)).
 -define(RECONCILE_RETRY_INTERVAL_MS, ?get_param(retry_interval_ms, 60000)).
+-define(URL_FETCH_TIMEOUT_MS, ?get_timeout(url_fetch_timeout_ms, 30000)).
+-define(URL_RETRY_INTERVAL_MS, ?get_param(url_retry_interval_ms, 60000)).
 
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
@@ -61,7 +64,10 @@
 %% across different directories cannot be confused.  The config/crls copy uses
 %% the file's base name.
 -record(crl_reload_status, {
-    mtime :: file:date_time(), %% mtime of the load-dir file at last attempt
+    mtime :: file:date_time() | undefined, %% mtime of the load-dir file at last
+                                           %% attempt, when load from file
+    etag :: binary() | undefined, %% etag from the most recent successull URL
+                                  %% fetch
     result :: loaded | failed,
     time :: calendar:datetime(), %% when the last attempt happened
     errors :: [binary()] %% human-readable strings
@@ -86,7 +92,16 @@
     %% (base name => content checksum)
     uploaded         :: active_files(),
     %% Timer ref for retrying failed uploaded-file downloads.
-    retry_timer      :: reference() | undefined
+    retry_timer      :: reference() | undefined,
+    %% URL-based CRL files (config/crls/url/).
+    %% Keys are the configured URLs; values are the per-URL fetch status
+    %% (undefined = not yet attempted).
+    url_file_state       :: #{binary() =>
+                               reload_status() | undefined},
+    %% URL-fetched files held in config/crls/url/ (base name => checksum).
+    loaded_from_urls     :: active_files(),
+    url_poll_interval_ms :: pos_integer(),
+    url_poll_timer       :: reference() | undefined
 }).
 
 %%%===================================================================
@@ -152,12 +167,8 @@ merge_default(Cfg) ->
 %% if it can be read, decoded, and every entry in it is valid.  A file that
 %% fails to load never overwrites or removes a previously loaded good copy.
 %%
-%% Returns {ok, StatusMap} where StatusMap has the same shape as get_status/0
-%% (see below).  Returns {error, not_configured} when no CRL source directory
-%% has been set.
--spec reload() ->
-          {ok, [map()]}
-        | {error, not_configured}.
+%% Returns StatusMap which has the same shape as get_status/0 (see below).
+-spec reload() -> [map()].
 reload() ->
     gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
 
@@ -270,42 +281,56 @@ init([]) ->
           (_)                -> ok
       end),
     Cfg = get_config(),
-    %% Crash on startup if we cannot create the directory we depend on.
+    %% Crash on startup if we cannot create the directories we depend on.
     ok = ensure_dir(crls_dir()),
     ok = ensure_dir(local_crls_dir()),
-    %% Seed the cache and build loaded_locally from poll-based files
-    %% in config/crls/local/.  Separately seed the cache for uploaded
-    %% files in config/crls/ so revocation checking is ready immediately.
+    ok = ensure_dir(url_crls_dir()),
+    %% Seed the cache from every storage directory so revocation checking
+    %% is ready before any fetches happen.
     LoadedLocally0  = populate_cache_from_dir(local_crls_dir()),
     Uploaded0       = populate_cache_from_dir(crls_dir()),
+    LoadedFromUrls0 = populate_cache_from_dir(url_crls_dir()),
     ChronicleFiles0 = get_crl_files_metadata(),
-    State0 = #state{poll_directory   = undefined,
-                    poll_interval_ms = ?DEFAULT_POLL_INTERVAL_MS,
-                    poll_timer       = undefined,
-                    file_state       = #{},
-                    loaded_locally   = LoadedLocally0,
-                    uploaded         = Uploaded0,
-                    retry_timer      = undefined},
+    State0 = #state{poll_directory       = undefined,
+                    poll_interval_ms     = ?DEFAULT_POLL_INTERVAL_MS,
+                    poll_timer           = undefined,
+                    file_state           = #{},
+                    url_file_state       = #{},
+                    loaded_locally       = LoadedLocally0,
+                    uploaded             = Uploaded0,
+                    loaded_from_urls     = LoadedFromUrls0,
+                    retry_timer          = undefined,
+                    url_poll_interval_ms = ?DEFAULT_URL_POLL_INTERVAL_MS,
+                    url_poll_timer       = undefined},
+    %% apply_config handles poll_directory and policy changes.
+    %% reconcile_url_files (called from apply_config) adds configured URLs,
+    %% fetches them using conditional GET, and reads ETags lazily from the
+    %% .etag sidecar files on first access.
     State1 = apply_config(Cfg, State0),
     %% Reconcile: remove local uploaded files no longer in chronicle
     %% (deleted while this node was down) and download any files that
     %% are in chronicle but missing or stale locally.
     State2 = reconcile_uploaded_files(ChronicleFiles0, State1),
-    %% Remove cache entries not in the loaded_locally or uploaded sets.
+    %% Remove cache entries not in any of the three active sets.
     ok = purge_stale_cache_entries(State2#state.loaded_locally,
-                                   State2#state.uploaded),
-    {ok, schedule_timer(State2)}.
+                                   State2#state.uploaded,
+                                   State2#state.loaded_from_urls),
+    {ok, schedule_poll_dir_timer(schedule_url_timer(State2))}.
 
-handle_call(reload, _From, #state{poll_directory = undefined} = State) ->
-    {reply, {error, not_configured}, State};
-handle_call(reload, _From, #state{poll_directory = Dir} = State) ->
-    ?log_debug("CRL manual reload start: ~p", [Dir]),
+handle_call(reload, _From, #state{url_file_state = UrlsState} = State) ->
+    Dir = State#state.poll_directory,
+    ?log_debug("CRL manual reload start: dir=~p, urls=~b",
+               [Dir, maps:size(State#state.url_file_state)]),
     ?flush(poll_directory),
-    NewState = scan_directory(Dir, State, true),
-    maybe_notify_crl_consumers(State, NewState),
-    ?log_debug("CRL manual reload done: ~p file(s) loaded locally",
-               [maps:size(NewState#state.loaded_locally)]),
-    {reply, {ok, build_status_map(NewState)}, schedule_timer(NewState)};
+    ?flush(poll_urls),
+    State1 = scan_directory(Dir, State, true),
+    State2 = reconcile_url_files(maps:keys(UrlsState), true, State1),
+    maybe_notify_crl_consumers(State, State2),
+    ?log_debug("CRL manual reload done: ~b locally, ~b from URLs",
+               [maps:size(State2#state.loaded_locally),
+                maps:size(State2#state.loaded_from_urls)]),
+    {reply, build_status_map(State2),
+     schedule_poll_dir_timer(schedule_url_timer(State2))};
 
 handle_call(get_status, _From, State) ->
     {reply, build_status_map(State), State};
@@ -313,13 +338,11 @@ handle_call(get_status, _From, State) ->
 handle_call(sync, _From, State) ->
     {reply, ok, State};
 
-handle_call(get_push_config, _From,
-            #state{loaded_locally = LoadedLocally,
-                   uploaded       = Uploaded} = State) ->
+handle_call(get_push_config, _From, State) ->
     Cfg = get_config(),
     PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
     CheckInterm = maps:get(check_intermediate_certs, Cfg, false),
-    FileVersions = build_file_versions(LoadedLocally, Uploaded),
+    FileVersions = build_file_versions(State),
     Files = [F || {F, _} <- FileVersions],
     Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions),
                              CheckInterm}),
@@ -365,7 +388,7 @@ handle_info(config_changed, State) ->
     Cfg = get_config(),
     State1 = apply_config(Cfg, State),
     notify_crl_consumers(),
-    {noreply, schedule_timer(State1)};
+    {noreply, schedule_poll_dir_timer(schedule_url_timer(State1))};
 
 handle_info(crl_files_changed, State) ->
     ChronicleFiles = get_crl_files_metadata(),
@@ -381,17 +404,19 @@ handle_info(retry_reconcile, State) ->
     maybe_notify_crl_consumers(State, NewState),
     {noreply, NewState};
 
-handle_info(poll_directory, #state{poll_directory = undefined} = State) ->
-    %% Poll directory is undefined; nothing to poll
-    ?flush(poll_directory),
-    {noreply, State};
 handle_info(poll_directory, #state{poll_directory = Dir} = State) ->
     ?flush(poll_directory),
     State1 = scan_directory(Dir, State, false),
     %% Only the set of active (good) files matters to consumers; reload-attempt
     %% bookkeeping changing on its own does not warrant a push.
     maybe_notify_crl_consumers(State, State1),
-    {noreply, schedule_timer(State1)};
+    {noreply, schedule_poll_dir_timer(State1)};
+
+handle_info(poll_urls, #state{url_file_state = URLsState} = State) ->
+    ?flush(poll_urls),
+    State1 = reconcile_url_files(maps:keys(URLsState), false, State),
+    maybe_notify_crl_consumers(State, State1),
+    {noreply, schedule_url_timer(State1)};
 
 handle_info(Msg, State) ->
     ?log_error("Received unknown info: ~p", [Msg]),
@@ -742,7 +767,10 @@ maybe_notify_crl_consumers(StateBefore, StateCurrent) ->
     %% It doesn't check if policies have changed !!!
     case (StateBefore#state.loaded_locally =:=
               StateCurrent#state.loaded_locally) andalso
-         (StateBefore#state.uploaded =:= StateCurrent#state.uploaded) of
+         (StateBefore#state.uploaded =:=
+              StateCurrent#state.uploaded) andalso
+         (StateBefore#state.loaded_from_urls =:=
+              StateCurrent#state.loaded_from_urls) of
         true  -> ok;
         false -> notify_crl_consumers()
     end.
@@ -763,7 +791,9 @@ default_config() ->
             node_to_node => disabled},
       delta_crls => false,
       poll_interval_ms => ?DEFAULT_POLL_INTERVAL_MS,
-      check_intermediate_certs => false}.
+      check_intermediate_certs => false,
+      crl_urls => [],
+      url_poll_interval_ms => ?DEFAULT_URL_POLL_INTERVAL_MS}.
 
 %% Apply a new configuration to State without creating a window where the
 %% cache is empty and without the race where a non-disabled policy is
@@ -790,13 +820,17 @@ default_config() ->
 %%     Any verify_fun call that now sees a non-disabled policy is guaranteed
 %%     to find its CRLs in the cache.
 -spec apply_config(map(), #state{}) -> #state{}.
-apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
-    NewPollDir  = maps:get(poll_directory, Cfg),
-    NewInterval = maps:get(poll_interval_ms, Cfg),
-    NewPolicies = maps:get(policy_per_scope, Cfg),
-    CheckInterm = maps:get(check_intermediate_certs, Cfg, false),
-    State1 = State#state{poll_directory = NewPollDir,
-                         poll_interval_ms = NewInterval},
+apply_config(Cfg, #state{poll_directory = OldPollDir,
+                         url_file_state = OldUrlsState} = State) ->
+    NewPollDir     = maps:get(poll_directory, Cfg),
+    NewInterval    = maps:get(poll_interval_ms, Cfg),
+    NewPolicies    = maps:get(policy_per_scope, Cfg),
+    CheckInterm    = maps:get(check_intermediate_certs, Cfg, false),
+    NewUrls        = maps:get(crl_urls, Cfg, []),
+    NewUrlInterval = maps:get(url_poll_interval_ms, Cfg),
+    State1 = State#state{poll_directory       = NewPollDir,
+                         poll_interval_ms     = NewInterval,
+                         url_poll_interval_ms = NewUrlInterval},
 
     %% Phase 1: disable scopes whose new policy is 'disabled'.
     %% Also disable intermediate-cert checking here when the new value is
@@ -812,7 +846,7 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
         true  -> ok
     end,
 
-    %% Phase 2: update CRL data.
+    %% Phase 2a: update poll-directory CRL data.
     State2 =
         case {OldPollDir, NewPollDir} of
             {Same, Same} ->
@@ -834,6 +868,17 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
                 scan_directory(Dir, State1, false)
         end,
 
+    %% Phase 2b: update URL-based CRL data.
+    %% reconcile_url_files removes stale URLs from cache and disk, adds
+    %% newly configured ones, then fetches all using conditional GET
+    %% (ETag-based, so unchanged CRLs are not re-downloaded).
+    State3 = case lists:sort(NewUrls) /= lists:sort(maps:keys(OldUrlsState)) of
+                 %% Something has changed:
+                 true -> reconcile_url_files(NewUrls, false, State2);
+                 %% Nothing changed:
+                 false -> State2
+             end,
+
     %% Phase 3: enable / update scopes whose new policy is not 'disabled'.
     %% CRL data is now in the cache, so the verify_fun will find what it
     %% needs as soon as it reads the new policy from ETS.
@@ -850,15 +895,15 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
         false -> ok
     end,
 
-    State2.
+    State3.
 
 %% Schedule the next poll and return the updated state.
 %% No timer is created when there is nothing to poll.
--spec schedule_timer(#state{}) -> #state{}.
-schedule_timer(#state{poll_directory = undefined} = State) ->
+-spec schedule_poll_dir_timer(#state{}) -> #state{}.
+schedule_poll_dir_timer(#state{poll_directory = undefined} = State) ->
     cancel_timer(State#state.poll_timer),
     State#state{poll_timer = undefined};
-schedule_timer(#state{poll_interval_ms = Ms} = State) ->
+schedule_poll_dir_timer(#state{poll_interval_ms = Ms} = State) ->
     cancel_timer(State#state.poll_timer),
     Ref = erlang:send_after(Ms, self(), poll_directory),
     State#state{poll_timer = Ref}.
@@ -868,6 +913,59 @@ cancel_timer(undefined) -> ok;
 cancel_timer(Ref) ->
     erlang:cancel_timer(Ref),
     ok.
+
+%% Schedule (or cancel) the URL poll timer.
+-spec schedule_url_timer(#state{}) -> #state{}.
+schedule_url_timer(#state{url_file_state = UrlFS} = State)
+        when map_size(UrlFS) =:= 0 ->
+    cancel_timer(State#state.url_poll_timer),
+    State#state{url_poll_timer = undefined};
+schedule_url_timer(#state{url_poll_interval_ms = Ms,
+                          url_file_state = UrlFS} = State) ->
+    cancel_timer(State#state.url_poll_timer),
+    AnyFailed =
+        maps:fold(
+          fun (_, #crl_reload_status{result = failed}, _) -> true;
+              (_, _, Acc) -> Acc
+          end, false, UrlFS),
+    Interval = case AnyFailed of
+                   true -> min(?URL_RETRY_INTERVAL_MS, Ms);
+                   false -> Ms
+               end,
+    Ref = erlang:send_after(Interval, self(), poll_urls),
+    State#state{url_poll_timer = Ref}.
+
+%% Reconcile URL-based CRL files against URLList (from configuration).
+%%
+%%   Removed URLs — cache entry and disk files (CRL + .etag sidecar) are
+%%                  deleted; the URL is removed from url_file_state.
+%%   All URLs     — fetched using conditional GET; the stored ETag is sent
+%%                  as If-None-Match so unchanged CRLs produce a 304 and
+%%                  require no re-download.
+-spec reconcile_url_files([binary()], boolean(), #state{}) -> #state{}.
+reconcile_url_files(NewURLList, Force, State) ->
+    NewUrlSet = sets:from_list(NewURLList),
+    %% Remove files for URLs no longer in the configuration.
+    ExpectedFilenamesSet = sets:from_list([url_filename(E) || E <- NewURLList]),
+    NewLoaded = maps:filter(
+                  fun (Filename, _Checksum) ->
+                      case sets:is_element(Filename, ExpectedFilenamesSet) of
+                          true -> true;
+                          false ->
+                              CrlPath = filename:join(url_crls_dir(), Filename),
+                              case write_etag(CrlPath, undefined) of
+                                  ok -> ok /= remove_from_cache(url, Filename);
+                                  {error, _} -> true
+                              end
+                      end
+                  end, State#state.loaded_from_urls),
+    NewUrlFS = maps:filter(
+                 fun (URL, _Status) -> sets:is_element(URL, NewUrlSet) end,
+                 State#state.url_file_state),
+    %% Download all URLs; ETags prevent redundant transfers.
+    fetch_all_urls(NewURLList, Force,
+                   State#state{loaded_from_urls = NewLoaded,
+                               url_file_state = NewUrlFS}).
 
 %% Scan the load directory, (re)loading each file independently into
 %% config/crls and the cache, and reconciling files that have disappeared.
@@ -891,8 +989,11 @@ cancel_timer(Ref) ->
 %% that files sharing a base name across different directories are never
 %% confused.  active is keyed by base name: it mirrors crls_dir(), which is a
 %% flat, fixed directory, so there is no ambiguity there.
--spec scan_directory(file:filename_all(), #state{}, ForceReload :: boolean()) ->
+-spec scan_directory(file:filename_all() | undefined, #state{},
+                     ForceReload :: boolean()) ->
           #state{}.
+scan_directory(undefined, State, _ForceReload) ->
+    State;
 scan_directory(DirBin, State, ForceReload) when is_binary(DirBin) ->
     scan_directory(binary_to_list(DirBin), State, ForceReload);
 scan_directory(Dir, State, ForceReload) ->
@@ -1010,22 +1111,26 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
                     loaded_locally = maps:put(Name, Checksum, Loaded)}
     else
         {error, Reason} ->
+            ErrorStrings = format_load_errors(Reason),
+            ?log_warning("Failed to load CRLs from ~s:~n~s",
+                         [Path, lists:join(<<"\n">>, ErrorStrings)]),
             BadStatus = #crl_reload_status{mtime  = FileMTime,
                                            result = failed,
                                            time   = CurTS,
-                                           errors = format_load_errors(Reason)},
+                                           errors = ErrorStrings},
             State#state{file_state = maps:put(Path, BadStatus, FS)}
     end.
 
 %% Copy a fully-valid file verbatim into config/crls and insert its entries
 %% into the cache.
--spec add_to_cache(local | upload, file:filename_all(), binary(),
+-spec add_to_cache(local | upload | url, file:filename_all(), binary(),
                    [entry_result()]) ->
           {ok, binary()} | {error, term()}.
 add_to_cache(CacheType, Name, Binary, VerifiedEntries) ->
     Dir = case CacheType of
-              local -> local_crls_dir();
-              upload -> crls_dir()
+              local  -> local_crls_dir();
+              upload -> crls_dir();
+              url    -> url_crls_dir()
           end,
     FilePath = filename:join(Dir, Name),
     ?log_debug("Adding CRL file ~p to cache", [FilePath]),
@@ -1042,13 +1147,15 @@ add_to_cache(CacheType, Name, Binary, VerifiedEntries) ->
             {error, Err}
     end.
 
-%% Remove a crl copy and its cache entry.
--spec remove_from_cache(local | upload, file:filename_all()) ->
+%% Remove a CRL copy and its cache entry.
+%% For URL-fetched files the ETag sidecar is also removed.
+-spec remove_from_cache(local | upload | url, file:filename_all()) ->
           ok | {error, term()}.
 remove_from_cache(CacheType, Name) ->
     Dir = case CacheType of
-              local -> local_crls_dir();
-              upload -> crls_dir()
+              local  -> local_crls_dir();
+              upload -> crls_dir();
+              url    -> url_crls_dir()
           end,
     FullPath = filename:join(Dir, Name),
     cb_crl_cache:remove_file(FullPath),
@@ -1073,24 +1180,37 @@ format_load_errors({decode_error, Reason}) ->
     [misc:format_bin("Failed to decode file. Reason: ~s", [ReasonStr])];
 format_load_errors({bad_crl_entries, BadEntries}) ->
     [entry_error_text(R) || R <- BadEntries];
+format_load_errors({http_status, Code, undefined}) ->
+    [misc:format_bin("HTTP ~p (missing body)", [Code])];
+format_load_errors({http_status, Code, Body}) when is_binary(Body) ->
+    [misc:format_bin("HTTP ~p ~s", [Code, misc:bin_part_near(Body, 0, 30)])];
+format_load_errors({http_failed, Reason}) ->
+    [misc:format_bin("HTTP Request failed: ~p", [Reason])];
+format_load_errors({etag_save, Reason}) ->
+    [misc:format_bin("Failed to save etag file: ~p", [Reason])];
 format_load_errors({invalid_crl, _}) ->
     [<<"Invalid CRL">>];
 format_load_errors(Other) ->
     [misc:format_bin("Unexpected error. Reason: ~p", [Other])].
 
-%% Remove cache entries no longer in loaded_locally (config/crls/local/)
-%% or uploaded (config/crls/).  Cleans up stale entries left by a
-%% previous gen_server instance after a crash during file deletion.
--spec purge_stale_cache_entries(active_files(), active_files()) -> ok.
-purge_stale_cache_entries(LoadedLocally, Uploaded) ->
+%% Remove cache entries no longer in loaded_locally (config/crls/local/),
+%% uploaded (config/crls/), or loaded_from_urls (config/crls/url/).
+%% Cleans up stale entries left by a previous gen_server instance after
+%% a crash during file deletion.
+-spec purge_stale_cache_entries(active_files(), active_files(),
+                                active_files()) -> ok.
+purge_stale_cache_entries(LoadedLocally, Uploaded, LoadedFromUrls) ->
     LocalCrlsDir    = local_crls_dir(),
     UploadedCrlsDir = crls_dir(),
+    UrlCrlsDir      = url_crls_dir(),
     ExpectedPaths =
         sets:from_list(
           [misc:normalize_path(filename:join(LocalCrlsDir, N))
            || N <- maps:keys(LoadedLocally)] ++
           [misc:normalize_path(filename:join(UploadedCrlsDir, N))
-           || N <- maps:keys(Uploaded)]),
+           || N <- maps:keys(Uploaded)] ++
+          [misc:normalize_path(filename:join(UrlCrlsDir, N))
+           || N <- maps:keys(LoadedFromUrls)]),
     lists:foreach(
       fun (CachedPath) ->
               case sets:is_element(misc:normalize_path(CachedPath),
@@ -1119,6 +1239,13 @@ crls_dir() ->
 local_crls_dir() ->
     filename:join(crls_dir(), "local").
 
+%% config/crls/url/ — storage for URL-fetched CRL files.
+%% Each file is named by the SHA-256 hex digest of its source URL, making
+%% the mapping deterministic and filesystem-safe.
+-spec url_crls_dir() -> file:filename_all().
+url_crls_dir() ->
+    filename:join(crls_dir(), "url").
+
 %% misc:mkdir_p/1 returns ok when the directory already exists, so any error
 %% here is genuine.  We return it so init/1 crashes the gen_server.
 -spec ensure_dir(file:filename_all()) -> ok | {error, term()}.
@@ -1136,7 +1263,9 @@ ensure_dir(Dir) ->
 -spec populate_cache_from_dir(file:filename_all()) -> active_files().
 populate_cache_from_dir(Dir) ->
     Names = case file:list_dir(Dir) of
-                {ok, Ns} -> [N || N <- Ns, N =/= [], hd(N) =/= $.];
+                {ok, Ns} ->
+                    [N || N <- Ns, N =/= [], hd(N) =/= $.,
+                          filename:extension(N) =/= ".etag"];
                 {error, _} -> []
             end,
     lists:foldl(
@@ -1176,16 +1305,19 @@ default_local_crl_source_dir() ->
 
 %% Build the file-version list for the push config.
 %% Returns [{PathBin, ChecksumBin}] for all currently-held CRL files.
-%% Poll-based files come from local_crls_dir(); uploaded from crls_dir().
--spec build_file_versions(active_files(), active_files()) ->
-          [{binary(), binary()}].
-build_file_versions(LoadedLocally, Uploaded) ->
-    LocalDir    = local_crls_dir(),
-    UploadedDir = crls_dir(),
+-spec build_file_versions(#state{}) -> [{binary(), binary()}].
+build_file_versions(#state{loaded_locally   = LoadedLocally,
+                           uploaded         = Uploaded,
+                           loaded_from_urls = LoadedFromUrls}) ->
+    LocalDir  = local_crls_dir(),
+    UploadDir = crls_dir(),
+    UrlDir    = url_crls_dir(),
     [{iolist_to_binary(filename:join(LocalDir, N)), Cs}
      || {N, Cs} <- maps:to_list(LoadedLocally)] ++
-    [{iolist_to_binary(filename:join(UploadedDir, N)), Cs}
-     || {N, Cs} <- maps:to_list(Uploaded)].
+    [{iolist_to_binary(filename:join(UploadDir, N)), Cs}
+     || {N, Cs} <- maps:to_list(Uploaded)] ++
+    [{iolist_to_binary(filename:join(UrlDir, N)), Cs}
+     || {N, Cs} <- maps:to_list(LoadedFromUrls)].
 
 %%%===================================================================
 %%% Status helpers (used by get_status/0)
@@ -1201,18 +1333,21 @@ build_file_versions(LoadedLocally, Uploaded) ->
 %%
 %% Each map contains:
 %%   filename    — binary base name
-%%   source      — local_dir | uploaded
+%%   source      — local_dir | uploaded | url
 %%   status      — active | expired | not_yet_valid | untrusted
 %%                 | invalid | not_loaded
 %%   entries     — per-entry breakdown
 %%   last_reload — #{result, time, errors}
 -spec build_status_map(#state{}) -> [map()].
-build_status_map(#state{file_state     = FS,
-                        loaded_locally = LoadedLocally,
-                        uploaded       = Uploaded}) ->
+build_status_map(#state{file_state       = FS,
+                        loaded_locally   = LoadedLocally,
+                        uploaded         = Uploaded,
+                        url_file_state   = UrlFS,
+                        loaded_from_urls = LoadedFromUrls}) ->
     TrustedDerCAs = ns_server_cert:trusted_CAs(der),
     LocalDir    = local_crls_dir(),
     UploadedDir = crls_dir(),
+    UrlDir      = url_crls_dir(),
     %% Poll-based entries — one per file_state entry.
     PollList =
         maps:fold(
@@ -1254,7 +1389,27 @@ build_status_map(#state{file_state     = FS,
                     entries     => Entries,
                     last_reload => LastReload}
           end, maps:to_list(get_crl_files_metadata())),
-    PollList ++ UploadedList.
+    %% URL-fetched entries — url_file_state is the authoritative list.
+    UrlList =
+        maps:fold(
+          fun (URL, ReloadStatus, Acc) ->
+                  Name    = url_filename(URL),
+                  CrlPath = filename:join(UrlDir, Name),
+                  {Status, Entries} =
+                      case maps:is_key(Name, LoadedFromUrls) of
+                          true ->
+                              current_status(CrlPath, TrustedDerCAs);
+                          false ->
+                              {not_loaded, []}
+                      end,
+                  [#{filename    => iolist_to_binary(URL),
+                     source      => url,
+                     status      => Status,
+                     entries     => Entries,
+                     last_reload =>
+                         last_reload_map(ReloadStatus)} | Acc]
+          end, [], UrlFS),
+    PollList ++ UploadedList ++ UrlList.
 
 %% Compute the current status of an active CRL by reading DER entries from
 %% the cache and re-verifying them now.  Returns {FileStatus, [EntryMap]}.
@@ -1383,6 +1538,177 @@ reason_string(Other) ->
 file_checksum(Binary) ->
     Hash = crypto:hash(sha256, Binary),
     iolist_to_binary([io_lib:format("~2.16.0b", [B]) || <<B>> <= Hash]).
+
+%%%===================================================================
+%%% URL-fetching helpers
+%%%===================================================================
+
+%% Derive the on-disk base name for a URL-fetched CRL.
+%% Uses SHA-256 of the URL so the name is deterministic, unique per URL,
+%% and filesystem-safe (64 lowercase hex chars).
+-spec url_filename(binary()) -> string().
+url_filename(URL) ->
+    <<H:256/big-unsigned-integer>> = crypto:hash(sha256, URL),
+    lists:flatten(io_lib:format("~64.16.0b.crl", [H])).
+
+%% Return the path of the ETag sidecar file for a given CRL path.
+-spec etag_path(file:filename_all()) -> file:filename_all().
+etag_path(CrlPath) -> filename:rootname(CrlPath) ++ ".etag".
+
+%% Read a stored ETag from its sidecar file.
+%% Returns undefined when no sidecar exists or it cannot be read.
+-spec read_etag(file:filename_all()) -> binary() | undefined.
+read_etag(CrlPath) ->
+    ETagPath = etag_path(CrlPath),
+    case file:read_file(ETagPath) of
+        {ok, ETag} -> string:trim(ETag);
+        {error, enoent} -> undefined; %% expected
+        {error, Reason} ->
+            %% Not expected, not critical though. Will redownload the file
+            ?log_warning("Failed to read etag file ~s: ~p", [ETagPath, Reason]),
+            undefined
+    end.
+
+%% Write an ETag to its sidecar file atomically.
+-spec write_etag(file:filename_all(), binary() | undefined) ->
+          ok | {error, term()}.
+write_etag(CrlPath, undefined) ->
+    %% Server haven't sent us an etag
+    %% Make sure we don't have any old etags on disk for that CRL
+    ETagPath = etag_path(CrlPath),
+    case file:delete(ETagPath) of
+        ok -> ok;
+        {error, enoent} -> ok;
+        {error, Reason} ->
+            ?log_warning("Failed to delete etag file ~s: ~p",
+                         [ETagPath, Reason]),
+            {error, Reason}
+    end;
+write_etag(CrlPath, ETag) when is_binary(ETag) ->
+    ETagPath = etag_path(CrlPath),
+    case misc:atomic_write_file(ETagPath, ETag) of
+        ok -> ok;
+        {error, Reason} ->
+            ?log_warning("Failed to write etag file ~s: ~p",
+                         [ETagPath, Reason]),
+            {error, Reason}
+    end.
+
+%% Extract the ETag value from HTTP response headers (case-insensitive).
+-spec get_etag_header([{string(), string()}]) -> binary() | undefined.
+get_etag_header(Headers) ->
+    Lower = [{string:to_lower(K), V} || {K, V} <- Headers],
+    case lists:keyfind("etag", 1, Lower) of
+        {_, ETag} -> iolist_to_binary(string:trim(ETag));
+        false     -> undefined
+    end.
+
+%% Fetch all configured URLs and update the state accordingly.
+-spec fetch_all_urls([binary()], boolean(), #state{}) -> #state{}.
+fetch_all_urls(URLList, Force, State) ->
+    TS = calendar:universal_time(),
+    lists:foldl(fun (URL, S) ->
+                    fetch_one_url(URL, TS, Force, S)
+                end, State, URLList).
+
+%% Fetch a single URL using a conditional GET (If-None-Match when an ETag
+%% is stored).  Updates url_file_state and loaded_from_urls in the state.
+%%
+%%   304 Not Modified → keep existing cached file; record loaded status.
+%%   200 OK           → verify and install; store new ETag if present.
+%%   Other / error    → record failure; leave any existing good copy.
+-spec fetch_one_url(binary(), calendar:datetime(), boolean(), #state{}) ->
+          #state{}.
+fetch_one_url(URL, TS, Force, #state{url_file_state = UrlFS} = State) ->
+    Name = url_filename(URL),
+    CrlPath = filename:join(url_crls_dir(), Name),
+    %% Use ETag from state when available; read the .etag sidecar from disk
+    %% only on first access after startup.
+    StoredETag = case maps:find(URL, UrlFS) of
+                     {ok, #crl_reload_status{etag = ET}} -> ET;
+                     error -> read_etag(CrlPath)
+                 end,
+    ReqHeaders = case StoredETag of
+                     undefined -> [];
+                     _ETag when Force -> [];
+                     ETag when is_binary(ETag) -> [{"If-None-Match", ETag}]
+                 end,
+    URLStr = binary_to_list(URL),
+    ?log_debug("CRL URL fetching ~s (etag=~p)", [URL, StoredETag]),
+    case lhttpc:request(URLStr, "GET", ReqHeaders, [],
+                        ?URL_FETCH_TIMEOUT_MS, []) of
+        {ok, {{304, _}, _, _}} ->
+            ?log_debug("CRL URL ~s: 304 Not Modified", [URL]),
+            Status = #crl_reload_status{etag = StoredETag,
+                                        result = loaded,
+                                        time = TS,
+                                        errors = []},
+            State#state{url_file_state = maps:put(URL, Status, UrlFS)};
+        {ok, {{200, _}, RespHeaders, Body}} ->
+            ResponseETag = get_etag_header(RespHeaders),
+            ?log_debug("CRL URL ~s: 200 (etag=~p)", [URL, ResponseETag]),
+            install_url_crl(URL, Name, CrlPath, Body, ResponseETag, StoredETag,
+                            TS, State);
+        {ok, {{HttpStatus, _}, _, Body}} ->
+            ?log_warning("CRL URL ~s: unexpected HTTP status ~p~nBody: ~p",
+                            [URL, HttpStatus, Body]),
+            R = {http_status, HttpStatus, Body},
+            Status = #crl_reload_status{etag = StoredETag,
+                                        result = failed,
+                                        time   = TS,
+                                        errors = format_load_errors(R)},
+            State#state{url_file_state = maps:put(URL, Status, UrlFS)};
+        {error, Reason} ->
+            ?log_warning("CRL URL ~s: fetch failed: ~p", [URL, Reason]),
+            R = {http_failed, Reason},
+            Status = #crl_reload_status{etag = StoredETag,
+                                        result = failed,
+                                        time   = TS,
+                                        errors = format_load_errors(R)},
+            State#state{url_file_state = maps:put(URL, Status, UrlFS)}
+    end.
+
+%% Verify a downloaded CRL body and install it into the cache.
+%% On success the file and its ETag sidecar are written atomically.
+%% On failure any existing good copy is left untouched.
+-spec install_url_crl(binary(), string(), file:filename_all(),
+                      binary(), binary() | undefined, binary() | undefined,
+                      calendar:datetime(), #state{}) -> #state{}.
+install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS,
+                #state{loaded_from_urls = LoadedFromUrls,
+                       url_file_state = UrlFS} = State) ->
+    AllowExpired = ?get_param(allow_expired_crls, false),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    maybe
+        {ok, Results} ?= decode_and_verify_crl(Body, TrustedCAs, AllowExpired),
+        Bad = [R || R <- Results, R#entry_result.result =/= ok],
+        ok ?= case Bad of
+                  [] -> ok;
+                  [_ | _] -> {error, {bad_crl_entries, Bad}}
+              end,
+        {ok, Checksum} ?= add_to_cache(url, Name, Body, Results),
+        Errors = case write_etag(CrlPath, NewETag) of
+                     ok -> [];
+                     {error, R} -> format_load_errors({etag_save, R})
+                 end,
+        ?log_debug("CRL URL ~p: installed (~b bytes)", [URL, byte_size(Body)]),
+        Status = #crl_reload_status{etag = NewETag,
+                                    result = loaded,
+                                    time   = TS,
+                                    errors = Errors},
+        State#state{url_file_state = maps:put(URL, Status, UrlFS),
+                    loaded_from_urls = maps:put(Name, Checksum, LoadedFromUrls)}
+    else
+        {error, Reason} ->
+            ErrorStrings = format_load_errors(Reason),
+            ?log_warning("Failed to install CRL from URL ~s:~n~s",
+                         [URL, lists:join(<<"\n">>, ErrorStrings)]),
+            ErrStatus = #crl_reload_status{etag = CurETag,
+                                           result = failed,
+                                           time   = TS,
+                                           errors = ErrorStrings},
+            State#state{url_file_state = maps:put(URL, ErrStatus, UrlFS)}
+    end.
 
 %% Try PEM first; public_key:pem_decode/1 returns [] for non-PEM input so
 %% calling it on a DER binary is safe.
