@@ -254,7 +254,10 @@ get_crls_for_cert_issuer(OtpCert) ->
 %%
 %% Uses public_key:pkix_is_issuer/2 to locate the trusted CA whose
 %% subject matches the CRL's issuer, then returns it as the trust
-%% anchor with CertPath = [].
+%% anchor with CertPath = [].  When multiple CAs share the same
+%% subject name (e.g. during a key rollover), the AKI keyIdentifier
+%% in the CRL is matched against each candidate's SKI to pick the
+%% correct one.
 %%
 %% Limitation: this does not support dedicated CRL signing
 %% certificates (a leaf cert, not a CA, issued specifically for CRL
@@ -282,17 +285,80 @@ make_issuer_fun(TrustedDerCAs) ->
                                  [ns_server_cert:format_name(
                                     public_key:pkix_crl_issuer(CRL))]),
                     {error, issuer_not_found};
-                [DerCA | MoreCerts] ->
-                    case MoreCerts of
-                        [] -> ok;
-                        _  ->
-                            ?log_debug("Multiple matching CRL issuers found "
-                                       "for CRL with issuer ~p",
-                                       [ns_server_cert:format_name(
-                                          public_key:pkix_crl_issuer(CRL))])
-                    end,
-                    OtpCA =
-                        public_key:pkix_decode_cert(DerCA, otp),
-                    {ok, OtpCA, []}
+                [DerCA] ->
+                    OtpCA = public_key:pkix_decode_cert(DerCA, otp),
+                    {ok, OtpCA, []};
+                [_ | _] ->
+                    ?log_debug("Multiple CAs share subject of CRL issuer ~p; "
+                               "using AKI/SKI to disambiguate",
+                               [ns_server_cert:format_name(
+                                  public_key:pkix_crl_issuer(CRL))]),
+                    AKI = crl_aki_key_id(CRL),
+                    case search_by_aki(AKI, Matching) of
+                        {ok, OtpCA} -> {ok, OtpCA, []};
+                        error ->
+                            %% Failed to find the CA by AKI, so just take
+                            %% the latest one (first one in the list)
+                            DerCA = hd(Matching),
+                            OtpCA = public_key:pkix_decode_cert(DerCA, otp),
+                            {ok, OtpCA, []}
+                    end
+            end
+    end.
+
+-spec search_by_aki(binary() | undefined, [binary()]) ->
+          {ok, #'OTPCertificate'{}} | error.
+search_by_aki(undefined, _CandidatesDer) -> error; %% There is no AKI in CRL
+search_by_aki(_AKIKeyId, []) -> error;
+search_by_aki(AKIKeyId, [CADer | RestCAs]) ->
+    try public_key:pkix_decode_cert(CADer, otp) of
+        OtpCACert ->
+            case cert_ski(OtpCACert) == AKIKeyId of
+                true -> {ok, OtpCACert};
+                false -> search_by_aki(AKIKeyId, RestCAs)
+            end
+    catch
+        _:_ ->
+            ?log_warning("Failed to decode cert:~n~p", [CADer]),
+            search_by_aki(AKIKeyId, RestCAs)
+    end.
+
+%% Extract the keyIdentifier field from a CRL's AKI extension.
+%% Returns undefined when the extension is absent or carries no keyIdentifier.
+-spec crl_aki_key_id(#'CertificateList'{}) -> binary() | undefined.
+crl_aki_key_id(CRL) ->
+    Exts = (CRL#'CertificateList'.tbsCertList)#'TBSCertList'.crlExtensions,
+    case Exts of
+        asn1_NOVALUE -> undefined;
+        _ ->
+            case lists:keyfind(?'id-ce-authorityKeyIdentifier',
+                               #'Extension'.extnID, Exts) of
+                false -> undefined;
+                #'Extension'{extnValue = Val} ->
+                    try public_key:der_decode('AuthorityKeyIdentifier', Val) of
+                        #'AuthorityKeyIdentifier'{keyIdentifier = KeyId} ->
+                            case KeyId of
+                                asn1_NOVALUE -> undefined;
+                                _ -> KeyId
+                            end
+                    catch _:_ ->
+                        undefined
+                    end
+            end
+    end.
+
+%% Extract the keyIdentifier from a decoded CA cert's SKI extension.
+%% Returns undefined when the extension is absent.
+-spec cert_ski(#'OTPCertificate'{}) -> binary() | undefined.
+cert_ski(OtpCA) ->
+    TBS = OtpCA#'OTPCertificate'.tbsCertificate,
+    Exts = TBS#'OTPTBSCertificate'.extensions,
+    case Exts of
+        asn1_NOVALUE -> undefined;
+        _ ->
+            case lists:keyfind(?'id-ce-subjectKeyIdentifier',
+                               #'Extension'.extnID, Exts) of
+                false -> undefined;
+                #'Extension'{extnValue = Id} -> Id
             end
     end.

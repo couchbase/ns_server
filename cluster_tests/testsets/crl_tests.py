@@ -386,6 +386,14 @@ class CRLTests(testlib.BaseTestSet):
 
             inter_ca1_pem, inter_ca1_key_pem = generate_intermediate_ca(
                 root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 1')
+
+            # Different certs with the same CN; to make sure the server
+            # can find the correct one by AKI/SKI
+            fake_inter_ca1_pem1, _ = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 1')
+            fake_inter_ca1_pem2, _ = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 1')
+
             inter_ca2_pem, inter_ca2_key_pem = generate_intermediate_ca(
                 root_ca_pem, root_ca_key_pem, cn='Test Intermediate CA 2')
             inter_ca3_pem, inter_ca3_key_pem = generate_intermediate_ca(
@@ -426,8 +434,10 @@ class CRLTests(testlib.BaseTestSet):
             # ------------------------------------------------------------------
             # Step 4: Load all CAs as trusted
             # ------------------------------------------------------------------
-            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca1_pem,
-                                              inter_ca2_pem, inter_ca3_pem])
+            ca_ids = load_multiple_cas(node, [root_ca_pem, fake_inter_ca1_pem1,
+                                              inter_ca1_pem, inter_ca2_pem,
+                                              inter_ca3_pem,
+                                              fake_inter_ca1_pem2])
 
             # ------------------------------------------------------------------
             # Step 5: Verify all 5 client certs can authenticate before CRL
