@@ -62,7 +62,8 @@
 
 -module(menelaus_web_settings2).
 
--export([prepare_json/4, handle_get/5, handle_post/5, handle_post/7]).
+-export([prepare_json/4, handle_get/5, handle_post/5, handle_post/7,
+         apply_changes/2]).
 
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
@@ -978,3 +979,22 @@ mandatory_test() ->
                {[{"K1.K4",<<"The value must be supplied">>}]})
       end).
 -endif.
+
+
+%% Helper function for updating deep multi-level proplists
+apply_changes(OldProps, NewProps) ->
+    lists:foldl(
+      fun ({KeyTokens, Value}, Acc) ->
+              apply_value(KeyTokens, Value, Acc)
+      end, OldProps, NewProps).
+
+apply_value([], Value, _PropList) -> Value;
+apply_value([Key | Tail], Value, PropList) ->
+    Res = misc:key_update(Key, PropList,
+                          fun (SubProplist) ->
+                              apply_value(Tail, Value, SubProplist)
+                          end),
+    case Res of
+        false -> [{Key, apply_value(Tail, Value, [])} | PropList];
+        _ -> Res
+    end.

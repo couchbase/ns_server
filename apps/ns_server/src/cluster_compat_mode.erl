@@ -32,6 +32,7 @@
          is_version_80/1,
          is_enterprise/0,
          is_enterprise/1,
+         is_node_enterprise/2,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
          supported_compat_version/0,
@@ -167,6 +168,9 @@ is_enterprise(Config) ->
 
 is_enterprise() ->
     is_enterprise(ns_config:latest()).
+
+is_node_enterprise(Node, Config) ->
+    ns_config:search(Config, {node, Node, is_enterprise}, false).
 
 is_saslauthd_enabled() ->
     is_enterprise() andalso
