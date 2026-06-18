@@ -40,7 +40,8 @@
 -record(state, {
                 enabled = true :: boolean(),
                 report_timer_ref :: undefined | timer:tref(),
-                report_pid :: undefined | pid()
+                report_pid :: undefined | pid(),
+                max_external_nodes = 0 :: integer()
                }).
 
 %%%===================================================================
@@ -74,8 +75,9 @@ init([]) ->
     ets:new(?TABLE, [named_table, set]),
     {ok, update_config(#state{})}.
 
-handle_call({ingest, Opts, Payload}, _From, State) ->
-    {reply, ingest_external_payload(Opts, Payload), State};
+handle_call({ingest, Opts, Payload}, _From,
+            #state{max_external_nodes = MaxExternalNodes} = State) ->
+    {reply, ingest_external_payload(Opts, Payload, MaxExternalNodes), State};
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
 
@@ -124,15 +126,24 @@ update_metric(Result) ->
       {?SENDS_METRIC, [{result, Result}]}).
 
 ingest_external_payload(#{product_name := ProductName, instance_id := Instance},
-                        Payload) ->
-    ets:insert(?TABLE, {{list_to_binary(ProductName), Instance}, Payload}),
-    ok.
+                        Payload, MaxExternalNodes) ->
+    Key = {list_to_binary(ProductName), Instance},
+    IsUpdate = ets:member(?TABLE, Key),
+    case IsUpdate orelse ets:info(?TABLE, size) < MaxExternalNodes of
+        true ->
+            ets:insert(?TABLE, {Key, Payload}),
+            ok;
+        false ->
+            {error, too_many_payloads}
+    end.
 
 update_config(State0) ->
     Config = build_settings(),
 
     Enabled = get_setting(reporting_enabled, Config),
-    State1 = State0#state{enabled = Enabled},
+    MaxExternalNodes = get_setting(external_nodes_max_count, Config),
+    State1 = State0#state{enabled = Enabled,
+                          max_external_nodes = MaxExternalNodes},
 
     %% Update the reporter state
     ReportIntervalHours = get_setting(reporting_interval_hours, Config),
@@ -144,8 +155,8 @@ default_config() ->
       reporting_timeout_seconds => 1,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>,
       reporting_port => 443,
-      external_nodes_max_payload_bytes => 10_240  %% 10KiB
-     }.
+      external_nodes_max_payload_bytes => 10_240,  %% 10KiB
+      external_nodes_max_count => 100}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
@@ -153,7 +164,8 @@ default_config() ->
              reporting_timeout_seconds |
              reporting_endpoint |
              reporting_port |
-             external_nodes_max_payload_bytes,
+             external_nodes_max_payload_bytes |
+             external_nodes_max_count,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).

@@ -33,7 +33,9 @@ params_internal() ->
      {"reportTimeoutSeconds",
       #{cfg_key => reporting_timeout_seconds, type => pos_int}},
      {"externalNodesMaxPayloadBytes",
-      #{cfg_key => external_nodes_max_payload_bytes, type => int}}].
+      #{cfg_key => external_nodes_max_payload_bytes, type => int}},
+     {"externalNodesMaxCount",
+      #{cfg_key => external_nodes_max_count, type => int}}].
 
 type_spec(endpoint) ->
     #{validators => [string, validate_endpoint()]}.
@@ -70,10 +72,14 @@ handle_ingest(Req) ->
               validator:handle(
                 fun (Payload) ->
                         PayloadEncoded = ejson:encode({Payload}),
-                        ok = lighthouse_reporter:ingest(Opts, PayloadEncoded),
-                        %% Respond with 204 (No Content), consistent
-                        %% with the lighthouse portal itself
-                        menelaus_util:reply(Req, 204)
+                        case lighthouse_reporter:ingest(Opts, PayloadEncoded) of
+                            ok ->
+                                %% Respond with 204 (No Content), consistent
+                                %% with the lighthouse portal itself
+                                menelaus_util:reply(Req, 204);
+                            {error, too_many_payloads} ->
+                                menelaus_util:reply(Req, 507)
+                        end
                 end, Req, json, [],
                 lighthouse_reporter:max_external_payload_size())
       end, Req, qs, ingest_validators()).
