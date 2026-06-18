@@ -1386,7 +1386,7 @@ idle({start_op, Op, Params}, From, _State) ->
              #op_state{manager = Manager, op = Op, reply_to = From}};
         Error ->
             ?log_debug("Operation ~p with params = ~p failed with ~p",
-                       [Error]),
+                       [Op, Params, Error]),
             {keep_state_and_data, {reply, From, Error}}
     end;
 
