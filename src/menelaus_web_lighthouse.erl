@@ -31,7 +31,9 @@ params_internal() ->
      {"reportIntervalHours",
       #{cfg_key => reporting_interval_hours, type => pos_int}},
      {"reportTimeoutSeconds",
-      #{cfg_key => reporting_timeout_seconds, type => pos_int}}].
+      #{cfg_key => reporting_timeout_seconds, type => pos_int}},
+     {"externalNodesMaxPayloadBytes",
+      #{cfg_key => external_nodes_max_payload_bytes, type => int}}].
 
 type_spec(endpoint) ->
     #{validators => [string, validate_endpoint()]}.
@@ -72,7 +74,8 @@ handle_ingest(Req) ->
                         %% Respond with 204 (No Content), consistent
                         %% with the lighthouse portal itself
                         menelaus_util:reply(Req, 204)
-                end, Req, json, [])
+                end, Req, json, [],
+                lighthouse_reporter:max_external_payload_size())
       end, Req, qs, ingest_validators()).
 
 ingest_validators() ->

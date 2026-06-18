@@ -24,7 +24,8 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, config_key/0, build_settings/0, ingest/2]).
+-export([start_link/0, config_key/0, build_settings/0, ingest/2,
+         max_external_payload_size/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -58,6 +59,9 @@ build_settings() ->
 
 ingest(Opts, Payload) ->
     gen_server:call(?SERVER, {ingest, Opts, Payload}).
+
+max_external_payload_size() ->
+    get_setting(external_nodes_max_payload_bytes, build_settings()).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -139,14 +143,17 @@ default_config() ->
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>,
-      reporting_port => 443}.
+      reporting_port => 443,
+      external_nodes_max_payload_bytes => 10_240  %% 10KiB
+     }.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
              reporting_interval_hours |
              reporting_timeout_seconds |
              reporting_endpoint |
-             reporting_port,
+             reporting_port |
+             external_nodes_max_payload_bytes,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
