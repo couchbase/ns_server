@@ -297,6 +297,27 @@ class StatsAnalyzer:
                         current_entry["memory_worst_used"] = int(
                             mem_match.group(4))
 
+                # Parse /proc/meminfo blob (Linux only). The anon/file LRU
+                # split (Active/Inactive (anon) vs (file)) is not reported to
+                # Prometheus.
+                elif current_entry and "{meminfo," in line:
+                    blob = line
+                    if i + 1 < len(lines):
+                        blob += lines[i + 1]
+                    for key, field in [
+                        ("active_anon", r"Active\(anon\)"),
+                        ("inactive_anon", r"Inactive\(anon\)"),
+                        ("active_file", r"Active\(file\)"),
+                        ("inactive_file", r"Inactive\(file\)"),
+                        ("dirty", "Dirty"),
+                        ("writeback", "Writeback"),
+                    ]:
+                        m = re.search(field + r":\s*(\d+)\s*kB", blob)
+                        if m:
+                            current_entry[f"meminfo_{key}"] = (
+                                int(m.group(1)) * 1024
+                            )
+
                 elif current_entry and "{disk_data," in line:
                     assert mode is None, (
                         f"Expected mode None or disk_data, but was {mode} when "
@@ -605,6 +626,7 @@ class StatsAnalyzer:
             self._plot_top_memory_consumers(node_data, memory_erlang_dir)
             self._plot_cpu_utilization(node_data, cpu_processes_dir)
             self._plot_os_memory_stats(node_data, memory_dir)
+            self._plot_swap_and_page_cache(node_data, memory_dir)
             self._plot_os_cpu_stats(node_data, cpu_dir)
             self._plot_pressure_stats(node_data, node_dir, 1)
             self._plot_disk_stats(node_data, io_dir)
@@ -824,6 +846,98 @@ class StatsAnalyzer:
             plt.tight_layout()
             plt.savefig(output_dir / "allocstalls.png")
             plt.close()
+
+    def _plot_swap_and_page_cache(self, data, output_dir):
+        """Plot swap usage and the /proc/meminfo anon/file LRU breakdown.
+
+        The Active/Inactive (anon) and (file) split comes from the
+        /proc/meminfo blob in the heartbeat (Linux only) and is not reported to
+        Prometheus, so this is the only place the page-cache (file-backed) vs
+        anonymous split is available. Useful for spotting file-cache
+        reclaim behaviour while anonymous memory stays flat.
+        """
+        GB = 1024 ** 3
+        aa, ia = "meminfo_active_anon", "meminfo_inactive_anon"
+        af, iff = "meminfo_active_file", "meminfo_inactive_file"
+
+        have_meminfo = any(
+            c in data.columns for c in [aa, ia, af, iff]
+        )
+        have_swap = (
+            "system_total_swap" in data.columns
+            and "system_free_swap" in data.columns
+        )
+        if not have_meminfo and not have_swap:
+            return
+
+        fig, (ax_swap, ax_breakdown, ax_anon, ax_file) = plt.subplots(
+            4, 1, figsize=(15, 20)
+        )
+        ts = data["timestamp"]
+
+        # 1. Swap used (total - free)
+        if have_swap:
+            swap_used = (
+                data["system_total_swap"] - data["system_free_swap"]
+            ) / GB
+            ax_swap.plot(ts, swap_used, color="red", label="Swap Used (GB)")
+            ax_swap.legend(loc="upper left")
+        ax_swap.set_title("Swap Usage Over Time")
+        ax_swap.set_ylabel("Swap Used (GB)")
+        self._adjust_x_axis(ax_swap)
+
+        # 2. Active/Inactive breakdown (anon + file)
+        for col, label, color in [
+            (aa, "Active(anon) (GB)", "red"),
+            (af, "Active(file) (GB)", "blue"),
+            (ia, "Inactive(anon) (GB)", "orange"),
+            (iff, "Inactive(file) (GB)", "green"),
+        ]:
+            if col in data.columns:
+                ax_breakdown.plot(ts, data[col] / GB, label=label, color=color)
+
+        ax_breakdown.set_title("Active/Inactive Memory Breakdown")
+        ax_breakdown.set_ylabel("Memory (GB)")
+        ax_breakdown.legend(loc="upper right")
+        self._adjust_x_axis(ax_breakdown)
+
+        # 3. Total anonymous (= active + inactive anon) with components
+        if aa in data.columns and ia in data.columns:
+            ax_anon.plot(ts, (data[aa] + data[ia]) / GB, color="darkred",
+                         label="Total Anonymous Memory (GB)")
+        if aa in data.columns:
+            ax_anon.plot(ts, data[aa] / GB, color="red", linestyle="--",
+                         label="Active(anon) (GB)")
+        if ia in data.columns:
+            ax_anon.plot(ts, data[ia] / GB, color="orange", linestyle="--",
+                         label="Inactive(anon) (GB)")
+        ax_anon.set_title("Total Anonymous Memory Over Time")
+        ax_anon.set_ylabel("Memory (GB)")
+        ax_anon.legend(loc="center")
+        self._adjust_x_axis(ax_anon)
+
+        # 4. Total file-backed page cache (= active + inactive file)
+        if af in data.columns and iff in data.columns:
+            ax_file.plot(ts, (data[af] + data[iff]) / GB, color="navy",
+                         label="Total File-Backed Memory (GB)")
+        if af in data.columns:
+            ax_file.plot(ts, data[af] / GB, color="blue", linestyle="--",
+                         label="Active(file) (GB)")
+        if iff in data.columns:
+            ax_file.plot(ts, data[iff] / GB, color="green", linestyle="--",
+                         label="Inactive(file) (GB)")
+        ax_file.set_title("Total File-Backed Memory (Page Cache) Over Time")
+        ax_file.set_ylabel("Memory (GB)")
+        ax_file.legend(loc="center right")
+        self._adjust_x_axis(ax_file)
+
+        node_name = data["node"].iloc[0]
+        fig.suptitle(f"Swap and Page Cache Analysis - {node_name}", y=1.0)
+        plt.tight_layout(rect=[0, 0, 1, 0.98])
+        plt.savefig(
+            output_dir / "swap_and_page_cache.png", bbox_inches="tight"
+        )
+        plt.close()
 
     def _plot_os_cpu_stats(self, data, output_dir):
         """Plot CPU stats from OS."""
