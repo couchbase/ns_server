@@ -2461,6 +2461,27 @@ handle_backup(Req) ->
        validator:validate_multi_params(fun parse_backup_filter/1, exclude, _),
        validator:mutually_exclusive(include, exclude, _)]).
 
+%% The services section of a backup: the credential_consumer grants held by
+%% each service identity. Returns `skip' when the section must be omitted --
+%% caller lacks service-role read permission, the cluster predates totoro, a
+%% top-level exclude ('any') drops it, or there are no grants to report.
+backup_services_section(Req, ExcludeFilters) ->
+    case cluster_compat_mode:is_cluster_totoro() andalso
+        menelaus_auth:has_permission(?SECURITY_READ, Req) andalso
+        not lists:member(any, ExcludeFilters) of
+        false ->
+            skip;
+        true ->
+            case maps:to_list(menelaus_roles:get_all_service_roles()) of
+                [] ->
+                    skip;
+                ServiceGrants ->
+                    [{[{name, atom_to_binary(Id, utf8)},
+                       {roles, [role_to_binary(R) || R <- Roles]}]}
+                     || {Id, Roles} <- ServiceGrants]
+            end
+    end.
+
 parse_backup_filter("user:local:" ++ WC) ->
     case parse_backup_wc(WC) of
         {value, Re} -> {value, {user, local, Re}};
@@ -2534,6 +2555,28 @@ handle_backup(Req, Params) ->
                        backup_filter(ExcludeFilters, IncludeFilters),
                        jsonify_backup_groups()]),
 
+    %% Service-role grants (credential_consumer on service identities) are
+    %% included only when the caller can read them and the cluster supports
+    %% them. They aren't user/group identities, so the user:/group: filters
+    %% don't name them; a top-level exclude ('*', i.e. 'any') drops them along
+    %% with everything else, which also covers include-mode (where exclude
+    %% defaults to [any]).
+    ServicesProducer =
+        case backup_services_section(Req, ExcludeFilters) of
+            skip ->
+                ?make_producer(ok);
+            ServicesArray ->
+                ?make_producer(
+                   begin
+                       ?yield({kv_start, <<"services">>}),
+                       ?yield(array_start),
+                       lists:foreach(fun (S) -> ?yield({json, S}) end,
+                                     ServicesArray),
+                       ?yield(array_end),
+                       ?yield(kv_end)
+                   end)
+        end,
+
     AdminProducer =
         case ns_config_auth:get_admin_user_and_auth() of
             {AdminName, {auth, AdminAuth}} ->
@@ -2574,6 +2617,7 @@ handle_backup(Req, Params) ->
                     GroupsProducer(?yield()),
                     ?yield(array_end),
                     ?yield(kv_end),
+                    ServicesProducer(?yield()),
                     ?yield(object_end)
                  end),
               [sjson:encode_extended_json([{compact, true},
@@ -2711,6 +2755,8 @@ handle_backup_restore(Req) ->
           validator:default(groups, [], _),
           validate_backup_users(users, groups, Req, _),
           validator:default(users, [], _),
+          validate_backup_services(services, _),
+          validator:default(services, [], _),
           validator:unsupported(_)], _)]).
 
 handle_backup_restore_validated(Req, Params) ->
@@ -2763,6 +2809,46 @@ handle_backup_restore_validated(Req, Params) ->
                           {[GroupId | SAcc], OAcc, DAcc}
                   end
           end, {[], [], []}, Groups),
+
+    %% Service-role grants can only be applied when the caller has service-role
+    %% write permission and the cluster supports them; otherwise -- like an
+    %% existing grant with canOverwrite false -- they are skipped (and
+    %% reported), never aborting the restore. When every grant in an entry
+    %% drops (missing credentials), the end state still matches the backup:
+    %% any live entry is removed, mirroring users/groups overwrite semantics.
+    ServicesSupported = cluster_compat_mode:is_cluster_totoro() andalso
+        menelaus_auth:has_permission(?SECURITY_WRITE, Req),
+    ExistingServices = menelaus_roles:get_all_service_roles(),
+    Services = proplists:get_value(services, Backup),
+    {ServicesSkipped, ServicesUpdated, ServiceGrantsDropped} =
+        lists:foldl(
+          fun ({ServiceProps}, {SAcc, OAcc, DAcc}) ->
+                  Id = proplists:get_value(name, ServiceProps),
+                  {ServiceProps1, Dropped} =
+                      drop_credential_grants_for_restore(ServiceProps,
+                                                         Snapshot),
+                  Roles1 = proplists:get_value(roles, ServiceProps1, []),
+                  Exists = maps:is_key(Id, ExistingServices),
+                  Skip = not ServicesSupported orelse
+                      (Exists andalso not CanOverwrite),
+                  case Skip of
+                      true ->
+                          {[Id | SAcc], OAcc, DAcc};
+                      false when Roles1 =:= [] ->
+                          case menelaus_roles:delete_service_roles(Id) of
+                              ok ->
+                                  ns_audit:delete_user(Req, {Id, service});
+                              {error, not_found} ->
+                                  ok
+                          end,
+                          {SAcc, [Id | OAcc],
+                           add_grants_dropped(Id, Dropped, DAcc)};
+                      false ->
+                          _ = do_store_service_roles(Id, ServiceProps1, Req),
+                          {SAcc, [Id | OAcc],
+                           add_grants_dropped(Id, Dropped, DAcc)}
+                  end
+          end, {[], [], []}, Services),
 
     {Users, UserGrantsDropped} =
         lists:mapfoldl(
@@ -2893,11 +2979,17 @@ handle_backup_restore_validated(Req, Params) ->
     GroupsGrantsDropped =
         [format_grants_dropped({[{name, list_to_binary(G)}]}, Dropped)
          || {G, Dropped} <- GroupGrantsDropped],
+    ServiceName = fun (Id) -> atom_to_binary(Id, utf8) end,
+    ServicesGrantsDropped =
+        [format_grants_dropped({[{name, ServiceName(Id)}]}, Dropped)
+         || {Id, Dropped} <- ServiceGrantsDropped],
 
     GroupsUpdatedCount = length(GroupsUpdated),
     GroupsSkippedCount = length(GroupsSkipped),
     GroupsCreatedCount = length(Groups) - GroupsUpdatedCount -
         GroupsSkippedCount,
+    ServicesUpdatedCount = length(ServicesUpdated),
+    ServicesSkippedCount = length(ServicesSkipped),
 
     CountRolesDropped =
         fun ({Principal}) ->
@@ -2905,7 +2997,8 @@ handle_backup_restore_validated(Req, Params) ->
         end,
     TotalGrantsDropped =
         lists:sum(lists:map(CountRolesDropped, UsersGrantsDropped)) +
-        lists:sum(lists:map(CountRolesDropped, GroupsGrantsDropped)),
+        lists:sum(lists:map(CountRolesDropped, GroupsGrantsDropped)) +
+        lists:sum(lists:map(CountRolesDropped, ServicesGrantsDropped)),
 
     menelaus_util:reply_json(
       Req, {[{stats,
@@ -2915,14 +3008,19 @@ handle_backup_restore_validated(Req, Params) ->
                 {groupsCreated, GroupsCreatedCount},
                 {groupsOverwritten, GroupsUpdatedCount},
                 {groupsSkipped, GroupsSkippedCount},
+                {servicesUpdated, ServicesUpdatedCount},
+                {servicesSkipped, ServicesSkippedCount},
                 {credentialGrantsDropped, TotalGrantsDropped}]}},
              {usersSkipped, UsersSkipped},
              {usersOverwritten, UsersOverwritten},
              {groupsSkipped, [list_to_binary(G) || G <- GroupsSkipped]},
              {groupsOverwritten, [list_to_binary(G) || G <- GroupsUpdated]},
+             {servicesSkipped, [ServiceName(Id) || Id <- ServicesSkipped]},
+             {servicesUpdated, [ServiceName(Id) || Id <- ServicesUpdated]},
              {credentialGrantsDropped,
               {[{users, UsersGrantsDropped},
-                {groups, GroupsGrantsDropped}]}}]}).
+                {groups, GroupsGrantsDropped},
+                {services, ServicesGrantsDropped}]}}]}).
 
 %% On restore, drop credential_consumer grants naming credentials that do not
 %% exist on this cluster (credentials have no restore path, so such a grant
@@ -3162,6 +3260,38 @@ is_base64(B) ->
     catch _:_ ->
         {error, "Value must be a base64 encoded binary"}
     end.
+
+%% Validate the `services' section of a restore payload. Each entry names a
+%% service identity and the credential_consumer grants it holds. Role
+%% validation runs in restore mode (DoingRestore = true) so a grant naming a
+%% credential absent on this cluster is accepted here and dropped later, rather
+%% than failing the whole restore -- mirroring users/groups.
+validate_backup_services(Name, State) ->
+    CompatVer = validator:get_value(compat_version, State),
+    validator:json_array(
+      Name,
+      [validator:required(name, _),
+       validator:string(name, _),
+       validate_service_name(name, _),
+       validator:default(roles, [], _),
+       validator:string_array(roles, _),
+       validator_join(roles, ",", _),
+       validate_roles(roles, CompatVer, true, _),
+       validate_service_roles(roles, _),
+       validator:unsupported(_)],
+      State).
+
+validate_service_name(Name, State) ->
+    validator:validate(
+      fun (ServiceName) ->
+              case misc:service_name_to_identity(ServiceName) of
+                  {ok, Id} ->
+                      {value, Id};
+                  error ->
+                      {error, io_lib:format("Unknown service: ~s",
+                                            [ServiceName])}
+              end
+      end, Name, State).
 
 validate_backup_groups(Name, Req, State) ->
     CompatVer = validator:get_value(compat_version, State),

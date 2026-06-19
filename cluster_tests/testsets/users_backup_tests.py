@@ -669,6 +669,98 @@ class UsersBackupTests(testlib.BaseTestSet):
             testlib.ensure_deleted(self.cluster, user_path)
             testlib.ensure_deleted(self.cluster, group_path)
 
+    def service_role_grants_backed_up_and_restored_test(self):
+        # Service identities can hold credential_consumer grants (totoro+).
+        # The backup carries them and restore re-applies them, dropping (and
+        # reporting) any naming a credential absent on the target -- same
+        # treatment as users/groups. The service identity always exists, so
+        # there is nothing to create, only grant data to restore.
+        service = 'n1ql'
+        svc_path = f'/settings/rbac/services/{service}/roles'
+
+        # Wildcard grant is accepted at PUT time (needs no existing credential).
+        testlib.put_succ(self.cluster, svc_path,
+                         data={'roles': 'credential_consumer[*]'})
+        try:
+            backup = testlib.get_succ(self.cluster,
+                                      '/settings/rbac/backup').json()
+            assert 'services' in backup, \
+                f'services section missing from backup: {list(backup.keys())}'
+
+            # Inject grants naming credentials absent on this cluster -- two,
+            # so the summary stat below can't be satisfied by just counting
+            # the affected service instead of its dropped grants.
+            absent = ['credential_consumer[does/not/exist]',
+                      'credential_consumer[no/such/prefix/*]']
+            inject_roles(backup['services'], 'name', service, absent)
+
+            # Clear the live grant so restore re-applies it fresh.
+            testlib.delete_succ(self.cluster, svc_path)
+
+            res = testlib.put_succ(self.cluster, '/settings/rbac/backup',
+                                   data={'backup': json.dumps(backup),
+                                         'canOverwrite': 'false'}).json()
+
+            # The absent grants are reported as dropped under services; the
+            # service's grants were (re)written.
+            dropped = res['credentialGrantsDropped']['services']
+            assert sorted(dropped_roles_for(dropped, service)) == \
+                sorted(absent), dropped
+            assert res['stats']['servicesUpdated'] == 1, res['stats']
+            assert res['stats']['credentialGrantsDropped'] == 2, res['stats']
+
+            # The grant was restored, keeping the wildcard and dropping the
+            # absent one.
+            roles = roles_of_service(self.cluster, service)
+            assert 'credential_consumer[does/not/exist]' not in roles, roles
+            cc = [r for r in roles if r.startswith('credential_consumer')]
+            assert len(cc) == 1, f'wildcard grant not preserved: {roles}'
+        finally:
+            testlib.ensure_deleted(self.cluster, svc_path)
+
+    def service_all_grants_dropped_test(self):
+        # When every grant in a service's backup entry names a credential
+        # absent on the target, the entry is still applied -- mirroring a
+        # group stored with no roles left -- so the end state matches the
+        # backup: any live entry is removed. The service is reported as
+        # updated and the drops are reported, whether or not a live entry
+        # existed.
+        service = 'n1ql'
+        svc_path = f'/settings/rbac/services/{service}/roles'
+
+        # Seed a grant so the backup carries a services section, then make
+        # the entry consist solely of grants that cannot be restored.
+        testlib.put_succ(self.cluster, svc_path,
+                         data={'roles': 'credential_consumer[*]'})
+        try:
+            backup = testlib.get_succ(self.cluster,
+                                      '/settings/rbac/backup').json()
+            absent = ['credential_consumer[does/not/exist]']
+            for e in backup['services']:
+                if e['name'] == service:
+                    e['roles'] = absent
+
+            # live entry exists and canOverwrite is set -- the
+            # entry is removed so the cluster matches the backup.
+            res = testlib.put_succ(self.cluster, '/settings/rbac/backup',
+                                   data={'backup': json.dumps(backup),
+                                         'canOverwrite': 'true'}).json()
+
+            assert service in res['servicesUpdated'], res
+            assert res['stats']['servicesUpdated'] == 1, res['stats']
+            assert res['stats']['servicesSkipped'] == 0, res['stats']
+            dropped = res['credentialGrantsDropped']['services']
+            assert dropped_roles_for(dropped, service) == absent, dropped
+            assert res['stats']['credentialGrantsDropped'] == 1, res['stats']
+            assert roles_of_service(self.cluster, service) == []
+
+        finally:
+            testlib.ensure_deleted(self.cluster, svc_path)
+
+
+def roles_of_service(cluster, service):
+    return roles_of(cluster, f'/settings/rbac/services/{service}/roles')
+
 
 def roles_of(cluster, path):
     info = testlib.get_succ(cluster, path).json()
