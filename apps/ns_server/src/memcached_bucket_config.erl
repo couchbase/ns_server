@@ -31,6 +31,7 @@
          ensure/3,
          start_params/4,
          get_validation_config_string/3,
+         get_validation_config_string/4,
          remap_config_names/2,
          ensure_collections/2,
          get_current_collections_uid/1,
@@ -290,10 +291,11 @@ get(BucketName, Snapshot) ->
 %% extra_params. Any attempt to do so will be logged.
 %%
 %% Note that the JWT and DEKs are not included in the returned config string.
--spec get_validation_config_string_internal(string(), list(), list()) ->
+-spec get_validation_config_string_internal(string(), list(), list(),
+                                             list()) ->
           {list(), list(), list()}.
 get_validation_config_string_internal(BucketName, BucketConfig,
-                                      RequestedChanges) ->
+                                       RequestedChanges, NsServerParams) ->
     BucketType = proplists:get_value(type, BucketConfig),
     MemQuota = proplists:get_value(ram_quota, BucketConfig),
 
@@ -311,12 +313,23 @@ get_validation_config_string_internal(BucketName, BucketConfig,
     ExistingParamsKeys = proplists:get_keys(ExistingParams),
     ExistingExtraParams = get_extra_params(BucketConfig),
 
+    %% Convert ns_server-owned params [{string(), Value}] to triples,
+    %% excluding any key already covered by ExistingParams.
+    NsServerParamTriples =
+        [{K, [], V} || {K, V} <- NsServerParams,
+                       not lists:member(K, ExistingParamsKeys)],
+    NsServerParamKeys = [K || {K, _, _} <- NsServerParamTriples],
+
+    %% Keys that cannot be overridden by RequestedChanges or extra_params:
+    %% built-in KV params and ns_server-owned params.
+    AllProtectedKeys = ExistingParamsKeys ++ NsServerParamKeys,
+
     %% Extra params we will try to update or set.
-    %% We cannot override built-in params.
+    %% We cannot override built-in or ns_server-owned params.
     {AllowExtraParams, DisallowExtraParams} =
         lists:partition(
           fun ({Key, _}) ->
-                  not lists:member(Key, ExistingParamsKeys)
+                  not lists:member(Key, AllProtectedKeys)
           end, RequestedChanges),
 
     %% This covers cases in which we attempt to modify a memcached parameter
@@ -335,10 +348,11 @@ get_validation_config_string_internal(BucketName, BucketConfig,
         [T || {K, _Props, _Value} = T <- ExistingParams,
               not proplists:is_defined(K, AllowExtraParams)],
 
-    %% Identify extra params that conflict with built-in params
+    %% Identify extra params that conflict with built-in or ns_server params.
     ErroneousExtraParams =
         [T || {K, _Props, _Value} = T <- ExistingExtraParams,
-              proplists:is_defined(K, ExistingParams)],
+              proplists:is_defined(K, ExistingParams) orelse
+              lists:member(K, NsServerParamKeys)],
 
     case ErroneousExtraParams of
         [] -> ok;
@@ -351,9 +365,11 @@ get_validation_config_string_internal(BucketName, BucketConfig,
     UnchangedExtraParams =
         [T || {K, _Props, _Value} = T <- ExistingExtraParams,
               not proplists:is_defined(K, AllowExtraParams),
-              not proplists:is_defined(K, ExistingParams)],
+              not proplists:is_defined(K, ExistingParams),
+              not lists:member(K, NsServerParamKeys)],
 
-    UnchangedParams = UnchangedBuiltInParams ++ UnchangedExtraParams,
+    UnchangedParams = UnchangedBuiltInParams ++ NsServerParamTriples
+                      ++ UnchangedExtraParams,
 
     %% We don't use build_params_string here because the extra params do not
     %% have the props field.
@@ -362,7 +378,8 @@ get_validation_config_string_internal(BucketName, BucketConfig,
                                        end, AllowExtraParams),
     %% Return the list of keys we applied.
     AllowedKeys = [K || {K, _} <- AllowExtraParams],
-    {build_params_string(UnchangedParams), JoinedAllowExtraParams, AllowedKeys}.
+    {build_params_string(UnchangedParams), JoinedAllowExtraParams,
+     AllowedKeys}.
 
 %% @doc Get the bucket config string which would be used if the updated params
 %% were applied. Note that the JWT and DEKs are not included in the returned
@@ -370,12 +387,25 @@ get_validation_config_string_internal(BucketName, BucketConfig,
 %% Returns the new bucket config string and the keys that were accepted.
 %% Only extra params are allowed to be overriden. Other parameter changes are
 %% not allowed and will be ignored.
--spec get_validation_config_string(string(), list(), list()) -> {list(), list()}.
+-spec get_validation_config_string(string(), list(), list()) ->
+          {list(), list()}.
 get_validation_config_string(BucketName, BucketConfig, RequestedChanges) ->
+    get_validation_config_string(BucketName, BucketConfig,
+                                  RequestedChanges, []).
+
+%% @doc As get_validation_config_string/3 but also accepts NsServerParams, a
+%% list of {SnakeCaseKey, Value} pairs representing ns_server-owned params
+%% that should appear in the validation config string sent to services but
+%% are not part of params_without_extras (e.g. encryption key identity).
+%% NsServerParams cannot be overridden by RequestedChanges or extra_params.
+-spec get_validation_config_string(string(), list(), list(), list()) ->
+          {list(), list()}.
+get_validation_config_string(BucketName, BucketConfig, RequestedChanges,
+                              NsServerParams) ->
     {Unchanged, Changed, Accepted} =
-        get_validation_config_string_internal(BucketName,
-                                              BucketConfig,
-                                              RequestedChanges),
+        get_validation_config_string_internal(BucketName, BucketConfig,
+                                              RequestedChanges,
+                                              NsServerParams),
     {join_params(Unchanged ++ Changed), Accepted}.
 
 query_stats(Sock) ->
@@ -1069,7 +1099,8 @@ get_validation_config_string_internal_test() ->
 
     {Unchanged, Changed, Accepted} =
         get_validation_config_string_internal(
-            "bucket", BucketConfig, [{"connection_manager_interval", "2"}]),
+          "bucket", BucketConfig,
+          [{"connection_manager_interval", "2"}], []),
 
     ?assertEqual(true,
                  lists:member("item_compressor_interval=1", Unchanged)),

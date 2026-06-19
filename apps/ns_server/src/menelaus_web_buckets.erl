@@ -282,6 +282,8 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(Id, Snapshot),
     BucketUUID = ns_bucket:uuid(Id, Snapshot),
 
+    NsServerBucketInfo = build_ns_server_bucket_info(BucketConfig),
+
     BucketInfo =
         maps:from_list(
           lists:flatten(
@@ -310,24 +312,21 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
              %% until there are no supported pre-7.0 versions that can
              %% replicate to us
              {authType, sasl},
-             build_auto_compaction_info(BucketConfig),
-             build_purge_interval_info(BucketConfig),
-             build_replica_index(BucketConfig),
-             build_bucket_placer_params(BucketConfig),
-             build_hibernation_state(BucketConfig),
-             build_storage_limits(BucketConfig),
-             build_throttle_limits(BucketConfig),
-             build_bucket_rank(BucketConfig),
-             build_cross_cluster_versioning_params(BucketConfig),
-             build_vbuckets_max_cas(BucketConfig),
-             build_vp_window_hrs(BucketConfig),
-             build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx),
-             build_encryption_at_rest_bucket_info(BucketConfig)])),
+             NsServerBucketInfo,
+             build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])),
     case cluster_compat_mode:is_cluster_totoro() of
         true ->
+            %% Derive ns_server-owned params from build_ns_server_bucket_info
+            %% so that services can validate them. This is the same list that
+            %% is used by parse_bucket_params_continue_via_services, so the
+            %% params are defined in one place.
+            NsServerParams =
+                ns_server_params_for_validation(NsServerBucketInfo),
             %% Collect additional parameters from memcached.
-            ExtraParams = maps:from_list(
-                            build_extra_params_bucket_info(Id, BucketConfig)),
+            ExtraParams =
+                maps:from_list(
+                  build_extra_params_bucket_info(
+                    Id, BucketConfig, NsServerParams)),
 
             %% Keys that are present in both BucketInfo and ExtraParams.
             ConflictMap = maps:intersect(BucketInfo, ExtraParams),
@@ -622,14 +621,79 @@ format_extra_param_info({Key, Value}) when is_list(Key) ->
 format_extra_param_info({Key, Value}) ->
     {binary_to_atom(Key), Value}.
 
+%% @doc Build ns_server-owned bucket params from BucketConfig. This is the
+%% single authoritative list of ns_server-owned params used by both
+%% build_bucket_info/4 (for the REST API response) and
+%% parse_bucket_params_continue_via_services (passed to services for
+%% validation). These are params that KV does not already know about via
+%% memcached_bucket_config:params_without_extras.
+%%
+%% The build_dynamic_bucket_info/4 fields are deliberately NOT included here.
+%% Most of that set duplicates params_without_extras, which performs the
+%% snake_case renames and resolves the node-level storage mode (e.g. it only
+%% emits magma params when the node, not the cluster, is on magma); sending
+%% those params again from here would use the cluster storage mode and break
+%% storage mode migration. The remainder are context-dependent (basicStats,
+%% encryptionAtRestInfo, quota, chronicleRev). Those fields are added to the
+%% REST response by build_bucket_info/4 via build_dynamic_bucket_info/4.
+build_ns_server_bucket_info(BucketConfig) ->
+    lists:flatten(
+      [build_auto_compaction_info(BucketConfig),
+       build_purge_interval_info(BucketConfig),
+       build_replica_index(BucketConfig),
+       build_bucket_placer_params(BucketConfig),
+       build_hibernation_state(BucketConfig),
+       build_storage_limits(BucketConfig),
+       build_throttle_limits(BucketConfig),
+       build_bucket_rank(BucketConfig),
+       build_cross_cluster_versioning_params(BucketConfig),
+       build_vbuckets_max_cas(BucketConfig),
+       build_vp_window_hrs(BucketConfig),
+       build_encryption_at_rest_bucket_info(BucketConfig)]).
+
+%% @doc Convert a build_ns_server_bucket_info/1 proplist (atom camelCase keys)
+%% into the NsServerParams format expected by get_validation_config_string/4:
+%% a list of {SnakeCaseKeyString, ScalarValue} pairs. Keys that cannot be
+%% remapped to snake_case and non-scalar values are excluded.
+-spec ns_server_params_for_validation([{atom(), term()}]) ->
+          [{string(), term()}].
+ns_server_params_for_validation(BucketInfo) ->
+    Filtered =
+        [{atom_to_list(K), V} ||
+            {K, V} <- BucketInfo,
+            is_atom(K)],
+    {Remapped, Bad} =
+        memcached_bucket_config:remap_config_names(Filtered, for_kv),
+    case Bad of
+        [] -> ok;
+        _ ->
+            ?log_warning("Not sending ns_server params ~p for service "
+                         "validation: could not be remapped to snake_case",
+                         [[K || {K, _} <- Bad]])
+    end,
+    lists:filter(fun ({_K, V}) -> is_bucket_info_scalar(V) end, Remapped).
+
+-spec is_bucket_info_scalar(term()) -> boolean().
+is_bucket_info_scalar(V) when is_atom(V)    -> true;
+is_bucket_info_scalar(V) when is_integer(V) -> true;
+is_bucket_info_scalar(V) when is_float(V)   -> true;
+is_bucket_info_scalar(V) when is_binary(V)  -> true;
+%% An empty list is ambiguous - printable_latin1_list([]) is vacuously true,
+%% but here [] represents an empty list-valued field (e.g. vbucketsMaxCas),
+%% not an empty string, so treat it as non-scalar rather than emitting "key=".
+is_bucket_info_scalar([])                   -> false;
+is_bucket_info_scalar(V) when is_list(V)    ->
+    io_lib:printable_latin1_list(V);
+is_bucket_info_scalar(_)                    -> false.
+
 %% @doc Build the extra params for the bucket config.
 %% This is used to get the extra params from memcached.
-build_extra_params_bucket_info(BucketName, BucketConfig) ->
+build_extra_params_bucket_info(BucketName, BucketConfig, NsServerParams) ->
     %% We need to validate this bucket config with the services to get the extra
     %% params defaults. This will not include internal parameters.
     {BucketConfigString, _AcceptedKeys} =
-        memcached_bucket_config:get_validation_config_string(BucketName,
-                                                             BucketConfig, []),
+        memcached_bucket_config:get_validation_config_string(
+          BucketName, BucketConfig, [], NsServerParams),
 
     {ServiceOKs, ServiceErrors} =
         validate_bucket_config_against_services(
@@ -1585,10 +1649,11 @@ parse_bucket_params_continue_via_services(
 
     %% We will only consider the parameters that we have not already parsed
     %% in the ns_server validation. This does not prevent services from
-    %% validating this parameter (it is part of the ProposedBucket) but we won't
+    %% validating this parameter (it is in NsServerParams below) but we won't
     %% bail out of the sanity checks when we build the config string due to a
-    %% conflict with the parameters that we (ns_server) handle. The sanity check
-    %% is still nice to keep though, to catch any errors/oddities in remapping.
+    %% conflict with the parameters that we (ns_server) handle. The sanity
+    %% check is still nice to keep though, to catch any errors/oddities in
+    %% remapping.
     NsServerParsedParams = proplists:delete(currentBucket, OKs),
     RemappedParamsForServices =
         lists:filter(
@@ -1596,12 +1661,20 @@ parse_bucket_params_continue_via_services(
                   not proplists:is_defined(Key, NsServerParsedParams)
           end, RemappedParams),
 
+    %% Compute ns_server-owned params so that services can validate them in
+    %% context. Uses ProposedBucket (merged current + OKs) so the proposed
+    %% values are used, not just the current ones.
+    NsServerParams =
+        ns_server_params_for_validation(
+          build_ns_server_bucket_info(ProposedBucket)),
+
     %% Get the bucket config string that we will use to validate.
     {BucketConfigString, AcceptedKeys} =
         memcached_bucket_config:get_validation_config_string(
           BucketName,
           ProposedBucket,
-          RemappedParamsForServices),
+          RemappedParamsForServices,
+          NsServerParams),
 
     {ServiceOKs, ServiceErrors} =
         validate_bucket_config_against_services(
@@ -6298,6 +6371,59 @@ build_dynamic_bucket_info_test_() ->
             build_dynamic_bucket_info_test_teardown()
         end,
         [{Test, TestFun} || Test <- Tests]}.
+
+is_bucket_info_scalar_test() ->
+    %% Scalar values can be serialised as a single "key=value" param.
+    ?assert(is_bucket_info_scalar(couchstore)),
+    ?assert(is_bucket_info_scalar(42)),
+    ?assert(is_bucket_info_scalar(1.5)),
+    ?assert(is_bucket_info_scalar(<<"value">>)),
+    ?assert(is_bucket_info_scalar("a string")),
+    %% Non-scalar values must be excluded.
+    ?assertNot(is_bucket_info_scalar([<<"1">>, <<"2">>])),
+    ?assertNot(is_bucket_info_scalar([1, 2, 3])),
+    ?assertNot(is_bucket_info_scalar({[{ram, 1}]})),
+    ?assertNot(is_bucket_info_scalar(#{a => 1})),
+    %% An empty list is an empty list-valued field, not an empty string, so it
+    %% is not a scalar - even though io_lib:printable_latin1_list([]) is true.
+    ?assertNot(is_bucket_info_scalar([])).
+
+ns_server_params_for_validation_test() ->
+    Input = [{replicaNumber, 1},
+             {conflictResolutionType, seqno},
+             {vbucketsMaxCas, [<<"1">>, <<"2">>]},
+             {versionPruningWindowHrs, []},
+             {rank, {[{a, 1}]}}],
+    %% Scalar params are remapped to snake_case; non-scalar (list/tuple) and
+    %% empty-list params are dropped.
+    ?assertEqual(lists:sort([{"replica_number", 1},
+                             {"conflict_resolution_type", seqno}]),
+                 lists:sort(ns_server_params_for_validation(Input))).
+
+%% build_ns_server_bucket_info/1 must NOT include any of the
+%% build_dynamic_bucket_info/4 fields - those duplicate params_without_extras
+%% (which resolves the node-level storage mode) and would break storage mode
+%% migration if sent to services for validation. See the function's doc.
+build_ns_server_bucket_info_test__() ->
+    BucketConfig = [{type, membase},
+                    {num_replicas, 1},
+                    {ram_quota, 1024},
+                    {servers, ["a"]},
+                    {storage_mode, magma}],
+    Result = build_ns_server_bucket_info(BucketConfig),
+    ?assert(is_list(Result)),
+    DynamicKeys = [replicaNumber, threadsNumber, quota, basicStats,
+                   evictionPolicy, durabilityMinLevel, conflictResolutionType,
+                   workloadPatternDefault, maxTTL, compressionMode,
+                   storageQuotaPercentage, dataServiceRebalanceType,
+                   chronicleRev, encryptionAtRestInfo],
+    [?assertNot(proplists:is_defined(K, Result)) || K <- DynamicKeys].
+
+build_ns_server_bucket_info_test_() ->
+    {setup,
+     fun () -> build_dynamic_bucket_info_test_setup(?VERSION_72, true) end,
+     fun (_) -> build_dynamic_bucket_info_test_teardown() end,
+     ?cut(build_ns_server_bucket_info_test__())}.
 
 storage_mode_migration_meck_modules() ->
     [ns_config, config_profile, cluster_compat_mode, collections,
