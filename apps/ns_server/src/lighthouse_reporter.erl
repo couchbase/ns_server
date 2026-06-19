@@ -24,19 +24,24 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, config_key/0, build_settings/0]).
+-export([start_link/0, config_key/0, build_settings/0, ingest/2,
+         max_external_payload_size/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-define(SERVER, {via, leader_registry, ?MODULE}).
+
 -define(CONFIG_KEY, lighthouse).
+-define(TABLE, external_payloads).
 -define(SENDS_METRIC, <<"lighthouse_telemetry_sends">>).
 
 -record(state, {
                 enabled = true :: boolean(),
                 report_timer_ref :: undefined | timer:tref(),
-                report_pid :: undefined | pid()
+                report_pid :: undefined | pid(),
+                max_external_nodes = 0 :: integer()
                }).
 
 %%%===================================================================
@@ -53,6 +58,12 @@ build_settings() ->
     Settings = ns_config:read_key_fast(?CONFIG_KEY, #{}),
     maps:merge(default_config(), Settings).
 
+ingest(Opts, Payload) ->
+    gen_server:call(?SERVER, {ingest, Opts, Payload}).
+
+max_external_payload_size() ->
+    get_setting(external_nodes_max_payload_bytes, build_settings()).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -61,8 +72,12 @@ init([]) ->
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
     create_metric(),
+    ets:new(?TABLE, [named_table, set]),
     {ok, update_config(#state{})}.
 
+handle_call({ingest, Opts, Payload}, _From,
+            #state{max_external_nodes = MaxExternalNodes} = State) ->
+    {reply, ingest_external_payload(Opts, Payload, MaxExternalNodes), State};
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
 
@@ -78,6 +93,9 @@ handle_info(report, State) ->
     %% a report is already in progress
     {noreply, State};
 handle_info(report_done, State) ->
+    %% Clear the external payloads now they've been sent to the lighthouse which
+    %% should retain the information
+    ets:delete_all_objects(?TABLE),
     {noreply, State#state{report_pid = undefined}};
 handle_info(config_change, State) ->
     {noreply, update_config(State)};
@@ -110,11 +128,25 @@ update_metric(Result) ->
     ns_server_stats:notify_counter(
       {?SENDS_METRIC, [{result, Result}]}).
 
+ingest_external_payload(#{product_name := ProductName, instance_id := Instance},
+                        Payload, MaxExternalNodes) ->
+    Key = {list_to_binary(ProductName), Instance},
+    IsUpdate = ets:member(?TABLE, Key),
+    case IsUpdate orelse ets:info(?TABLE, size) < MaxExternalNodes of
+        true ->
+            ets:insert(?TABLE, {Key, Payload}),
+            ok;
+        false ->
+            {error, too_many_payloads}
+    end.
+
 update_config(State0) ->
     Config = build_settings(),
 
     Enabled = get_setting(reporting_enabled, Config),
-    State1 = State0#state{enabled = Enabled},
+    MaxExternalNodes = get_setting(external_nodes_max_count, Config),
+    State1 = State0#state{enabled = Enabled,
+                          max_external_nodes = MaxExternalNodes},
 
     %% Update the reporter state
     ReportIntervalHours = get_setting(reporting_interval_hours, Config),
@@ -125,14 +157,18 @@ default_config() ->
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
       reporting_endpoint => <<"lighthouse.couchbase.internal">>,
-      reporting_port => 443}.
+      reporting_port => 443,
+      external_nodes_max_payload_bytes => 10_240,  %% 10KiB
+      external_nodes_max_count => 100}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
              reporting_interval_hours |
              reporting_timeout_seconds |
              reporting_endpoint |
-             reporting_port,
+             reporting_port |
+             external_nodes_max_payload_bytes |
+             external_nodes_max_count,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
@@ -218,6 +254,15 @@ build_services(Node) ->
     lists:map(fun ns_cluster_membership:json_service_name/1,
               ns_cluster_membership:node_active_services(Node)).
 
+build_external_nodes() ->
+    ets:foldl(
+      fun ({{Product, _Instance}, PayloadEncoded}, Acc) ->
+              PayloadDecoded = json:decode(PayloadEncoded),
+              maps:update_with(Product, [PayloadDecoded | _],
+                               [PayloadDecoded], Acc)
+
+      end, #{}, ?TABLE).
+
 create_report() ->
     Config = ns_config:get(),
     Nodes = ns_node_disco:nodes_actual(),
@@ -266,9 +311,11 @@ create_report() ->
     CollectedAt = list_to_binary(misc:timestamp_iso8601(Now, utc)),
     Product = build_product(),
     ClusterUuid = menelaus_web:get_uuid_formatted(),
+    ExternalNodes = build_external_nodes(),
     BasePayload = #{collectedAt => CollectedAt,
                     product => Product,
-                    clusterUuid => ClusterUuid},
+                    clusterUuid => ClusterUuid,
+                    externalNodes => ExternalNodes},
     ClusterDetails = #{nodes => NodesData},
     Payload1 = maps:merge(BasePayload, ClusterDetails),
     json:encode(Payload1).
@@ -279,7 +326,8 @@ report_keys() ->
     [<<"clusterUuid">>,
      <<"collectedAt">>,
      <<"nodes">>,
-     <<"product">>].
+     <<"product">>,
+     <<"externalNodes">>].
 
 node_keys() ->
     [<<"cpuLogicalCores">>,
@@ -305,9 +353,11 @@ create_report_test_() ->
              {ok, NsDoctorPid} = ns_doctor:start_link(),
              PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
              meck:expect(ns_node_disco, nodes_actual, 0, [node()]),
+             ets:new(?TABLE, [named_table, set]),
              PidMap2
      end,
      fun (PidMap) ->
+             ets:delete(?TABLE),
              %% Shut down ns_heart first, as it depends on other processes
              mock_helpers:teardown(
                maps:filter(fun (Key, _) -> Key =:= ns_heart end, PidMap)),

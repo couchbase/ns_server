@@ -21,6 +21,7 @@
 -endif.
 
 -export([handle/4,
+         handle/5,
          touch/2,
          validate/3,
          validate_relative/4,
@@ -83,19 +84,39 @@
 -export([handle_proplist/2]).
 -endif.
 
+%% Maximum recv_body() length of 20MB - the maximum size of a document that
+%% we can store in Couchbase.
+-define(MAX_RECV_BODY, 20 * 1024 * 1024).
+
 -record(state, {kv = [], touched = [], errors = []}).
 
-handle(Fun, Req, json, Validators) ->
-    handle_one(Fun, Req, with_json_object(
-                           mochiweb_request:recv_body(Req), Validators));
+handle(Fun, Req, json, Validators, MaxSizeBytes) ->
+    apply_to_body(
+      Req, ?cut(handle_one(Fun, Req, with_json_object(_, Validators))),
+      MaxSizeBytes);
 
-handle(Fun, Req, json_array, Validators) ->
-    handle_multiple(Fun, Req, with_json_array(
-                                mochiweb_request:recv_body(Req), Validators));
 
-handle(Fun, Req, json_map, Validators) ->
-    handle_multiple(Fun, Req, with_json_map(
-                                mochiweb_request:recv_body(Req), Validators));
+handle(Fun, Req, json_array, Validators, MaxSizeBytes) ->
+    apply_to_body(
+      Req, ?cut(handle_multiple(Fun, Req, with_json_array(_, Validators))),
+      MaxSizeBytes);
+
+handle(Fun, Req, json_map, Validators, MaxSizeBytes) ->
+    apply_to_body(
+      Req, ?cut(handle_multiple(Fun, Req, with_json_map(_, Validators))),
+      MaxSizeBytes).
+
+apply_to_body(Req, Fun, MaxSizeBytes) ->
+    try mochiweb_request:recv_body(MaxSizeBytes, Req) of
+         Body -> Fun(Body)
+    catch exit:{body_too_large, _} ->
+             menelaus_util:reply(Req, 413)
+    end.
+
+handle(Fun, Req, Type, Validators) when Type =:= json;
+                                        Type =:= json_array;
+                                        Type =:= json_map ->
+    handle(Fun, Req, Type, Validators, ?MAX_RECV_BODY);
 
 handle(Fun, Req, form, Validators) ->
     handle(Fun, Req, add_input_type(form, mochiweb_request:parse_post(Req)),
@@ -1335,7 +1356,7 @@ handle_json_test_() ->
     {foreach,
      fun () ->
              meck:new(mochiweb_request, [passthrough]),
-             meck:expect(mochiweb_request, recv_body, fun (Req) -> Req end),
+             meck:expect(mochiweb_request, recv_body, fun (_, Req) -> Req end),
              meck:expect(mochiweb_request, parse_qs, fun (_Req) -> [] end),
 
              meck:new(menelaus_util, [passthrough]),

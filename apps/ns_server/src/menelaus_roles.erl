@@ -734,6 +734,8 @@ default_roles() ->
        {[{bucket, bucket_name}], [read, flush]},
        {[{bucket, bucket_name}, settings], [read]},
        {[admin, memcached, idle], [write]},
+       {[admin, settings, lighthouse], [read]},
+       {[lighthouse_telemetry], [write]},
        {[settings, autocompaction], [read]},
        {[pools], [read]}]},
      {sync_gateway_configurator, ?RBAC_COLLECTION_PARAMS,
