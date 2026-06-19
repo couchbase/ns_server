@@ -24,18 +24,24 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, build_settings/0]).
+-export([start_link/0, config_key/0, build_settings/0, ingest/2,
+         max_external_payload_size/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+-define(SERVER, {via, leader_registry, ?MODULE}).
+
 -define(CONFIG_KEY, lighthouse).
+-define(TABLE, external_payloads).
+-define(SENDS_METRIC, <<"lighthouse_telemetry_sends">>).
 
 -record(state, {
                 enabled = true :: boolean(),
                 report_timer_ref :: undefined | timer:tref(),
-                report_pid :: undefined | pid()
+                report_pid :: undefined | pid(),
+                max_external_nodes = 0 :: integer()
                }).
 
 %%%===================================================================
@@ -45,9 +51,18 @@
 start_link() ->
     misc:start_singleton(gen_server, ?MODULE, [], []).
 
+config_key() ->
+    ?CONFIG_KEY.
+
 build_settings() ->
     Settings = ns_config:read_key_fast(?CONFIG_KEY, #{}),
     maps:merge(default_config(), Settings).
+
+ingest(Opts, Payload) ->
+    gen_server:call(?SERVER, {ingest, Opts, Payload}).
+
+max_external_payload_size() ->
+    get_setting(external_nodes_max_payload_bytes, build_settings()).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -56,8 +71,13 @@ build_settings() ->
 init([]) ->
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events, handle_config_event(Self, _)),
+    create_metric(),
+    ets:new(?TABLE, [named_table, set]),
     {ok, update_config(#state{})}.
 
+handle_call({ingest, Opts, Payload}, _From,
+            #state{max_external_nodes = MaxExternalNodes} = State) ->
+    {reply, ingest_external_payload(Opts, Payload, MaxExternalNodes), State};
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
 
@@ -73,6 +93,9 @@ handle_info(report, State) ->
     %% a report is already in progress
     {noreply, State};
 handle_info(report_done, State) ->
+    %% Clear the external payloads now they've been sent to the lighthouse which
+    %% should retain the information
+    ets:delete_all_objects(?TABLE),
     {noreply, State#state{report_pid = undefined}};
 handle_info(config_change, State) ->
     {noreply, update_config(State)};
@@ -94,27 +117,58 @@ handle_config_event(Self, {?CONFIG_KEY, _}) ->
 handle_config_event(_, _) ->
     ok.
 
+create_metric() ->
+    lists:foreach(
+        fun (Result) ->
+                ns_server_stats:create_counter(
+                  {?SENDS_METRIC, [{result, Result}]})
+        end, [success, failure]).
+
+update_metric(Result) ->
+    ns_server_stats:notify_counter(
+      {?SENDS_METRIC, [{result, Result}]}).
+
+ingest_external_payload(#{product_name := ProductName, instance_id := Instance},
+                        Payload, MaxExternalNodes) ->
+    Key = {list_to_binary(ProductName), Instance},
+    IsUpdate = ets:member(?TABLE, Key),
+    case IsUpdate orelse ets:info(?TABLE, size) < MaxExternalNodes of
+        true ->
+            ets:insert(?TABLE, {Key, Payload}),
+            ok;
+        false ->
+            {error, too_many_payloads}
+    end.
+
 update_config(State0) ->
     Config = build_settings(),
 
     Enabled = get_setting(reporting_enabled, Config),
-    State1 = State0#state{enabled = Enabled},
+    MaxExternalNodes = get_setting(external_nodes_max_count, Config),
+    State1 = State0#state{enabled = Enabled,
+                          max_external_nodes = MaxExternalNodes},
 
     %% Update the reporter state
-    ReportIntervalMs = get_setting(reporting_interval_milliseconds, Config),
-    restart_timer(State1, ReportIntervalMs).
+    ReportIntervalHours = get_setting(reporting_interval_hours, Config),
+    restart_timer(State1, round(timer:hours(ReportIntervalHours))).
 
 default_config() ->
     #{reporting_enabled => true,
-      reporting_interval_milliseconds => 7_200_000,  %% 2 hours
-      reporting_timeout_milliseconds => 1000,
-      reporting_endpoint => <<"lighthouse.couchbase.internal">>}.
+      reporting_interval_hours => 2,
+      reporting_timeout_seconds => 1,
+      reporting_endpoint => <<"lighthouse.couchbase.internal">>,
+      reporting_port => 443,
+      external_nodes_max_payload_bytes => 10_240,  %% 10KiB
+      external_nodes_max_count => 100}.
 
 -spec get_setting(Key, #{Key => Value}) -> Value when
       Key :: reporting_enabled |
-             reporting_interval_milliseconds |
-             reporting_timeout_milliseconds |
-             reporting_endpoint,
+             reporting_interval_hours |
+             reporting_timeout_seconds |
+             reporting_endpoint |
+             reporting_port |
+             external_nodes_max_payload_bytes |
+             external_nodes_max_count,
       Value :: term().
 get_setting(Key, Config) ->
     maps:get(Key, Config).
@@ -137,38 +191,47 @@ send_report(Config) ->
       fun () ->
               Endpoint = get_setting(reporting_endpoint, Config),
               URL = binary_to_list(Endpoint),
+              Port = get_setting(reporting_port, Config),
               Report = create_report(),
-              Timeout = get_setting(reporting_timeout_milliseconds, Config),
-              post(URL, Report, Timeout),
+              Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
+                                                  Config)),
+              Result = post(URL, Port, Report, Timeout),
+              update_metric(Result),
               Parent ! report_done
       end).
 
-post(URL, Body, Timeout) ->
-    %% TODO: Switch to https once AV-131457 is implemented in lighthouse
-    Scheme = http,
-    Request = {Scheme, URL, 8080, "/api/v1/ingest/telemetry",
+post(URL, Port, Body, Timeout) ->
+    Scheme = https,
+    Request = {Scheme, URL, Port, "/api/v1/ingest/telemetry",
                "application/json", Body},
     try menelaus_rest:json_request_hilevel(post, Request,
                                            ?HIDE({basic_auth, "", ""}),
-                                           [{connect_timeout, Timeout}]) of
+                                           [{connect_timeout, Timeout},
+                                            {server_verification, false}]) of
         ok ->
-            ?log_debug("Lighthouse report sent successfuly");
+            ?log_debug("Lighthouse report sent successfuly"),
+            success;
         {error, rest_error, Reason, _} ->
             %% When the lighthouse isn't available, we will usually get an
             %% nxdomain error, so we don't need to log it at error level
-            ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]);
-        {Error, Stacktrace} ->
-            Reason = case Error of
-                         ok -> bad_value;
-                         _ -> Error
-                     end,
-            ?log_error("Sending lighthouse report failed. Error: ~p",
-                       [{Reason, Stacktrace}])
+            ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]),
+            failure;
+        {client_error, JsonResponse} ->
+            %% Error from lighthouse itself
+            ?log_debug("Lighthouse report rejected by portal. Error: ~s",
+                       [ejson:encode(JsonResponse)]),
+            failure;
+        {ok, _JsonResponse} ->
+            %% Ignore unexpected success payload
+            ?log_debug("Lighthouse report sent successfuly. Ignored unexpected "
+                       "response"),
+            success
     catch
         _:Error:Stack ->
             ?log_error("Sending lighthouse report crashed with error: ~p"
                        "~nStacktrace: ~p",
-                       [Error, Stack])
+                       [Error, Stack]),
+            failure
     end.
 
 build_product() ->
@@ -188,7 +251,17 @@ build_edition(Node, Config) ->
     end.
 
 build_services(Node) ->
-    ns_cluster_membership:node_active_services(Node).
+    lists:map(fun ns_cluster_membership:json_service_name/1,
+              ns_cluster_membership:node_active_services(Node)).
+
+build_external_nodes() ->
+    ets:foldl(
+      fun ({{Product, _Instance}, PayloadEncoded}, Acc) ->
+              PayloadDecoded = json:decode(PayloadEncoded),
+              maps:update_with(Product, [PayloadDecoded | _],
+                               [PayloadDecoded], Acc)
+
+      end, #{}, ?TABLE).
 
 create_report() ->
     Config = ns_config:get(),
@@ -238,9 +311,11 @@ create_report() ->
     CollectedAt = list_to_binary(misc:timestamp_iso8601(Now, utc)),
     Product = build_product(),
     ClusterUuid = menelaus_web:get_uuid_formatted(),
+    ExternalNodes = build_external_nodes(),
     BasePayload = #{collectedAt => CollectedAt,
                     product => Product,
-                    clusterUuid => ClusterUuid},
+                    clusterUuid => ClusterUuid,
+                    externalNodes => ExternalNodes},
     ClusterDetails = #{nodes => NodesData},
     Payload1 = maps:merge(BasePayload, ClusterDetails),
     json:encode(Payload1).
@@ -251,7 +326,8 @@ report_keys() ->
     [<<"clusterUuid">>,
      <<"collectedAt">>,
      <<"nodes">>,
-     <<"product">>].
+     <<"product">>,
+     <<"externalNodes">>].
 
 node_keys() ->
     [<<"cpuLogicalCores">>,
@@ -277,9 +353,11 @@ create_report_test_() ->
              {ok, NsDoctorPid} = ns_doctor:start_link(),
              PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
              meck:expect(ns_node_disco, nodes_actual, 0, [node()]),
+             ets:new(?TABLE, [named_table, set]),
              PidMap2
      end,
      fun (PidMap) ->
+             ets:delete(?TABLE),
              %% Shut down ns_heart first, as it depends on other processes
              mock_helpers:teardown(
                maps:filter(fun (Key, _) -> Key =:= ns_heart end, PidMap)),

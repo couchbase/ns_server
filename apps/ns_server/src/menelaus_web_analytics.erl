@@ -260,7 +260,7 @@ cluster_init_validators_test() ->
                     {{cbas, skip_blob_storage_validation}, false}
                 ]
             end),
-        meck:expect(mochiweb_request, recv_body, fun (Req) -> Req end),
+        meck:expect(mochiweb_request, recv_body, fun (_, Req) -> Req end),
         meck:expect(mochiweb_request, parse_qs, fun (_Req) -> [] end),
         Respond = fun (Body, Code) ->
             erlang:put(json_test_response, {Body, Code})
