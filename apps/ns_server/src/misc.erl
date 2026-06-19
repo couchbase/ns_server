@@ -111,7 +111,7 @@ ms_to_str_test() ->
     ?assertEqual("1m", ms_to_str(60000)),
     ?assertEqual("1h", ms_to_str(3600000)),
     ?assertEqual("1d", ms_to_str(86400000)),
-    ?assertEqual("1d 2h 3m 4s 5ms", ms_to_str(86400000 + 2*3600000 + 
+    ?assertEqual("1d 2h 3m 4s 5ms", ms_to_str(86400000 + 2*3600000 +
                                               3 * 60000 + 4 * 1000 + 5)),
     ?assertEqual("2h 4s", ms_to_str(2*3600000 + 4 * 1000)),
     ?assertEqual("1d 3m 5ms", ms_to_str(86400000 + 3 * 60000 + 5)).
@@ -4140,3 +4140,31 @@ service_identity_mapping_test_() ->
      ?_assertEqual(index, identity_name_to_service("projector")),
      ?_assertEqual(unknown, identity_name_to_service("bogus"))].
 -endif.
+
+-spec get_disk_data(ns_disksup:disk_stats()) ->
+          {ok, ns_disksup:disk_stat()} | {error, disk_stats_error()}.
+get_disk_data(Mounts) ->
+    case ns_storage_conf:this_node_dbdir() of
+        {ok, DbDir} ->
+            case misc:realpath(DbDir, "/") of
+                {ok, RealFile} ->
+                    case ns_storage_conf:extract_disk_stats_for_path(
+                           Mounts, RealFile) of
+                        {ok, _} = DiskData ->
+                            DiskData;
+                        none ->
+                            ?log_error("Couldn't check disk space as ~p "
+                                       "wasn't found in ~p",
+                                       [RealFile, Mounts]),
+                            {error, no_disk_stats_found}
+                    end;
+                Error ->
+                    ?log_error("Couldn't check disk space as ~p doesn't "
+                               "appear to be a valid path. Error: ~p",
+                               [DbDir, Error]),
+                    {error, {dbdir_path_error, Error}}
+            end;
+        {error, not_found} ->
+            ?log_error("Couldn't check disk usage as node db dir is missing"),
+            {error, no_dbdir}
+    end.

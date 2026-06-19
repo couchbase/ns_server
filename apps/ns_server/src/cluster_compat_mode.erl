@@ -35,6 +35,7 @@
          is_version_totoro/1,
          is_enterprise/0,
          is_enterprise/1,
+         is_enterprise/2,
          is_saslauthd_enabled/0,
          is_cbas_enabled/0,
          supported_compat_version/0,

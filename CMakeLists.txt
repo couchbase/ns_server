@@ -225,7 +225,7 @@ ADD_TEST(ns_server_tests_build_for_idiotic_cmake
 SET_TESTS_PROPERTIES(ns_server_tests_build_for_idiotic_cmake PROPERTIES
         FIXTURES_SETUP NS_TEST_SETUP)
 
-LIST(APPEND NS_TEST_BINARY_DEPS vbmap gosecrets goport)
+LIST(APPEND NS_TEST_BINARY_DEPS vbmap gosecrets goport sigar)
 SET(NS_TEST_BINARY_DEPS ${NS_TEST_BINARY_DEPS} CACHE STRING "")
 # Cache OpenSSL library path for test scripts
 IF(OPENSSL_CRYPTO_LIBRARY)

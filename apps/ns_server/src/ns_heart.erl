@@ -15,6 +15,11 @@
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-include("ns_test.hrl").
+-endif.
+
 -export([start_link/0, start_link_slow_updater/0, status_all/1,
          force_beat/0, grab_fresh_failover_safeness_infos/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -303,11 +308,17 @@ current_status_slow_inner() ->
     FusionStats = fusion_uploaders:maybe_grab_heartbeat_info(),
     [{cpu_cores_available, CoresAvailable}] =
         sigar:get_gauges([cpu_cores_available]),
+
+    {_, BasicInfo} = ns_info:basic_info(),
+
+    DiskData = grab_disk_data(BasicInfo),
+
     ns_bootstrap:ensure_os_mon(),
     failover_safeness_level:build_local_safeness_info(BucketNames) ++
         ServiceStatuses ++
         ProcFSFiles ++
         FusionStats ++
+        DiskData ++
         [{local_tasks, Tasks},
          {memory, misc:memory()},
          {cpu_count, ceil(CoresAvailable)},
@@ -318,13 +329,16 @@ current_status_slow_inner() ->
                          || N <- [cpu_utilization_rate, cpu_stolen_rate,
                                   swap_total, swap_used,
                                   mem_total, mem_free, mem_limit,
-                                  cpu_cores_available, allocstall]]},
+                                  mem_actual_used,
+                                  mem_cgroup_limit, mem_cgroup_used,
+                                  cpu_cores_available, cpu_host_cores_available,
+                                  allocstall]]},
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, ProcessesStats},
          {encryption_at_rest_info, get_encryption_at_rest_info()},
          {encryption_keys_tests, cb_cluster_secrets:get_latest_test_results()}
-         | element(2, ns_info:basic_info())].
+        | BasicInfo].
 
 get_encryption_at_rest_info() ->
     DekInfos = cb_cluster_secrets:get_node_deks_info_quickly(),
@@ -468,3 +482,75 @@ grab_procfs_files() ->
         false ->
             []
     end.
+
+grab_disk_data(BasicInfo) ->
+    DiskData = proplists:get_value(disk_data, BasicInfo),
+    case misc:get_disk_data(DiskData) of
+        {ok, {_, A, U}} ->
+            [{data_disk_bytes_available, A},
+             {data_disk_bytes_used, U}];
+        {error, _} ->
+            []
+    end.
+
+-ifdef(TEST).
+status_slow_keys() ->
+    [outgoing_replications_safeness_level, incoming_replications_conf_hashes,
+     {service_status, fts}, {service_status, index}, {service_status, cbas},
+     {service_status, eventing}, {service_status, backup},
+     {service_status, n1ql}, local_tasks, memory, cpu_count,
+     system_memory_data, node_storage_conf, statistics, system_stats,
+     interesting_stats, per_bucket_interesting_stats, processes_stats, version,
+     supported_compat_version, advertised_version, system_arch, wall_clock,
+     memory_data, disk_data, encryption_at_rest_info, encryption_keys_tests,
+     data_disk_bytes_available, data_disk_bytes_used].
+
+status_slow_keys_linux() ->
+    [cpu_pressure,io_pressure,loadavg,meminfo, memory_pressure].
+
+statistics_keys() ->
+    [context_switches, garbage_collection, io, reductions, run_queue,
+     run_queues, runtime, wall_clock].
+
+system_stats_keys() ->
+    [allocstall, cpu_cores_available, cpu_host_cores_available, cpu_stolen_rate,
+     cpu_utilization_rate, mem_free, mem_limit, mem_total, mem_actual_used,
+     mem_cgroup_limit, mem_cgroup_used, swap_total, swap_used].
+
+status_slow_setup() ->
+    fake_ns_config:setup(),
+    fake_chronicle_kv:setup(),
+    PidMap = mock_helpers:setup_mocks([ns_heart]),
+    fake_config_helpers:setup_cluster_config(
+      #{node() => {active, [backup, cbas, eventing, fts, index, n1ql]}}),
+    fake_ns_config:update_snapshot({node, node(), database_dir}, "/"),
+    meck:expect(ns_disksup, get_disk_data, fun () -> [{"/", 1, 2}] end),
+    PidMap.
+
+status_slow_teardown(PidMap) ->
+    mock_helpers:teardown(PidMap),
+    fake_chronicle_kv:teardown(),
+    fake_ns_config:teardown(),
+    meck:unload().
+
+status_slow_test_() ->
+    {setup,
+     fun status_slow_setup/0,
+     fun status_slow_teardown/1,
+     fun () ->
+             Status = current_status_slow_inner(),
+             ExpectedKeys = status_slow_keys() ++
+                 case misc:is_linux() of
+                     true -> status_slow_keys_linux();
+                     false -> []
+                 end,
+             ?assertListsEqual(ExpectedKeys,
+                               proplists:get_keys(Status)),
+             Stats = proplists:get_value(statistics, Status),
+             ?assertListsEqual(statistics_keys(),
+                               proplists:get_keys(Stats)),
+             SystemStats = proplists:get_value(system_stats, Status),
+             ?assertListsEqual(system_stats_keys(),
+                               proplists:get_keys(SystemStats))
+     end}.
+-endif.

@@ -129,7 +129,7 @@ rebalance_test_setup(SetupConfig) ->
                               ns_cluster], #{}).
 
 rebalance_test_teardown(_, PidMap) ->
-    mock_helpers:shutdown_processes(PidMap),
+    mock_helpers:teardown(PidMap),
 
     meck:unload(),
 
