@@ -268,7 +268,8 @@ handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Predefined, Defaults,
             end, Req,
             [{atom_to_list(K), V} || {K, V} <- Props],
             ExtraValidators)
-      end, Req, Params, Validators ++ [validator:unsupported(_)]).
+      end, Req, Params, Validators ++
+        [validator:no_duplicates(_), validator:unsupported(_)]).
 
 %% Returns list of validators that check that all mandatory values are present
 mandatory_validators(Path, Props2, ParamSpecs, Predefined, Defaults) ->
