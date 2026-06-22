@@ -830,17 +830,18 @@ class ExternalCollectionTests(testlib.BaseTestSet):
         testlib.assert_in("regular-col", names)
         testlib.assert_in("external-col", names)
 
-        # uid should be the greater of the couchbase
-        # and external manifest uids
+        # uid should be the couchbase manifest uid and
+        # external_collections_uid the external manifest uid
         all_uid = int(manifest["uid"], 16)
+        all_external_uid = int(
+            manifest["externalCollectionsUid"], 16)
         couchbase_uid = get_manifest_uid(
             self.cluster, bucket_name)
         external_uid = get_manifest_uid(
             self.cluster, bucket_name,
             external=True)
-        testlib.assert_eq(
-            max(couchbase_uid, external_uid),
-            all_uid)
+        testlib.assert_eq(couchbase_uid, all_uid)
+        testlib.assert_eq(external_uid, all_external_uid)
 
     def put_manifest_drops_external_collections_test(
             self):

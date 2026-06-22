@@ -497,13 +497,13 @@ jsonify_manifest(Manifest, ForRestResponse, CollectionFilter) ->
                          include_collection(
                            Coll, CollectionFilter)]}]}
           end, get_scopes(Manifest)),
-    Uid = case CollectionFilter of
-              external -> external_uid(Manifest);
-              all -> max(uid(Manifest),
-                         external_uid(Manifest));
-              couchbase -> uid(Manifest)
+    Uids = case CollectionFilter of
+              couchbase -> [{uid, uid(Manifest)}];
+              external -> [{uid, external_uid(Manifest)}];
+              all -> [{uid, uid(Manifest)},
+                      {externalCollectionsUid, external_uid(Manifest)}]
           end,
-    {[{uid, Uid}, {scopes, ScopesJson}]}.
+    {Uids ++ [{scopes, ScopesJson}]}.
 
 include_collection(_Coll, all) ->
     true;
@@ -2606,12 +2606,15 @@ external_collection_filtering_t() ->
     ?assert(lists:member(
               <<"_default">>, AllCollNames)),
 
-    %% uid for all should be the greater of the
-    %% couchbase and external uids.
+    %% all filter should return both the couchbase uid and the
+    %% external collections uid separately.
     AllUid = proplists:get_value(uid, AllJsonProps),
+    AllExtUid = proplists:get_value(
+                  externalCollectionsUid, AllJsonProps),
     CouchbaseUid = uid(Manifest2),
     ExtUid = external_uid(Manifest2),
-    ?assertEqual(max(CouchbaseUid, ExtUid), AllUid).
+    ?assertEqual(CouchbaseUid, AllUid),
+    ?assertEqual(ExtUid, AllExtUid).
 
 set_manifest_with_external_collections_t() ->
     {ok, BucketConf} = get_bucket_config("bucket"),
