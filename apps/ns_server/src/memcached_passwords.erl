@@ -181,5 +181,8 @@ extract_passwords(Config) ->
       ns_config_auth:get_special_passwords(dist_manager:this_node(), Config)).
 
 extract_users(Config) ->
-    [ns_config:search_node_prop(Config, memcached, admin_user) |
-     ns_config:search_node_prop(Config, memcached, other_users, [])].
+    Admin = ns_config:search_node_prop(Config, memcached, admin_user),
+    Other = ns_config:search_node_prop(Config, memcached, other_users, []),
+    %% Checking for undefined to work around temporary inconsistency in
+    %% ns_config during node rename.
+    [Admin || Admin /= undefined] ++ Other.
