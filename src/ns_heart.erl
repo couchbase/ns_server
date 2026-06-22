@@ -459,8 +459,11 @@ grab_disk_data(BasicInfo) ->
     DiskData = proplists:get_value(disk_data, BasicInfo),
     case misc:get_disk_data(DiskData) of
         {ok, {_, A, U}} ->
-            [{data_disk_bytes_available, A},
-             {data_disk_bytes_used, U}];
+            %% Available is given in KiB, so needs converting to bytes
+            BytesAvailable = A * 1024,
+            [{data_disk_bytes_available, BytesAvailable},
+             %% Usage is given as 0-100 percentage, so needs converting to bytes
+             {data_disk_bytes_used, (U * BytesAvailable) div 100}];
         {error, _} ->
             []
     end.
