@@ -19,6 +19,7 @@ def run_config_remap(initargs,
                      rewrite=None,
                      rewrite_if=None,
                      disable_fusion=False,
+                     disable_continuous_backup=False,
                      log_level='info',
                      capture_output=False,
                      root_dir=basedir()):
@@ -30,6 +31,10 @@ def run_config_remap(initargs,
         for path, old, new in rewrite_if:
             print(f"rewrite-if: {path} {old} -> {new}")
             extra_args += ['--rewrite-if', path, old, new]
+    if disable_continuous_backup:
+        extra_args += ['--rewrite',
+                       '[{bucket, _, props}, continuous_backup_enabled]',
+                       'false']
     if disable_fusion:
         rewrite_states = ['enabled', 'enabling', 'stopping', 'stopped',
                           'disabling']
@@ -69,6 +74,7 @@ def run_config_remap_via_escript_wrapper(initargs,
                                          rewrite=None,
                                          rewrite_if=None,
                                          disable_fusion=False,
+                                         disable_continuous_backup=False,
                                          log_level='info',
                                          capture_output=False,
                                          root_dir=basedir()):
@@ -83,16 +89,19 @@ def run_config_remap_via_escript_wrapper(initargs,
                   '--disable-auto-failover'] + extra_args
 
     run_config_remap(initargs, output_path, extra_args, rewrite, rewrite_if,
-                     disable_fusion, log_level, capture_output, root_dir)
+                     disable_fusion, disable_continuous_backup, log_level,
+                     capture_output, root_dir)
 
 def disable_afo_via_config_remap(initargs,
                                  output_path,
                                  rewrite=None,
                                  rewrite_if=None,
                                  disable_fusion=False,
+                                 disable_continuous_backup=False,
                                  log_level='info',
                                  capture_output=False,
                                  root_dir=basedir()):
     extra_args = ['--disable-auto-failover']
     run_config_remap(initargs, output_path, extra_args, rewrite, rewrite_if,
-                     disable_fusion, log_level, capture_output, root_dir)
+                     disable_fusion, disable_continuous_backup, log_level,
+                     capture_output, root_dir)
