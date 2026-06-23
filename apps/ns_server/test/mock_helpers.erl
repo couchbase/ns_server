@@ -452,6 +452,15 @@ ns_secrets(PidMap) ->
                 fun (_) -> ?HIDE(undefined) end),
     PidMap#{?FUNCTION_NAME => mocked}.
 
+cb_crl_manager(PidMap) ->
+    meck:expect(?FUNCTION_NAME, get_push_config,
+                fun () ->
+                        #{policy_per_scope => [{client_auth, disabled},
+                                               {node_to_node, disabled}],
+                          version => 0}
+                end),
+    PidMap#{?FUNCTION_NAME => mocked}.
+
 dist_manager(PidMap) ->
     meck:expect(?FUNCTION_NAME, get_rename_txn_pid, fun () -> undefined end),
     PidMap#{?FUNCTION_NAME => mocked}.

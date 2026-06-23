@@ -16,7 +16,8 @@
 
 -behaviour(gen_server).
 
--export([start_link/0, sync/0, sync/1, stats/0, service_to_label/1]).
+-export([start_link/0, sync/0, sync/1, stats/0, service_to_label/1,
+         notify_crl_change/0]).
 
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -110,6 +111,17 @@ stats() ->
                        (_) ->
                             false
                     end, Results).
+
+%% Notify cbauth workers that CRL configuration has changed.
+%% Called by cb_crl_manager when CRL data or policy is updated.
+-spec notify_crl_change() -> ok | {error, no_process}.
+notify_crl_change() ->
+    try
+        ?MODULE ! maybe_notify_cbauth,
+        ok
+    catch
+        error:badarg -> {error, no_process}
+    end.
 
 init([]) ->
     erlang:process_flag(trap_exit, true),
@@ -510,19 +522,36 @@ tls_config(Service, Config) ->
                         undefined -> [];
                         P2 -> [{clientPrivateKeyPassphrase, base64:encode(P2)}]
                     end,
+    CRLOpts = crl_config_opts(),
     {Label,
      {[{present, true},
        {minTLSVersion, MinTLSVsn},
        {cipherOrder, Order},
        {ciphers, CipherInts},
        {cipherNames, Ciphers},
-       {cipherOpenSSLNames, CipherOpenSSLNames}] ++ PassOpt ++ ClientPassOpt}}.
+       {cipherOpenSSLNames, CipherOpenSSLNames}] ++
+       PassOpt ++ ClientPassOpt ++ CRLOpts}}.
 
 ciphers(Service, Config) ->
     case ns_ssl_services_setup:configured_ciphers_names(Service, Config) of
         [] -> default_cbauth_ciphers();
         List -> List
     end.
+
+crl_config_opts() ->
+    #{policy_per_scope := PolicyPerScope,
+      version := Vsn} = cb_crl_manager:get_push_config(),
+    PolicyJson = {[{crl_scope_to_binary(S), crl_mode_to_binary(M)}
+                   || {S, M} <- PolicyPerScope]},
+    [{crlPolicyPerScope, PolicyJson},
+     {crlVersion, Vsn}].
+
+crl_scope_to_binary(client_auth) -> <<"clientAuth">>;
+crl_scope_to_binary(node_to_node) -> <<"nodeToNode">>.
+
+crl_mode_to_binary(disabled) -> <<"Disabled">>;
+crl_mode_to_binary(permissive) -> <<"Permissive">>;
+crl_mode_to_binary(require) -> <<"Require">>.
 
 default_cbauth_ciphers() ->
     %% Backward compatibility
@@ -688,6 +717,7 @@ setup_t() ->
                                        ns_ssl_services_setup,
                                        menelaus_users,
                                        ns_secrets,
+                                       cb_crl_manager,
                                        testconditions]),
 
     %% Set config values for a few keys, since these are needed for greater

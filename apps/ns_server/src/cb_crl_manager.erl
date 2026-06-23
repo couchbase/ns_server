@@ -177,12 +177,14 @@ get_status() ->
 %%   policy_per_scope => [{crl_scope(), crl_policy()}] — all scopes with their
 %%                       policies
 %%   files            => binary() — crls file paths to be used by services
+%%   version          => integer() -> version of crl configuration
 %%
 %% This function is the single source of truth for CRL push config. Both
 %% memcached_config_mgr and menelaus_cbauth call it.
 -spec get_push_config() ->
     #{policy_per_scope => [{crl_scope(), crl_policy()}],
-      files => [binary()]}.
+      files => [binary()],
+      version => integer()}.
 get_push_config() ->
     gen_server:call(?SERVER, get_push_config, ?GET_PUSH_CONFIG_TIMEOUT).
 
@@ -239,8 +241,10 @@ handle_call(get_push_config, _From, #state{active = Active} = State) ->
     PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
     FileVersions = build_file_versions(Active),
     Files = [F || {F, _} <- FileVersions],
+    Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions)}),
     Result = #{policy_per_scope => PolicyPerScope,
-               files => Files},
+               files => Files,
+               version => Version},
     {reply, Result, State};
 
 handle_call(Req, _From, State) ->
@@ -304,11 +308,12 @@ maybe_notify_crl_consumers(StateBefore, StateCurrent) ->
         false -> notify_crl_consumers()
     end.
 
-%% Notify memcached that CRL data has changed.
+%% Notify memcached and cbauth that CRL data has changed.
 %% Called after config changes, manual reload, and poll when files changed.
 -spec notify_crl_consumers() -> ok.
 notify_crl_consumers() ->
     memcached_config_mgr:trigger_tls_config_push(),
+    menelaus_cbauth:notify_crl_change(),
     ok.
 
 -spec default_config() -> map().
