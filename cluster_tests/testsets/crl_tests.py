@@ -9,9 +9,12 @@
 
 import contextlib
 import datetime
+import http.server
 import os
 import shutil
+import socketserver
 import tempfile
+import threading
 
 import requests
 
@@ -1033,7 +1036,8 @@ def try_client_auth(node, cert_path):
 
 def set_crl_settings(cluster, policy_per_scope=None, directory=None,
                      poll_interval_ms=None,
-                     check_intermediate_certs=None):
+                     check_intermediate_certs=None,
+                     urls=None, url_poll_interval_ms=None):
     """POST /settings/crl to configure CRL settings."""
     body = {}
     if policy_per_scope is not None:
@@ -1044,6 +1048,10 @@ def set_crl_settings(cluster, policy_per_scope=None, directory=None,
         body['dirPollIntervalMs'] = poll_interval_ms
     if check_intermediate_certs is not None:
         body['checkIntermediateCerts'] = check_intermediate_certs
+    if urls is not None:
+        body['urls'] = urls
+    if url_poll_interval_ms is not None:
+        body['urlPollIntervalMs'] = url_poll_interval_ms
     return testlib.post_succ(cluster, '/settings/crl', json=body).json()
 
 
@@ -2153,3 +2161,597 @@ def _wait_n2n_reconnected(nodes, expect_connected=True, timeout_s=30):
     testlib.poll_for_condition(
         check, sleep_time=1.0, timeout=timeout_s,
         msg=f'n2n {"connected" if expect_connected else "disconnected"}')
+
+
+# =============================================================================
+# HTTP server helper for URL-based CRL tests
+# =============================================================================
+
+
+class CRLHttpServer:
+    """Local HTTP server that serves configurable content over HTTP.
+
+    Context manager: starts the server in __enter__, shuts it down
+    in __exit__.  Call set_content() to change what is returned.
+
+    The server honours ETag / If-None-Match caching: the ETag is a
+    monotonically increasing version counter.  Calling set_content()
+    increments the version so that the CRL manager receives fresh
+    content even when it has a cached ETag from the previous request.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._content = b''
+        self._status_code = 200
+        self._version = 0
+        self._httpd = None
+        self._thread = None
+        self._port = None
+
+    def set_content(self, data, status_code=200):
+        """Replace the response body and increment the ETag version."""
+        if isinstance(data, str):
+            data = data.encode()
+        with self._lock:
+            self._content = data
+            self._status_code = status_code
+            self._version += 1
+
+    def set_unavailable(self):
+        """Make the server respond with 503 Service Unavailable."""
+        with self._lock:
+            self._status_code = 503
+            self._version += 1
+
+    @property
+    def url(self):
+        return f'http://127.0.0.1:{self._port}/crl.pem'
+
+    def __enter__(self):
+        server = self
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                with server._lock:
+                    content = server._content
+                    status = server._status_code
+                    version = server._version
+                etag = f'"{version}"'
+                inm = self.headers.get('If-None-Match', '')
+                if inm == etag and status == 200:
+                    self.send_response(304)
+                    self.end_headers()
+                    return
+                self.send_response(status)
+                self.send_header('ETag', etag)
+                self.send_header('Content-Length', str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+
+            def log_message(self, fmt, *args):
+                pass
+
+        # Bind to port 0 to let the OS assign a free port.
+        self._httpd = socketserver.TCPServer(
+            ('127.0.0.1', 0), _Handler)
+        self._port = self._httpd.server_address[1]
+        self._thread = threading.Thread(
+            target=self._httpd.serve_forever)
+        self._thread.daemon = True
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_):
+        if self._httpd is not None:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+            self._thread.join()
+            self._httpd = None
+            self._thread = None
+
+
+# =============================================================================
+# CRL bad-CRL status helper
+# =============================================================================
+
+
+def assert_crl_file_load_error(result, fname, expected_cache_status=None,
+                               expected_reload_result=None,
+                               expected_error_num=0,
+                               expected_error=None):
+    print(f'status: {result}')
+    bad_file = next(
+        (f for f in result
+            if f.get('filename') == fname), None)
+    assert bad_file is not None, \
+        f'{fname} not in reload result: {result}'
+    assert bad_file.get('cacheStatus') == expected_cache_status, \
+        f'Expected cache status {expected_cache_status}, got: {bad_file}'
+    last_reload = bad_file.get('lastReload', {})
+    assert last_reload.get('result') == expected_reload_result, \
+        f'Expected "{expected_reload_result}" result, got: {last_reload}'
+    assert len(last_reload.get('errors', [])) == expected_error_num, \
+        f'Unexpected errors num: {len(last_reload.get("errors", []))}'
+
+    if expected_error is not None:
+        assert any(expected_error in e for e in last_reload['errors']), \
+            f'Unexpected errors: {last_reload["errors"]}'
+
+
+def assert_crl_load_error(status_list, expected_cache_status=None):
+    """Assert that at least one CRL file has a non-active error status.
+
+    status_list is a list of per-file status dicts as returned by
+    reload_crl() or extracted from get_crl_status().
+
+    If expected_cache_status is provided, asserts that at least one
+    file matches that exact cacheStatus value.  Otherwise, asserts
+    that no file has cacheStatus == 'active'.
+    """
+    assert len(status_list) > 0, \
+        f'Expected at least one CRL file in status: {status_list}'
+    if expected_cache_status is not None:
+        assert any(f.get('cacheStatus') == expected_cache_status
+                   for f in status_list), \
+            (f'Expected cacheStatus={expected_cache_status!r},'
+             f' got: {status_list}')
+    else:
+        assert all(f.get('cacheStatus') != 'active'
+                   for f in status_list), \
+            f'Expected no active CRL, got: {status_list}'
+
+
+# =============================================================================
+# Negative tests: bad CRL across all three loading paths
+# =============================================================================
+
+
+class CRLBadCRLTests(testlib.BaseTestSet):
+    """Negative tests for bad CRL data.
+
+    Three loading paths:
+      Upload API  — bad CRL is rejected immediately with HTTP 400.
+      Local dir   — bad CRL file appears in reload status with an
+                    error cacheStatus; replacing it recovers to active.
+      URL-based   — HTTP server returning bad data also produces an
+                    error status; serving a good CRL recovers.
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition='Enterprise')
+
+    def setup(self):
+        # Expired CRLs must be rejected.  CRLTests.setup sets this
+        # to True, so be explicit here.
+        set_allow_expired_crls(self.cluster, False)
+
+    def teardown(self):
+        set_allow_expired_crls(self.cluster, False)
+
+    def test_teardown(self):
+        node = self.cluster.connected_nodes[0]
+        set_crl_settings(
+            self.cluster,
+            policy_per_scope={'clientAuth': 'Disabled',
+                              'nodeToNode': 'Disabled'},
+            directory='', urls=[])
+        for f in get_crl_files(node):
+            delete_crl_file(node, f['filename'])
+
+    # ------------------------------------------------------------------
+    # Upload API — synchronous validation
+    # ------------------------------------------------------------------
+
+    def upload_garbage_content_test(self):
+        """Uploading non-CRL bytes returns HTTP 400 with decode error."""
+        node = self.cluster.connected_nodes[0]
+        garbage = b'\x00\xFF' * 32 + b'not a crl'
+        files = {'crl': ('bad.pem', garbage, 'application/x-pem-file')}
+        r = testlib.post_fail(node, '/settings/crl/files', files=files,
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'upload_garbage_content error: {error}')
+        assert 'Failed to decode CRL: Invalid CRL' in error, \
+            f'Unexpected error: {error!r}'
+
+    def upload_untrusted_issuer_test(self):
+        """CRL signed by an untrusted CA returns HTTP 400."""
+        node = self.cluster.connected_nodes[0]
+        untrusted_pem, untrusted_key = generate_root_ca()
+        crl_pem = generate_crl(untrusted_pem, untrusted_key, [])
+        files = {'crl': ('untrusted.pem', crl_pem.encode(),
+                         'application/x-pem-file')}
+        r = testlib.post_fail(node, '/settings/crl/files', files=files,
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'upload_untrusted_issuer error: {error}')
+        assert 'issuer not trusted' in error.lower(), \
+            f'Unexpected error: {error!r}'
+
+    def upload_expired_crl_test(self):
+        """Uploading an expired CRL returns HTTP 400."""
+        node = self.cluster.connected_nodes[0]
+        ca_pem, ca_key_pem = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [ca_pem])
+        try:
+            crl_pem = generate_crl(ca_pem, ca_key_pem, [], expired=True)
+            files = {'crl': ('expired.pem', crl_pem.encode(),
+                             'application/x-pem-file')}
+            r = testlib.post(node, '/settings/crl/files', files=files)
+            testlib.assert_eq(r.status_code, 400,
+                              name='expired CRL upload status')
+            error = r.json().get('error', '')
+            print(f'upload_expired_crl error: {error}')
+            assert 'CRL expired' in error, \
+                f'Expected CRL expired error, got: {error!r}'
+        finally:
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+
+    def upload_bad_request_test(self):
+        """Invalid upload requests return HTTP 400 with specific errors."""
+        node = self.cluster.connected_nodes[0]
+
+        # 1. Wrong Content-Type (not multipart/form-data).
+        r = testlib.post_fail(node, '/settings/crl/files',
+                              data=b'notcrl',
+                              headers={'Content-Type': 'text/plain'},
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'bad_request wrong-ct error: {error}')
+        assert 'multipart' in error.lower(), \
+            f'Expected multipart error, got: {error!r}'
+
+        # 2. Invalid filename (path traversal attempt).
+        r = testlib.post_fail(node, '/settings/crl/files',
+                              files={'crl': ('../bad.pem', b'\x00',
+                                             'application/octet-stream')},
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'bad_request invalid-fn error: {error}')
+        assert 'invalid filename' in error.lower(), \
+            f'Expected invalid-filename error, got: {error!r}'
+
+        # 3. Multiple files in one request.
+        r = testlib.post_fail(node, '/settings/crl/files',
+                              files=[('crl', ('a.pem', b'\x00',
+                                              'application/octet-stream')),
+                                     ('crl', ('b.pem', b'\x00',
+                                              'application/octet-stream'))],
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'bad_request multi-file error: {error}')
+        assert 'multiple' in error.lower(), \
+            f'Expected multiple-files error, got: {error!r}'
+
+        # 4. Multipart with no file part (only a plain form field).
+        body = (
+            b'--testbnd\r\n'
+            b'Content-Disposition: form-data; name="field"\r\n'
+            b'\r\n'
+            b'value\r\n'
+            b'--testbnd--\r\n'
+        )
+        r = testlib.post_fail(node, '/settings/crl/files',
+                              data=body,
+                              headers={'Content-Type':
+                                       'multipart/form-data; boundary=testbnd'},
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'bad_request no-file error: {error}')
+        assert 'no file' in error.lower(), \
+            f'Expected no-file error, got: {error!r}'
+
+    # ------------------------------------------------------------------
+    # Local directory — asynchronous status
+    # ------------------------------------------------------------------
+
+    def local_dir_garbage_crl_test(self):
+        """Garbage file in CRL dir produces error status; replacing it
+        with a valid CRL recovers to active status."""
+        node = self.cluster.connected_nodes[0]
+        ca_pem, ca_key_pem = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [ca_pem])
+        crl_dir = tempfile.mkdtemp()
+        try:
+            crl_path = os.path.join(crl_dir, 'bad.pem')
+            with open(crl_path, 'wb') as f:
+                f.write(b'not a crl file')
+
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             poll_interval_ms=1000,
+                             directory=crl_dir)
+
+            result = reload_crl(node)
+            assert_crl_file_load_error(result, 'bad.pem',
+                                       expected_cache_status='notLoaded',
+                                       expected_reload_result='failed',
+                                       expected_error_num=1,
+                                       expected_error='Failed to decode file')
+
+            # Replace with a valid CRL → recovery to active.
+            generate_crl_to_file(crl_path, ca_pem, ca_key_pem, [])
+            result = reload_crl(node)
+            assert_crl_file_load_error(result, 'bad.pem',
+                                       expected_cache_status='active',
+                                       expected_reload_result='loaded',
+                                       expected_error_num=0)
+        finally:
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory='')
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            shutil.rmtree(crl_dir, ignore_errors=True)
+
+    def local_dir_untrusted_issuer_test(self):
+        """CRL from an untrusted CA in the directory → untrusted status."""
+        node = self.cluster.connected_nodes[0]
+        untrusted_pem, untrusted_key = generate_root_ca()
+        crl_dir = tempfile.mkdtemp()
+        try:
+            crl_path = os.path.join(crl_dir, 'untrusted.pem')
+            generate_crl_to_file(crl_path, untrusted_pem,
+                                 untrusted_key, [])
+
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Disabled',
+                                  'nodeToNode': 'Disabled'},
+                poll_interval_ms=1000,
+                directory=crl_dir)
+
+            result = reload_crl(node)
+            assert_crl_file_load_error(result, 'untrusted.pem',
+                                       expected_cache_status='notLoaded',
+                                       expected_reload_result='failed',
+                                       expected_error_num=1,
+                                       expected_error='CRL issuer not trusted')
+        finally:
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Disabled',
+                                  'nodeToNode': 'Disabled'},
+                directory='')
+            shutil.rmtree(crl_dir, ignore_errors=True)
+
+    def local_dir_expired_test(self):
+        """Expired CRL in the directory → expired status."""
+        node = self.cluster.connected_nodes[0]
+        trusted_pem, trusted_key = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [trusted_pem])
+        crl_dir = tempfile.mkdtemp()
+        try:
+            crl_path = os.path.join(crl_dir, 'expired.pem')
+            generate_crl_to_file(crl_path, trusted_pem, trusted_key, [],
+                                 expired=True)
+
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             poll_interval_ms=1000,
+                             directory=crl_dir)
+
+            result = reload_crl(node)
+            assert_crl_file_load_error(result, 'expired.pem',
+                                       expected_cache_status='notLoaded',
+                                       expected_reload_result='failed',
+                                       expected_error_num=1,
+                                       expected_error='CRL expired')
+            generate_crl_to_file(crl_path, trusted_pem, trusted_key, [])
+
+            # Should re-read it in 1 second (hence the poll):
+            testlib.poll_for_condition(
+                lambda: assert_crl_file_load_error(
+                            get_crl_status(node)[node.hostname()],
+                            'expired.pem',
+                            expected_cache_status='active',
+                            expected_reload_result='loaded',
+                            expected_error_num=0),
+                sleep_time=0.5, attempts=20, retry_on_assert=True)
+        finally:
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Disabled',
+                                  'nodeToNode': 'Disabled'},
+                directory='')
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            shutil.rmtree(crl_dir, ignore_errors=True)
+
+    # ------------------------------------------------------------------
+    # URL-based — asynchronous status
+    # ------------------------------------------------------------------
+
+    def url_garbage_content_test(self):
+        """URL serving garbage → error status; switch to valid CRL →
+        recovery to active."""
+        node = self.cluster.connected_nodes[0]
+        ca_pem, ca_key_pem = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [ca_pem])
+        try:
+            with CRLHttpServer() as srv:
+                srv.set_content(b'not a crl at all')
+
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Disabled',
+                                      'nodeToNode': 'Disabled'},
+                    urls=[srv.url],
+                    url_poll_interval_ms=1000)
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(
+                    result, srv.url,
+                    expected_cache_status='notLoaded',
+                    expected_reload_result='failed',
+                    expected_error_num=1,
+                    expected_error='Failed to decode file. Reason: Invalid CRL')
+
+                # Switch to a valid CRL → recovery.
+                valid_crl = generate_crl(ca_pem, ca_key_pem, [])
+                srv.set_content(valid_crl.encode())
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(result, srv.url,
+                                           expected_cache_status='active',
+                                           expected_reload_result='loaded',
+                                           expected_error_num=0)
+
+                # Switch back to bad crl (it stays active now)
+                srv.set_content(b'not a crl at all')
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(
+                    result, srv.url,
+                    expected_cache_status='active',
+                    expected_reload_result='failed',
+                    expected_error_num=1,
+                    expected_error='Failed to decode file. Reason: Invalid CRL')
+        finally:
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             urls=[])
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+
+    def url_http_error_test(self):
+        """URL returning HTTP 404 → failed status with HTTP error detail."""
+        node = self.cluster.connected_nodes[0]
+        ca_pem, ca_key_pem = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [ca_pem])
+        try:
+            with CRLHttpServer() as srv:
+                srv.set_content(b'Not Found', status_code=404)
+
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Disabled',
+                                      'nodeToNode': 'Disabled'},
+                    urls=[srv.url],
+                    url_poll_interval_ms=1000)
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(
+                    result, srv.url,
+                    expected_cache_status='notLoaded',
+                    expected_reload_result='failed',
+                    expected_error_num=1,
+                    expected_error='HTTP 404 Not Found')
+
+                valid_crl = generate_crl(ca_pem, ca_key_pem, [])
+                srv.set_content(valid_crl.encode())
+
+                # Should re-read it in 1 second (hence the poll):
+                testlib.poll_for_condition(
+                    lambda: assert_crl_file_load_error(
+                                get_crl_status(node)[node.hostname()], srv.url,
+                                expected_cache_status='active',
+                                expected_reload_result='loaded',
+                                expected_error_num=0),
+                    sleep_time=0.5, attempts=20, retry_on_assert=True)
+        finally:
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Disabled',
+                                  'nodeToNode': 'Disabled'},
+                urls=[])
+            for ca_id in ca_ids:
+                testlib.delete(
+                    node, f'/pools/default/trustedCAs/{ca_id}')
+
+    def url_untrusted_issuer_test(self):
+        """URL serving a CRL from an untrusted CA → untrusted status."""
+        node = self.cluster.connected_nodes[0]
+        untrusted_pem, untrusted_key = generate_root_ca()
+        ca_ids = []
+        try:
+            with CRLHttpServer() as srv:
+                untrusted_crl = generate_crl(untrusted_pem, untrusted_key, [])
+                srv.set_content(untrusted_crl.encode())
+
+                set_crl_settings(self.cluster,
+                                 policy_per_scope={'clientAuth': 'Disabled',
+                                                   'nodeToNode': 'Disabled'},
+                                 urls=[srv.url],
+                                 url_poll_interval_ms=1000)
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(
+                    result, srv.url,
+                    expected_cache_status='notLoaded',
+                    expected_reload_result='failed',
+                    expected_error_num=1,
+                    expected_error='CRL issuer not trusted')
+
+                ca_ids = load_multiple_cas(node, [untrusted_pem])
+
+                # Should re-read it in 1 second (hence the poll):
+                testlib.poll_for_condition(
+                    lambda: assert_crl_file_load_error(
+                                get_crl_status(node)[node.hostname()], srv.url,
+                                expected_cache_status='active',
+                                expected_reload_result='loaded',
+                                expected_error_num=0),
+                    sleep_time=0.5, attempts=20, retry_on_assert=True)
+        finally:
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Disabled',
+                                  'nodeToNode': 'Disabled'},
+                urls=[])
+            for ca_id in ca_ids:
+                testlib.delete(
+                    node, f'/pools/default/trustedCAs/{ca_id}')
+
+    def url_expired_issuer_test(self):
+        """URL serving an expired CRL → expired status."""
+        node = self.cluster.connected_nodes[0]
+        trusted_pem, trusted_key = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [trusted_pem])
+        try:
+            with CRLHttpServer() as srv:
+                expired_crl = generate_crl(trusted_pem, trusted_key, [],
+                                           expired=True)
+                srv.set_content(expired_crl.encode())
+
+                set_crl_settings(self.cluster,
+                                 policy_per_scope={'clientAuth': 'Disabled',
+                                                   'nodeToNode': 'Disabled'},
+                                 urls=[srv.url],
+                                 url_poll_interval_ms=1000)
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(
+                    result, srv.url,
+                    expected_cache_status='notLoaded',
+                    expected_reload_result='failed',
+                    expected_error_num=1,
+                    expected_error='CRL expired')
+
+                good_crl = generate_crl(trusted_pem, trusted_key, [])
+                srv.set_content(good_crl.encode())
+
+                # Should re-read it in 1 second (hence the poll):
+                testlib.poll_for_condition(
+                    lambda: assert_crl_file_load_error(
+                                get_crl_status(node)[node.hostname()], srv.url,
+                                expected_cache_status='active',
+                                expected_reload_result='loaded',
+                                expected_error_num=0),
+                    sleep_time=0.5, attempts=20, retry_on_assert=True)
+        finally:
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Disabled',
+                                  'nodeToNode': 'Disabled'},
+                urls=[])
+            for ca_id in ca_ids:
+                testlib.delete(
+                    node, f'/pools/default/trustedCAs/{ca_id}')
