@@ -494,6 +494,25 @@ scan_directory(Dir, State, ForceReload) ->
 maybe_load_from_local_file(Name, FilePath, ForceReload, TS, TrustedCAs,
                            #state{file_state = FS} = State) ->
     MTime = filelib:last_modified(FilePath),
+    Now = calendar:local_time(), %% because last_modified returns local time
+    case MTime == Now of %% same second
+        true ->
+            %% The file has changed less then a second ago, and since mtime is
+            %% in seconds we should wait 1 second to make sure we load the most
+            %% recent file.
+            %% Possible race:
+            %%   1. File is written at time 0 (mtime=0)
+            %%   2. We read the mtime
+            %%   3. We read the file
+            %%   3. In parallel the file changes again at time 0
+            %%      (mtime is still 0)
+            %%   4. Poll timer fires at time 10 and we start scanning
+            %%   5. We ignore new file because mtime in memory matches
+            %%      the file's mtime
+            timer:sleep(1000);
+        false ->
+            ok
+    end,
     case maps:get(FilePath, FS, undefined) of
         #crl_reload_status{mtime = MTime} when not ForceReload ->
             %% mtime unchanged and reload not forced; skip
