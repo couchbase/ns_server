@@ -543,7 +543,7 @@ get_vb_sizes(BucketName) ->
           [node() | nodes()], ns_memcached, get_vbucket_details_stats,
           [BucketName, ["db_data_size"]],
           ?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT),
-    case NodeErrors =:= [] orelse DownNodes =:= [] of
+    case NodeErrors =:= [] andalso DownNodes =:= [] of
         false ->
             %% Report the error but continue with any good responses
             ?log_error("Failed to get VB sizes from nodes ~p",
