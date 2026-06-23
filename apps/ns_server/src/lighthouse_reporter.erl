@@ -278,7 +278,7 @@ create_report() ->
                   CoresLogical = proplists:get_value(cpu_count, Props, 0),
                   SystemStats = proplists:get_value(system_stats, Props, []),
                   CoresPhysical = proplists:get_value(cpu_host_cores_available,
-                                                      Props, 0),
+                                                      SystemStats, 0),
                   RamBytesTotal = proplists:get_value(mem_total,
                                                       SystemStats, 0),
                   RamBytesUsed = proplists:get_value(mem_actual_used,

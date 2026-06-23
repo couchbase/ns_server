@@ -281,7 +281,10 @@ handle_post(ApplyFun, Path, ParamSpecs, UserTypesFun, Predefined, Defaults,
 
     validator:handle(
       fun (Props) -> ApplyFun(PrepareProps(Props), Req) end, Req, Params,
-      Validators ++ [validator:unsupported(_), PostValidator]).
+      Validators ++
+          [validator:no_duplicate_keys(_),
+           validator:unsupported(_),
+           PostValidator]).
 
 post_validators(Path, Props, ParamSpecs, Predefined, Defaults) ->
     AllPropsIncludingPredefined =
