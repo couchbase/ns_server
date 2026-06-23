@@ -682,34 +682,47 @@ verify_cert_crl(Der, Scope, Event) ->
         OtpCert ->
             Subject = list_to_binary(
                         ns_server_cert:get_subject(OtpCert)),
-            case cb_crl:verify(OtpCert, Event, Scope, []) of
+            {CRLResult, Expiry} =
+                cb_crl:verify_local_with_expiry(OtpCert, Event, Scope, []),
+            ExpiryStr = format_expiry(Expiry),
+            case CRLResult of
                 {valid, _} ->
                     {[{status, <<"valid">>},
-                      {subject, Subject}]};
+                      {subject, Subject},
+                      {expiration, ExpiryStr}]};
                 {fail, {bad_cert, {revoked, Reason}}} ->
                     {[{status, <<"revoked">>},
                       {subject, Subject},
-                      {details, format_crl_details(Reason)}]};
+                      {details, format_crl_details(Reason)},
+                      {expiration, ExpiryStr}]};
                 {fail, {bad_cert,
                         {revocation_status_undetermined, Info}}} ->
                     {[{status, <<"undetermined">>},
                       {subject, Subject},
-                      {details, format_crl_details(Info)}]};
+                      {details, format_crl_details(Info)},
+                      {expiration, ExpiryStr}]};
                 {fail, {bad_cert, Reason}} ->
                     {[{status, <<"failed">>},
                       {subject, Subject},
-                      {details, format_crl_details(Reason)}]}
+                      {details, format_crl_details(Reason)},
+                      {expiration, ExpiryStr}]}
             end
     catch
         C:E:ST ->
             ?log_error("cbauth crl status check crashed: ~p:~p~nStacktrace: ~p",
                        [C, E, ST]),
             {[{status, <<"failed">>},
-              {details, <<"cert decode error">>}]}
+              {details, <<"cert decode error">>},
+              {expiration, null}]}
     end.
 
 format_crl_details(Term) ->
     iolist_to_binary(io_lib:format("~p", [Term])).
+
+format_expiry(undefined) ->
+    null;
+format_expiry(DateTime) ->
+    iso8601:format(DateTime).
 
 crl_scope_from_string("clientAuth") -> client_auth;
 crl_scope_from_string("nodeToNode") -> node_to_node.

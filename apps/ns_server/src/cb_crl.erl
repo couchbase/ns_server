@@ -12,7 +12,7 @@
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
 
--export([verify_fun/1, verify/4]).
+-export([verify_fun/1, verify/4, verify_local_with_expiry/4]).
 
 -spec verify_fun(CRLScope :: crl_scope()) ->
           fun((#'OTPCertificate'{}, term(), term()) ->
@@ -57,28 +57,42 @@ verify(OtpCert, Event, CRLScope, State) ->
 %% policy applies to both.
 -spec verify_local(OtpCert  :: #'OTPCertificate'{},
                    Event    :: term(),
-                   CRLScope :: atom(),
+                   CRLScope :: crl_scope(),
                    State    :: term()) ->
           {valid, term()} | {fail, term()} | {unknown, term()}.
-verify_local(OtpCert, valid_peer, CRLScope, State) ->
+verify_local(OtpCert, Event, CRLScope, State) ->
+    {Result, _Expiry} = verify_local_with_expiry(OtpCert, Event, CRLScope,
+                                                 State),
+    Result.
+
+%% Like verify_local/4 but also returns the expiry of the computed status.
+%% Used by the /_cbauth/crlsValidate diagnostic endpoint so callers
+%% know how long to cache the result.
+-spec verify_local_with_expiry(OtpCert  :: #'OTPCertificate'{},
+                               Event    :: term(),
+                               CRLScope :: crl_scope(),
+                               State    :: term()) ->
+          {{valid, term()} | {fail, term()} | {unknown, term()},
+           calendar:datetime() | undefined}.
+verify_local_with_expiry(OtpCert, valid_peer, CRLScope, State) ->
     case wait_for_crl_policy(CRLScope, 5000) of
         {ok, disabled} ->
-            {valid, State};
+            {{valid, State}, undefined};
         {ok, Policy} ->
             case ns_server_cert:is_ootb_cert(OtpCert) of
                 true ->
                     %% Cert issued by the cluster's own generated CA;
                     %% CRL checking does not apply to internal certs.
-                    {valid, State};
+                    {{valid, State}, undefined};
                 false ->
                     try crl_check(OtpCert, Policy) of
-                        valid -> {valid, State};
-                        {fail, Reason} -> {fail, Reason}
+                        {valid, Expiry} -> {{valid, State}, Expiry};
+                        {{fail, Reason}, Expiry} -> {{fail, Reason}, Expiry}
                     catch
                         C:E:ST ->
                             ?log_error("CRL check exception ~p:~p~n~p",
                                        [C, E, ST]),
-                            {fail, internal_error}
+                            {{fail, internal_error}, undefined}
                     end
             end;
         timeout ->
@@ -88,32 +102,33 @@ verify_local(OtpCert, valid_peer, CRLScope, State) ->
             ?log_debug("Rejecting the distribution connection as the CRL "
                        "policy is not available yet; the peer should retry "
                        "shortly. This is expected only during startup. "),
-            {fail, {bad_cert, crl_policy_not_available_yet}}
+            {{fail, {bad_cert, crl_policy_not_available_yet}}, undefined}
     end;
-verify_local(_OtpCert, {bad_cert, _} = Reason, _CRLScope, _State) ->
+verify_local_with_expiry(_OtpCert, {bad_cert, _} = Reason, _CRLScope, _State) ->
     %% Non-CRL cert failure (expired, bad signature, etc.):
     %% respect the SSL layer's verdict.
-    {fail, Reason};
-verify_local(_OtpCert, {extension, _}, _CRLScope, State) ->
-    {unknown, State};
-verify_local(OtpCert, valid, CRLScope, State) ->
+    {{fail, Reason}, undefined};
+verify_local_with_expiry(_OtpCert, {extension, _}, _CRLScope, State) ->
+    {{unknown, State}, undefined};
+verify_local_with_expiry(OtpCert, valid, CRLScope, State) ->
     case wait_for_check_intermediate_certs(5000) of
         {ok, false} ->
-            {valid, State};
+            {{valid, State}, undefined};
         {ok, true} ->
             case public_key:pkix_is_self_signed(OtpCert) of
                 true ->
                     %% Root certs can't be revoked by definition
-                    {valid, State};
+                    {{valid, State}, undefined};
                 false ->
                     %% The CRL check is pretty much the same as for the leaf
                     %% cert, so just call verify/4 recursively with valid_peer
-                    verify_local(OtpCert, valid_peer, CRLScope, State)
+                    verify_local_with_expiry(OtpCert, valid_peer, CRLScope,
+                                             State)
             end;
         timeout ->
             ?log_debug("Rejecting: check_intermediate_certs flag not yet "
                        "available; expected only during startup."),
-            {fail, {bad_cert, crl_policy_not_available_yet}}
+            {{fail, {bad_cert, crl_policy_not_available_yet}}, undefined}
     end.
 
 wait_for_crl_policy(Scope, Remaining) ->
@@ -138,20 +153,23 @@ wait_for_value(GetFun, Remaining) ->
 %% Perform the actual CRL revocation check and map the result to a
 %% verify_fun return value according to the active policy.
 -spec crl_check(#'OTPCertificate'{}, permissive | require) ->
-          valid | {fail, term()}.
+          {valid | {fail, term()}, calendar:datetime() | undefined}.
 crl_check(OtpCert, Policy) when Policy == permissive; Policy == require ->
     DPsAndCRLs = build_dps_and_crls(OtpCert),
+    Expiry = compute_expiry(DPsAndCRLs),
     TrustedDerCAs = ns_server_cert:trusted_CAs(der),
     IssuerFun = make_issuer_fun(TrustedDerCAs),
     Opts = [{issuer_fun, {IssuerFun, undefined}},
             {undetermined_details, true}],
-    case public_key:pkix_crls_validate(OtpCert, DPsAndCRLs, Opts) of
-        valid ->
-            valid;
-        {bad_cert, Reason} ->
-            SubjectStr = ns_server_cert:get_subject(OtpCert),
-            handle_bad_cert_crl_reason(Reason, Policy, SubjectStr)
-    end.
+    Result =
+        case public_key:pkix_crls_validate(OtpCert, DPsAndCRLs, Opts) of
+            valid ->
+                valid;
+            {bad_cert, Reason} ->
+                SubjectStr = ns_server_cert:get_subject(OtpCert),
+                handle_bad_cert_crl_reason(Reason, Policy, SubjectStr)
+        end,
+    {Result, Expiry}.
 
 handle_bad_cert_crl_reason({revoked, Reason}, Policy, SubjectStr) ->
     ?log_debug("(CRL) Certificate revoked \"~s\" (policy=~p): ~p",
@@ -178,6 +196,32 @@ handle_bad_cert_crl_reason(Reason, Policy, SubjectStr) ->
                "(policy=~p, will fail): ~p",
                [ns_config_log:tag_user_name(SubjectStr), Policy, Reason]),
     {fail, {bad_cert, Reason}}.
+
+%% Compute when the CRL-based status expires: the earliest nextUpdate among
+%% all CRLs that have not already expired.  Returns undefined when there are
+%% no CRLs, all CRLs have already expired, or no CRL carries a nextUpdate.
+-spec compute_expiry([{#'DistributionPoint'{},
+                       {public_key:der_encoded(), #'CertificateList'{}}}]) ->
+          calendar:datetime() | undefined.
+compute_expiry(DPsAndCRLs) ->
+    NowSecs = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+    NextUpdateSecs =
+        lists:filtermap(
+          fun ({_, {_, #'CertificateList'{tbsCertList = TBS}}}) ->
+                  case TBS#'TBSCertList'.nextUpdate of
+                      asn1_NOVALUE ->
+                          false;
+                      Raw ->
+                          case pubkey_cert:time_str_2_gregorian_sec(Raw) of
+                              Secs when Secs > NowSecs -> {true, Secs};
+                              _                        -> false
+                          end
+                  end
+          end, DPsAndCRLs),
+    case NextUpdateSecs of
+        [] -> undefined;
+        _  -> calendar:gregorian_seconds_to_datetime(lists:min(NextUpdateSecs))
+    end.
 
 %% Build the [{DistributionPoint, {DerCRL, OtpCRL}}] list required by
 %% public_key:pkix_crls_validate/3.
