@@ -997,15 +997,26 @@ validate_redirect_uri(Url) ->
     case uri_string:parse(Url) of
         {error, _, _} ->
             {error, "Invalid URL syntax"};
-
-        #{scheme := Scheme, host := _Host} = Map ->
-            case lists:member(Scheme, ["http", "https"]) of
-                true -> validate_strict_base(Map);
-                false -> {error, "Invalid scheme (must be http/https)"}
+        #{scheme := Scheme, host := Host} = Map ->
+            case Host of
+                [] ->
+                    {error, "Missing host"};
+                _ ->
+                    case lists:member($*, Host) of
+                        true ->
+                            {error,
+                             "Wildcards are not permitted in redirect URIs"};
+                        false ->
+                            case lists:member(Scheme, ["http", "https"]) of
+                                true -> validate_strict_base(Map);
+                                false ->
+                                    {error,
+                                     "Invalid scheme (must be http/https)"}
+                            end
+                    end
             end;
         #{scheme := _Scheme} ->
             {error, "Missing host"};
-
         _ ->
             {error, "Invalid URL format"}
     end.
@@ -1554,4 +1565,26 @@ format_conversion_test_() ->
      ?_assertEqual(DeepToList(Expected1),
                    DeepToList(Actual1))
     ].
+
+validate_redirect_uri_test_() ->
+    [
+     ?_assertEqual(ok, validate_redirect_uri("https://example.com")),
+     ?_assertEqual(ok, validate_redirect_uri("https://example.com/")),
+     ?_assertEqual(ok, validate_redirect_uri("http://example.com")),
+     ?_assertEqual(ok, validate_redirect_uri("http://localhost")),
+     ?_assertEqual({error, "Wildcards are not permitted in redirect URIs"},
+                   validate_redirect_uri("http://*.example.com/")),
+     ?_assertEqual({error, "Wildcards are not permitted in redirect URIs"},
+                   validate_redirect_uri("https://*.example.com/")),
+     ?_assertEqual({error, "Wildcards are not permitted in redirect URIs"},
+                   validate_redirect_uri("https://example*.com/")),
+     ?_assertEqual({error, "Invalid scheme (must be http/https)"},
+                   validate_redirect_uri("ftp://example.com")),
+     ?_assertEqual({error, "Missing host"},
+                   validate_redirect_uri("https://")),
+     ?_assertEqual(
+        {error, "Path (except /), Query, and Fragment must be empty"},
+        validate_redirect_uri("https://example.com/path"))
+    ].
+
 -endif.
