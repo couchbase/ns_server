@@ -60,14 +60,10 @@ verify(OtpCert, Event, CRLScope, State) ->
                    State    :: term()) ->
           {valid, term()} | {fail, term()} | {unknown, term()}.
 verify_local(OtpCert, valid_peer, CRLScope, State) ->
-    Policy = cb_crl_cache:get_policy(CRLScope),
-    case Policy of
-        disabled ->
+    case wait_for_crl_policy(CRLScope, 5000) of
+        {ok, disabled} ->
             {valid, State};
-        unknown ->
-            %% Cache not yet initialised — fail closed.
-            {fail, crl_policy_unavailable};
-        Policy ->
+        {ok, Policy} ->
             case ns_server_cert:is_ootb_cert(OtpCert) of
                 true ->
                     %% Cert issued by the cluster's own generated CA;
@@ -83,7 +79,15 @@ verify_local(OtpCert, valid_peer, CRLScope, State) ->
                                        [C, E, ST]),
                             {fail, internal_error}
                     end
-            end
+            end;
+        timeout ->
+            %% This can happen during startup when cb_crl_manager has
+            %% not yet written the node_to_node policy to cb_crl_cache.
+            %% Fail closed; the peer will retry once policy is available.
+            ?log_debug("Rejecting the distribution connection as the CRL "
+                       "policy is not available yet; the peer should retry "
+                       "shortly. This is expected only during startup. "),
+            {fail, {bad_cert, crl_policy_not_available_yet}}
     end;
 verify_local(_OtpCert, {bad_cert, _} = Reason, _CRLScope, _State) ->
     %% Non-CRL cert failure (expired, bad signature, etc.):
@@ -93,6 +97,17 @@ verify_local(_OtpCert, {extension, _}, _CRLScope, State) ->
     {unknown, State};
 verify_local(_OtpCert, valid, _CRLScope, State) ->
     {valid, State}.
+
+wait_for_crl_policy(Scope, Remaining) ->
+    case cb_crl_cache:get_policy(Scope) of
+        unknown when Remaining > 0 ->
+            timer:sleep(100),
+            wait_for_crl_policy(Scope, max(0, Remaining - 100));
+        unknown ->
+            timeout;
+        Policy ->
+            {ok, Policy}
+    end.
 
 %% Perform the actual CRL revocation check and map the result to a
 %% verify_fun return value according to the active policy.

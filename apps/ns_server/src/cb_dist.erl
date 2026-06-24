@@ -16,6 +16,7 @@
 -include_lib("kernel/include/net_address.hrl").
 -include_lib("kernel/include/dist_util.hrl").
 -include_lib("kernel/include/logger.hrl").
+-include_lib("public_key/include/public_key.hrl").
 
 -include_lib("ns_common/include/cut.hrl").
 -include("ns_common.hrl").
@@ -50,6 +51,9 @@
          restart_tls/0,
          netsettings2proto/1,
          proto2netsettings/1]).
+
+%% verify_fun callbacks referenced directly from etc/ssl_dist_opts.in
+-export([verify_client_cert/3, verify_server_cert/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -769,6 +773,27 @@ access_ssl_dist_opts_ets(F, A) ->
             {error, not_supported}
     end.
 
+%%%===================================================================
+%%% Distribution CRL verify_fun
+%%%===================================================================
+
+%% Both verify_client_cert/3 (server-side: checks the connecting node's
+%% client cert) and verify_server_cert/3 (client-side: checks the
+%% server node's cert) delegate to cb_crl:verify/4, which contains
+%% the shared node_to_node CRL logic.
+%%
+%% Placed unconditionally in etc/ssl_dist_opts.in and evaluated by
+%% the SSL layer on every distribution handshake.
+
+-spec verify_client_cert(#'OTPCertificate'{}, term(), term()) ->
+          {valid, term()} | {fail, term()} | {unknown, term()}.
+verify_client_cert(OtpCert, Event, State) ->
+    cb_crl:verify(OtpCert, Event, node_to_node, State).
+
+-spec verify_server_cert(#'OTPCertificate'{}, term(), term()) ->
+          {valid, term()} | {fail, term()} | {unknown, term()}.
+verify_server_cert(OtpCert, Event, State) ->
+    cb_crl:verify(OtpCert, Event, node_to_node, State).
 
 -ifdef(TEST).
 
