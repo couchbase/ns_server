@@ -370,19 +370,30 @@ build_manual_client_context(IssuerConfig) ->
     end.
 
 -spec with_issuer_context(map(),
-                          fun((discovery | oidcc_client_context:t()) -> term()),
+                          map(),
+                          fun((discovery | oidcc_client_context:t(), map()) ->
+                                     term()),
                           iolist()) ->
           term().
-with_issuer_context(IssuerConfig, OperationFun, LogPrefix) ->
+with_issuer_context(IssuerConfig, Opts, OperationFun, LogPrefix) ->
     IssuerName = maps:get(name, IssuerConfig),
+    OidcSettings = maps:get(oidc_settings, IssuerConfig),
+    HttpTimeoutMs = maps:get(http_timeout_ms, OidcSettings),
+    TlsUrl = oidc_tls_url(OidcSettings),
+    SslOpts = extract_oidc_connect_options(TlsUrl, OidcSettings),
+    TokenEndpointAuthMethod = maps:get(token_endpoint_auth_method,
+                                       OidcSettings),
+    EnrichedOpts = Opts#{request_opts => #{timeout => HttpTimeoutMs,
+                                           ssl => SslOpts},
+                         preferred_auth_methods => [TokenEndpointAuthMethod]},
     try
         case has_discovery_uri(IssuerConfig) of
             true ->
-                OperationFun(discovery);
+                OperationFun(discovery, EnrichedOpts);
             false ->
                 case build_manual_client_context(IssuerConfig) of
                     {ok, ClientContext} ->
-                        OperationFun(ClientContext);
+                        OperationFun(ClientContext, EnrichedOpts);
                     {error, Reason} ->
                         {error, Reason}
                 end
@@ -425,15 +436,15 @@ create_provider_redirect(IssuerConfig, RedirectBaseParam,
     Res =
         with_issuer_context(
           IssuerConfig,
-          fun
-              (discovery) ->
-                  oidcc:create_redirect_url(
-                    list_to_atom(IssuerName),
-                    list_to_binary(ClientId),
-                    list_to_binary(ClientSecret),
-                    Opts);
-              (ClientContext) ->
-                  oidcc_authorization:create_redirect_url(ClientContext, Opts)
+          Opts,
+          fun(discovery, FullOpts) ->
+                  oidcc:create_redirect_url(list_to_atom(IssuerName),
+                                            list_to_binary(ClientId),
+                                            list_to_binary(ClientSecret),
+                                            FullOpts);
+             (ClientContext, FullOpts) ->
+                  oidcc_authorization:create_redirect_url(ClientContext,
+                                                          FullOpts)
           end,
           "OIDC redirect build failed"),
     case Res of
@@ -467,15 +478,7 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
     OidcSettings = maps:get(oidc_settings, IssuerConfig),
     ClientId = maps:get(client_id, OidcSettings),
     ClientSecret = maps:get(client_secret, OidcSettings),
-    TokenEndpointAuthMethod =
-        maps:get(token_endpoint_auth_method, OidcSettings),
-    HttpTimeoutMs = maps:get(http_timeout_ms, OidcSettings),
-    TlsUrl = oidc_tls_url(OidcSettings),
-    SslOpts = extract_oidc_connect_options(TlsUrl, OidcSettings),
-    RequestOpts = #{timeout => HttpTimeoutMs, ssl => SslOpts},
-    BaseOpts = #{redirect_uri => get_redirect_uri(RedirectBase),
-                 preferred_auth_methods => [TokenEndpointAuthMethod],
-                 request_opts => RequestOpts},
+    BaseOpts = #{redirect_uri => get_redirect_uri(RedirectBase)},
 
     PkceEnabled = maps:get(pkce_enabled, OidcSettings, true),
     Opts1 = case PkceEnabled of
@@ -496,16 +499,16 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
     Res =
         with_issuer_context(
           IssuerConfig,
-          fun
-              (discovery) ->
-                  oidcc:retrieve_token(
-                    CodeBin,
-                    list_to_atom(IssuerName),
-                    list_to_binary(ClientId),
-                    list_to_binary(ClientSecret),
-                    Opts);
-              (ClientContext) ->
-                  oidcc_token:retrieve(CodeBin, ClientContext, Opts)
+          Opts,
+          fun(discovery, FullOpts) ->
+                  oidcc:retrieve_token(CodeBin,
+                                       list_to_atom(IssuerName),
+                                       list_to_binary(ClientId),
+                                       list_to_binary(ClientSecret),
+                                       FullOpts);
+             (ClientContext, FullOpts) ->
+                  oidcc_token:retrieve(CodeBin, ClientContext,
+                                       FullOpts)
           end,
           "OIDC token exchange failed"),
     case Res of
@@ -627,15 +630,16 @@ initiate_logout(IssuerConfig, ClientId, Opts, IdTokenHint) ->
     Result =
         with_issuer_context(
           IssuerConfig,
-          fun
-              (discovery) ->
-                  oidcc:initiate_logout_url(
-                    IdTokenHint,
-                    list_to_atom(IssuerName),
-                    list_to_binary(ClientId),
-                    Opts);
-              (ClientContext) ->
-                  oidcc_logout:initiate_url(IdTokenHint, ClientContext, Opts)
+          Opts,
+          fun(discovery, FullOpts) ->
+                  oidcc:initiate_logout_url(IdTokenHint,
+                                            list_to_atom(IssuerName),
+                                            list_to_binary(ClientId),
+                                            FullOpts);
+             (ClientContext, FullOpts) ->
+                  oidcc_logout:initiate_url(IdTokenHint,
+                                            ClientContext,
+                                            FullOpts)
           end,
           "OIDC logout failed"),
     case Result of
