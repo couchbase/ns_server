@@ -1512,12 +1512,6 @@ handle_settings_stats_post(Req) ->
                   settings_stats_validators()]).
 
 apply_stats_settings(Props) ->
-    apply_stats_settings(cluster_compat_mode:is_enterprise(),
-                         cluster_compat_mode:is_cluster_76(), Props).
-
-apply_stats_settings(false = _IsEnterprise, true = _Is76, _Props) ->
-    ok;
-apply_stats_settings(_, _, Props) ->
     SendStats = proplists:get_value(sendStats, Props),
     case SendStats of
         undefined -> ok;
@@ -1525,7 +1519,20 @@ apply_stats_settings(_, _, Props) ->
     end.
 
 settings_stats_validators() ->
-    [validator:boolean(sendStats, _)].
+    [validator:boolean(sendStats, _),
+     validator:validate(
+       fun (false) ->
+               case not cluster_compat_mode:is_enterprise() andalso
+                    cluster_compat_mode:is_cluster_76() of
+                   true ->
+                       {error, <<"sendStats cannot be false for Community "
+                                 "Edition clusters running 7.6 or later">>};
+                   false ->
+                       ok
+               end;
+           (_) ->
+               ok
+       end, sendStats, _)].
 
 %% @doc Settings to en-/disable auto-reprovision
 handle_settings_auto_reprovision(Req) ->
