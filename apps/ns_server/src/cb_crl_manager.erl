@@ -21,7 +21,12 @@
          sync/0,
          reload/0,
          get_status/0,
-         get_push_config/0]).
+         get_push_config/0,
+         upload_crl_file/2,
+         delete_crl_file/1,
+         get_crl_files_metadata/0,
+         sync_uploaded_files/0,
+         read_uploaded_crl_file/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -29,11 +34,14 @@
 
 -define(SERVER, ?MODULE).
 -define(CHRONICLE_KEY, crl_settings).
+-define(CRL_FILES_KEY, crl_files).
 -define(DEFAULT_POLL_INTERVAL_MS, 60000).
 -define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
 -define(STATUS_TIMEOUT, ?get_timeout(status_timeout, 60000)).
 -define(SYNC_TIMEOUT, ?get_timeout(sync_timeout, 60000)).
 -define(GET_PUSH_CONFIG_TIMEOUT, ?get_timeout(get_push_config_timeout, 60000)).
+-define(DOWNLOAD_TIMEOUT_MS, ?get_timeout(download_timeout_ms, 30000)).
+-define(RECONCILE_RETRY_INTERVAL_MS, ?get_param(retry_interval_ms, 60000)).
 
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
@@ -62,10 +70,8 @@
 -type reload_status() :: #crl_reload_status{}.
 -type file_state()    :: #{AbsolutePath :: string() => reload_status()}.
 
-%% Map of files currently present in config/crls (the last-known-good set that
-%% is loaded into cb_crl_cache and pushed to consumers).  These are exactly the
-%% files in crls_dir(), which is flat and fixed, so it is keyed by base name
-%% (no ambiguity).  The value is the SHA-256 hex digest of the file content.
+%% Map of CRL files keyed by base name; value is the SHA-256 hex digest.
+%% Used for both loaded_locally (config/crls/local/) and uploaded (config/crls/).
 -type active_files() :: #{BaseName :: string() => binary()}.
 
 -record(state, {
@@ -74,8 +80,13 @@
     poll_timer       :: reference() | undefined,
     %% Outcome of the most recent (re)load attempt per load-directory file.
     file_state       :: file_state(),
-    %% Files currently held in config/crls (base name => content checksum).
-    active           :: active_files()
+    %% Poll-based files held in config/crls/local/ (base name => checksum).
+    loaded_locally   :: active_files(),
+    %% Files placed in config/crls/ via the upload REST API.
+    %% (base name => content checksum)
+    uploaded         :: active_files(),
+    %% Timer ref for retrying failed uploaded-file downloads.
+    retry_timer      :: reference() | undefined
 }).
 
 %%%===================================================================
@@ -145,7 +156,7 @@ merge_default(Cfg) ->
 %% (see below).  Returns {error, not_configured} when no CRL source directory
 %% has been set.
 -spec reload() ->
-          {ok, #{file:filename_all() => map()}}
+          {ok, [map()]}
         | {error, not_configured}.
 reload() ->
     gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
@@ -167,7 +178,7 @@ reload() ->
 %%                    errors => [binary()]}
 %%
 %% An empty map is returned when no source is configured or no files exist.
--spec get_status() -> #{file:filename_all() => map()}.
+-spec get_status() -> [map()].
 get_status() ->
     gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
 
@@ -188,6 +199,59 @@ get_status() ->
 get_push_config() ->
     gen_server:call(?SERVER, get_push_config, ?GET_PUSH_CONFIG_TIMEOUT).
 
+%% Upload a CRL file to the cluster.  Validates the file, writes it to
+%% config/crls on this node, updates ns_config and chronicle, then
+%% synchronously requests other nodes to pull the new file.
+-spec upload_crl_file(string(), binary()) -> ok | {error, term()}.
+upload_crl_file(Filename, Binary) ->
+    ?log_debug("CRL upload request: ~p (~b bytes)", [Filename, byte_size(Binary)]),
+    case gen_server:call(?SERVER, {upload_crl_file, Filename, Binary},
+                         60000) of
+        ok ->
+            ?log_debug("CRL upload done: ~p", [Filename]),
+            sync_with_active_nodes();
+        Error ->
+            ?log_debug("CRL upload failed: ~p: ~p", [Filename, Error]),
+            Error
+    end.
+
+%% Remove an uploaded CRL file from the whole cluster.
+-spec delete_crl_file(string()) -> ok | {error, term()}.
+delete_crl_file(Filename) ->
+    ?log_debug("CRL delete request: ~p", [Filename]),
+    case gen_server:call(?SERVER, {delete_crl_file, Filename}, 60000) of
+        ok ->
+            ?log_debug("CRL delete done: ~p", [Filename]),
+            sync_with_active_nodes();
+        Error ->
+            ?log_debug("CRL delete failed: ~p: ~p", [Filename, Error]),
+            Error
+    end.
+
+%% Return the current chronicle crl_files map (no gen_server round-trip).
+%% Format: #{FilenameBin => #{checksum, upload_timestamp, entries => [...]}}
+-spec get_crl_files_metadata() -> #{binary() => map()}.
+get_crl_files_metadata() ->
+    get_crl_files_metadata(local).
+
+-spec get_crl_files_metadata(local | quorum) -> #{binary() => map()}.
+get_crl_files_metadata(RC) ->
+    chronicle_compat:get(?CRL_FILES_KEY, #{default => #{},
+                                           read_consistency => RC}).
+
+%% Called via RPC from the uploading node after it has written chronicle.
+%% Syncs chronicle events and triggers reconciliation on this node.
+-spec sync_uploaded_files() -> ok.
+sync_uploaded_files() ->
+    ns_config_rep:synchronize_local(),
+    chronicle_compat_events:sync(),
+    gen_server:call(?SERVER, sync_uploaded_files, 60000).
+
+%% Called via RPC by nodes that need to download a CRL file from this node.
+-spec read_uploaded_crl_file(string()) -> {ok, binary()} | {error, term()}.
+read_uploaded_crl_file(Filename) ->
+    file:read_file(filename:join(crls_dir(), filename:basename(Filename))).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -195,29 +259,36 @@ get_push_config() ->
 init([]) ->
     Self = self(),
     chronicle_compat_events:subscribe(
-      fun (?CHRONICLE_KEY) -> Self ! config_changed;
-          (_)              -> ok
+      fun (?CHRONICLE_KEY)   -> Self ! config_changed;
+          (?CRL_FILES_KEY)   -> Self ! crl_files_changed;
+          (_)                -> ok
       end),
     Cfg = get_config(),
     %% Crash on startup if we cannot create the directory we depend on.
-    ok = ensure_crls_dir(),
-    %% Seed the cache from the last-known-good copies persisted in config/crls
-    %% so revocation checking keeps working from the moment we start, before
-    %% (and independently of) any attempt to reload from the load directory.
-    Active0 = case maps:get(poll_directory, Cfg) of
-                  undefined -> #{};
-                  _ -> populate_cache_from_config_crls()
-              end,
+    ok = ensure_dir(crls_dir()),
+    ok = ensure_dir(local_crls_dir()),
+    %% Seed the cache and build loaded_locally from poll-based files
+    %% in config/crls/local/.  Separately seed the cache for uploaded
+    %% files in config/crls/ so revocation checking is ready immediately.
+    LoadedLocally0  = populate_cache_from_dir(local_crls_dir()),
+    Uploaded0       = populate_cache_from_dir(crls_dir()),
+    ChronicleFiles0 = get_crl_files_metadata(),
     State0 = #state{poll_directory   = undefined,
                     poll_interval_ms = ?DEFAULT_POLL_INTERVAL_MS,
                     poll_timer       = undefined,
                     file_state       = #{},
-                    active           = Active0},
+                    loaded_locally   = LoadedLocally0,
+                    uploaded         = Uploaded0,
+                    retry_timer      = undefined},
     State1 = apply_config(Cfg, State0),
-    %% Remove any cache entries that were left behind by a previous instance
-    %% of this process (e.g. it crashed after a file was deleted from disk).
-    ok = purge_stale_cache_entries(State1#state.active),
-    {ok, schedule_timer(State1)}.
+    %% Reconcile: remove local uploaded files no longer in chronicle
+    %% (deleted while this node was down) and download any files that
+    %% are in chronicle but missing or stale locally.
+    State2 = reconcile_uploaded_files(ChronicleFiles0, State1),
+    %% Remove cache entries not in the loaded_locally or uploaded sets.
+    ok = purge_stale_cache_entries(State2#state.loaded_locally,
+                                   State2#state.uploaded),
+    {ok, schedule_timer(State2)}.
 
 handle_call(reload, _From, #state{poll_directory = undefined} = State) ->
     {reply, {error, not_configured}, State};
@@ -226,8 +297,8 @@ handle_call(reload, _From, #state{poll_directory = Dir} = State) ->
     ?flush(poll_directory),
     NewState = scan_directory(Dir, State, true),
     maybe_notify_crl_consumers(State, NewState),
-    ?log_debug("CRL manual reload done: ~p active file(s)",
-               [maps:size(NewState#state.active)]),
+    ?log_debug("CRL manual reload done: ~p file(s) loaded locally",
+               [maps:size(NewState#state.loaded_locally)]),
     {reply, {ok, build_status_map(NewState)}, schedule_timer(NewState)};
 
 handle_call(get_status, _From, State) ->
@@ -236,16 +307,42 @@ handle_call(get_status, _From, State) ->
 handle_call(sync, _From, State) ->
     {reply, ok, State};
 
-handle_call(get_push_config, _From, #state{active = Active} = State) ->
+handle_call(get_push_config, _From,
+            #state{loaded_locally = LoadedLocally,
+                   uploaded       = Uploaded} = State) ->
     Cfg = get_config(),
     PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
-    FileVersions = build_file_versions(Active),
+    FileVersions = build_file_versions(LoadedLocally, Uploaded),
     Files = [F || {F, _} <- FileVersions],
     Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions)}),
     Result = #{policy_per_scope => PolicyPerScope,
                files => Files,
                version => Version},
     {reply, Result, State};
+
+handle_call({upload_crl_file, Filename, Binary}, _From, State) ->
+    case do_upload_crl_file(Filename, Binary, State) of
+        {ok, NewState} ->
+            notify_crl_consumers(),
+            {reply, ok, NewState};
+        {error, _} = Err ->
+            {reply, Err, State}
+    end;
+
+handle_call({delete_crl_file, Filename}, _From, State) ->
+    case do_delete_crl_file(Filename, State) of
+        {ok, NewState} ->
+            notify_crl_consumers(),
+            {reply, ok, NewState};
+        {error, _} = Err ->
+            {reply, Err, State}
+    end;
+
+handle_call(sync_uploaded_files, _From, State) ->
+    ChronicleFiles = get_crl_files_metadata(quorum),
+    NewState = reconcile_uploaded_files(ChronicleFiles, State),
+    maybe_notify_crl_consumers(State, NewState),
+    {reply, ok, NewState};
 
 handle_call(Req, _From, State) ->
     ?log_error("Received unknown call: ~p", [Req]),
@@ -260,6 +357,20 @@ handle_info(config_changed, State) ->
     State1 = apply_config(Cfg, State),
     notify_crl_consumers(),
     {noreply, schedule_timer(State1)};
+
+handle_info(crl_files_changed, State) ->
+    ChronicleFiles = get_crl_files_metadata(),
+    NewState = reconcile_uploaded_files(ChronicleFiles, State),
+    maybe_notify_crl_consumers(State, NewState),
+    {noreply, NewState};
+
+handle_info(retry_reconcile, State) ->
+    ?log_debug("CRL uploaded-file reconcile retry", []),
+    ?flush(retry_reconcile),
+    ChronicleFiles = get_crl_files_metadata(),
+    NewState = reconcile_uploaded_files(ChronicleFiles, State),
+    maybe_notify_crl_consumers(State, NewState),
+    {noreply, NewState};
 
 handle_info(poll_directory, #state{poll_directory = undefined} = State) ->
     %% Poll directory is undefined; nothing to poll
@@ -280,6 +391,313 @@ handle_info(Msg, State) ->
 terminate(_Reason, _State) -> ok.
 
 code_change(_, State, _) -> {ok, State}.
+
+%%%===================================================================
+%%% Internal helpers — uploaded file management
+%%%===================================================================
+
+%% Reconcile local config/crls against the chronicle crl_files list.
+%%   - Files in chronicle but missing / stale locally → download.
+%%   - Files tracked as uploaded locally but absent from chronicle → remove.
+%%
+%% Schedules (or cancels) the retry timer internally based on whether
+%% any downloads failed.
+-spec reconcile_uploaded_files(#{binary() => map()}, #state{}) -> #state{}.
+reconcile_uploaded_files(ChronicleFiles, State) ->
+    %% Build string-keyed map filename -> expected checksum from chronicle.
+    WantedMap = maps:fold(
+                  fun (NameBin, #{checksum := C}, Acc) ->
+                        maps:put(binary_to_list(NameBin), C, Acc)
+                  end, #{}, ChronicleFiles),
+    ?log_debug("CRL reconcile: ~b file(s) in chronicle, ~b held locally",
+               [maps:size(WantedMap),
+                maps:size(State#state.uploaded)]),
+    %% Step 1: ensure every wanted file is present with correct checksum.
+    %% Use the in-memory uploaded map as the source of truth for what
+    %% this node already has — no disk read needed when it matches.
+    OldUploaded = State#state.uploaded,
+    {NewUploaded, HasPending} =
+        maps:fold(
+          fun (Name, Checksum, {Acc, Pending}) ->
+              case maybe_update_uploaded_file(Name, Checksum, OldUploaded) of
+                  ok  -> {maps:put(Name, Checksum, Acc), Pending};
+                  {error, _} -> {Acc, true}
+              end
+          end, {#{}, false}, WantedMap),
+    %% Step 2: remove files that are no longer in chronicle.
+    maps:foreach(
+      fun (Name, _) ->
+              case maps:is_key(Name, WantedMap) of
+                  true  -> ok;
+                  false ->
+                      ?log_info(
+                         "Removing uploaded CRL file no longer in "
+                         "chronicle: ~p", [Name]),
+                      remove_uploaded_file_locally(Name)
+              end
+      end, OldUploaded),
+    ?log_debug("CRL reconcile done: ~b file(s) held, pending=~p",
+               [maps:size(NewUploaded), HasPending]),
+    NewState = State#state{uploaded = NewUploaded},
+    case HasPending of
+        true  -> schedule_reconcile_retry(NewState);
+        false -> cancel_reconcile_retry(NewState)
+    end.
+
+%% Check whether an uploaded file is already present with the expected checksum,
+%% and if not, download it from another node and install it locally.
+maybe_update_uploaded_file(Name, ExpectedChecksum, CurrentlyLoadedMap) ->
+    case maps:get(Name, CurrentlyLoadedMap, undefined) of
+        ExpectedChecksum ->
+            ok;
+        _ ->
+            maybe
+                {ok, Binary} ?= download_missing_file(Name, ExpectedChecksum),
+                %% No need to re-verify the CRL as it was already verified by
+                %% another node
+                {ok, Entries} ?= decode_to_entries(Binary),
+                ok ?= write_uploaded_file_locally(Name, Binary, Entries),
+                ?log_debug("CRL ~p: installed from remote node", [Name]),
+                ok
+            else
+                {error, not_found_on_any_node} ->
+                    %% Not logging error because it may happen during normal
+                    %% operation
+                    {error, not_found_on_any_node};
+                {error, Reason} ->
+                    ?log_error("Failed to update CRL ~p: ~p", [Name, Reason]),
+                    {error, Reason}
+            end
+    end.
+
+%% Download a CRL file from another active cluster node.
+%% Syncs ns_config first, then iterates a shuffled list of active
+%% (currently reachable) nodes looking for one that has the file with
+%% the expected checksum.
+-spec download_missing_file(string(), binary()) ->
+          {ok, binary()} | {error, term()}.
+download_missing_file(Filename, ExpectedChecksum) ->
+    ns_config:sync(),
+    FilenameBin = list_to_binary(Filename),
+    Nodes = misc:shuffle(ns_node_disco:nodes_actual_other()),
+    ?log_debug("CRL ~p: downloading, ~b candidate node(s)",
+               [Filename, length(Nodes)]),
+    download_from_nodes(Nodes, FilenameBin, ExpectedChecksum).
+
+-spec download_from_nodes([node()], binary(), binary()) ->
+          {ok, binary()} | {error, term()}.
+download_from_nodes([], FilenameBin, _Checksum) ->
+    ?log_debug("CRL ~p: no node has the file yet", [FilenameBin]),
+    {error, not_found_on_any_node};
+download_from_nodes([Node | Rest], FilenameBin, ExpectedChecksum) ->
+    NodeFiles = ns_config:read_key_fast(
+                  {node, Node, crl_files}, []),
+    case lists:keyfind(FilenameBin, 1, NodeFiles) of
+        {FilenameBin, ExpectedChecksum} ->
+            Filename = binary_to_list(FilenameBin),
+            ?log_debug("CRL ~p: trying node ~p", [Filename, Node]),
+            case rpc:call(Node, cb_crl_manager, read_uploaded_crl_file,
+                          [Filename], ?DOWNLOAD_TIMEOUT_MS) of
+                {ok, Binary} ->
+                    case file_checksum(Binary) of
+                        ExpectedChecksum ->
+                            ?log_debug("CRL ~p: downloaded from ~p "
+                                       "(~b bytes)",
+                                       [Filename, Node,
+                                        byte_size(Binary)]),
+                            {ok, Binary};
+                        Got ->
+                            ?log_warning(
+                               "CRL ~p downloaded from ~p: checksum "
+                               "mismatch (got ~p expected ~p)",
+                               [Filename, Node, Got,
+                                ExpectedChecksum]),
+                            download_from_nodes(
+                              Rest, FilenameBin, ExpectedChecksum)
+                    end;
+                {badrpc, Reason} ->
+                    ?log_warning("CRL ~p: RPC to ~p failed: ~p",
+                                 [Filename, Node, Reason]),
+                    download_from_nodes(
+                      Rest, FilenameBin, ExpectedChecksum);
+                {error, _} = Err ->
+                    ?log_warning("CRL ~p: read from ~p returned: ~p",
+                                 [Filename, Node, Err]),
+                    download_from_nodes(
+                      Rest, FilenameBin, ExpectedChecksum)
+            end;
+        _ ->
+            ?log_debug("CRL ~p: node ~p does not have the file",
+                       [FilenameBin, Node]),
+            download_from_nodes(Rest, FilenameBin, ExpectedChecksum)
+    end.
+
+%% Execute the upload logic inside the gen_server.
+-spec do_upload_crl_file(string(), binary(), #state{}) ->
+          {ok, #state{}} | {error, term()}.
+do_upload_crl_file(Filename, Binary, State) ->
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    TS = calendar:universal_time(),
+    case decode_and_verify_crl(Binary, TrustedCAs) of
+        {error, Reason} ->
+            ?log_debug("CRL ~p: decode failed: ~p", [Filename, Reason]),
+            {error, Reason};
+        {ok, Results} ->
+            ?log_debug("CRL ~p: decoded ~b entries",
+                       [Filename, length(Results)]),
+            Bad = [R || #entry_result{result = Res} = R <- Results, Res =/= ok],
+            case Bad of
+                [_ | _] ->
+                    ?log_debug("CRL ~p: ~b invalid entr(y/ies)",
+                               [Filename, length(Bad)]),
+                    {error, {invalid_entries,
+                             [entry_error_text(R) || R <- Bad]}};
+                [] ->
+                    ?log_debug("CRL ~p: ~b entr(y/ies) valid, uploading",
+                               [Filename, length(Results)]),
+                    add_uploaded_file(Filename, Binary, TS, Results, State)
+            end
+    end.
+
+%% Perform the disk write, ns_config update, and chronicle transaction
+%% for a validated upload.
+-spec add_uploaded_file(string(), binary(), calendar:datetime(),
+                        [entry_result()], #state{}) ->
+          {ok, #state{}} | {error, term()}.
+add_uploaded_file(Filename, Binary, TS, EntryResults, State) ->
+    Checksum = file_checksum(Binary),
+    FilenameBin = list_to_binary(Filename),
+    EntryMetas = [#{issuer => iolist_to_binary(ns_server_cert:format_name(
+                                                 R#entry_result.issuer)),
+                    this_update => R#entry_result.this_update,
+                    next_update => R#entry_result.next_update,
+                    crl_number  => R#entry_result.crl_number}
+                  || R <- EntryResults],
+    FileInfo = #{checksum => Checksum,
+                 upload_timestamp => TS,
+                 entries => EntryMetas},
+    %% We can't write files to disk until after the chronicle transaction
+    %% succeeds, because if the transaction fails, we won't be able to recover
+    %% the file that we (maybe) overwrote.
+    {ok, _} = chronicle_kv:txn(
+                kv,
+                fun (Txn) ->
+                    CurrMap = case chronicle_kv:txn_get(?CRL_FILES_KEY, Txn) of
+                                  {ok, {M, _}}       -> M;
+                                  {error, not_found} -> #{}
+                              end,
+                    {commit, [{set, ?CRL_FILES_KEY,
+                               maps:put(FilenameBin, FileInfo, CurrMap)}]}
+                end),
+    case write_uploaded_file_locally(Filename, Binary, EntryResults) of
+        ok ->
+            ?log_debug("CRL ~p: uploaded and written locally", [Filename]),
+            NewUploaded = maps:put(Filename, Checksum, State#state.uploaded),
+            {ok, State#state{uploaded = NewUploaded}};
+        {error, Reason} ->
+            ?log_error("CRL ~p: uploaded but failed to write locally: ~p",
+                       [Filename, Reason]),
+            %% We could write the file to disk, we have to remove it from
+            %% chronicle now because we don't have that file saved anywhere
+            catch do_delete_crl_file(Filename, State),
+            {error, Reason}
+    end.
+
+%% Puts the file on disk and updates the metadata in ns_config, so that other
+%% nodes can find and download it.
+write_uploaded_file_locally(Filename, Binary, VerifiedEntries) ->
+    maybe
+        {ok, Checksum} ?= add_to_cache(upload, Filename, Binary,
+                                       VerifiedEntries),
+        %% Update ns_config node advertisement key.
+        OldNodeFiles = ns_config:read_key_fast({node, node(), crl_files}, []),
+        FilenameBin = list_to_binary(Filename),
+        NewNodeFiles = lists:keystore(FilenameBin, 1, OldNodeFiles,
+                                      {FilenameBin, Checksum}),
+        ns_config:set({node, node(), crl_files}, NewNodeFiles),
+        ok
+    end.
+
+remove_uploaded_file_locally(Filename) when is_list(Filename) ->
+    FilenameBin = list_to_binary(Filename),
+    %% Remove from ns_config node advertisement key.
+    OldNodeFiles = ns_config:read_key_fast({node, node(), crl_files}, []),
+    NewNodeFiles = lists:keydelete(FilenameBin, 1, OldNodeFiles),
+    ns_config:set({node, node(), crl_files}, NewNodeFiles),
+    %% Remove local file and cache entry.
+    remove_from_cache(upload, Filename).
+
+%% Execute the delete logic inside the gen_server.
+-spec do_delete_crl_file(string(), #state{}) ->
+          {ok, #state{}} | {error, term()}.
+do_delete_crl_file(Filename, State) ->
+    FilenameBin = list_to_binary(Filename),
+    case maps:is_key(FilenameBin, get_crl_files_metadata()) of
+        false ->
+            ?log_debug("CRL delete ~p: not found in chronicle",
+                       [Filename]),
+            {error, not_found};
+        true ->
+            ?log_debug("CRL delete ~p: removing from chronicle, "
+                       "ns_config, and disk", [Filename]),
+            %% Remove from chronicle.
+            {ok, _} = chronicle_kv:txn(
+                        kv,
+                        fun (Txn) ->
+                            CurrMap = case chronicle_kv:txn_get(
+                                             ?CRL_FILES_KEY, Txn) of
+                                          {ok, {M, _}}       -> M;
+                                          {error, not_found} -> #{}
+                                      end,
+                            {commit, [{set, ?CRL_FILES_KEY,
+                                       maps:remove(FilenameBin, CurrMap)}]}
+                        end),
+            NewUploaded = %% Don't remove the file from "uploaded" list
+                          %% if we could not delete it from disk
+                          %% This way we will retry deleting it later
+                case remove_uploaded_file_locally(Filename) of
+                    ok -> maps:remove(Filename, State#state.uploaded);
+                    {error, _} -> State#state.uploaded
+                end,
+            {ok, State#state{uploaded = NewUploaded}}
+    end.
+
+%% Request sync_uploaded_files/0 on every currently active node.
+%% Errors are logged but do not fail the calling operation — the
+%% chronicle subscription on each remote node will reconcile eventually.
+-spec sync_with_active_nodes() -> ok.
+sync_with_active_nodes() ->
+    ns_config_rep:ensure_config_pushed(),
+    Nodes = ns_node_disco:nodes_actual_other(),
+    ?log_debug("CRL sync: notifying ~b active node(s)", [length(Nodes)]),
+    Timeout = 30000,
+    misc:parallel_map(
+      fun (N) ->
+              case rpc:call(N, cb_crl_manager,
+                            sync_uploaded_files, [], Timeout) of
+                  ok ->
+                      ?log_debug("CRL sync: node ~p done", [N]);
+                  Err ->
+                      ?log_warning(
+                         "CRL file sync to node ~p failed: ~p",
+                         [N, Err])
+              end
+      end, Nodes, Timeout + 1000),
+    ok.
+
+-spec schedule_reconcile_retry(#state{}) -> #state{}.
+schedule_reconcile_retry(State) ->
+    State1 = cancel_reconcile_retry(State),
+    Ref = erlang:send_after(?RECONCILE_RETRY_INTERVAL_MS, self(),
+                            retry_reconcile),
+    State1#state{retry_timer = Ref}.
+
+-spec cancel_reconcile_retry(#state{}) -> #state{}.
+cancel_reconcile_retry(#state{retry_timer = undefined} = State) ->
+    State;
+cancel_reconcile_retry(#state{retry_timer = Ref} = State) ->
+    catch erlang:cancel_timer(Ref),
+    State#state{retry_timer = undefined}.
 
 %%%===================================================================
 %%% Internal helpers
@@ -303,7 +721,9 @@ get_crl_number(#'CertificateList'{tbsCertList = TBS}) ->
 maybe_notify_crl_consumers(StateBefore, StateCurrent) ->
     %% Only call notify_crl_consumers when the set of CRL files changes
     %% It doesn't check if policies have changed !!!
-    case StateBefore#state.active =:= StateCurrent#state.active of
+    case (StateBefore#state.loaded_locally =:=
+              StateCurrent#state.loaded_locally) andalso
+         (StateBefore#state.uploaded =:= StateCurrent#state.uploaded) of
         true  -> ok;
         false -> notify_crl_consumers()
     end.
@@ -373,11 +793,15 @@ apply_config(Cfg, #state{poll_directory = OldPollDir} = State) ->
                 State1;
             {_, undefined} ->
                 ?log_info(
-                   "CRL poll directory cleared; removing ~p loaded CRL file(s)",
-                   [maps:size(State#state.active)]),
-                cb_crl_cache:remove_all_crls(),
-                clear_config_crls(),
-                State1#state{file_state = #{}, active = #{}};
+                   "CRL source cleared; removing ~p poll-based CRL file(s)",
+                   [maps:size(State1#state.loaded_locally)]),
+                %% Only remove poll-based files in local_crls_dir();
+                %% uploaded files in crls_dir() are unaffected.
+                maps:foreach(
+                  fun (Name, _) ->
+                          remove_from_cache(local, Name)
+                  end, State1#state.loaded_locally),
+                State1#state{file_state = #{}, loaded_locally = #{}};
             {_, Dir} ->
                 ?log_info("CRL poll directory set to ~p", [Dir]),
                 scan_directory(Dir, State1, false)
@@ -466,24 +890,24 @@ scan_directory(Dir, State, ForceReload) ->
             end, State, DiskNames),
 
         %% Pass 2: reconcile files that have disappeared from the load
-        %% directory. active (base names): a vanished file's config/crls copy
-        %% and cache entry are removed.  file_state (full paths): stale reload
-        %% records are dropped.
+        %% directory. loaded_locally (base names): vanished file's local copy
+        %% and cache entry are removed.  file_state (full paths): stale records
+        %% are dropped.
         DiskNameSet = sets:from_list(DiskNames),
         DiskPaths = [filename:join(Dir, N) || N <- DiskNames],
         DiskPathSet = sets:from_list(DiskPaths),
-        Active2 =
+        Loaded2 =
             maps:filter(
             fun (Name, _Checksum) ->
                     case sets:is_element(Name, DiskNameSet) of
                         true  -> true;
-                        false -> ok /= remove_from_cache(Name)
+                        false -> ok /= remove_from_cache(local, Name)
                     end
-            end, UpdatedState#state.active),
+            end, UpdatedState#state.loaded_locally),
         FS2 = maps:filter(fun (Path, _Status) ->
                                 sets:is_element(Path, DiskPathSet)
                         end, UpdatedState#state.file_state),
-        UpdatedState#state{file_state = FS2, active = Active2}
+        UpdatedState#state{file_state = FS2, loaded_locally = Loaded2}
     else
         {error, {list_dir_error, Reason}} ->
             ?log_error("Failed to list CRL directory ~p: ~p", [Dir, Reason]),
@@ -529,7 +953,8 @@ maybe_load_from_local_file(Name, FilePath, ForceReload, TS, TrustedCAs,
                            TrustedCAs   :: [binary()],
                            State        :: #state{}) -> #state{}.
 load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
-                     #state{file_state = FS, active = Active} = State) ->
+                     #state{file_state = FS,
+                            loaded_locally = Loaded} = State) ->
     ?log_debug("CRL scan: loading file ~p", [Path]),
     maybe
         {ok, Binary} ?= case file:read_file(Path) of
@@ -542,13 +967,13 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
                     [] -> ok;
                     _  -> {error, {bad_crl_entries, Bad}}
                 end,
-        {ok, Checksum} ?= add_to_cache(Name, Binary, Results),
+        {ok, Checksum} ?= add_to_cache(local, Name, Binary, Results),
         Status = #crl_reload_status{mtime  = FileMTime,
                                     result = loaded,
                                     time   = CurTS,
                                     errors = []},
         State#state{file_state = maps:put(Path, Status, FS),
-                    active = maps:put(Name, Checksum, Active)}
+                    loaded_locally = maps:put(Name, Checksum, Loaded)}
     else
         {error, Reason} ->
             BadStatus = #crl_reload_status{mtime  = FileMTime,
@@ -560,14 +985,20 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
 
 %% Copy a fully-valid file verbatim into config/crls and insert its entries
 %% into the cache.
--spec add_to_cache(file:filename_all(), binary(), [entry_result()]) ->
+-spec add_to_cache(local | upload, file:filename_all(), binary(),
+                   [entry_result()]) ->
           {ok, binary()} | {error, term()}.
-add_to_cache(Name, Binary, ValidatedEntries) ->
-    FilePath = filename:join(crls_dir(), Name),
+add_to_cache(CacheType, Name, Binary, VerifiedEntries) ->
+    Dir = case CacheType of
+              local -> local_crls_dir();
+              upload -> crls_dir()
+          end,
+    FilePath = filename:join(Dir, Name),
+    ?log_debug("Adding CRL file ~p to cache", [FilePath]),
     maybe
         ok ?= misc:atomic_write_file(FilePath, Binary),
         Pairs = [{I, D}
-                 || #entry_result{issuer = I, der = D} <- ValidatedEntries],
+                 || #entry_result{issuer = I, der = D} <- VerifiedEntries],
         cb_crl_cache:insert_file(FilePath, Pairs),
         {ok, file_checksum(Binary)}
     else
@@ -578,9 +1009,14 @@ add_to_cache(Name, Binary, ValidatedEntries) ->
     end.
 
 %% Remove a crl copy and its cache entry.
--spec remove_from_cache(file:filename_all()) -> ok | {error, term()}.
-remove_from_cache(Name) ->
-    FullPath = filename:join(crls_dir(), Name),
+-spec remove_from_cache(local | upload, file:filename_all()) ->
+          ok | {error, term()}.
+remove_from_cache(CacheType, Name) ->
+    Dir = case CacheType of
+              local -> local_crls_dir();
+              upload -> crls_dir()
+          end,
+    FullPath = filename:join(Dir, Name),
     cb_crl_cache:remove_file(FullPath),
     case file:delete(FullPath) of
         ok ->
@@ -608,16 +1044,19 @@ format_load_errors({invalid_crl, _}) ->
 format_load_errors(Other) ->
     [misc:format_bin("Unexpected error. Reason: ~p", [Other])].
 
-%% Remove cache entries whose config/crls file is no longer in the active set.
-%% This cleans up stale entries left by a previous instance of this gen_server
-%% (e.g. after a crash while a file was being deleted).
--spec purge_stale_cache_entries(active_files()) -> ok.
-purge_stale_cache_entries(Active) ->
-    CrlsDir = crls_dir(),
+%% Remove cache entries no longer in loaded_locally (config/crls/local/)
+%% or uploaded (config/crls/).  Cleans up stale entries left by a
+%% previous gen_server instance after a crash during file deletion.
+-spec purge_stale_cache_entries(active_files(), active_files()) -> ok.
+purge_stale_cache_entries(LoadedLocally, Uploaded) ->
+    LocalCrlsDir    = local_crls_dir(),
+    UploadedCrlsDir = crls_dir(),
     ExpectedPaths =
         sets:from_list(
-          [misc:normalize_path(filename:join(CrlsDir, Name))
-           || Name <- maps:keys(Active)]),
+          [misc:normalize_path(filename:join(LocalCrlsDir, N))
+           || N <- maps:keys(LoadedLocally)] ++
+          [misc:normalize_path(filename:join(UploadedCrlsDir, N))
+           || N <- maps:keys(Uploaded)]),
     lists:foreach(
       fun (CachedPath) ->
               case sets:is_element(misc:normalize_path(CachedPath),
@@ -634,17 +1073,22 @@ purge_stale_cache_entries(Active) ->
 %%% config/crls directory helpers
 %%%===================================================================
 
-%% Node-local directory that holds the last-known-good CRL copies.  Mirrors the
-%% convention used for config/certs in ns_ssl_services_setup.
+%% config/crls/ — storage for REST-uploaded CRL files.
 -spec crls_dir() -> file:filename_all().
 crls_dir() ->
     filename:join(path_config:component_path(data, "config"), "crls").
 
+%% config/crls/local/ — storage for poll-directory-scanned CRL files.
+%% Keeping the two sources in separate subdirectories makes the origin
+%% of every file unambiguous on startup.
+-spec local_crls_dir() -> file:filename_all().
+local_crls_dir() ->
+    filename:join(crls_dir(), "local").
+
 %% misc:mkdir_p/1 returns ok when the directory already exists, so any error
 %% here is genuine.  We return it so init/1 crashes the gen_server.
--spec ensure_crls_dir() -> ok | {error, term()}.
-ensure_crls_dir() ->
-    Dir = crls_dir(),
+-spec ensure_dir(file:filename_all()) -> ok | {error, term()}.
+ensure_dir(Dir) ->
     case misc:mkdir_p(Dir) of
         ok -> ok;
         {error, Reason} ->
@@ -652,51 +1096,42 @@ ensure_crls_dir() ->
             {error, Reason}
     end.
 
-%% Base names of the files currently present in config/crls.
--spec list_config_crls() -> [file:filename_all()].
-list_config_crls() ->
-    case file:list_dir(crls_dir()) of
-        {ok, Names} -> [N || N <- Names, N =/= [], hd(N) =/= $.];
-        {error, _}  -> []
-    end.
-
-%% Delete every file in config/crls (used when the poll dir is cleared).
--spec clear_config_crls() -> ok.
-clear_config_crls() ->
-    CrlsDir = crls_dir(),
-    lists:foreach(fun (Name) -> file:delete(filename:join(CrlsDir, Name)) end,
-                  list_config_crls()),
-    ok.
-
-%% Decode every config/crls file and insert its entries into the cache.
-%% Returns the active-files map (base name => content checksum).  Files that
-%% fail to read or decode are skipped (and left on disk for diagnosis).
--spec populate_cache_from_config_crls() -> active_files().
-populate_cache_from_config_crls() ->
-    CrlsDir = crls_dir(),
+%% Decode every CRL file in Dir, insert into the cache, and return a
+%% base-name => checksum map.  Files that fail to read or decode are
+%% skipped (and left on disk for diagnosis).  Dot-files are ignored.
+-spec populate_cache_from_dir(file:filename_all()) -> active_files().
+populate_cache_from_dir(Dir) ->
+    Names = case file:list_dir(Dir) of
+                {ok, Ns} -> [N || N <- Ns, N =/= [], hd(N) =/= $.];
+                {error, _} -> []
+            end,
     lists:foldl(
       fun (Name, Acc) ->
-              FilePath = filename:join(CrlsDir, Name),
-              case file:read_file(FilePath) of
+              Path = filename:join(Dir, Name),
+              case file:read_file(Path) of
                   {ok, Binary} ->
-                      case decode_crl(Binary) of
-                          {ok, Triples} ->
-                              Pairs = [{I, D} || {I, _Decoded, D} <- Triples],
-                              cb_crl_cache:insert_file(FilePath, Pairs),
-                              ?log_debug("CRL seeded from config/crls: ~p",
-                                         [FilePath]),
+                      case decode_to_entries(Binary) of
+                          {ok, Entries} ->
+                              Pairs = [{I, D}
+                                       || #entry_result{issuer = I,
+                                                        der = D} <- Entries],
+                              cb_crl_cache:insert_file(Path, Pairs),
+                              ?log_debug("CRL seeded from ~p", [Path]),
                               maps:put(Name, file_checksum(Binary), Acc);
                           {error, Reason} ->
-                              ?log_error("Skipping undecodable crls "
-                                         "file ~p: ~p", [FilePath, Reason]),
+                              ?log_error("Skipping undecodable CRL ~p: ~p",
+                                         [Path, Reason]),
                               Acc
                       end;
+                  {error, eisdir} ->
+                      %% Ignore directories
+                      Acc;
                   {error, Reason} ->
-                      ?log_error("Failed to read config/crls file ~p: ~p",
-                                 [FilePath, Reason]),
+                      ?log_error("Failed to read CRL ~p: ~p",
+                                 [Path, Reason]),
                       Acc
               end
-      end, #{}, list_config_crls()).
+      end, #{}, Names).
 
 default_local_crl_source_dir() ->
     filename:join(path_config:component_path(data, "inbox"), "crls").
@@ -706,55 +1141,86 @@ default_local_crl_source_dir() ->
 %%%===================================================================
 
 %% Build the file-version list for the push config.
-%% Returns [{ConfigCrlsPathBin, ChecksumBin}] — one entry per file currently
-%% held in config/crls (the last-known-good set).  Consumers read these copies
-%% directly, so they only ever see fully validated files.
--spec build_file_versions(active_files()) -> [{binary(), binary()}].
-build_file_versions(Active) ->
-    ConfigDir = crls_dir(),
-    [{iolist_to_binary(filename:join(ConfigDir, Name)), Checksum}
-     || {Name, Checksum} <- maps:to_list(Active)].
+%% Returns [{PathBin, ChecksumBin}] for all currently-held CRL files.
+%% Poll-based files come from local_crls_dir(); uploaded from crls_dir().
+-spec build_file_versions(active_files(), active_files()) ->
+          [{binary(), binary()}].
+build_file_versions(LoadedLocally, Uploaded) ->
+    LocalDir    = local_crls_dir(),
+    UploadedDir = crls_dir(),
+    [{iolist_to_binary(filename:join(LocalDir, N)), Cs}
+     || {N, Cs} <- maps:to_list(LoadedLocally)] ++
+    [{iolist_to_binary(filename:join(UploadedDir, N)), Cs}
+     || {N, Cs} <- maps:to_list(Uploaded)].
 
 %%%===================================================================
 %%% Status helpers (used by get_status/0)
 %%%===================================================================
 
-%% Build the per-file status map for the status / reload endpoints.
+%% Build the per-file status list for the status / reload endpoints.
 %%
-%% The reported set of files is the union of the load-dir files we have a
-%% reload record for and the files we currently hold in config/crls (the
-%% active set).  Each is keyed by its load-directory path.
+%% Returns [StatusMap] — one entry per file, all values RPC-safe.
+%% Poll-based files (source = local_dir) come from file_state and
+%% loaded_locally.  Uploaded files (source = uploaded) are driven by
+%% the chronicle crl_files key (the authoritative list); a file in
+%% chronicle but not yet downloaded appears with status not_loaded.
 %%
-%% For every file we report two independent things (all values RPC-safe):
-%%   status      — the state of the config/crls copy we currently use, freshly
-%%                 re-verified now (so expiry is accurate at query time):
-%%                 active | expired | not_yet_valid | untrusted | invalid
-%%                 | not_loaded
-%%   entries     — per-entry breakdown of that active copy (issuer, status,
-%%                 this_update, next_update, checksum)
-%%   last_reload — outcome of the most recent attempt to load from the load dir
--spec build_status_map(#state{}) -> #{file:filename_all() => map()}.
-build_status_map(#state{file_state = FS, active = Active}) ->
+%% Each map contains:
+%%   filename    — binary base name
+%%   source      — local_dir | uploaded
+%%   status      — active | expired | not_yet_valid | untrusted
+%%                 | invalid | not_loaded
+%%   entries     — per-entry breakdown
+%%   last_reload — #{result, time, errors}
+-spec build_status_map(#state{}) -> [map()].
+build_status_map(#state{file_state     = FS,
+                        loaded_locally = LoadedLocally,
+                        uploaded       = Uploaded}) ->
     TrustedDerCAs = ns_server_cert:trusted_CAs(der),
-    ConfigDir = crls_dir(),
-    %% Every active base name has a corresponding file_state full-path entry, so
-    %% iterating file_state covers all reported files.
-    maps:fold(
-      fun (Path, ReloadStatus, Acc) ->
-              Name = filename:basename(Path),
-              {Status, Entries} =
-                  case maps:is_key(Name, Active) of
-                      true ->
-                          current_status(filename:join(ConfigDir, Name),
-                                         TrustedDerCAs);
-                      false ->
-                          {not_loaded, []}
-                  end,
-              maps:put(iolist_to_binary(Path),
-                       #{status      => Status,
-                         entries     => Entries,
-                         last_reload => last_reload_map(ReloadStatus)}, Acc)
-      end, #{}, FS).
+    LocalDir    = local_crls_dir(),
+    UploadedDir = crls_dir(),
+    %% Poll-based entries — one per file_state entry.
+    PollList =
+        maps:fold(
+          fun (Path, ReloadStatus, Acc) ->
+                  Name    = filename:basename(Path),
+                  NameBin = list_to_binary(Name),
+                  {Status, Entries} =
+                      case maps:is_key(Name, LoadedLocally) of
+                          true ->
+                              current_status(filename:join(LocalDir, Name),
+                                             TrustedDerCAs);
+                          false ->
+                              {not_loaded, []}
+                      end,
+                  [#{filename    => NameBin,
+                     source      => local_dir,
+                     status      => Status,
+                     entries     => Entries,
+                     last_reload => last_reload_map(ReloadStatus)} | Acc]
+          end, [], FS),
+    %% Uploaded entries — chronicle map is the authoritative list.
+    UploadedList =
+        lists:map(
+          fun ({NameBin, #{checksum := ExpectedChecksum,
+                           upload_timestamp := UploadTS}}) ->
+                  Name = binary_to_list(NameBin),
+                  CrlPath = filename:join(UploadedDir, Name),
+                  {Status, Entries} =
+                      case maps:is_key(Name, Uploaded) of
+                          true -> current_status(CrlPath, TrustedDerCAs);
+                          false -> {not_loaded, []}
+                      end,
+                  LastReload = upload_file_status_map(Name, Uploaded,
+                                                      UploadTS,
+                                                      ExpectedChecksum),
+                  #{filename    => NameBin,
+                    source      => uploaded,
+                    status      => Status,
+                    entries     => Entries,
+                    last_reload => LastReload}
+          end, maps:to_list(get_crl_files_metadata())),
+    PollList ++ UploadedList.
 
 %% Compute the current status of an active CRL by reading DER entries from
 %% the cache and re-verifying them now.  Returns {FileStatus, [EntryMap]}.
@@ -772,6 +1238,31 @@ current_status(ConfigPath, TrustedDerCAs) ->
                             end
                         end, DerCRLs),
             {aggregate_status(Results), Results}
+    end.
+
+%% Maps current status of an uploaded file to a status map
+-spec upload_file_status_map(file:filename_all(), map(), calendar:datetime(),
+                             binary()) ->
+          #{result => atom(),
+            time => calendar:datetime(),
+            errors => [binary()]}.
+upload_file_status_map(Name, UploadedMap, UploadTS, ExpectedChecksum) ->
+    case maps:get(Name, UploadedMap, undefined) of
+        ExpectedChecksum ->
+            #{result => ok, time => UploadTS, errors => []};
+        undefined ->
+            %% File not yet downloaded
+            #{result => in_progress,
+              time   => UploadTS,
+              errors => [<<"Synchronization in progress (file is missing)">>]};
+        GotChecksum ->
+            %% Stale checksum
+            Msg = io_lib:format("Synchronization in progress "
+                                "(checksum mismatch: expected ~s, got ~s)",
+                                [ExpectedChecksum, GotChecksum]),
+            #{result => checksum_mismatch,
+              time   => UploadTS,
+              errors => [iolist_to_binary(Msg)]}
     end.
 
 %% Reduce per-entry results to a single file-level status, worst-first.
@@ -801,7 +1292,8 @@ entry_to_map(#entry_result{result = Result,
                            issuer      = Issuer,
                            this_update = ThisUpdate,
                            next_update = NextUpdate,
-                           der         = Der}) ->
+                           der         = Der,
+                           crl_number  = CrlNum}) ->
     Status = case Result of
                  ok -> ok;
                  {error, crl_expired} -> expired;
@@ -813,14 +1305,16 @@ entry_to_map(#entry_result{result = Result,
       status      => Status,
       this_update => ThisUpdate,
       next_update => NextUpdate,
-      checksum    => file_checksum(Der)}.
+      checksum    => file_checksum(Der),
+      crl_number  => CrlNum}.
 
 invalid_entry_map() ->
     #{issuer      => <<"unknown">>,
       status      => invalid,
       this_update => undefined,
       next_update => undefined,
-      checksum    => <<>>}.
+      checksum    => <<>>,
+      crl_number  => undefined}.
 
 %% Convert a stored #crl_reload_status{} to a plain (RPC-safe) map.
 %% 'undefined' (no attempt recorded yet) maps to a not_attempted result.
@@ -921,6 +1415,17 @@ decode_and_verify_crl(Binary, TrustedDerCAs) ->
             {error, {decode_error, Reason}}
     end.
 
+%% Sometimes we don't need to reverify the CRL so it is useful to have a
+%% function that returns the decoded entries in the same format as verify_crls/2
+decode_to_entries(Binary) ->
+    maybe
+        {ok, Triples} ?= decode_crl(Binary),
+        {ok, [entry_result(ok, T) || T <- Triples]}
+    else
+        {error, Reason} ->
+            {error, {decode_error, Reason}}
+    end.
+
 %% Verify every CRL triple against the cluster's trusted CAs and return one
 %% entry_result() per entry.  No formatting is done here; callers extract
 %% the raw fields they need (see attempt_load/6 and current_status/2).
@@ -936,14 +1441,17 @@ verify_crls(CRLTriples, TrustedDerCAs) ->
                               " (issuer ~p): ~p", [RawIssuer, Reason]);
              ok -> ok
          end,
-         {ThisUpdate, NextUpdate} = crl_times(Decoded),
-         #entry_result{result      = Result,
-                       issuer      = RawIssuer,
-                       this_update = ThisUpdate,
-                       next_update = NextUpdate,
-                       der         = Der,
-                       crl_number  = get_crl_number(Decoded)}
-     end || {RawIssuer, Decoded, Der} <- CRLTriples].
+         entry_result(Result, T)
+     end || {RawIssuer, Decoded, _Der} = T <- CRLTriples].
+
+entry_result(Result, {RawIssuer, Decoded, Der}) ->
+    {ThisUpdate, NextUpdate} = crl_times(Decoded),
+    #entry_result{result      = Result,
+                  issuer      = RawIssuer,
+                  this_update = ThisUpdate,
+                  next_update = NextUpdate,
+                  der         = Der,
+                  crl_number  = get_crl_number(Decoded)}.
 
 %% Extract thisUpdate / nextUpdate from a decoded CRL as calendar:datetime()
 %% values.  nextUpdate is optional per the ASN.1 spec and may be undefined.

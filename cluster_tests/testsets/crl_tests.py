@@ -571,9 +571,10 @@ def get_crl_settings(cluster):
 def get_crl_status(cluster):
     """POST /settings/crl/diagnostics/status to get CRL status from all nodes.
 
-    Returns a dict keyed by node hostname, each containing a dict of
-    file paths to per-file status objects of the form:
-      {"cacheStatus": "active"|"expired"|..., "entries": [...],
+    Returns a dict keyed by node hostname, each containing a list of
+    per-file status objects of the form:
+      {"filename": "...", "source": "localDir"|"uploaded",
+       "cacheStatus": "active"|"expired"|..., "entries": [...],
        "lastReload": {"result": ..., "time": ..., "errors": [...]}}
     """
     return testlib.post_succ(cluster, '/settings/crl/diagnostics/status',
@@ -583,8 +584,8 @@ def get_crl_status(cluster):
 def reload_crl(node):
     """POST /node/controller/reloadCrl to force immediate CRL reload.
 
-    Returns a dict of file paths to per-file status objects (same format as
-    the status endpoint).
+    Returns a list of per-file status objects (same format as the per-node
+    value in the status endpoint).
     """
     return testlib.post_succ(node, '/node/controller/reloadCrl').json()
 
@@ -592,13 +593,13 @@ def reload_crl(node):
 def _assert_crl_files(crl_files, expected_status):
     """Assert that at least one CRL file has the expected current status.
 
-    crl_files is a dict of {file_path: status_obj} as returned by both the
-    status and reload endpoints, where status_obj['cacheStatus'] is the state
-    of the version currently in use.
+    crl_files is a list of status objects as returned by both the status
+    and reload endpoints, where obj['cacheStatus'] is the state of the
+    version currently in use.
     """
     assert len(crl_files) > 0, 'Expected at least one CRL file'
     assert any(obj.get('cacheStatus') == expected_status
-               for obj in crl_files.values()), \
+               for obj in crl_files), \
         f'Expected a {expected_status} CRL file, got: {crl_files}'
 
 
@@ -610,10 +611,10 @@ def assert_crl_status(cluster, expected_status='active'):
     """
     status = get_crl_status(cluster)
     print(f"CRL status: {status}")
-    # Flatten node-level dict into a single file-level dict
-    all_files = {}
-    for node_status in status.values():
-        all_files.update(node_status)
+    # Flatten the per-node lists into a single list of file status objects.
+    all_files = [f for node_files in status.values()
+                 if isinstance(node_files, list)
+                 for f in node_files]
     _assert_crl_files(all_files, expected_status)
 
 

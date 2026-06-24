@@ -18,7 +18,10 @@
          handle_post_settings/1,
          handle_reload_crl/1,
          handle_get_diagnostics_status/1,
-         handle_post_diagnostics_status/1]).
+         handle_post_diagnostics_status/1,
+         handle_get_crl_files/1,
+         handle_post_crl_file/1,
+         handle_delete_crl_file/2]).
 
 %%%===================================================================
 %%% GET /settings/crl
@@ -131,8 +134,8 @@ handle_reload_crl(Req) ->
             menelaus_util:reply_json(
               Req,
               {[{error, <<"No CRL source directory is configured">>}]}, 400);
-        {ok, StatusMap} ->
-            menelaus_util:reply_json(Req, format_status_map(StatusMap))
+        {ok, StatusList} ->
+            menelaus_util:reply_json(Req, format_status_map(StatusList))
     end.
 
 %%%===================================================================
@@ -231,8 +234,8 @@ collect_crl_status(NodePairs) ->
       fun ({_Node, Hostname}, NodeResult) ->
               NodeJson =
                   case NodeResult of
-                      StatusMap when is_map(StatusMap) ->
-                          format_status_map(StatusMap);
+                      StatusList when is_list(StatusList) ->
+                          format_status_map(StatusList);
                       {badrpc, Reason} ->
                           {[{error,
                              iolist_to_binary(
@@ -245,38 +248,40 @@ collect_crl_status(NodePairs) ->
 %%% Helpers
 %%%===================================================================
 
-%% Convert a #{LoadDirPath => StatusMap} map (from cb_crl_manager:get_status/0)
-%% to an ejson object.  Each StatusMap is a plain map with keys:
-%%   status (atom), entries ([EntryMap]), last_reload (map).
--spec format_status_map(#{file:filename_all() => map()}) -> term().
-format_status_map(StatusMap) ->
-    Props =
-        maps:fold(
-          fun (Path, FileStatus, Acc) ->
-                  PathKey = iolist_to_binary(Path),
-                  [{PathKey, file_status_to_json(FileStatus)} | Acc]
-          end, [], StatusMap),
-    {Props}.
+%% Convert a [StatusMap] list (from cb_crl_manager:get_status/0) to a
+%% JSON array.  Each StatusMap is a plain map produced by build_status_map/1.
+-spec format_status_map([map()]) -> [term()].
+format_status_map(StatusList) ->
+    [file_status_to_json(S) || S <- StatusList].
 
 %% Serialise a single per-file status map to an ejson object.
-file_status_to_json(#{status      := Status,
+file_status_to_json(#{filename    := Filename,
+                      source      := Source,
+                      status      := Status,
                       entries     := Entries,
                       last_reload := LastReload}) ->
-    {[{cacheStatus, status_to_json(Status)},
+    {[{filename,    Filename},
+      {source,      file_source_to_json(Source)},
+      {cacheStatus, status_to_json(Status)},
       {entries,     [status_entry_to_json(E) || E <- Entries]},
       {lastReload,  last_reload_to_json(LastReload)}]}.
+
+file_source_to_json(local_dir) -> <<"localDir">>;
+file_source_to_json(uploaded)  -> <<"uploaded">>.
 
 %% Serialise the per-entry breakdown of the active copy.
 status_entry_to_json(#{issuer      := Issuer,
                        status      := Status,
                        this_update := ThisUpdate,
                        next_update := NextUpdate,
-                       checksum    := Checksum}) ->
+                       checksum    := Checksum,
+                       crl_number  := CrlNum}) ->
     {[{issuer,     Issuer},
       {status,     status_to_json(Status)},
       {thisUpdate, format_datetime(ThisUpdate)},
       {nextUpdate, format_datetime(NextUpdate)},
-      {checksum,   Checksum}]}.
+      {checksum,   Checksum},
+      {crlNumber,  case CrlNum of undefined -> null; N -> N end}]}.
 
 %% Serialise the last-reload-attempt information.
 last_reload_to_json(#{result := Result, time := Time, errors := Errors}) ->
@@ -301,10 +306,139 @@ status_to_json(not_loaded)    -> <<"notLoaded">>;
 status_to_json(Other)         -> iolist_to_binary(io_lib:format("~p", [Other])).
 
 %% Map a reload-result atom to the string shown in the HTTP response.
-reload_result_to_json(loaded)        -> <<"loaded">>;
-reload_result_to_json(failed)        -> <<"failed">>;
-reload_result_to_json(not_attempted) -> <<"notAttempted">>;
-reload_result_to_json(Other)         -> iolist_to_binary(io_lib:format("~p", [Other])).
+reload_result_to_json(loaded)            -> <<"loaded">>;
+reload_result_to_json(failed)            -> <<"failed">>;
+reload_result_to_json(not_attempted)     -> <<"notAttempted">>;
+reload_result_to_json(uploaded)          -> <<"uploaded">>;
+reload_result_to_json(not_downloaded)    -> <<"notDownloaded">>;
+reload_result_to_json(checksum_mismatch) -> <<"checksumMismatch">>;
+reload_result_to_json(read_error)        -> <<"readError">>;
+reload_result_to_json(Other)             ->
+    iolist_to_binary(io_lib:format("~p", [Other])).
+
+%%%===================================================================
+%%% GET /settings/crl/files
+%%%===================================================================
+
+handle_get_crl_files(Req) ->
+    assert_supported(),
+    Files = cb_crl_manager:get_crl_files_metadata(),
+    menelaus_util:reply_json(
+      Req, [file_meta_to_json(N, I) || {N, I} <- maps:to_list(Files)]).
+
+%%%===================================================================
+%%% POST /settings/crl/files
+%%%===================================================================
+
+handle_post_crl_file(Req) ->
+    assert_supported(),
+    CT = mochiweb_request:get_header_value("content-type", Req),
+    maybe
+        ok ?= case is_multipart_ct(CT) of
+                  true -> ok;
+                  false -> {error, not_multipart}
+               end,
+        Fields = mochiweb_multipart:parse_form(Req),
+        %% Keep only file fields (content-type is a tuple);
+        %% ignore plain text fields.
+        Files = [{Filename, Body} || {_Field, {Filename, _CT, Body}} <- Fields],
+        {ok, {Filename, Body}} ?= case Files of
+                                      [] -> {error, no_file};
+                                      [_, _ | _] -> {error, too_many_files};
+                                      [{F, B}] -> {ok, {F, B}}
+                                  end,
+        ok ?= validate_upload_filename(Filename),
+        ok ?= cb_crl_manager:upload_crl_file(Filename, Body),
+        handle_get_crl_files(Req)
+    else
+        {error, Reason} ->
+            ReasonBin = format_upload_error(Reason),
+            menelaus_util:reply_json(Req, {[{error, ReasonBin}]}, 400)
+    end.
+
+is_multipart_ct(undefined) -> false;
+is_multipart_ct(CT) ->
+    lists:prefix("multipart/form-data", string:to_lower(CT)).
+
+validate_upload_filename(Filename) ->
+    case Filename =/= [] andalso length(Filename) =< 255 andalso
+         lists:all(fun safe_filename_char/1, Filename) andalso
+         Filename /= "." andalso Filename /= ".." of
+        true  -> ok;
+        false -> {error, invalid_filename}
+    end.
+
+safe_filename_char(C) ->
+    (C >= $a andalso C =< $z) orelse
+    (C >= $A andalso C =< $Z) orelse
+    (C >= $0 andalso C =< $9) orelse
+    C =:= $. orelse C =:= $- orelse C =:= $_.
+
+format_upload_error(not_multipart) ->
+    <<"Content-Type must be multipart/form-data">>;
+format_upload_error(no_file) ->
+    <<"No file found in multipart form data">>;
+format_upload_error(too_many_files) ->
+    <<"Multiple files found in multipart form data; only one is allowed">>;
+format_upload_error(invalid_filename) ->
+    <<"Invalid filename: must be 1-255 characters of letters, digits, dot,"
+      " hyphen, or underscore, and cannot be . or ..">>;
+format_upload_error({invalid_entries, Errors}) ->
+    Joined = lists:join(<<"; ">>, Errors),
+    iolist_to_binary(["CRL validation failed: " | Joined]);
+format_upload_error({decode_error, Reason}) ->
+    misc:format_bin("Failed to decode CRL: ~s", [format_upload_error(Reason)]);
+format_upload_error({invalid_crl, _Reason}) ->
+    %% Reason contains an asn1 stacktrace, no need to return it
+    <<"Invalid CRL">>;
+format_upload_error(Reason) ->
+    iolist_to_binary(io_lib:format("~p", [Reason])).
+
+%%%===================================================================
+%%% DELETE /settings/crl/files/:filename
+%%%===================================================================
+
+handle_delete_crl_file(Filename, Req) ->
+    assert_supported(),
+    case cb_crl_manager:delete_crl_file(Filename) of
+        ok ->
+            menelaus_util:reply_json(Req, {[]});
+        {error, not_found} ->
+            menelaus_util:reply_json(
+              Req,
+              {[{error, <<"CRL file not found">>}]}, 404);
+        {error, Reason} ->
+            menelaus_util:reply_json(
+              Req,
+              {[{error, iolist_to_binary(
+                          io_lib:format("~p", [Reason]))}]}, 400)
+    end.
+
+%%%===================================================================
+%%% JSON helpers for file metadata
+%%%===================================================================
+
+file_meta_to_json(NameBin,
+                  #{checksum         := Sum,
+                    upload_timestamp := UpTS,
+                    entries          := Entries}) ->
+    {[{filename,        NameBin},
+      {checksum,        Sum},
+      {uploadTimestamp, format_datetime(UpTS)},
+      {entries,         [entry_meta_to_json(E) || E <- Entries]}]}.
+
+entry_meta_to_json(#{issuer      := Issuer,
+                     this_update := TU,
+                     next_update := NU,
+                     crl_number  := Num}) ->
+    {[{issuer,     Issuer},
+      {thisUpdate, format_datetime(TU)},
+      {nextUpdate, format_datetime(NU)},
+      {crlNumber,  case Num of undefined -> null; N -> N end}]}.
+
+%%%===================================================================
+%%% Helpers
+%%%===================================================================
 
 assert_supported() ->
     menelaus_util:assert_is_enterprise(),
