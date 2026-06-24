@@ -277,6 +277,7 @@ init([]) ->
     Self = self(),
     chronicle_compat_events:subscribe(
       fun (?CHRONICLE_KEY)   -> Self ! config_changed;
+          (ca_certificates)  -> Self ! config_changed;
           (?CRL_FILES_KEY)   -> Self ! crl_files_changed;
           (_)                -> ok
       end),
@@ -342,10 +343,11 @@ handle_call(get_push_config, _From, State) ->
     Cfg = get_config(),
     PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
     CheckInterm = maps:get(check_intermediate_certs, Cfg, false),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
     FileVersions = build_file_versions(State),
     Files = [F || {F, _} <- FileVersions],
     Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions),
-                             CheckInterm}),
+                             CheckInterm, lists:sort(TrustedCAs)}),
     Result = #{policy_per_scope => PolicyPerScope,
                files => Files,
                version => Version,
