@@ -135,6 +135,7 @@
          validate_map/1,
          set_fast_forward_map/2,
          set_map_and_uploaders/3,
+         set_map_and_uploaders/4,
          set_initial_map_and_uploaders/4,
          set_map_opts/2,
          set_servers/2,
@@ -2370,13 +2371,26 @@ validate_map(Map) ->
                             fusion_uploaders:uploaders() | undefined) ->
           ok | not_found.
 set_map_and_uploaders(Bucket, Map, Uploaders) ->
+    set_map_and_uploaders(Bucket, Map, undefined, Uploaders).
+
+
+-spec set_map_and_uploaders(name(), vbucket_map(),
+                            proplists:proplist() | undefined,
+                            fusion_uploaders:uploaders() | undefined) ->
+          ok | not_found.
+set_map_and_uploaders(Bucket, Map, MapOpts, Uploaders) ->
     validate_map(Map),
+    PropsToUpdate =
+        [{map, Map} | case MapOpts of
+                          undefined -> [];
+                          _ -> [{map_opts_hash, erlang:phash2(MapOpts)}]
+                      end],
     RV =
         chronicle_kv:transaction(
           kv, [sub_key(Bucket, props)],
           fun (Snapshot) ->
                   case get_commits_from_snapshot(
-                         [{Bucket, lists:keystore(map, 1, _, {map, Map})}],
+                         [{Bucket, misc:update_proplist(_, PropsToUpdate)}],
                          Snapshot) of
                       [{abort, not_found}] ->
                           {abort, not_found};

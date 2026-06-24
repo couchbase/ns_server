@@ -745,6 +745,7 @@ class FusionTests(testlib.BaseTestSet):
         bucket_uuid = self.cluster.get_bucket_uuid('default')
         namespace = f"kv/{bucket_uuid}"
         manifest = self.accelerator_get_manifest(manifest_path, namespace)
+        expected_terms = [u['term'] + 1 for u in self.get_uploaders('default')]
 
         second_node = self.cluster.spare_node()
         self.cluster.add_node(second_node, services=[Service.KV])
@@ -827,6 +828,12 @@ class FusionTests(testlib.BaseTestSet):
         total = self.get_curr_items_tot(self.cluster.connected_nodes,
                                         'defaultClone')
         testlib.assert_eq(total, ndocs * 2)
+
+        restored_terms = [u['term'] for u in self.get_uploaders('defaultClone')]
+        assert restored_terms == expected_terms, (
+            f"Expected uploader terms {expected_terms}, "
+            f"got {restored_terms}"
+        )
 
         # check that the data on LogStore is fully restored
         status = self.get_status()

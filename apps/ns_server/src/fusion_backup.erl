@@ -70,9 +70,9 @@ prepare_snapshot_restore(BucketInfos) ->
         [{nodes, KVNodes},
          {planUUID, PlanUUID},
          {buckets, [#{name => BucketName, uuid => UUID, props => RawConfig,
-                      map => Map, opts => Opts} ||
-                       {{{UUID, Map, Opts}, _, _},
-                        {BucketName, _, _, RawConfig}}
+                      map => Map, opts => Opts, terms => Terms} ||
+                       {{{UUID, Map, Terms, Opts}, _, _},
+                        {BucketName, _, _Manifest, RawConfig}}
                            <- lists:zip(BucketResults, BucketInfos)]}],
 
     ale:info(?USER_LOGGER,
@@ -121,7 +121,9 @@ prepare_single_bucket_restore(BucketConfig, KVNodes, Manifest) ->
         maps:from_list(
           [{N, [maps:get(VB, VolumesMap) || VB <- VBs]} ||
               {N, VBs} <- dict:to_list(NodeVBDict)]),
-    {{NewBucketUUID, VBMap, Opts}, NodeVolumesMap, NSInfo}.
+    Terms = [proplists:get_value(logManifestTerm, Volume) ||
+                {Volume} <- Volumes],
+    {{NewBucketUUID, VBMap, Terms, Opts}, NodeVolumesMap, NSInfo}.
 
 -spec validate_restore(list(), list()) ->
           {ok, {[map()], list()}} |
@@ -185,7 +187,8 @@ validate_restore(Blueprint, Volumes) ->
     end.
 
 create_bucket(Servers, #{name := BucketName, uuid := UUID, map := Map,
-                         opts := MapOpts, config := BucketConfig}) ->
+                         opts := MapOpts, config := BucketConfig,
+                         terms := Terms}) ->
     ?log_info("Creating bucket ~p with UUID = ~p", [BucketName, UUID]),
     case ns_orchestrator:create_membase_bucket(
            BucketName, [{fusion_restore_in_progress, true} | BucketConfig],
@@ -197,8 +200,10 @@ create_bucket(Servers, #{name := BucketName, uuid := UUID, map := Map,
                       [BucketName, Map, MapOpts]),
             {ok, _} = ns_bucket:store_last_balanced_vbmap(
                         BucketName, Map, MapOpts),
-            ok = ns_bucket:set_initial_map_and_uploaders(
-                   BucketName, Map, Servers, MapOpts);
+            Uploaders = [{N, Term + 1} ||
+                            {[N | _], Term} <- lists:zip(Map, Terms)],
+            ok = ns_bucket:set_map_and_uploaders(BucketName, Map, MapOpts,
+                                                 Uploaders);
         Error ->
             Error
     end.
