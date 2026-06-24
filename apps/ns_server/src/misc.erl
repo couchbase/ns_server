@@ -4022,8 +4022,18 @@ tls_connect_options(URL, AddressFamily, VerifyPeer, CACerts0, SNI0,
                 case VerifyPeer of
                     true ->
                         CACerts = CACerts0 ++ ns_server_cert:trusted_CAs(der),
+                        PartialChain =
+                            fun(CertChain) ->
+                                case lists:filter(
+                                       fun(C) -> lists:member(C, CACerts) end,
+                                       CertChain) of
+                                    [Trusted | _] -> {trusted_ca, Trusted};
+                                    [] -> unknown_ca
+                                end
+                            end,
                         [{verify, verify_peer}, {cacerts, CACerts},
-                         {depth, ?ALLOWED_CERT_CHAIN_LENGTH}] ++
+                         {depth, ?ALLOWED_CERT_CHAIN_LENGTH},
+                         {partial_chain, PartialChain}] ++
                             case SNI0 of
                                 "" -> [];
                                 SNI -> [{server_name_indication, SNI}]

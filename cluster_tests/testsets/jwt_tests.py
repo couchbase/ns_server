@@ -18,19 +18,39 @@ import http.server
 import threading
 import socketserver
 import subprocess
+import ssl
 
 
 class MockJWKSServer:
-    """Mock HTTP server for serving JWKS"""
+    """Mock HTTP(S) server for serving JWKS.
 
-    def __init__(self, initial_jwks):
+    Without arguments serves plain HTTP. Pass tls=True to serve HTTPS using
+    the static test certs in resources/jwt/ (mock_jwks_chain.pem,
+    mock_jwks_server.key, mock_jwks_ca.pem). In TLS mode the server sends the
+    full [ServerCert, CACert] chain so OTP's partial_chain callback is invoked;
+    the CA cert PEM is exposed via the ca_pem property for use as
+    jwksUriTlsCa.
+    """
+
+    def __init__(self, initial_jwks, tls=False):
         self.jwks = initial_jwks
         self.port = self._get_free_port()
         self.is_available = True
+        self._tls = tls
+        self._httpd = None
+        self._server_thread = None
+
+        if tls:
+            jwt_res = os.path.join(testlib.get_resources_dir(), "jwt")
+            self._chain_file = os.path.join(jwt_res, "mock_jwks_chain.pem")
+            self._key_file = os.path.join(jwt_res, "mock_jwks_server.key")
+            self._ca_file = os.path.join(jwt_res, "mock_jwks_ca.pem")
+
+        server_self = self
 
         class Handler(http.server.SimpleHTTPRequestHandler):
             def do_GET(handler_self):
-                if not self.is_available:
+                if not server_self.is_available:
                     handler_self.send_response(503)
                     handler_self.end_headers()
                     return
@@ -41,14 +61,12 @@ class MockJWKSServer:
                     "Cache-Control", "public, max-age=3600"
                 )  # 1 hour cache
                 handler_self.end_headers()
-                handler_self.wfile.write(json.dumps(self.jwks).encode())
+                handler_self.wfile.write(json.dumps(server_self.jwks).encode())
 
             def log_message(self, format, *args):
                 pass
 
-        self.handler = Handler
-        self.httpd = socketserver.TCPServer(("", self.port), self.handler)
-        self.server_thread = None
+        self._handler = Handler
 
     def _get_free_port(self):
         with socketserver.TCPServer(("", 0), None) as s:
@@ -61,22 +79,36 @@ class MockJWKSServer:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
+    @property
+    def url(self):
+        scheme = "https" if self._tls else "http"
+        return f"{scheme}://localhost:{self.port}"
+
+    @property
+    def ca_pem(self):
+        """PEM of the CA cert (only valid when tls=True)."""
+        with open(self._ca_file) as f:
+            return f.read()
+
     def start(self):
-        self.server_thread = threading.Thread(target=self.httpd.serve_forever)
-        self.server_thread.daemon = True
-        self.server_thread.start()
+        self._httpd = http.server.HTTPServer(("localhost", self.port),
+                                             self._handler)
+        if self._tls:
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_ctx.load_cert_chain(self._chain_file, self._key_file)
+            self._httpd.socket = ssl_ctx.wrap_socket(self._httpd.socket,
+                                                     server_side=True)
+        self._server_thread = threading.Thread(target=self._httpd.serve_forever)
+        self._server_thread.daemon = True
+        self._server_thread.start()
         self.is_available = True
 
     def stop(self):
-        if self.server_thread:
-            self.httpd.shutdown()
-            self.httpd.server_close()
-            self.server_thread.join()
-            self.server_thread = None
-
-    @property
-    def url(self):
-        return f"http://localhost:{self.port}"
+        if self._server_thread:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+            self._server_thread.join()
+            self._server_thread = None
 
     def set_unavailable(self):
         """Simulate server being down"""
@@ -248,7 +280,7 @@ class JWTTests(testlib.BaseTestSet):
 
         pem_files = [
             f for f in os.listdir(resources_dir)
-            if f.endswith(".pem") and "invalid" not in f and "private" not in f
+            if f.startswith("mock_") and f.endswith("_public.pem")
         ]
 
         # We should have test files for RSA, ES256, ES256K, ES384, ES512,
@@ -1142,6 +1174,75 @@ class JWTTests(testlib.BaseTestSet):
                 headers=headers
             )
             assert r.status_code == 401
+
+    def jwks_uri_tls_test(self):
+        """Test JWKS URI fetch over HTTPS with a custom CA cert.
+
+        Regression test for MB-72547: OTP 28 SSL requires an explicit
+        partial_chain callback to treat a self-signed cert present in cacerts
+        as a trusted root anchor. Without it the handshake fails with
+        selfsigned_peer even when the correct DER cert is in the cacerts list.
+        """
+        self.auth_setup()
+
+        with MockJWKSServer(self.jwks, tls=True) as server:
+            claims = self.base_claims.copy()
+            claims["iss"] = "jwks-tls-issuer"
+            claims["groups"] = ["jwt_bucket_admins"]
+            token = self.create_token(claims)
+            headers = {"Authorization": f"Bearer {token}"}
+
+            base_issuer = {
+                "name": "jwks-tls-issuer",
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["test-audience"],
+                "signingAlgorithm": "RS256",
+                "publicKeySource": "jwks_uri",
+                "jwksUri": server.url,
+                "jitProvisioning": True,
+                "jwksUriHttpTimeoutMs": 5000,
+            }
+
+            def configure(extra):
+                testlib.put_succ(self.cluster, self.endpoint, json={
+                    "enabled": True,
+                    "jwksUriRefreshIntervalS": 14400,
+                    "issuers": [{**base_issuer, **extra}],
+                })
+
+            def auth_status():
+                return testlib.get(self.cluster, "/pools/default/buckets",
+                                   auth=None, headers=headers).status_code
+
+            # Baseline: verify_peer=false — TLS but no cert check,
+            # must succeed.
+            configure({"jwksUriTlsVerifyPeer": False})
+            testlib.poll_for_condition(
+                lambda: auth_status() == 200,
+                sleep_time=0.5, timeout=10,
+                msg="Expected 200 with TLS peer verification disabled"
+            )
+
+            # verify_peer=true without a custom CA — the self-signed cert
+            # is not in ns_server's built-in bundle, so must be rejected.
+            configure({"jwksUriTlsVerifyPeer": True})
+            testlib.poll_for_condition(
+                lambda: auth_status() == 401,
+                sleep_time=0.5, timeout=10,
+                msg="Expected 401 when verifying peer without CA cert"
+            )
+
+            # verify_peer=true with the correct custom CA — this is the
+            # regression case: partial_chain callback must allow the handshake.
+            configure({"jwksUriTlsVerifyPeer": True,
+                       "jwksUriTlsCa": server.ca_pem})
+            testlib.poll_for_condition(
+                lambda: auth_status() == 200,
+                sleep_time=0.5, timeout=10,
+                msg="Expected 200 with TLS verify and correct custom CA"
+            )
 
     def access_forbidden_test(self):
         """Test that access_forbidden audit events are properly triggered with
