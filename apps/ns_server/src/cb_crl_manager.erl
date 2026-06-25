@@ -1158,12 +1158,13 @@ remove_from_cache(CacheType, Name) ->
               url    -> url_crls_dir()
           end,
     FullPath = filename:join(Dir, Name),
-    cb_crl_cache:remove_file(FullPath),
     case file:delete(FullPath) of
         ok ->
+            cb_crl_cache:remove_file(FullPath),
             ?log_debug("Deleted CRL file: ~p", [FullPath]),
             ok;
         {error, enoent} ->
+            cb_crl_cache:remove_file(FullPath),
             ?log_debug("CRL file already absent: ~p", [FullPath]),
             ok;
         {error, Reason} ->
