@@ -856,16 +856,14 @@ apply_config(Cfg, #state{poll_directory = OldPollDir,
                 ?log_info(
                    "CRL source cleared; removing ~p poll-based CRL file(s)",
                    [maps:size(State1#state.loaded_locally)]),
-                %% Only remove poll-based files in local_crls_dir();
-                %% uploaded files in crls_dir() are unaffected.
-                maps:foreach(
-                  fun (Name, _) ->
-                          remove_from_cache(local, Name)
-                  end, State1#state.loaded_locally),
-                State1#state{file_state = #{}, loaded_locally = #{}};
-            {_, Dir} ->
+                scan_directory(undefined, State1, false);
+            {undefined, Dir} ->
                 ?log_info("CRL poll directory set to ~p", [Dir]),
-                scan_directory(Dir, State1, false)
+                scan_directory(Dir, State1, false);
+            {OldDir, Dir} ->
+                ?log_info("CRL poll directory changed from ~p to ~p",
+                          [OldDir, Dir]),
+                scan_directory(Dir, State1, true)
         end,
 
     %% Phase 2b: update URL-based CRL data.
@@ -900,12 +898,21 @@ apply_config(Cfg, #state{poll_directory = OldPollDir,
 %% Schedule the next poll and return the updated state.
 %% No timer is created when there is nothing to poll.
 -spec schedule_poll_dir_timer(#state{}) -> #state{}.
-schedule_poll_dir_timer(#state{poll_directory = undefined} = State) ->
+schedule_poll_dir_timer(#state{poll_interval_ms = Ms, poll_directory = Dir,
+                               loaded_locally = Loaded} = State) ->
     cancel_timer(State#state.poll_timer),
-    State#state{poll_timer = undefined};
-schedule_poll_dir_timer(#state{poll_interval_ms = Ms} = State) ->
-    cancel_timer(State#state.poll_timer),
-    Ref = erlang:send_after(Ms, self(), poll_directory),
+    ShouldStart =
+        case Dir of
+            %% Schedule a timer if we still have loaded files
+            %% we should retry removing them
+            undefined -> maps:size(Loaded) > 0;
+            _ -> true
+        end,
+    Ref =
+        case ShouldStart of
+            true -> erlang:send_after(Ms, self(), poll_directory);
+            false -> undefined
+        end,
     State#state{poll_timer = Ref}.
 
 -spec cancel_timer(reference() | undefined) -> ok.
@@ -993,7 +1000,18 @@ reconcile_url_files(NewURLList, Force, State) ->
                      ForceReload :: boolean()) ->
           #state{}.
 scan_directory(undefined, State, _ForceReload) ->
-    State;
+    %% Poll directory is turned off, try to remove all poll based files
+    NewLoaded =
+        maps:filter(
+        fun (Name, _) ->
+                ok /= remove_from_cache(local, Name)
+        end, State#state.loaded_locally),
+    NewFS =
+        maps:filter(
+        fun (FilePath, _) ->
+            maps:is_key(filename:basename(FilePath), NewLoaded)
+        end, State#state.file_state),
+    State#state{file_state = NewFS, loaded_locally = NewLoaded};
 scan_directory(DirBin, State, ForceReload) when is_binary(DirBin) ->
     scan_directory(binary_to_list(DirBin), State, ForceReload);
 scan_directory(Dir, State, ForceReload) ->
