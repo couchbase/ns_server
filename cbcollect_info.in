@@ -1678,7 +1678,14 @@ def make_os_tasks():
                   "find /proc/sys/kernel -type f -name '*core*' -print -exec cat '{}' ';'"),
         UnixTask("sysctl settings", "sysctl -a"),
         LinuxTask("Relevant lsof output",
-                  "echo %(programs)s | xargs -n1 pgrep -f | xargs -n1 -r -- lsof -n -p" % locals()),
+                  "if command -v lsof > /dev/null 2>&1; then "
+                  "echo %(programs)s | xargs -n1 pgrep -f | xargs -n1 -r -- lsof -n -p; "
+                  "else "
+                  "for program in %(programs)s; "
+                  "do for pid in $(pgrep -f $program); "
+                  "do echo \"$pid ($program):\"; "
+                  "ls -la /proc/$pid/fd; done; done; "
+                  "fi" % locals()),
         LinuxTask("LVM info", "lvdisplay"),
         LinuxTask("LVM info", "vgdisplay"),
         LinuxTask("LVM info", "pvdisplay"),
