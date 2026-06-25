@@ -71,7 +71,6 @@
          get_failover_log/2,
          update_user_permissions/2,
          set_collections_manifest/2,
-         get_collections_manifest/1,
          set_tls_config/2,
          set_active_encryption_key/4,
          prune_log_or_audit_encr_keys/4,
@@ -115,7 +114,6 @@
                      ?CMD_RBAC_REFRESH | ?CMD_SUBDOC_MULTI_LOOKUP |
                      ?CMD_GET_FAILOVER_LOG |
                      ?CMD_COLLECTIONS_SET_MANIFEST |
-                     ?CMD_COLLECTIONS_GET_MANIFEST |
                      ?CMD_VALIDATE_BUCKET_CONFIG |
                      ?CMD_GET_FUSION_STORAGE_SNAPSHOT |
                      ?CMD_RELEASE_FUSION_STORAGE_SNAPSHOT |
@@ -1087,16 +1085,6 @@ set_collections_manifest(Sock, Blob) ->
             ok;
         Other ->
             process_error_response(Other)
-    end.
-
-get_collections_manifest(Sock) ->
-    report_counter(?FUNCTION_NAME),
-    case cmd(?CMD_COLLECTIONS_GET_MANIFEST, Sock, undefined, undefined,
-             {#mc_header{}, #mc_entry{}}) of
-        {ok, #mc_header{status = ?SUCCESS}, ME, _NCB} ->
-            {ok, ME#mc_entry.data};
-        Response ->
-            process_error_response(Response)
     end.
 
 update_user_permissions(Sock, RBACJson) ->

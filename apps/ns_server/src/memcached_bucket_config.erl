@@ -624,12 +624,22 @@ format_mcd_key(#{id := Id, type := 'raw-aes-gcm', info := #{key := KeyFun}},
     {true, {[{id, Id}, {cipher, <<"AES-256-GCM">>}, {key, Encoded}]}}.
 
 get_current_collections_uid(Sock) ->
-    case mc_client_binary:get_collections_manifest(Sock) of
-        {memcached_error, no_coll_manifest, _} ->
-            undefined;
-        {ok, Bin} ->
-            {Json} = ejson:decode(Bin),
-            proplists:get_value(<<"uid">>, Json)
+    %% Fetch just the manifest uid via the "manifest" stat group rather than
+    %% pulling the entire collections manifest, which can be very large.
+    case mc_client_binary:stats(Sock, <<"manifest">>,
+                                fun (K, V, Acc) -> [{K, V} | Acc] end, []) of
+        {ok, Stats} ->
+            case proplists:get_value(<<"manifest_uid">>, Stats) of
+                undefined ->
+                    undefined;
+                Uid ->
+                    %% The stat reports the uid in decimal, but the rest of
+                    %% ns_server works with the memcached hex representation.
+                    collections:convert_uid_to_memcached(
+                      binary_to_integer(Uid))
+            end;
+        {memcached_error, _, _} ->
+            undefined
     end.
 
 need_update_collections_manifest(Sock, BucketName, Snapshot) ->
