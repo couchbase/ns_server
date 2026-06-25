@@ -38,7 +38,7 @@
          get_subject_fields_by_type/2,
          get_sub_alt_names_by_type/2,
          get_cert_info/2,
-         set_generated_ca/1,
+         set_generated_ca/2,
          validate_pkey/2,
          get_chain_info/2,
          trusted_CAs/1,
@@ -57,7 +57,8 @@
          chronicle_upgrade_to_79/1,
          format_name/1,
          get_subject/1,
-         is_ootb_cert/1]).
+         get_ootb_crl/0,
+         ensure_ootb_crl/0]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -116,8 +117,9 @@ ensure_cluster_CA() ->
     generate_cluster_CA(false, false).
 
 generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
-    NewPair = generate_cert_and_pkey(),
-    {ok, AddCA} = add_CAs_txn_fun(generated, element(1, NewPair), []),
+    {NewCert, NewKey, NewCrl} = generate_cert_and_pkey(),
+    NewPair = {NewCert, NewKey},
+    {ok, AddCA} = add_CAs_txn_fun(generated, NewCert, []),
     ReadEpoch =
         fun (Txn) ->
                 case chronicle_kv:txn_get(cluster_certs_epoch, Txn) of
@@ -157,7 +159,10 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
                                   false ->
                                       []
                               end,
-                          Changes1 = [{set, root_cert_and_pkey, NewPair}],
+                          %% Invariant: every write of root_cert_and_pkey
+                          %% writes the matching OOTB CRL in the same txn.
+                          Changes1 = [{set, root_cert_and_pkey, NewPair},
+                                      {set, ootb_crl, NewCrl}],
                           {commit, Changes2, _} = AddCA(Txn),
                           Changes = Changes0 ++ Changes1 ++ Changes2,
                           {commit, Changes, NewPair}
@@ -168,9 +173,12 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
 generate_cert_and_pkey() ->
     StartTS = os:timestamp(),
     Sha1 = ns_config:read_key_fast({cert, use_sha1}, false),
+    %% generate_crl => the tool appends an empty CRL signed by the new CA, so
+    %% the result is {CertPem, KeyPem, CrlPem}.
     RV = generate_certs(#{use_sha1 => Sha1,
                           common_name_prefix =>
-                              cluster_compat_mode:prod_name()}),
+                              cluster_compat_mode:prod_name(),
+                          generate_crl => true}),
     EndTS = os:timestamp(),
 
     Diff = timer:now_diff(EndTS, StartTS),
@@ -250,6 +258,10 @@ generate_certs(Cert) when is_map(Cert) ->
               (use_sha1, true, {A, E}) ->
                   {["--use-sha1" | A], E};
               (use_sha1, false, {A, E}) ->
+                  {A, E};
+              (generate_crl, true, {A, E}) ->
+                  {["--generate-crl" | A], E};
+              (generate_crl, false, {A, E}) ->
                   {A, E};
               (not_after_duration, Duration, {A, E}) ->
                   DurationStr = integer_to_list(Duration),
@@ -467,21 +479,29 @@ split_certs(PEMCerts) ->
 extract_cert_and_pkey(Output) ->
     case split_certs(Output) of
         [Cert, PKey] ->
-            case decode_single_certificate(Cert) of
-                {ok, _} ->
-                    %% We assume this function is used for self-generated
-                    %% certs only, hence no password is used
-                    case validate_pkey(PKey, fun () -> undefined end) of
-                        {ok, _} ->
-                            {Cert, PKey};
-                        Err ->
-                            erlang:exit({bad_generated_pkey, PKey, Err})
-                    end;
-                {error, Error} ->
-                    erlang:exit({bad_generated_cert, Cert, Error})
-            end;
+            validate_generated_cert_and_pkey(Cert, PKey),
+            {Cert, PKey};
+        [Cert, PKey, Crl] ->
+            %% CA generation with --generate-crl appends the OOTB CRL.
+            validate_generated_cert_and_pkey(Cert, PKey),
+            {Cert, PKey, Crl};
         Parts ->
             erlang:exit({bad_generate_cert_output, Parts})
+    end.
+
+validate_generated_cert_and_pkey(Cert, PKey) ->
+    case decode_single_certificate(Cert) of
+        {ok, _} ->
+            %% We assume this function is used for self-generated
+            %% certs only, hence no password is used
+            case validate_pkey(PKey, fun () -> undefined end) of
+                {ok, _} ->
+                    ok;
+                Err ->
+                    erlang:exit({bad_generated_pkey, PKey, Err})
+            end;
+        {error, Error} ->
+            erlang:exit({bad_generated_cert, Cert, Error})
     end.
 
 attribute_string(?'id-at-countryName') ->
@@ -617,10 +637,105 @@ get_sub_alt_names_by_type(Cert, Type) ->
             {error, not_found}
     end.
 
-set_generated_ca(CA) ->
-    chronicle_kv:set(kv, root_cert_and_pkey, {CA, undefined}),
+%% Store a CA received from the cluster during node addition.  The private key
+%% is not transferred (set to undefined); it arrives later via chronicle
+%% replication.  CRL is the OOTB CRL received in the engage payload
+%% (autogeneratedCRL); when undefined (joining a not-yet-upgraded cluster
+%% that did not send it) only root_cert_and_pkey is written — the single
+%% allowed exception to the "write the CRL with root_cert_and_pkey" invariant.
+set_generated_ca(CA, CRL) ->
+    ok = chronicle_compat:set_multiple(
+           [{root_cert_and_pkey, {CA, undefined}},
+            {ootb_crl, CRL}]), %% CRL can be undefined
     {ok, _} = add_CAs(generated, CA),
     ok.
+
+%% Return the stored OOTB CRL as a PEM binary, or undefined when none exists.
+%% Used by the node-addition engage payload and by cb_crl_manager reconcile.
+get_ootb_crl() ->
+    case chronicle_kv:get(kv, ootb_crl) of
+        {ok, {CRL, _}} when is_binary(CRL) -> CRL;
+        _ -> undefined
+    end.
+
+%% Idempotent back-fill of the OOTB CRL for the current generated CA.
+%% New CAs get their CRL written transactionally with root_cert_and_pkey
+%% (see generate_cluster_CA/2), but a cluster upgraded from a pre-CRL version
+%% has a CA with no stored CRL.  This signs one (we hold the key) and stores it.
+%% No-op on a keyless node (e.g. mid-join) or when a CRL already exists.
+ensure_ootb_crl() ->
+    case chronicle_kv:get(kv, root_cert_and_pkey) of
+        {ok, {{_CA, undefined}, _}} ->
+            ok;
+        {ok, {{CA, Key}, _}} ->
+            case get_ootb_crl() of
+                undefined -> do_backfill_ootb_crl(CA, Key);
+                _ -> ok
+            end;
+        {error, not_found} ->
+            ok
+    end.
+
+do_backfill_ootb_crl(CA, Key) ->
+    ?log_debug("OOTB CRL is missing, will generate"),
+    CRL = generate_crl_for_ca(CA, Key),
+    %% chronicle_kv:txn returns {ok, Rev} on commit, but the bare Result on
+    %% abort (chronicle_kv.erl: {abort, Result} -> Result).  Distinct abort
+    %% reasons let us match on the outcome and treat the races below as a
+    %% graceful no-op instead of relying on the caller's catch to swallow a
+    %% badmatch.  These aborts are expected on multi-node clusters where every
+    %% node runs ensure_ootb_crl on compat_version_changed and chronicle
+    %% serializes the writes — the first commits, the rest abort.
+    case chronicle_kv:txn(
+           kv,
+           fun (Txn) ->
+                   %% Re-check under the txn: only write if the current CA is
+                   %% still this one and no CRL has appeared meanwhile.
+                   case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
+                       {ok, {{CA, _}, _}} ->
+                           case chronicle_kv:txn_get(ootb_crl, Txn) of
+                               {error, not_found} ->
+                                   {commit, [{set, ootb_crl, CRL}]};
+                               {ok, {undefined, _}} ->
+                                   {commit, [{set, ootb_crl, CRL}]};
+                               _ ->
+                                   {abort, crl_already_present}
+                           end;
+                       _ ->
+                           {abort, ca_changed}
+                   end
+           end) of
+        {ok, _} ->
+            ?log_info("Backfilled OOTB CRL for the current generated CA");
+        crl_already_present ->
+            ?log_debug("OOTB CRL already present, skipping backfill");
+        ca_changed ->
+            ?log_debug("CA changed during backfill, skipping")
+    end,
+    ok.
+
+%% Sign an empty CRL for an existing CA cert+key via the generate_cert tool's
+%% CRL-only mode (CACERT/CAPKEY env).  Returns the CRL PEM binary.
+generate_crl_for_ca(CAPem, KeyPem) ->
+    ?log_debug("Generating OOTB CRL..."),
+    Env = [{"CACERT", binary_to_list(CAPem)},
+           {"CAPKEY", binary_to_list(KeyPem)}],
+    Tool = path_config:component_path(bin, "generate_cert"),
+    {Status, Output} = misc:run_external_tool(Tool, ["--generate-crl"], Env),
+    case Status of
+        0 ->
+            case split_certs(Output) of
+                [CRL] -> CRL;
+                Parts ->
+                    ?log_error("Failed to generate OOTB CRL. Command returned "
+                               "too many items: ~b", [length(Parts)]),
+                    erlang:exit({bad_generate_crl_output, Parts})
+            end;
+        _ ->
+            ?log_error("Failed to generate OOTB CRL. Command returned "
+                       "status ~p.~nOutput: ~p", [Status, Output]),
+            erlang:exit({bad_generate_cert_exit, Status, Output})
+    end.
 
 -record(verify_state, {last_subject, root_cert, chain_len}).
 
@@ -1563,34 +1678,6 @@ chronicle_upgrade_cert_to_79(Cert) ->
             ?log_error("Couldn't upgrade cert to 7.9 (error ~w), keeping "
                        "existing:~n~p", [Reason, Cert]),
             Cert
-    end.
-
-%% Returns true when the client cert was signed by the cluster's
-%% generated (OOTB) CA.
-%%
-%% Uses public_key:pkix_is_issuer/2 for an efficient issuer/subject
-%% name match first.  Only if that passes does it call
-%% pkix_path_validation/3 to verify the actual signature, preventing
-%% a cert with a matching issuer DN from bypassing CRL checks.
-%%
-%% The OOTB CA is read fresh from Chronicle on each valid_peer call
-%% (once per handshake) so that CA rotation takes effect immediately.
-%% Returns false on any error: the cert is then CRL-checked rather
-%% than silently exempted.
--spec is_ootb_cert(#'OTPCertificate'{}) -> boolean().
-is_ootb_cert(OtpCert) ->
-    CaPem = ns_server_cert:self_generated_ca(),
-    {ok, Der} = ns_server_cert:decode_single_certificate(CaPem),
-    case public_key:pkix_is_issuer(OtpCert, Der) of
-        false ->
-            false;
-        true ->
-            OtpCa = public_key:pkix_decode_cert(Der, otp),
-            case public_key:pkix_path_validation(
-                        OtpCa, [OtpCert], []) of
-                {ok, _}    -> true;
-                {error, _} -> false
-            end
     end.
 
 -ifdef(TEST).

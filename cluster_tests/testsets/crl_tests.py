@@ -103,49 +103,48 @@ class CRLTests(testlib.BaseTestSet):
         setup_fn, update_fn = _make_delta_crl_ops_both_in_delta()
         self._run_crl_revocation_checks(setup_fn, update_fn)
 
-    def ootb_internal_client_cert_ignores_crl_test(self):
-        """Test that OOTB internal client certs bypass CRL checks.
+    def ootb_internal_client_cert_crl_test(self):
+        """OOTB internal client certs validate via the auto-generated OOTB CRL.
 
-        The cluster's self-generated internal client cert should still work
-        even when CRL "Require" policy is active, because is_ootb_cert/1
-        exempts certs signed by the cluster's own generated CA.
+        There is no is_ootb_cert special-case any more: the cluster publishes an
+        empty CRL issued by its self-generated (OOTB) CA, so an OOTB cert is
+        checked like any other cert and comes out 'good' (its serial is not on
+        the revocation list).  This works with NO uploaded / poll-directory
+        CRLs at all — purely the generated CRL — which is what memcached needs.
         """
         node = self.cluster.connected_nodes[0]
-        crl_dir = tempfile.mkdtemp()
-        ca_ids = []
 
         try:
-            # Generate a CA and dummy cert just to have a valid CRL
-            root_ca_pem, root_ca_key_pem = generate_root_ca()
-            dummy_cert_pem, _ = generate_client_cert_cn(
-                root_ca_pem, root_ca_key_pem, 'dummy')
-
-            ca_ids = load_multiple_cas(node, [root_ca_pem])
-
             # Enable client cert auth (enable mode - not mandatory)
             testlib.toggle_client_cert_auth(
                 node, enabled=True, mandatory=False,
                 prefixes=[{'delimiter': '', 'path': 'subject.cn',
                            'prefix': ''}])
 
-            # Create a CRL that revokes the dummy cert (just to make CRL active)
-            crl_filepath = os.path.join(crl_dir, 'crl.pem')
-            generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem,
-                                 [dummy_cert_pem])
-
-            # Enable CRL with "Require" policy
+            # Enable CRL with "Require" policy and NO directory/uploads: the
+            # only CRL available is the auto-generated OOTB CRL.
             set_crl_settings(self.cluster,
                              policy_per_scope={'clientAuth': 'Require',
-                                               'nodeToNode': 'Disabled'},
-                             poll_interval_ms=5000,
-                             directory=crl_dir)
+                                               'nodeToNode': 'Disabled'})
 
-            assert_crl_status(self.cluster, expected_status='active')
+            # The auto-generated OOTB CRL must be present and active, and it
+            # must be reported with the 'generated' source.
+            status = get_crl_status(self.cluster)
+            print(f"CRL status: {status}")
+            all_files = [f for node_files in status.values()
+                         if isinstance(node_files, list)
+                         for f in node_files]
+            generated = [f for f in all_files
+                         if f.get('source') == 'generated']
+            assert len(generated) > 0, \
+                f'Expected a generated OOTB CRL, got: {all_files}'
+            assert any(f.get('cacheStatus') == 'active' for f in generated), \
+                f'Expected an active generated OOTB CRL, got: {generated}'
 
-            # Read the OOTB internal client cert from disk and connect
+            # Read the OOTB internal client cert from disk and connect.
             with ootb_internal_client_cert_file(node) as cert_path:
                 r = try_client_auth(node, cert_path)
-                # Should succeed - OOTB certs bypass CRL
+                # Should succeed - validated as 'good' against the OOTB CRL.
                 testlib.assert_eq(r.status_code, 200,
                                   name='OOTB cert auth status')
                 user_id = r.json().get('id')
@@ -155,13 +154,9 @@ class CRLTests(testlib.BaseTestSet):
 
         finally:
             testlib.toggle_client_cert_auth(node, enabled=False)
-            for ca_id in ca_ids:
-                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
             set_crl_settings(self.cluster,
                              policy_per_scope={'clientAuth': 'Disabled',
-                                               'nodeToNode': 'Disabled'},
-                             directory='')
-            shutil.rmtree(crl_dir, ignore_errors=True)
+                                               'nodeToNode': 'Disabled'})
 
     def custom_internal_client_cert_crl_test(self):
         """Test that custom internal client certs are subject to CRL checks.

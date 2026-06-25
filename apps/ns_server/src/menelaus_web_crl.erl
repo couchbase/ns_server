@@ -309,6 +309,7 @@ file_status_to_json(#{filename    := Filename,
 
 file_source_to_json(local_dir) -> <<"localDir">>;
 file_source_to_json(uploaded)  -> <<"uploaded">>;
+file_source_to_json(generated) -> <<"generated">>;
 file_source_to_json(url)       -> <<"url">>.
 
 %% Serialise the per-entry breakdown of the active copy.

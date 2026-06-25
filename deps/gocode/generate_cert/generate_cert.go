@@ -47,6 +47,27 @@ func pemIfy(octets []byte, pemType string, out io.Writer) {
 	})
 }
 
+// Emit an empty CRL (no revoked entries) signed by the given CA.  nextUpdate is
+// set far in the future (earlyNotAfter) so the CRL never goes stale within the
+// CA's lifetime and needs no periodic refresh.  The CRL is signed with the same
+// signature algorithm as the CA certificate.  caCert must be a parsed
+// certificate (not an in-memory template): x509.CreateRevocationList copies the
+// issuer's Subject Key Identifier into the CRL's Authority Key Identifier and
+// errors out if it's empty.  Go auto-populates the SKI in the cert DER for CA
+// certs, so a parsed cert always carries one even when the template that
+// created it did not.
+func emitCRL(caCert *x509.Certificate, caKey *rsa.PrivateKey) {
+	template := &x509.RevocationList{
+		Number:             big.NewInt(1),
+		ThisUpdate:         earlyNotBefore,
+		NextUpdate:         earlyNotAfter,
+		SignatureAlgorithm: caCert.SignatureAlgorithm,
+	}
+	crlDer, err := x509.CreateRevocationList(rand.Reader, template, caCert, caKey)
+	mustNoErr(err)
+	pemIfy(crlDer, "X509 CRL", os.Stdout)
+}
+
 func derToPKey(octets []byte) (pkey *rsa.PrivateKey) {
 	pkey, err := x509.ParsePKCS1PrivateKey(octets)
 	if err == nil {
@@ -75,6 +96,7 @@ const defaultNotAfterDuration = 824 * 24 * 60 * 60;
 
 func main() {
 	var genereateLeaf bool
+	var generateCRL bool
 	var isClient bool
 	var commonName string
 	var commonNamePrefix string
@@ -91,6 +113,7 @@ func main() {
 	flag.StringVar(&sanDNSNamesArg, "san-dns-names", "", "Subject Alternative Name DNS names (comma separated)")
 	flag.StringVar(&sanEmailsArg, "san-emails", "", "Subject Alternative Name Emails (comma separated)")
 	flag.BoolVar(&genereateLeaf, "generate-leaf", false, "whether to generate leaf certificate (passing ca cert and pkey via environment variables)")
+	flag.BoolVar(&generateCRL, "generate-crl", false, "emit an empty CRL signed by the CA. Without --generate-leaf: if CACERT/CAPKEY are set, output only the CRL for that CA; otherwise generate a CA and append its CRL")
 	flag.StringVar(&pkeyType, "pkey-type", "rsa", "what kind of private key to generate (rsa or ec)")
 	flag.BoolVar(&isClient, "client", false, "whether to add client auth extension")
 
@@ -180,6 +203,27 @@ func main() {
 			mustNoErr(err)
 			pemIfy(bytes, "EC PRIVATE KEY", os.Stdout)
 		}
+	} else if generateCRL && os.Getenv("CACERT") != "" {
+		// CRL-only mode: emit a CRL for an existing CA passed via
+		// CACERT/CAPKEY.  Used to back-fill the CRL for a CA that was
+		// generated before CRL support existed (upgrade).
+		cacertPEM := os.Getenv("CACERT")
+		certBlock, rest := pem.Decode(([]byte)(cacertPEM))
+		if (string)(rest) != "" || certBlock == nil || certBlock.Type != "CERTIFICATE" {
+			log.Fatal("garbage CACERT environment variable")
+		}
+
+		capkeyPEM := os.Getenv("CAPKEY")
+		pkeyBlock, rest := pem.Decode(([]byte)(capkeyPEM))
+		if (string)(rest) != "" || pkeyBlock == nil || pkeyBlock.Type != "RSA PRIVATE KEY" {
+			log.Fatal("garbage CAPKEY environment variable")
+		}
+
+		caCert, err := x509.ParseCertificate(certBlock.Bytes)
+		mustNoErr(err)
+		pkey := derToPKey(pkeyBlock.Bytes)
+
+		emitCRL(caCert, pkey)
 	} else {
 		pkey, err := rsa.GenerateKey(rand.Reader, keyLength)
 		mustNoErr(err)
@@ -207,5 +251,14 @@ func main() {
 
 		pemIfy(certDer, "CERTIFICATE", os.Stdout)
 		pemIfy(x509.MarshalPKCS1PrivateKey(pkey), "RSA PRIVATE KEY", os.Stdout)
+
+		// When generating a CA, optionally append an empty CRL signed by
+		// it (same run, per the OOTB-CRL design).  Parse the cert we just
+		// created so emitCRL has a populated x509.Certificate to sign with.
+		if generateCRL {
+			caCert, err := x509.ParseCertificate(certDer)
+			mustNoErr(err)
+			emitCRL(caCert, pkey)
+		}
 	}
 }

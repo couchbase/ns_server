@@ -79,21 +79,18 @@ verify_local_with_expiry(OtpCert, valid_peer, CRLScope, State) ->
         {ok, disabled} ->
             {{valid, State}, undefined};
         {ok, Policy} ->
-            case ns_server_cert:is_ootb_cert(OtpCert) of
-                true ->
-                    %% Cert issued by the cluster's own generated CA;
-                    %% CRL checking does not apply to internal certs.
-                    {{valid, State}, undefined};
-                false ->
-                    try crl_check(OtpCert, Policy) of
-                        {valid, Expiry} -> {{valid, State}, Expiry};
-                        {{fail, Reason}, Expiry} -> {{fail, Reason}, Expiry}
-                    catch
-                        C:E:ST ->
-                            ?log_error("CRL check exception ~p:~p~n~p",
-                                       [C, E, ST]),
-                            {{fail, internal_error}, undefined}
-                    end
+            %% OOTB (cluster-generated) certs are checked the same way as any
+            %% other cert: the cluster publishes an empty CRL issued by the OOTB
+            %% CA (see ns_server_cert / cb_crl_manager generated CRLs), so their
+            %% serial is simply not on a revocation list -> good.
+            try crl_check(OtpCert, Policy) of
+                {valid, Expiry} -> {{valid, State}, Expiry};
+                {{fail, Reason}, Expiry} -> {{fail, Reason}, Expiry}
+            catch
+                C:E:ST ->
+                    ?log_error("CRL check exception ~p:~p~n~p",
+                                [C, E, ST]),
+                    {{fail, internal_error}, undefined}
             end;
         timeout ->
             %% This can happen during startup when cb_crl_manager has
