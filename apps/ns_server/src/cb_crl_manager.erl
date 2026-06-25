@@ -392,7 +392,7 @@ scan_directory(Dir, State, ForceReload) ->
     maybe
         TrustedCAs = ns_server_cert:trusted_CAs(der),
         TS = calendar:universal_time(),
-        {ok, DiskNames} =
+        {ok, DiskNames} ?=
             case file:list_dir(Dir) of
                 {ok, Names} ->
                     %% Skip dotfiles; no extension filter — try to load

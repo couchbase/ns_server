@@ -108,7 +108,7 @@ build_config(Values) ->
     Cfg0 = #{},
     Cfg1 = case proplists:get_value(directory, Values) of
                undefined -> Cfg0;
-               "" -> Cfg0#{poll_directory => <<>>};
+               "" -> Cfg0#{poll_directory => undefined};
                D -> Cfg0#{poll_directory => iolist_to_binary(D)}
            end,
     Cfg2 = case proplists:get_value(policyPerScope, Values) of
