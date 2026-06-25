@@ -111,6 +111,8 @@ extra_ns_config_setting_names() ->
      {clustermap_push_notifications_enabled, bool},
      {magma_blind_write_optimisation_enabled, bool},
      {log_tls_certificate_verification_problems, bool},
+     {max_so_sndbuf_size, {int, 0, ?MAX_32BIT_SIGNED_INT}},
+     {max_so_rcvbuf_size, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {file_fragment_checksum_enabled, bool},
      {file_fragment_max_chunk_size, {int, 0, ?MAX_64BIT_UNSIGNED_INT}},
      {file_fragment_checksum_length, {int, 0, ?MAX_64BIT_UNSIGNED_INT}},
