@@ -118,6 +118,9 @@
 -define(PROXY_DROP_RESP_HEADERS, ["content-length",
                                   "transfer-encoding",
                                   "www-authenticate"]).
+
+-define(SEND_TIMEOUT_MS, 5000).
+
 compute_sec_headers() ->
     compute_sec_headers(ns_config:read_key_fast(secure_headers, [])).
 
@@ -671,7 +674,8 @@ handle_streaming(Req, DataBody, NotifyTag) ->
               HTTPRes = reply_ok(Req, "application/json; charset=utf-8",
                                  chunked),
               Sock = mochiweb_request:get(socket, Req),
-              mochiweb_socket:setopts(Sock, [{active, true}]),
+              mochiweb_socket:setopts(Sock, [{active, true},
+                                             {send_timeout, ?SEND_TIMEOUT_MS}]),
               handle_streaming(Req, DataBody, HTTPRes, undefined,
                                {NotifyTag, undefined}, Heartbeat, Timer)
       end, Req, qs,
