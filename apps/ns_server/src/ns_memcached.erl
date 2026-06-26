@@ -845,7 +845,8 @@ do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
                                {ca_store, iolist_to_binary(CAFilePath)},
                                {passphrase,
                                 iolist_to_binary(
-                                  base64:encode(PassphraseFun()))}]}}];
+                                  base64:encode(PassphraseFun()))}] ++
+                              crl_config_opts()}}];
                   true ->
                       %% If client cert auth state is not hybrid or mandatory
                       %% and we need to use TLS, we send empty client config,
@@ -854,7 +855,8 @@ do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
                       [{tls, {[{cert, <<>>},
                                {key, <<>>},
                                {ca_store, iolist_to_binary(CAFilePath)},
-                               {passphrase, <<>>}]}}];
+                               {passphrase, <<>>}] ++
+                              crl_config_opts()}}];
                   false ->
                       []
               end},
