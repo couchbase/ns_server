@@ -2540,6 +2540,167 @@ class CredentialPatchTests(testlib.BaseTestSet):
 
 
 # ---------------------------------------------------------------------------
+# 6a. payloadVersion as an optional CAS token on PUT/PATCH
+# ---------------------------------------------------------------------------
+
+class CredentialRevCasTests(testlib.BaseTestSet):
+    """payloadVersion may optionally be echoed back on PUT/PATCH as a
+    compare-and-swap token: a stale value is rejected with 409 and no
+    changes are made; an omitted value overwrites unconditionally
+    (last-write-wins).
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition="Enterprise",
+                                           encryption=True)
+
+    def setup(self):
+        ensure_config_encryption_enabled(self.cluster)
+        self.node = self.cluster.connected_nodes[0]
+
+    def teardown(self):
+        pass
+
+    def test_teardown(self):
+        testlib.ensure_deleted(self.cluster, cred_url("test/aws/cas"))
+
+    def _create(self, cred_id, **meta):
+        body = aws_body()
+        body.update(meta)
+        r = testlib.post_succ(self.cluster, cred_url(cred_id),
+                              json=body, expected_code=201)
+        return r.json()
+
+    def put_with_current_rev_succeeds_test(self):
+        """PUT with the payloadVersion just read succeeds and returns a
+        fresh payloadVersion."""
+        cred_id = "test/aws/cas"
+        created = self._create(cred_id)
+        rev = created["meta"]["payloadVersion"]
+
+        updated_body = aws_body(key_id="NEWKEYID000000000000")
+        updated_body["payloadVersion"] = rev
+        r = testlib.put_succ(self.cluster, cred_url(cred_id),
+                             json=updated_body)
+        j = r.json()
+        testlib.assert_eq(j["fields"]["accessKeyId"], "NEWKEYID000000000000",
+                          "accessKeyId after CAS-guarded PUT")
+        assert j["meta"]["payloadVersion"] != rev, \
+            "payloadVersion must change after a successful write"
+
+    def put_with_stale_rev_rejected_test(self):
+        """PUT with a payloadVersion that no longer matches is rejected with
+        409 and leaves the credential untouched."""
+        cred_id = "test/aws/cas"
+        created = self._create(cred_id)
+        stale_rev = created["meta"]["payloadVersion"]
+
+        # Advance the credential's rev out from under the stale read.
+        testlib.put_succ(self.cluster, cred_url(cred_id),
+                         json=aws_body(key_id="FIRSTUPDATE00000000"))
+
+        conflicting_body = aws_body(key_id="SHOULDNOTLAND0000000")
+        conflicting_body["payloadVersion"] = stale_rev
+        r = testlib.put_fail(self.cluster, cred_url(cred_id), 409,
+                             json=conflicting_body)
+        assert "error" in r.json(), f"Expected error body, got {r.text!r}"
+
+        # Verify nothing changed.
+        r = testlib.get_succ(self.cluster, cred_url(cred_id))
+        testlib.assert_eq(r.json()["fields"]["accessKeyId"],
+                          "FIRSTUPDATE00000000",
+                          "accessKeyId unchanged after rejected CAS PUT")
+
+    def put_without_rev_overwrites_unconditionally_test(self):
+        """Omitting payloadVersion on PUT preserves today's last-write-wins
+        behavior, even if the credential changed since it was last read."""
+        cred_id = "test/aws/cas"
+        self._create(cred_id)
+
+        # Someone else updates the credential first.
+        testlib.put_succ(self.cluster, cred_url(cred_id),
+                         json=aws_body(key_id="CONCURRENTUPDATE0000"))
+
+        # A PUT with no payloadVersion still succeeds and overwrites.
+        r = testlib.put_succ(self.cluster, cred_url(cred_id),
+                             json=aws_body(key_id="UNCONDITIONALOVERWR"))
+        testlib.assert_eq(r.json()["fields"]["accessKeyId"],
+                          "UNCONDITIONALOVERWR",
+                          "accessKeyId after unconditional PUT")
+
+    def put_with_malformed_rev_rejected_test(self):
+        """PUT with a payloadVersion that isn't a valid opaque token is a
+        validation error (400), not a 409 or 500."""
+        cred_id = "test/aws/cas"
+        self._create(cred_id)
+
+        body = aws_body(key_id="SHOULDNOTLAND0000000")
+        body["payloadVersion"] = "not-a-real-token"
+        r = testlib.put_fail(self.cluster, cred_url(cred_id), 400, json=body)
+        assert "payloadversion" in str(r.json()).lower(), \
+            f"Expected error mentioning payloadVersion, got: {r.json()}"
+
+    def patch_with_current_rev_succeeds_test(self):
+        """PATCH with the payloadVersion just read succeeds."""
+        cred_id = "test/aws/cas"
+        created = self._create(cred_id, description="initial")
+        rev = created["meta"]["payloadVersion"]
+
+        r = testlib.patch_succ(self.cluster, cred_url(cred_id),
+                               json={"description": "updated",
+                                     "payloadVersion": rev})
+        testlib.assert_eq(r.json()["meta"]["description"], "updated",
+                          "description after CAS-guarded PATCH")
+
+    def patch_with_stale_rev_rejected_test(self):
+        """PATCH with a stale payloadVersion is rejected with 409 and makes
+        no changes."""
+        cred_id = "test/aws/cas"
+        created = self._create(cred_id, description="initial")
+        stale_rev = created["meta"]["payloadVersion"]
+
+        testlib.patch_succ(self.cluster, cred_url(cred_id),
+                           json={"description": "first-update"})
+
+        r = testlib.patch_fail(
+            self.cluster, cred_url(cred_id), 409,
+            json={"description": "should-not-land",
+                  "payloadVersion": stale_rev})
+        assert "error" in r.json(), f"Expected error body, got {r.text!r}"
+
+        r = testlib.get_succ(self.cluster, cred_url(cred_id))
+        testlib.assert_eq(r.json()["meta"]["description"], "first-update",
+                          "description unchanged after rejected CAS PATCH")
+
+    def patch_without_rev_overwrites_unconditionally_test(self):
+        """Omitting payloadVersion on PATCH preserves last-write-wins."""
+        cred_id = "test/aws/cas"
+        self._create(cred_id, description="initial")
+
+        testlib.patch_succ(self.cluster, cred_url(cred_id),
+                           json={"description": "concurrent-update"})
+
+        r = testlib.patch_succ(self.cluster, cred_url(cred_id),
+                               json={"description": "unconditional-overwrite"})
+        testlib.assert_eq(r.json()["meta"]["description"],
+                          "unconditional-overwrite",
+                          "description after unconditional PATCH")
+
+    def not_found_with_rev_reports_not_found_test(self):
+        """A rev mismatch never masks a genuine 404 — checking a well-formed
+        but now-nonexistent credential's rev returns not_found, not
+        rev_mismatch."""
+        cred_id = "test/aws/cas"
+        created = self._create(cred_id)
+        rev = created["meta"]["payloadVersion"]
+        testlib.delete_succ(self.cluster, cred_url(cred_id))
+
+        testlib.put_fail(
+            self.cluster, cred_url(cred_id), 404,
+            json=dict(aws_body(), payloadVersion=rev))
+
+# ---------------------------------------------------------------------------
 # 7. secret_set_at / secret_set_by stamping
 # ---------------------------------------------------------------------------
 

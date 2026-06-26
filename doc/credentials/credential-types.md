@@ -18,16 +18,19 @@ All credential types share the same envelope:
 
 ## Meta (common to all types)
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `description` | string | No | Human-readable description |
-| `createdAt` | integer (ms) | Yes | Creation timestamp (ms since Unix epoch) |
-| `createdBy` | `{user, domain}` | Yes | Author who created the credential |
-| `updatedAt` | integer (ms) | No | Last-update timestamp |
-| `updatedBy` | `{user, domain}` | No | Author who last updated |
-| `expiresAt` | integer (ms) | No | Expiry timestamp; must be >= 5 min in the future at creation |
-| `guardrails` | object | No | Usage restrictions (see [Guardrails](rest-api-reference.md#guardrails)) |
-| `payloadVersion` | string | Yes | Opaque revision for optimistic concurrency |
+| Field | Type | Read | Write | Description |
+|---|---|---|---|---|
+| `description` | string | Optional | Optional | Human-readable description |
+| `createdAt` | integer (ms) | Always | — | Creation timestamp (ms since Unix epoch); server-set, never client-writable |
+| `createdBy` | `{user, domain}` | Always | — | Author who created the credential; server-set, never client-writable |
+| `updatedAt` | integer (ms) | Optional | — | Last-update timestamp; server-set, never client-writable |
+| `updatedBy` | `{user, domain}` | Optional | — | Author who last updated; server-set, never client-writable |
+| `secretSetAt` | integer (ms) | Optional | — | Timestamp the sensitive portion was last (re-)declared; server-set, never client-writable |
+| `secretSetBy` | `{user, domain}` | Optional | — | Author who last (re-)declared the sensitive portion; server-set, never client-writable |
+| `expiresAt` | integer (ms) | Optional | Optional | Expiry timestamp; must be >= 5 min in the future at creation |
+| `guardrails` | object | Optional | Optional | Usage restrictions (see [Guardrails](rest-api-reference.md#guardrails)) |
+| `payloadVersion` | string | Always | Optional (CAS token) | Opaque, server-managed chronicle revision token that changes on every write |
+
 
 ## `aws`
 

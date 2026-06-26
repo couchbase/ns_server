@@ -459,24 +459,25 @@ handle_post(IdStr, Req) ->
                               reply_store_error(Req, Reason2)
                       end
               end,
-              Req, json, cred_validators())
+              Req, json, post_validators())
     end.
 
 handle_put(IdStr, Req) ->
     Author = get_author(Req),
     validator:handle(
       fun (Props) ->
-              Type      = proplists:get_value(type, Props),
-              Fields    = validated_fields_to_store(
-                            Type, proplists:get_value(fields, Props)),
-              MetaExtra = validated_meta_extra(Props),
+              Type        = proplists:get_value(type, Props),
+              Fields      = validated_fields_to_store(
+                              Type, proplists:get_value(fields, Props)),
+              MetaExtra   = validated_meta_extra(Props),
+              ExpectedRev = proplists:get_value(payloadVersion, Props),
               reply_update_result(
                 IdStr,
                 cb_credentials_store:update(IdStr, Type, Fields,
-                                            MetaExtra, Author),
+                                            MetaExtra, Author, ExpectedRev),
                 Req)
       end,
-      Req, json, cred_validators()).
+      Req, json, put_validators()).
 
 %% @doc Partial update of an existing credential's metadata.
 %% Accepts only description, expiresAt, and guardrails — never type or fields.
@@ -486,7 +487,8 @@ handle_patch(IdStr, Req) ->
     Author = get_author(Req),
     validator:handle(
       fun (Props) ->
-              MetaExtra = validated_meta_extra(Props),
+              MetaExtra   = validated_meta_extra(Props),
+              ExpectedRev = proplists:get_value(payloadVersion, Props),
               case maps:size(MetaExtra) of
                   0 ->
                       menelaus_util:reply_json(
@@ -498,7 +500,7 @@ handle_patch(IdStr, Req) ->
                       reply_update_result(
                         IdStr,
                         cb_credentials_store:update_meta(
-                          IdStr, MetaExtra, Author),
+                          IdStr, MetaExtra, Author, ExpectedRev),
                         Req)
               end
       end,
@@ -733,7 +735,9 @@ reply_cbauth_error(Req, Code, Reason, HttpStatus) ->
 
 %% Credential request validation
 
-cred_validators() ->
+%% @doc Validators shared by POST and PUT: type, fields, and the optional
+%% meta fields. Does not include payloadVersion.
+common_cred_validators() ->
     WireToAtom = maps:from_list(
                    [{atom_to_binary(misc:snake_to_camel_atom(T)), T}
                     || T <- ?CREDENTIAL_TYPES]),
@@ -761,12 +765,42 @@ cred_validators() ->
                        end
                end
        end, fields, _)]
-        ++ [V || {_, V} <- meta_field_validators()]
+        ++ [V || {_, V} <- meta_field_validators()].
+
+%% @doc POST creates a new credential, so there is no prior payloadVersion
+%% to compare against; reject it outright rather than silently accepting
+%% and ignoring it.
+post_validators() ->
+    common_cred_validators()
+        ++ [validator:prohibited(payloadVersion, _)]
         ++ [validator:unsupported(_)].
 
+%% @doc PUT may optionally supply payloadVersion as a compare-and-swap
+%% check against the credential's current revision (see
+%% validate_payload_version/1).
+put_validators() ->
+    common_cred_validators()
+        ++ [validate_payload_version(_)]
+        ++ [validator:unsupported(_)].
+
+%% @doc Optional caller-supplied `payloadVersion`, echoed back from a prior
+%% GET. When present, decoded into the opaque chronicle revision it encodes
+%% for use as a CAS token (see cb_credentials_store:update/6); the write is
+%% rejected with rev_mismatch if the credential has changed since. When
+%% absent, the update proceeds unconditionally (last-write-wins), matching
+%% today's behaviour.
+validate_payload_version(State) ->
+    validator:validate(
+      fun (Bin) ->
+              case binary_to_rev(Bin) of
+                  {ok, Rev} -> {value, Rev};
+                  error     -> {error, "invalid payloadVersion"}
+              end
+      end, payloadVersion, State).
+
 %% @doc Per-field validators for the optional meta fields, shared by
-%% cred_validators/0 (POST/PUT) and patch_validators/0 (PATCH). Adding a new
-%% constraint here covers all three endpoints automatically.
+%% common_cred_validators/0 (POST/PUT) and patch_validators/0 (PATCH).
+%% Adding a new constraint here covers all three endpoints automatically.
 meta_field_validators() ->
     [{description, validator:non_empty_string(description, _)},
      {expiresAt,   validator:integer(expiresAt, 0, max_uint64, _)},
@@ -786,6 +820,7 @@ patch_validators() ->
     NullableKeys = [description, expiresAt, guardrails],
     [accept_null_as_clear(NullableKeys, _)]
         ++ [skip_if_clear(K, V, _) || {K, V} <- meta_field_validators()]
+        ++ [validate_payload_version(_)]
         ++ [validator:unsupported(_)].
 
 %% @doc For each named key, replace JSON null with the `clear` sentinel.
@@ -1036,6 +1071,16 @@ ensure_binary(V) when is_atom(V)   -> atom_to_binary(V).
 rev_to_binary(Rev) ->
     base64:encode(term_to_binary(Rev)).
 
+%% @doc Inverse of rev_to_binary/1. Returns `error' if Bin is not a
+%% well-formed encoding of an opaque revision (caller-supplied input is
+%% never trusted, so decoding uses the `safe' option).
+binary_to_rev(Bin) ->
+    try
+        {ok, erlang:binary_to_term(base64:decode(Bin), [safe])}
+    catch
+        _:_ -> error
+    end.
+
 get_author(Req) ->
     case menelaus_auth:get_identity(Req) of
         {User, Domain} -> #{user => iolist_to_binary(User), domain => Domain};
@@ -1065,6 +1110,12 @@ reply_store_error(Req, invalid_type) ->
                                  "changed; delete and recreate the credential "
                                  "to change its type">>}),
                   400);
+reply_store_error(Req, rev_mismatch) ->
+    reply_json_ok(Req,
+                  encode_response(
+                    #{error => <<"Credential was modified since the supplied "
+                                 "payloadVersion was read">>}),
+                  409);
 reply_store_error(Req, {txn_failed, Reason}) ->
     ?log_error("Credential store transaction failed: ~p", [Reason]),
     reply_json_ok(Req,

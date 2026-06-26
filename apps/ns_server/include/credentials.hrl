@@ -27,6 +27,7 @@
                                    already_exists |
                                    unsupported_schema_version |
                                    invalid_type |
+                                   rev_mismatch |
                                    {txn_failed, Reason :: term()} |
                                    expired |
                                    service_not_allowed |
@@ -59,4 +60,3 @@
 
 -type credential_public_view() :: credentials_map().
 -type credential_full_view() :: credentials_map().
-

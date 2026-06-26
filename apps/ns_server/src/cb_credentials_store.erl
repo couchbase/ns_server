@@ -37,8 +37,8 @@
 -export([create/5,
          get/1,
          list/1,
-         update/5,
-         update_meta/3,
+         update/6,
+         update_meta/4,
          delete/1,
          consume_credential/1,
          get_credential_warnings/1,
@@ -115,14 +115,18 @@ list(Prefix) ->
 
 %% @doc Replace an existing credential's fields.
 %% The type must match the stored type.
+%% ExpectedRev, if not `undefined', must match the credential's current
+%% `payload_version' or the update is rejected with {error, rev_mismatch}
+%% (optimistic concurrency). `undefined' allows an unconditional overwrite.
 -spec update(credential_id(), credential_type(), credential_fields(),
-             user_meta_map(), credential_author()) ->
+             user_meta_map(), credential_author(),
+             chronicle:revision() | undefined) ->
           {ok, credential_public_view()} | {error, credential_error_reason()}.
-update(Id, Type, Fields, MetaExtra, Author) ->
+update(Id, Type, Fields, MetaExtra, Author, ExpectedRev) ->
     {ok, {Snapshot, _}} = chronicle_kv:get_snapshot(kv, ?PREREQ_KEYS),
     case ensure_prerequisites(Snapshot) of
         ok ->
-            update_impl(Id, Type, Fields, MetaExtra, Author);
+            update_impl(Id, Type, Fields, MetaExtra, Author, ExpectedRev);
         {error, _} = Err ->
             Err
     end.
@@ -130,13 +134,15 @@ update(Id, Type, Fields, MetaExtra, Author) ->
 %% @doc Update only the user-supplied meta fields of an existing credential.
 %% Leaves type and fields untouched.  Keys present in MetaExtra overwrite the
 %% corresponding stored values; absent keys are preserved.
--spec update_meta(credential_id(), user_meta_map(), credential_author()) ->
+%% See update/6 for ExpectedRev semantics.
+-spec update_meta(credential_id(), user_meta_map(), credential_author(),
+                  chronicle:revision() | undefined) ->
           {ok, credential_public_view()} | {error, credential_error_reason()}.
-update_meta(Id, MetaExtra, Author) ->
+update_meta(Id, MetaExtra, Author, ExpectedRev) ->
     {ok, {Snapshot, _}} = chronicle_kv:get_snapshot(kv, ?PREREQ_KEYS),
     case ensure_prerequisites(Snapshot) of
         ok ->
-            update_meta_impl(Id, MetaExtra, Author);
+            update_meta_impl(Id, MetaExtra, Author, ExpectedRev);
         {error, _} = Err ->
             Err
     end.
@@ -364,9 +370,9 @@ list_impl(Prefix, Snapshot) ->
             {ok, Sorted}
     end.
 
-update_impl(Id, Type, Fields, MetaExtra, Author) ->
+update_impl(Id, Type, Fields, MetaExtra, Author, ExpectedRev) ->
     update_existing(
-      Id,
+      Id, ExpectedRev,
       fun (#{type := CurrentType, meta := ExistingMeta} = Current, Now) ->
               case CurrentType =:= Type of
                   true ->
@@ -378,9 +384,9 @@ update_impl(Id, Type, Fields, MetaExtra, Author) ->
               end
       end).
 
-update_meta_impl(Id, MetaExtra, Author) ->
+update_meta_impl(Id, MetaExtra, Author, ExpectedRev) ->
     update_existing(
-      Id,
+      Id, ExpectedRev,
       fun (#{meta := ExistingMeta} = Current, Now) ->
               NewMeta = build_patched_meta(ExistingMeta, MetaExtra, Author,
                                            Now),
@@ -388,13 +394,18 @@ update_meta_impl(Id, MetaExtra, Author) ->
       end).
 
 %% @doc Shared txn scaffolding for "update an existing credential":
-%% check prereqs, load the current value, hand it to the caller-supplied
+%% check prereqs, load the current value, optionally enforce optimistic
+%% concurrency against ExpectedRev, hand the value to the caller-supplied
 %% update fn, commit or abort based on what it returns.
+%%
+%% ExpectedRev, if not `undefined', must match the credential's current
+%% chronicle revision or the update aborts with `rev_mismatch'. `undefined'
+%% skips the check (unconditional overwrite).
 %%
 %% The update fn is `fun(Current, Now) -> {commit, Updated} | {abort, Reason}`.
 %% Aborts are propagated as txn results: `not_found`, `invalid_type`,
-%% `{prereq_failed, _}`, etc.
-update_existing(Id, Update) ->
+%% `rev_mismatch`, `{prereq_failed, _}`, etc.
+update_existing(Id, ExpectedRev, Update) ->
     Key = build_key(Id),
     Now = os:system_time(millisecond),
     Fun = fun (Snapshot) ->
@@ -403,6 +414,10 @@ update_existing(Id, Update) ->
                           case maps:find(Key, Snapshot) of
                               error ->
                                   {abort, not_found};
+                              {ok, {_Current, Rev}}
+                                when ExpectedRev =/= undefined andalso
+                                     ExpectedRev =/= Rev ->
+                                  {abort, rev_mismatch};
                               {ok, {Current, _Rev}} ->
                                   case Update(Current, Now) of
                                       {commit, Updated} ->
@@ -420,6 +435,7 @@ update_existing(Id, Update) ->
         {ok, Rev, Updated} ->
             {ok, redact_credential(with_version(Updated, Rev))};
         not_found               -> {error, not_found};
+        rev_mismatch            -> {error, rev_mismatch};
         invalid_type            -> {error, invalid_type};
         {prereq_failed, Reason} -> {error, Reason};
         {error, Reason}         -> {error, {txn_failed, Reason}}

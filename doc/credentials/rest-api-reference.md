@@ -12,10 +12,10 @@ These are the endpoints an administrator uses to create, read, update, and delet
 |---|---|---|---|
 | GET | `/settings/credentials` | Credential Admin, Security Admin, RO Security Admin, Full Admin | List all credentials (+ warnings, optional `?prefix=`) |
 | GET | `/settings/credentials/:id` | Credential Admin, Security Admin, RO Security Admin, Full Admin | Get one credential (secrets redacted) |
-| POST | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Create a credential |
-| PUT | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Full replace — used to rotate credential material; `type` is immutable. For metadata-only edits use PATCH. |
-| PATCH | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Partial metadata update — accepts only `description`, `expiresAt`, `guardrails`. Omitted keys are preserved; explicit JSON `null` clears the field. Never changes `type` or `fields`. Empty bodies are rejected. |
-| DELETE | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Delete a credential (also removes all `credential_consumer[<id>]` grants referencing it from users and service roles) |
+| POST | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Create a credential. `payloadVersion` is rejected if present — there is no existing credential to match against. |
+| PUT | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Full replace — used to rotate credential material; `type` is immutable. For metadata-only edits use PATCH. Optionally accepts `payloadVersion` as a compare-and-swap check. |
+| PATCH | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Partial metadata update — accepts `description`, `expiresAt`, `guardrails`, and optionally `payloadVersion` as a compare-and-swap check. Omitted keys are preserved; explicit JSON `null` clears the field. Never changes `type` or `fields`. Empty bodies are rejected. |
+| DELETE | `/settings/credentials/:id` | Credential Admin, Security Admin, Full Admin | Delete a credential (also removes all `credential_consumer[<id>]` grants referencing it from users and service roles). Unconditional — not a compare-and-swap operation; a body, including `payloadVersion`, is ignored. |
 
 > These endpoints are gated by the dedicated `cluster.admin.credentials!read` (GET) and `!write` (POST/PUT/PATCH/DELETE) permission — **not** `cluster.admin.security`. The `credential_admin` role grants exactly this, so credentials can be managed without holding the full security domain (and without the ability to grant roles or consume secrets). `/settings/credentialStore` below deliberately stays on `cluster.admin.security`, so `credential_admin` cannot change the encryption overrides.
 
@@ -272,6 +272,9 @@ Errors returned from `/_cbauth/getCredential/:id` and mapped to Go sentinel erro
 
 ### `meta` fields
 
+See [credential-types.md — Meta](credential-types.md#meta-common-to-all-types) for the field
+types and each field's read/write behavior. This table covers when each field is stamped:
+
 | Field | Stamped on | Description |
 |---|---|---|
 | `createdAt` / `createdBy` | POST | Immutable once set; preserved across PUT and PATCH. |
@@ -280,6 +283,6 @@ Errors returned from `/_cbauth/getCredential/:id` and mapped to Go sentinel erro
 | `expiresAt` | POST, PATCH | Optional; clearable via PATCH `expiresAt: null`. |
 | `description` | POST, PATCH | Optional; clearable via PATCH `description: null`. |
 | `guardrails` | POST, PATCH | Optional; PATCH `guardrails: {…}` is a full replacement of the sub-object, `guardrails: null` clears all guardrails. |
-| `payloadVersion` | Server-managed | Opaque chronicle revision token. |
+| `payloadVersion` | Server-managed | May optionally be echoed back in a PUT/PATCH request body as a compare-and-swap check; a stale value is rejected with `409 Conflict` and no changes are made. Omit it to overwrite unconditionally. Rejected outright on POST; ignored on DELETE. |
 
 See [credential-types.md](credential-types.md) for the full field reference for each credential type.
