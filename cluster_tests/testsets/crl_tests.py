@@ -36,9 +36,20 @@ class CRLTests(testlib.BaseTestSet):
 
     def setup(self):
         set_allow_expired_crls(self.cluster, True)
+        # HTTP server for URL-based CRL tests; started here, stopped in
+        # teardown.  Poll the URLs frequently so the auto-poll timer is
+        # snappy (the URL revocation tests force a reload for determinism).
+        self._url_server = CRLHttpServer()
+        self._url_server.start()
+        set_crl_settings(self.cluster, url_poll_interval_ms=1000)
 
     def teardown(self):
-        set_allow_expired_crls(self.cluster, False)
+        try:
+            set_allow_expired_crls(self.cluster, False)
+        finally:
+            server = getattr(self, '_url_server', None)
+            if server is not None:
+                server.stop()
 
     def client_cert_crl_test(self):
         """Test CRL revocation using a full (base) CRL."""
@@ -49,49 +60,49 @@ class CRLTests(testlib.BaseTestSet):
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_upload_crl_ops(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=False)
+                                        reload_in_loop=False)
 
     def client_cert_upload_rename_test(self):
         """Upload-based CRL test where update uses a different filename."""
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_upload_crl_ops_rename(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=False)
+                                        reload_in_loop=False)
 
     def client_cert_upload_delta_test(self):
         """Delta CRL test: both base and delta uploaded via REST API."""
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_upload_delta_crl_ops(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=False)
+                                        reload_in_loop=False)
 
     def client_cert_upload_delta_rename_test(self):
         """Delta CRL test where delta update uses a different filename."""
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_upload_delta_crl_ops_rename(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=False)
+                                        reload_in_loop=False)
 
     def client_cert_base_dir_delta_upload_test(self):
         """Base CRL deployed via directory; delta CRL uploaded via API."""
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_hybrid_base_dir_delta_upload_ops(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=True)
+                                        reload_in_loop=True)
 
     def client_cert_dir_setup_upload_update_test(self):
         """Initial CRL via directory; update switches to REST API upload."""
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_hybrid_dir_setup_upload_update_ops(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=True)
+                                        reload_in_loop=True)
 
     def client_cert_upload_setup_dir_update_test(self):
         """Initial CRL uploaded via API; update writes to directory."""
         node = self.cluster.connected_nodes[0]
         setup_fn, update_fn = _make_hybrid_upload_setup_dir_update_ops(node)
         self._run_crl_revocation_checks(setup_fn, update_fn,
-                                        use_directory=True)
+                                        reload_in_loop=True)
 
     def delta_crl_base_and_delta_test(self):
         """Test delta CRL: cert1 revoked in base CRL, cert2 in delta CRL."""
@@ -102,6 +113,18 @@ class CRLTests(testlib.BaseTestSet):
         """Test delta CRL: both certs revoked only in delta CRL."""
         setup_fn, update_fn = _make_delta_crl_ops_both_in_delta()
         self._run_crl_revocation_checks(setup_fn, update_fn)
+
+    def client_cert_url_crl_test(self):
+        """Test CRL revocation using full CRLs served over HTTP URLs."""
+        setup_fn, update_fn = self._make_url_crl_ops(self._url_server)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        reload_in_loop=True)
+
+    def client_cert_url_delta_crl_test(self):
+        """Test delta CRL revocation served over HTTP URLs (base + delta)."""
+        setup_fn, update_fn = self._make_url_delta_crl_ops(self._url_server)
+        self._run_crl_revocation_checks(setup_fn, update_fn,
+                                        reload_in_loop=True)
 
     def ootb_internal_client_cert_crl_test(self):
         """OOTB internal client certs validate via the auto-generated OOTB CRL.
@@ -345,7 +368,7 @@ class CRLTests(testlib.BaseTestSet):
                 delete_crl_file(node, f['filename'])
 
     def _run_crl_revocation_checks(self, setup_crl, update_crl,
-                                   use_directory=True):
+                                   reload_in_loop=True):
         """Shared test body for CRL revocation tests with policy matrix.
 
         setup_crl(crl_dir, ca_pem, ca_key, revoked_certs) -> state
@@ -353,10 +376,8 @@ class CRLTests(testlib.BaseTestSet):
         update_crl(crl_dir, ca_pem, ca_key, extra_certs, state)
             adds extra_certs to the revoked list and rewrites CRL file(s)
 
-        use_directory: when False the CRL source directory is not configured
-            (upload-based tests keep files in the server via the REST API).
-            reload_crl() calls are skipped because uploaded files are active
-            immediately.
+        reload_in_loop: whether reload_crl() is called in each policy loop to
+            force an immediate (re)load of CRLs.
 
         PKI structure:
           Root CA
@@ -478,12 +499,11 @@ class CRLTests(testlib.BaseTestSet):
                 # --------------------------------------------------------------
                 # Step 7: Configure CRL settings (policy set per iteration)
                 # --------------------------------------------------------------
-                dir_arg = crl_dir if use_directory else ""
                 set_crl_settings(self.cluster,
                                  policy_per_scope={'clientAuth': 'Disabled',
                                                    'nodeToNode': 'Disabled'},
                                  poll_interval_ms=5000,
-                                 directory=dir_arg)
+                                 directory=crl_dir)
 
                 # --------------------------------------------------------------
                 # Step 8: Test each policy after setup_crl (cert1 revoked)
@@ -516,8 +536,8 @@ class CRLTests(testlib.BaseTestSet):
                         self.cluster,
                         policy_per_scope={'clientAuth': policy,
                                           'nodeToNode': 'Disabled'},
-                        directory=dir_arg)
-                    if use_directory:
+                        directory=crl_dir)
+                    if reload_in_loop:
                         reload_crl(node)
 
                     for cert_name, should_allow in expectations.items():
@@ -559,8 +579,8 @@ class CRLTests(testlib.BaseTestSet):
                         self.cluster,
                         policy_per_scope={'clientAuth': policy,
                                           'nodeToNode': 'Disabled'},
-                        directory=dir_arg)
-                    if use_directory:
+                        directory=crl_dir)
+                    if reload_in_loop:
                         reload_crl(node)
 
                     for cert_name, should_allow in expectations.items():
@@ -583,7 +603,7 @@ class CRLTests(testlib.BaseTestSet):
             set_crl_settings(self.cluster,
                              policy_per_scope={'clientAuth': 'Disabled',
                                                'nodeToNode': 'Disabled'},
-                             directory="")
+                             directory="", urls=[])
 
             # Clean up any files uploaded via the REST API (upload-based
             # and hybrid tests leave files that poll teardown misses).
@@ -605,6 +625,74 @@ class CRLTests(testlib.BaseTestSet):
         else:
             assert_cert_rejected(lambda: try_client_auth(node, cert_path))
             print(f"  {label}: REJECT (as expected)")
+
+    def _add_crl_urls(self, new_urls):
+        """Append URLs to /settings/crl, preserving the ones already there.
+
+        set_config replaces crl_urls wholesale (it does not append), so read
+        the current list via GET /settings/crl and POST the union.
+        """
+        current = get_crl_settings(self.cluster).get('urls', [])
+        set_crl_settings(self.cluster, urls=current + new_urls)
+
+    def _make_url_crl_ops(self, server):
+        """Factory for URL-based full-CRL ops.
+
+        setup: writes a full CRL to the HTTP server under a unique path and
+            registers its URL via /settings/crl.
+        update: just rewrites the CRL content on the HTTP server (no settings
+            POST, no reload -- the shared loop reloads to fetch the change).
+        """
+        def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+            path = f'/crl_{testlib.random_str(8)}.pem'
+            crl_pem = generate_crl(ca_pem, ca_key_pem, revoked_certs,
+                                   expired=expired)
+            server.set_path_content(path, crl_pem)
+            self._add_crl_urls([server.url_for(path)])
+            return {'path': path, 'revoked': list(revoked_certs)}
+
+        def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+                   state, expired=False):
+            state['revoked'].extend(extra_revoked_certs)
+            crl_pem = generate_crl(ca_pem, ca_key_pem, state['revoked'],
+                                   expired=expired)
+            server.set_path_content(state['path'], crl_pem)
+            return state
+
+        return setup, update
+
+    def _make_url_delta_crl_ops(self, server):
+        """Factory for URL-based delta-CRL ops (base + delta, 2 URLs per CA).
+
+        setup: revoked_certs go in the base CRL; an (initially empty) delta
+            CRL is served from a second URL referenced by the base CRL's
+            FreshestCRL extension.  Both URLs are registered via /settings/crl.
+        update: rewrites only the delta CRL on the HTTP server.
+        """
+        def setup(crl_dir, ca_pem, ca_key_pem, revoked_certs, expired=False):
+            base_path = f'/base_{testlib.random_str(8)}.pem'
+            delta_path = f'/delta_{testlib.random_str(8)}.pem'
+            delta_uri = server.url_for(delta_path)
+            base_pem, base_num = generate_crl_with_number(
+                ca_pem, ca_key_pem, revoked_certs, expired=expired,
+                freshest_crl_uri=delta_uri)
+            server.set_path_content(base_path, base_pem)
+            delta_pem = generate_delta_crl(ca_pem, ca_key_pem, base_num, [])
+            server.set_path_content(delta_path, delta_pem)
+            self._add_crl_urls([server.url_for(base_path), delta_uri])
+            return {'delta_path': delta_path, 'base_num': base_num,
+                    'delta_revoked': []}
+
+        def update(crl_dir, ca_pem, ca_key_pem, extra_revoked_certs,
+                   state, expired=False):
+            state['delta_revoked'].extend(extra_revoked_certs)
+            delta_pem = generate_delta_crl(
+                ca_pem, ca_key_pem, state['base_num'], state['delta_revoked'],
+                expired=expired)
+            server.set_path_content(state['delta_path'], delta_pem)
+            return state
+
+        return setup, update
 
 
 # =============================================================================
@@ -658,7 +746,7 @@ def _make_upload_crl_ops(node):
 
     The returned functions have the same signature as _setup_full_crl /
     _update_full_crl and are drop-in replacements inside
-    _run_crl_revocation_checks (with use_directory=False).
+    _run_crl_revocation_checks.
     The crl_dir argument is accepted but ignored — no directory needs to be
     configured on the server when using the upload API.
     """
@@ -2166,52 +2254,82 @@ def _wait_n2n_reconnected(nodes, expect_connected=True, timeout_s=30):
 class CRLHttpServer:
     """Local HTTP server that serves configurable content over HTTP.
 
-    Context manager: starts the server in __enter__, shuts it down
-    in __exit__.  Call set_content() to change what is returned.
+    Serves independent content per request path, so a single server can
+    back several CRL URLs at once (e.g. base + delta, or one CRL per CA).
 
-    The server honours ETag / If-None-Match caching: the ETag is a
-    monotonically increasing version counter.  Calling set_content()
-    increments the version so that the CRL manager receives fresh
-    content even when it has a cached ETag from the previous request.
+    Lifecycle: use as a context manager (starts in __enter__, stops in
+    __exit__) or call start()/stop() explicitly (e.g. from test
+    setup/teardown when the server must outlive a single 'with' block).
+
+    The server honours ETag / If-None-Match caching: each path has a
+    monotonically increasing version counter used as its ETag.  Updating a
+    path's content increments its version so the CRL manager receives fresh
+    content even when it holds a cached ETag from a previous request.
+
+    The single-path helpers (set_content/set_unavailable/url) operate on the
+    default path '/crl.pem' for backwards compatibility.
     """
+
+    _DEFAULT_PATH = '/crl.pem'
 
     def __init__(self):
         self._lock = threading.Lock()
-        self._content = b''
-        self._status_code = 200
-        self._version = 0
+        # path -> {'content': bytes, 'status': int, 'version': int}
+        self._paths = {}
         self._httpd = None
         self._thread = None
         self._port = None
 
-    def set_content(self, data, status_code=200):
-        """Replace the response body and increment the ETag version."""
+    def set_path_content(self, path, data, status_code=200):
+        """Set the response body for a path and bump its ETag version."""
         if isinstance(data, str):
             data = data.encode()
         with self._lock:
-            self._content = data
-            self._status_code = status_code
-            self._version += 1
+            prev = self._paths.get(path)
+            version = (prev['version'] + 1) if prev else 1
+            self._paths[path] = {'content': data, 'status': status_code,
+                                 'version': version}
+        print(f"CRLHttpServer: set content for {path} "
+              f"(status={status_code}, {len(data)} bytes, version={version})")
+
+    def set_content(self, data, status_code=200):
+        """Replace the default-path response body and bump its ETag."""
+        self.set_path_content(self._DEFAULT_PATH, data, status_code)
 
     def set_unavailable(self):
-        """Make the server respond with 503 Service Unavailable."""
+        """Make the default path respond with 503 Service Unavailable."""
         with self._lock:
-            self._status_code = 503
-            self._version += 1
+            prev = self._paths.get(self._DEFAULT_PATH)
+            content = prev['content'] if prev else b''
+            version = (prev['version'] + 1) if prev else 1
+            self._paths[self._DEFAULT_PATH] = {'content': content,
+                                               'status': 503,
+                                               'version': version}
+        print(f"CRLHttpServer: set {self._DEFAULT_PATH} unavailable "
+              f"(status=503, version={version})")
+
+    def url_for(self, path):
+        return f'http://127.0.0.1:{self._port}{path}'
 
     @property
     def url(self):
-        return f'http://127.0.0.1:{self._port}/crl.pem'
+        return self.url_for(self._DEFAULT_PATH)
 
-    def __enter__(self):
+    def start(self):
         server = self
 
         class _Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 with server._lock:
-                    content = server._content
-                    status = server._status_code
-                    version = server._version
+                    entry = server._paths.get(self.path)
+                if entry is None:
+                    self.send_response(404)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
+                content = entry['content']
+                status = entry['status']
+                version = entry['version']
                 etag = f'"{version}"'
                 inm = self.headers.get('If-None-Match', '')
                 if inm == etag and status == 200:
@@ -2235,15 +2353,24 @@ class CRLHttpServer:
             target=self._httpd.serve_forever)
         self._thread.daemon = True
         self._thread.start()
+        print(f"CRLHttpServer: started on 127.0.0.1:{self._port}")
         return self
 
-    def __exit__(self, *_):
+    def stop(self):
         if self._httpd is not None:
+            port = self._port
             self._httpd.shutdown()
             self._httpd.server_close()
             self._thread.join()
             self._httpd = None
             self._thread = None
+            print(f"CRLHttpServer: stopped (was on 127.0.0.1:{port})")
+
+    def __enter__(self):
+        return self.start()
+
+    def __exit__(self, *_):
+        self.stop()
 
 
 # =============================================================================
