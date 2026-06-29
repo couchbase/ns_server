@@ -646,10 +646,21 @@ parse_issuer_from_session_name(SessionName) ->
 
 build_logout_opts(Req, Cfg) ->
     OidcSettings = maps:get(oidc_settings, Cfg),
-    Allowed = maps:get(post_logout_redirect_uris, OidcSettings, []),
-    case select_uri_for_request(Allowed, Req) of
-        {error, Msg} -> menelaus_util:web_exception(400, Msg);
-        Uri -> #{post_logout_redirect_uri => list_to_binary(Uri)}
+    case maps:get(post_logout_redirect_uris, OidcSettings, []) of
+        [] ->
+            %% post_logout_redirect_uri is optional in RP-initiated logout.
+            %% When none is configured (the default), omit it so the OP still
+            %% terminates the session and applies its own post-logout behavior,
+            %% rather than failing the logout.
+            #{};
+        Allowed ->
+            case select_uri_for_request(Allowed, Req) of
+                {error, Msg} ->
+                    ?log_warning("OIDC logout failed selecting post-logout "
+                                 "redirect URI: ~s", [Msg]),
+                    menelaus_util:web_exception(400, Msg);
+                Uri -> #{post_logout_redirect_uri => list_to_binary(Uri)}
+            end
     end.
 
 initiate_logout(IssuerConfig, ClientId, Opts, IdTokenHint) ->
