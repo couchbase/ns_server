@@ -263,7 +263,7 @@ format_audit_params(create_credential, {Id, Type, Cred}, Error) ->
                #{meta := M} -> M;
                undefined    -> #{}
            end,
-    [{id,            list_to_binary(Id)},
+    [{credential_id, list_to_binary(Id)},
      {type,          Type},
      {created_at,    maps:get(created_at, Meta, undefined)},
      {created_by,    format_identity(maps:get(created_by, Meta, undefined))},
@@ -282,7 +282,7 @@ format_audit_params(list_credentials, {Prefix, Count}, Error) ->
         ++ format_error(Error);
 
 format_audit_params(read_credential, {Id, Type}, Error) ->
-    [{id, list_to_binary(Id)}]
+    [{credential_id, list_to_binary(Id)}]
         ++ case Type of
                undefined -> [];
                _ -> [{type, Type}]
@@ -307,13 +307,13 @@ format_audit_params(update_credential, {Id, Cred}, Error) ->
             _ ->
                 []
         end,
-    [{id, list_to_binary(Id)}] ++ MetaParams ++ format_error(Error);
+    [{credential_id, list_to_binary(Id)}] ++ MetaParams ++ format_error(Error);
 
 format_audit_params(delete_credential, Id, Error) ->
-    [{id, list_to_binary(Id)}] ++ format_error(Error);
+    [{credential_id, list_to_binary(Id)}] ++ format_error(Error);
 
 format_audit_params(consume_credential, {Id, Service, User, Domain}, Error) ->
-    [{id, list_to_binary(Id)},
+    [{credential_id, list_to_binary(Id)},
      {service, atom_to_binary(Service)},
      {on_behalf_of, format_identity(
                       #{user => list_to_binary(User), domain => Domain})}]
@@ -333,8 +333,9 @@ format_identity(#{user := User, domain := Domain}) ->
 -spec optional_meta(map()) -> [{atom(), term()}].
 optional_meta(Meta) ->
     [{K, V} || {K, V} <-
-                   [{expires_at,  maps:get(expires_at,  Meta, undefined)},
-                    {description, maps:get(description, Meta, undefined)}],
+                   [{expires_at, maps:get(expires_at, Meta, undefined)},
+                    {credential_description,
+                     maps:get(description, Meta, undefined)}],
                V =/= undefined].
 
 %% Prefix param for list.

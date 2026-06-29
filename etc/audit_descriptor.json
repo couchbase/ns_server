@@ -2045,16 +2045,16 @@
                   "ip": "",
                   "port": 1
               },
-              "id"            : "",
-              "type"          : "",
+              "credential_id" : "",
+              "type"          : ""
+          },
+          "optional_fields": {
               "created_at"    : 1,
               "created_by"    : {"domain" : "", "user" : ""},
               "secret_set_at" : 1,
-              "secret_set_by" : {"domain" : "", "user" : ""}
-          },
-          "optional_fields": {
+              "secret_set_by" : {"domain" : "", "user" : ""},
               "expires_at"  : 1,
-              "description" : "",
+              "credential_description" : "",
               "error"       : "",
               "authenticated_userid": {
                   "domain": "",
@@ -2117,7 +2117,7 @@
                   "ip": "",
                   "port": 1
               },
-              "id" : ""
+              "credential_id" : ""
           },
           "optional_fields": {
               "type"  : "",
@@ -2150,7 +2150,7 @@
                   "ip": "",
                   "port": 1
               },
-              "id" : ""
+              "credential_id" : ""
           },
           "optional_fields": {
               "type"          : "",
@@ -2161,7 +2161,7 @@
               "secret_set_at" : 1,
               "secret_set_by" : {"domain" : "", "user" : ""},
               "expires_at"    : 1,
-              "description"   : "",
+              "credential_description" : "",
               "error"         : "",
               "authenticated_userid": {
                   "domain": "",
@@ -2191,7 +2191,7 @@
                   "ip": "",
                   "port": 1
               },
-              "id" : ""
+              "credential_id" : ""
           },
           "optional_fields": {
               "error" : "",
@@ -2223,7 +2223,7 @@
                   "ip": "",
                   "port": 1
               },
-              "id" : "",
+              "credential_id" : "",
               "service" : "",
               "on_behalf_of": {
                   "domain": "",

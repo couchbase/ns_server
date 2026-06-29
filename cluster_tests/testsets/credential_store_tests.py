@@ -316,8 +316,12 @@ class CredentialStoreCrudTests(testlib.BaseTestSet):
         self.special_password = get_special_password(self.node)
         for svc in SERVICE_CONSUMER_USERS:
             grant_service_consumer_role(self.cluster, svc)
+        testlib.post_succ(self.cluster, "/settings/audit",
+                          data={"auditdEnabled": "true"})
 
     def teardown(self):
+        testlib.post_succ(self.cluster, "/settings/audit",
+                          data={"auditdEnabled": "false"})
         for svc in SERVICE_CONSUMER_USERS:
             delete_service_consumer_role(self.cluster, svc)
 
