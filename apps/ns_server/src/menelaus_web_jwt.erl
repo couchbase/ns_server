@@ -120,6 +120,8 @@
 %% audience_handling - How to handle audience validation (any/all)
 %% audiences - List of valid audience values to match against
 %% custom_claims - List of user-defined non-standard custom claims
+%% display_name - User-friendly name for this issuer, shown in UIs (e.g. the
+%% SSO button on the login page), required for OIDC issuers.
 %% expiry_leeway_s - Number of seconds of leeway when validating token expiry
 %% groups_claim - Field path of the claim containing group memberships
 %% groups_maps - Rules for mapping groups from tokens to local groups
@@ -135,7 +137,9 @@
 %% jwks_uri_tls_ca - CA certificate for validating JWKS URI TLS connection
 %% jwks_uri_tls_sni - Server name for TLS SNI extension
 %% jwks_uri_tls_verify_peer - Whether to verify JWKS URI server certificate
-%% name - Unique name identifying this issuer
+%% name - Unique identifier for this issuer. Must match the token's 'iss'
+%% claim exactly; it is the key used to look up the issuer config during
+%% validation, so it is a protocol identifier, not a display label.
 %% oidc_settings - Optional OIDC configuration for this issuer
 %% public_key - Public key used to verify token signatures
 %% public_key_source - Source of the public key (jwks/jwks_uri/pem)
@@ -151,6 +155,7 @@
          {audience_handling, undefined},
          {audiences, fun format_string_list/1},
          {custom_claims, fun format_custom_claims/1},
+         {display_name, fun format_string/1},
          {expiry_leeway_s, undefined},
          {groups_claim, fun format_string/1},
          {groups_maps, fun auth_mapping:format_mapping_rules/1},
@@ -411,6 +416,18 @@ main_validators() ->
                    false -> {error, "Duplicate issuer names not allowed"}
                end
        end, issuers, _),
+     validator:validate(
+       fun(Issuers) ->
+               DisplayNames = [proplists:get_value(displayName, I) ||
+                                  {I} <- Issuers],
+               Set = [N || N <- DisplayNames, N =/= undefined],
+               case length(Set) =:= length(lists:usort(Set)) of
+                   true ->
+                       ok;
+                   false ->
+                       {error, "Duplicate issuer display names not allowed"}
+               end
+       end, issuers, _),
      validator:unsupported(_)].
 
 issuer_validators() ->
@@ -480,11 +497,22 @@ issuer_validators() ->
                        _ -> ok
                    end
            end, _),
+         validator:post_validate_all(
+           fun(Props) ->
+                   case {proplists:get_value(oidcSettings, Props),
+                         proplists:get_value(displayName, Props)} of
+                       {OidcSettings, undefined}
+                         when OidcSettings =/= undefined ->
+                           {error, "displayName is required for OIDC issuers"};
+                       _ -> ok
+                   end
+           end, _),
          validator:unsupported(_)].
 
 basic_validators() ->
     [validator:required(name, _),
      validator:non_empty_string(name, _),
+     validator:non_empty_string(displayName, _),
      validator:required(signingAlgorithm, _),
      validator:one_of(signingAlgorithm,
                       menelaus_web_jwt_key:signing_algorithms(), _),
