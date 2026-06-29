@@ -57,7 +57,12 @@ handle_uilogout(Req) ->
                         error:disabled -> DefaultLogout()
                     end;
                 oidc ->
-                    menelaus_web_oidc:handle_deauth(Req);
+                    %% Can't perform RP-initiated logout from here because this
+                    %% is an ajax request: a 302 to the IdP would be followed
+                    %% automatically by XMLHttpRequest. Tell the UI to redirect
+                    %% to /oidc/deauth instead, which completes logout and 302s
+                    %% the browser to the IdP. Mirrors the SAML handling above.
+                    reply_json(Req, {[{redirect, <<"/oidc/deauth">>}]}, 400);
                 _ ->
                     DefaultLogout()
             end;
