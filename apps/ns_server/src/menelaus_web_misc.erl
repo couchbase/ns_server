@@ -72,8 +72,10 @@ handle_can_use_cert_for_auth(Req) ->
 handle_get_ui_auth_methods(Req) ->
     CertAuth = menelaus_auth:can_use_cert_for_auth(Req),
     SamlAuth = menelaus_web_saml:is_enabled(),
+    OidcIssuers = menelaus_web_oidc:enabled_issuers(),
     menelaus_util:reply_json(Req, {[{clientCertificates, CertAuth},
-                                    {saml, SamlAuth}]}).
+                                    {saml, SamlAuth},
+                                    {oidc, OidcIssuers}]}).
 
 handle_versions(Req) ->
     reply_json(Req, {menelaus_web_cache:get_static_value(versions)}).

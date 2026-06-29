@@ -20,7 +20,8 @@
 -export([handle_auth/1,
          handle_callback_get/1,
          handle_callback_post/1,
-         handle_deauth/1]).
+         handle_deauth/1,
+         enabled_issuers/0]).
 
 -define(RETRY_ATTEMPTS, 3).
 
@@ -54,6 +55,32 @@ get_issuer_config(IssuerName) ->
             end;
         _ ->
             {error, "JWT is not enabled"}
+    end.
+
+%% Returns the OIDC-enabled issuers for advertisement to the login UI, as a
+%% list of JSON objects {name, displayName}. 'name' is passed back to
+%% /oidc/auth?issuer=<name> to start the flow; 'displayName' is the button
+%% label. Empty when JWT is disabled or no issuer is OIDC-enabled.
+-spec enabled_issuers() -> [{[{atom(), binary()}]}].
+enabled_issuers() ->
+    case chronicle_kv:get(kv, jwt_settings) of
+        {ok, {#{enabled := true, issuers := Issuers}, _}} ->
+            maps:fold(
+              fun(Name, Props, Acc) when is_map(Props) ->
+                      case maps:is_key(oidc_settings, Props) of
+                          true ->
+                              DisplayName = maps:get(display_name, Props),
+                              [{[{name, list_to_binary(Name)},
+                                 {displayName, list_to_binary(DisplayName)}]} |
+                               Acc];
+                          false ->
+                              Acc
+                      end;
+                 (_, _, Acc) ->
+                      Acc
+              end, [], Issuers);
+        _ ->
+            []
     end.
 
 %% TODO: Handling multiple redirect bases may need to change - awaiting PM
