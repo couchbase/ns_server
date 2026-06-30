@@ -573,7 +573,8 @@ custom_claim_validators() ->
      validator:boolean(mandatory, _)] ++
         custom_string_validators() ++
         custom_number_validators() ++
-        custom_boolean_validators().
+        custom_boolean_validators() ++
+        [validator:unsupported(_)].
 
 custom_string_validators() ->
     [validator:validate_multiple(
