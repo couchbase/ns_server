@@ -1127,7 +1127,7 @@ oidc_provider_validators() ->
        end, [endpointSource, oidcDiscoveryUri, authorizationEndpoint,
              tokenEndpoint, endSessionEndpoint], _),
      validator:required(scopes, _),
-     validator:string_array(scopes, _),
+     validator:string_array(scopes, fun validator:no_whitespace/1, _),
      validator:validate(
        fun(Scopes) ->
                case length(Scopes) =:= length(lists:usort(Scopes)) of

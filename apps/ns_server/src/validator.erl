@@ -77,6 +77,7 @@
          regex/2,
          mutually_exclusive/3,
          non_empty_string/2,
+         no_whitespace/1,
          report_errors_for_one/3,
          validate_field_path/2,
          no_duplicate_values/1,
@@ -1093,6 +1094,12 @@ non_empty_string(Name, State) ->
                        fun("") -> {error, "Value must not be empty"};
                           (Value) -> {value, Value}
                        end, Name, _)]).
+
+no_whitespace(S) ->
+    case re:run(S, "\\s") of
+        {match, _} -> {error, "Value must not contain whitespace"};
+        nomatch -> ok
+    end.
 
 %% Validates a JSON field path that can be nested using dot notation.
 -spec validate_field_path(atom(), #state{}) -> #state{}.
