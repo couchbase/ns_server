@@ -1130,6 +1130,13 @@ oidc_provider_validators() ->
      validator:string_array(scopes, _),
      validator:validate(
        fun(Scopes) ->
+               case length(Scopes) =:= length(lists:usort(Scopes)) of
+                   true -> ok;
+                   false -> {error, "scopes must not contain duplicate values"}
+               end
+       end, scopes, _),
+     validator:validate(
+       fun(Scopes) ->
                case lists:member("openid", Scopes) of
                    true -> ok;
                    false -> {error, "scopes must include 'openid'"}
