@@ -210,52 +210,66 @@ handle_callback(Req, InputType) ->
       fun (Props) ->
               Code = proplists:get_value(code, Props),
               State = proplists:get_value(state, Props),
+              %% Any failure before we hand off to the IdP token exchange is a
+              %% technical failure the end user can't act on (expired CSRF
+              %% state, mismatched PKCE/nonce config, issuer removed
+              %% mid-login). We log the specifics and bounce the browser back
+              %% to the UI with a generic error code rather than leaking a raw
+              %% error page.
+              try
+                  Preauth =
+                      case short_ttl_store:take(oidc_preauth_store,
+                                                list_to_binary(State)) of
+                          {ok, Val} -> Val;
+                          not_found ->
+                              %% Avoid logging the actual state value as it is a
+                              %% short-lived secret used for CSRF protection.
+                              ?log_debug("OIDC state not found or expired", []),
+                              throw(login_failed)
+                      end,
 
-              Preauth =
-                  case short_ttl_store:take(oidc_preauth_store,
-                                            list_to_binary(State)) of
-                      {ok, Val} -> Val;
-                      not_found ->
-                          %% Avoid logging the actual state value as it is a
-                          %% short-lived secret used for CSRF protection.
-                          ?log_debug("OIDC state not found or expired", []),
-                          menelaus_util:web_exception(
-                            400, "Invalid or expired state")
+                  IssuerName = maps:get(name, Preauth),
+                  IssuerConfig =
+                      case get_issuer_config(IssuerName) of
+                          {ok, Cfg} -> Cfg;
+                          {error, ErrMsg} ->
+                              ?log_debug("OIDC issuer config error: ~s",
+                                         [ErrMsg]),
+                              throw(login_failed)
+                      end,
+
+                  OIDCConfig = maps:get(oidc_settings, IssuerConfig),
+                  PkceEnabled = maps:get(pkce_enabled, OIDCConfig, true),
+                  NonceValidation =
+                      maps:get(nonce_validation, OIDCConfig, true),
+
+                  Nonce = maps:get(nonce, Preauth, undefined),
+                  case {NonceValidation, Nonce} of
+                      {true, undefined} ->
+                          ?log_debug("OIDC callback missing nonce", []),
+                          throw(login_failed);
+                      _ ->
+                          ok
                   end,
 
-              IssuerName = maps:get(name, Preauth),
-              IssuerConfig =
-                  case get_issuer_config(IssuerName) of
-                      {ok, Cfg} -> Cfg;
-                      {error, ErrMsg} -> menelaus_util:web_exception(400,
-                                                                     ErrMsg)
+                  CodeVerifier = maps:get(code_verifier, Preauth, undefined),
+                  case {PkceEnabled, CodeVerifier} of
+                      {true, undefined} ->
+                          ?log_debug("OIDC callback missing code_verifier", []),
+                          throw(login_failed);
+                      _ ->
+                          ok
                   end,
 
-              OIDCConfig = maps:get(oidc_settings, IssuerConfig),
-              PkceEnabled = maps:get(pkce_enabled, OIDCConfig, true),
-              NonceValidation = maps:get(nonce_validation, OIDCConfig, true),
-
-              Nonce = maps:get(nonce, Preauth, undefined),
-              case {NonceValidation, Nonce} of
-                  {true, undefined} ->
-                      menelaus_util:web_exception(400, "Missing nonce");
-                  _ ->
-                      ok
-              end,
-
-              CodeVerifier = maps:get(code_verifier, Preauth, undefined),
-              case {PkceEnabled, CodeVerifier} of
-                  {true, undefined} ->
-                      menelaus_util:web_exception(400, "Missing code_verifier");
-                  _ ->
-                      ok
-              end,
-
-              RedirectBaseFromState =
-                  maps:get(redirect_base, Preauth, undefined),
-              exchange_code_and_login(Req, IssuerConfig,
-                                      Code, CodeVerifier, Nonce,
-                                      RedirectBaseFromState)
+                  RedirectBaseFromState =
+                      maps:get(redirect_base, Preauth, undefined),
+                  exchange_code_and_login(Req, IssuerConfig,
+                                          Code, CodeVerifier, Nonce,
+                                          RedirectBaseFromState)
+              catch
+                  throw:login_failed ->
+                      redirect_to_ui_with_error(Req, login_failed)
+              end
       end, Req, InputType, callback_validators()).
 
 build_auth_redirect(IssuerConfig, Req) ->
@@ -278,12 +292,12 @@ build_auth_redirect(IssuerConfig, Req) ->
                 {error, E} ->
                     ?log_warning("OIDC redirect for ~p build failed: ~p",
                                  [IssuerName, E]),
-                    "/oidc/callback?error=oidc_redirect_failed"
+                    ui_error_redirect_url(login_failed)
             end;
         {error, exists} ->
             ?log_warning("Failed to generate unique OIDC state after retries "
                          "for ~p", [IssuerName]),
-            "/oidc/callback?error=oidc_state_generation_failed"
+            ui_error_redirect_url(login_failed)
     end.
 
 generate_and_put_preauth(_IssuerName, _RedirectBaseParam, _Nonce, _Verifier,
@@ -542,9 +556,9 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
         {ok, Token} ->
             handle_oidc_login_success(Req, IssuerName, Token);
         {error, Reason} ->
-            menelaus_util:web_exception(
-              400,
-              io_lib:format("OIDC error: ~p", [Reason]))
+            ?log_debug("OIDC token exchange failed: ~p", [Reason]),
+            ns_audit:login_failure(Req),
+            redirect_to_ui_with_error(Req, login_failed)
     end.
 
 handle_oidc_login_success(Req, IssuerName, Token) ->
@@ -573,17 +587,65 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
                                                      302,
                                                      [{"Location", "/"} |
                                                       Headers]);
+                        {error, {access_denied, _}} ->
+                            {Username, _Domain} = AuthnRes#authn_res.identity,
+                            ?log_debug("Access denied for OIDC user \"~s\": ~s",
+                                       [ns_config_log:tag_user_name(Username),
+                                        format_access_denied_error(
+                                          Username,
+                                          AuthnRes#authn_res.extra_groups,
+                                          AuthnRes#authn_res.extra_roles)]),
+                            redirect_to_ui_with_error(Req, access_denied);
                         {error, Reason} ->
-                            menelaus_util:web_exception(
-                              403,
-                              io_lib:format("Access denied: ~p", [Reason]))
+                            ?log_debug("OIDC UI login failed: ~p", [Reason]),
+                            redirect_to_ui_with_error(Req, login_failed)
                     end;
                 {error, _Audit} ->
-                    menelaus_util:web_exception(403, "Invalid ID token")
+                    ?log_debug("OIDC ID token failed validation", []),
+                    ns_audit:login_failure(Req),
+                    redirect_to_ui_with_error(Req, login_failed)
             end;
         _ ->
-            menelaus_util:web_exception(400, "Missing ID token")
+            ?log_debug("OIDC token response contained no ID token", []),
+            ns_audit:login_failure(Req),
+            redirect_to_ui_with_error(Req, login_failed)
     end.
+
+%% Bounce the browser back to the UI login screen with a generic, PII-free
+%% error code. The UI maps the code to a localized message. We deliberately do
+%% not pass any detail (username, groups, roles, failure reason) in the URL:
+%% that keeps it out of browser history / access logs / referrer headers and
+%% leaves the UI as the sole author of the displayed text (no injection).
+%% Diagnostics for the administrator are in the server log at the failure site.
+-spec redirect_to_ui_with_error(mochiweb_request(),
+                                access_denied | login_failed) -> term().
+redirect_to_ui_with_error(Req, Code) ->
+    menelaus_util:reply_text(Req, <<"Redirecting...">>, 302,
+                             [{"Location", ui_error_redirect_url(Code)}]).
+
+-spec ui_error_redirect_url(access_denied | login_failed) -> string().
+ui_error_redirect_url(Code) ->
+    "/ui/index.html#/?oidcError=" ++ atom_to_list(Code).
+
+format_access_denied_error(Username, ExtraGroups, ExtraRoles) ->
+    MainError = io_lib:format("Access denied for user \"~s\": "
+                              "Insufficient Permissions",
+                              [Username]),
+    Hint = "Ensure the user's roles include \"Web Console Access\" (ui_access)",
+    GroupsInfo =
+        case ExtraGroups of
+            [] -> [];
+            _ -> ["Extracted groups: " ++ misc:intersperse(ExtraGroups, ", ")]
+        end,
+    RolesInfo =
+        case ExtraRoles of
+            [] -> [];
+            _ ->
+                ExtraRolesStr = [menelaus_web_rbac:role_to_string(R)
+                                 || R <- ExtraRoles],
+                ["Extracted roles: " ++ misc:intersperse(ExtraRolesStr, ", ")]
+        end,
+    misc:intersperse([MainError, Hint] ++ GroupsInfo ++ RolesInfo, ". ").
 
 %% RP-initiated logout for OIDC UI sessions
 handle_deauth(Req) ->
