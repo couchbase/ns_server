@@ -19,6 +19,7 @@
 -endif.
 
 -export([decode_cert_chain/1,
+         validate_cert_chain_pem/1,
          decode_single_certificate/1,
          generate_cluster_CA/2,
          this_node_uses_self_generated_node_certs/0,
@@ -291,6 +292,18 @@ decode_cert_chain([Cert | Tail], Res) ->
     case decode_single_certificate(Cert) of
         {ok, Der} -> decode_cert_chain(Tail, [Der | Res]);
         {error, _} = Err -> Err
+    end.
+
+%% Like decode_cert_chain/1 but also rejects non-empty input that contains no
+%% PEM certificate blocks (e.g. garbage strings with no -----BEGIN marker).
+%% A genuinely empty input is passed through as "no chain configured".
+validate_cert_chain_pem(<<>>) ->
+    {ok, []};
+validate_cert_chain_pem(CertPemBin) ->
+    case decode_cert_chain(CertPemBin) of
+        {ok, [_ | _] = Decoded} -> {ok, Decoded};
+        {ok, []} -> {error, empty_cert_chain};
+        Error -> Error
     end.
 
 decode_single_certificate(CertPemBin) ->
@@ -1775,5 +1788,11 @@ chronicle_upgrade_cert_to_79_test() ->
                  lists:nth(5, NewCerts)),
     %% Confirm no extra certs added
     ?assertEqual(5, length(NewCerts)).
+
+validate_cert_chain_pem_test() ->
+    ?assertEqual({ok, []}, validate_cert_chain_pem(<<>>)),
+    ?assertEqual({error, empty_cert_chain},
+                 validate_cert_chain_pem(<<"not a certificate">>)),
+    ?assertMatch({ok, [_ | _]}, validate_cert_chain_pem(?PEM_DEFAULT)).
 
 -endif.

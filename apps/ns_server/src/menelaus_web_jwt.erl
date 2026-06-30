@@ -302,7 +302,7 @@ tls_validators(VerifyPeerKey, CaKey, SniKey, AddressFamilyKey) ->
      validator:validate(
        fun (Cert) ->
                BinCert = iolist_to_binary(Cert),
-               case ns_server_cert:decode_cert_chain(BinCert) of
+               case ns_server_cert:validate_cert_chain_pem(BinCert) of
                    {ok, Decoded} -> {value, {BinCert, Decoded}};
                    {error, _} -> {error, "invalid certificate"}
                end

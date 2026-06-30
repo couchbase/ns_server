@@ -314,9 +314,8 @@ field_type_validator(#{type := json_object} = S) ->
     [validator:validate(fun validate_json_object/1, rest_key(S), _)].
 
 validate_cert_pem(Cert) ->
-    case ns_server_cert:decode_cert_chain(iolist_to_binary(Cert)) of
-        {ok, [_ | _]} -> {value, Cert};
-        {ok, []} -> {error, "invalid certificate"};
+    case ns_server_cert:validate_cert_chain_pem(iolist_to_binary(Cert)) of
+        {ok, _} -> {value, Cert};
         {error, _} -> {error, "invalid certificate"}
     end.
 
