@@ -227,13 +227,20 @@
 %% client_id - Unique id for the application registered with OIDC provider
 %% client_secret - Secret key for confidential client authentication
 %% base_redirect_uris - Allowed base URLs for redirect targets (array)
+%% endpoint_source - Whether the OIDC provider's authorization/token/end_session
+%% endpoints are auto-detected via discovery or supplied manually (discovery |
+%% manual).
 %% oidc_discovery_uri - OIDC discovery endpoint for automatic endpoint detection
-%% authorization_endpoint - OIDC provider's authorization endpoint URL
-%% (required if no discovery; must be absent when discovery is used)
+%% (required when endpoint_source is discovery; must be absent when
+%% endpoint_source is manual)
+%% authorization_endpoint - OIDC provider's authorization endpoint URL (required
+%% when endpoint_source is manual; must be absent when endpoint_source is
+%% discovery)
 %% token_endpoint - URL for exchanging authorization code for tokens URL
-%% (required if no discovery; must be absent when discovery is used)
+%% (required when endpoint_source is manual; must be absent when
+%% endpoint_source is discovery)
 %% end_session_endpoint - RP-initiated logout endpoint URL
-%% (optional, must be absent when discovery is used)
+%% (optional, must be absent when endpoint_source is discovery)
 %% scopes - List of requested permissions (must include "openid")
 %% nonce_validation - Whether to validate nonce parameter for replay protection
 %% pkce_enabled - Whether PKCE is enabled (should be true for security)
@@ -252,6 +259,7 @@
          {client_id, fun format_string/1},
          {client_secret, fun format_secret/1},
          {base_redirect_uris, fun format_string_list/1},
+         {endpoint_source, undefined},
          {oidc_discovery_uri, fun format_string/1},
          {authorization_endpoint, fun format_string/1},
          {token_endpoint, fun format_string/1},
@@ -462,32 +470,27 @@ issuer_validators() ->
                    PubKeySource = proplists:get_value(publicKeySource, Props),
                    JwksUri = proplists:get_value(jwksUri, Props),
                    OidcSettings = proplists:get_value(oidcSettings, Props),
-                   case {PubKeySource, JwksUri, OidcSettings} of
-                       {jwks_uri, undefined, undefined} ->
-                           {error, "jwksUri is required"};
-                       {jwks_uri, undefined, OidcSettings} ->
-                           %% Check if OIDC discovery provides jwks_uri
-                           case proplists:get_value(oidcDiscoveryUri,
-                                                    OidcSettings) of
-                               undefined ->
+                   case PubKeySource of
+                       jwks_uri ->
+                           HasJwksUri = JwksUri =/= undefined,
+                           IsDiscovery =
+                               OidcSettings =/= undefined andalso
+                               proplists:get_value(endpointSource,
+                                                   OidcSettings) =:= discovery,
+                           case {HasJwksUri, IsDiscovery} of
+                               {false, false} ->
                                    {error, "jwksUri is required"};
-                               _ ->
-                                   ok  %% OIDC discovery will provide jwks_uri
+                               {false, true} ->
+                                   ok; %% OIDC discovery will provide jwks_uri
+                               {true, true} ->
+                                   {error, "Both jwksUri and OIDC discovery"
+                                    " are configured. OIDC discovery will"
+                                    " provide the jwks_uri."};
+                               {true, false} ->
+                                   ok
                            end;
-                       {jwks_uri, JwksUri, OidcSettings} when
-                             JwksUri =/= undefined,
-                             OidcSettings =/= undefined ->
-
-                           case proplists:get_value(oidcDiscoveryUri,
-                                                    OidcSettings) of
-                               undefined ->
-                                   ok;
-                               _ ->
-                                   {error, "Both jwksUri and OIDC discovery are"
-                                    " configured. OIDC discovery will provide "
-                                    "the jwks_uri."}
-                           end;
-                       _ -> ok
+                       _ ->
+                           ok
                    end
            end, _),
          validator:post_validate_all(
@@ -1075,6 +1078,9 @@ oidc_provider_validators() ->
      validator:required(baseRedirectUris, _),
      validator:string_array(baseRedirectUris,
                             fun validate_redirect_uri/1, false, _),
+     validator:required(endpointSource, _),
+     validator:one_of(endpointSource, [discovery, manual], _),
+     validator:convert(endpointSource, fun binary_to_existing_atom/1, _),
      validator:non_empty_string(oidcDiscoveryUri, _),
      validator:url(oidcDiscoveryUri, [<<"http">>, <<"https">>], _),
      validator:validate(fun validate_public_https_url/1,
@@ -1092,28 +1098,34 @@ oidc_provider_validators() ->
      validator:validate(fun validate_public_https_url/1,
                         endSessionEndpoint, _),
      validator:validate_multiple(
-       fun([Discovery, Auth, Token, End]) ->
-               case Discovery of
-                   undefined ->
-                       case {Auth =/= undefined, Token =/= undefined} of
-                           {true, true} ->
-                               ok;
-                           _ ->
-                               {error, "authorizationEndpoint and tokenEndpoint"
-                                " are required when discovery is not in use"}
-                       end;
-                   _ ->
-                       case {Auth, Token, End} of
-                           {undefined, undefined, undefined} ->
-                               ok;
-                           _ ->
-                               {error, "authorizationEndpoint, tokenEndpoint, "
-                                "and endSessionEndpoint must not be provided "
-                                "when discovery is in use"}
-                       end
+       fun([Mode, Discovery, Auth, Token, End]) ->
+               HasDiscovery = Discovery =/= undefined,
+               HasManualEndpoints =
+                   Auth =/= undefined orelse
+                   Token =/= undefined orelse
+                   End =/= undefined,
+               case Mode of
+                   discovery when not HasDiscovery ->
+                       {error, "oidcDiscoveryUri is required when"
+                        " endpointSource is 'discovery'"};
+                   discovery when HasManualEndpoints ->
+                       {error, "authorizationEndpoint, tokenEndpoint, and"
+                        " endSessionEndpoint must not be provided when"
+                        " endpointSource is 'discovery'"};
+                   discovery ->
+                       ok;
+                   manual when Auth =:= undefined orelse
+                               Token =:= undefined ->
+                       {error, "authorizationEndpoint and tokenEndpoint"
+                        " are required when endpointSource is 'manual'"};
+                   manual when HasDiscovery ->
+                       {error, "oidcDiscoveryUri must not be provided when"
+                        " endpointSource is 'manual'"};
+                   manual ->
+                       ok
                end
-       end, [oidcDiscoveryUri, authorizationEndpoint, tokenEndpoint,
-             endSessionEndpoint], _),
+       end, [endpointSource, oidcDiscoveryUri, authorizationEndpoint,
+             tokenEndpoint, endSessionEndpoint], _),
      validator:required(scopes, _),
      validator:string_array(scopes, _),
      validator:validate(
@@ -1239,6 +1251,7 @@ format_conversion_test_() ->
                             client_id => "okta_client_id",
                             client_secret =>
                                 "encrypted_okta_secret",
+                            endpoint_source => manual,
                             authorization_endpoint => OktaAuth,
                             base_redirect_uris => [BaseCb],
                             token_endpoint => OktaToken,
@@ -1269,6 +1282,7 @@ format_conversion_test_() ->
                             client_id => "azure_client_id",
                             client_secret =>
                                 "encrypted_azure_secret",
+                            endpoint_source => discovery,
                             base_redirect_uris => [BaseCb],
                             oidc_discovery_uri =>
                                 AzureDisc,
@@ -1294,6 +1308,7 @@ format_conversion_test_() ->
                                 "conflict_client_id",
                             client_secret =>
                                 "conflict_secret",
+                            endpoint_source => discovery,
                             base_redirect_uris => [BaseCb],
                             oidc_discovery_uri =>
                                 ExampleDisc,
@@ -1340,6 +1355,7 @@ format_conversion_test_() ->
                                           clientId => "okta_client_id",
                                           clientSecret => "********",
                                           baseRedirectUris => [BaseCb],
+                                          endpointSource => manual,
                                           authorizationEndpoint => OktaAuth,
                                           tokenEndpoint => OktaToken,
                                           endSessionEndpoint => OktaLogout,
@@ -1364,6 +1380,7 @@ format_conversion_test_() ->
                                           clientId => "azure_client_id",
                                           clientSecret => "********",
                                           baseRedirectUris => [BaseCb],
+                                          endpointSource => discovery,
                                           oidcDiscoveryUri => AzureDisc,
                                           scopes => ["openid", "profile",
                                                      "email"],
@@ -1384,6 +1401,7 @@ format_conversion_test_() ->
                                           clientId => "conflict_client_id",
                                           clientSecret => "********",
                                           baseRedirectUris => [BaseCb],
+                                          endpointSource => discovery,
                                           oidcDiscoveryUri => ExampleDisc,
                                           scopes => ["openid", "profile",
                                                      "email"],
@@ -1427,6 +1445,7 @@ format_conversion_test_() ->
                            [{clientId, "okta_client_id"},
                             {clientSecret, "encrypted_okta_secret"},
                             {baseRedirectUris, [BaseCb]},
+                            {endpointSource, manual},
                             {authorizationEndpoint, OktaAuth},
                             {tokenEndpoint, OktaToken},
                             {endSessionEndpoint, OktaLogout},
@@ -1450,6 +1469,7 @@ format_conversion_test_() ->
                            [{clientId, "azure_client_id"},
                             {clientSecret, "encrypted_azure_secret"},
                             {baseRedirectUris, [BaseCb]},
+                            {endpointSource, discovery},
                             {oidcDiscoveryUri, AzureDisc},
                             {scopes, ["openid", "profile", "email"]},
                             {nonceValidation, true},
@@ -1468,6 +1488,7 @@ format_conversion_test_() ->
                            [{clientId, "conflict_client_id"},
                             {clientSecret, "conflict_secret"},
                             {baseRedirectUris, [BaseCb]},
+                            {endpointSource, discovery},
                             {oidcDiscoveryUri, ExampleDisc},
                             {scopes, ["openid", "profile", "email"]},
                             {nonceValidation, true},
