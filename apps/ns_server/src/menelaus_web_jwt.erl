@@ -358,18 +358,11 @@ handle_settings_get(Req) ->
                         [{"Content-Type", "application/json"}]).
 
 handle_settings_put(Req) ->
-    Body = mochiweb_request:recv_body(Req),
-    try ejson:decode(Body) of
-        Decoded ->
-            validator:handle(
-              fun (Props) ->
-                      validate_and_store_settings(Props, Req)
-              end,
-              Req, validator:strip_json_nulls(Decoded), main_validators())
-    catch _:_ ->
-            menelaus_util:reply_json(
-              Req, {[{error, <<"Invalid JSON">>}]}, 400)
-    end.
+    validator:handle(
+      fun (Props) ->
+              validate_and_store_settings(Props, Req)
+      end,
+      Req, json, main_validators()).
 
 handle_settings_delete(Req) ->
     Fun = fun (_) -> {commit, [{delete, jwt_settings}]} end,
@@ -598,13 +591,15 @@ custom_number_validators() ->
      validator:validate(
        fun ([]) ->
                {error, "Must contain at least one element"};
-           (Array) ->
+           (Array) when is_list(Array) ->
                case lists:all(?cut(is_number(_1)), Array) of
                    false ->
                        {error, "Must be an array of numbers"};
                    true ->
                        ok
-               end
+               end;
+           (_) ->
+               {error, "Must be an array of numbers"}
        end, enum, _)].
 
 custom_boolean_validators() ->
@@ -1028,7 +1023,7 @@ validate_strict_base(Map) ->
 
 %% Validate OIDC endpoint URL: allow https anywhere; allow http only for
 %% localhost/127.0.0.1. localhost is used for local testing.
-validate_public_https_url(Url) ->
+validate_public_https_url(Url) when is_list(Url) ->
     case uri_string:parse(Url) of
         {error, _, _} -> {error, "Invalid URL"};
         Map when is_map(Map) ->
@@ -1045,7 +1040,9 @@ validate_public_https_url(Url) ->
                 "https" -> ok;
                 _ -> {error, "Invalid scheme"}
             end
-    end.
+    end;
+validate_public_https_url(_) ->
+    {error, "Value must be a string"}.
 
 -spec sanitize_chronicle_cfg(map()) -> map().
 sanitize_chronicle_cfg(#{issuers := Issuers} = Settings) ->
