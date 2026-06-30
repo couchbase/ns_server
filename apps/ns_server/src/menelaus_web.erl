@@ -952,6 +952,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["settings", "crl", "diagnostics", "status"] ->
                     {{[admin, security], read},
                      fun menelaus_web_crl:handle_post_diagnostics_status/1};
+                ["settings", "crl", "diagnostics", "validate"] ->
+                    {{[admin, security], read},
+                     fun menelaus_web_crl:handle_post_diagnostics_validate/1};
                 ["settings", "audit"] ->
                     {{[admin, security], write},
                      fun menelaus_web_audit:handle_post/1};

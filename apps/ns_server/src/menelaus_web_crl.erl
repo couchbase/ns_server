@@ -19,6 +19,7 @@
          handle_reload_crl/1,
          handle_get_diagnostics_status/1,
          handle_post_diagnostics_status/1,
+         handle_post_diagnostics_validate/1,
          handle_get_crl_files/1,
          handle_post_crl_file/1,
          handle_delete_crl_file/2]).
@@ -284,6 +285,179 @@ collect_crl_status(NodePairs) ->
                   end,
               {Hostname, NodeJson}
       end, NodePairs, Results).
+
+%%%===================================================================
+%%% POST /settings/crl/diagnostics/validate
+%%%===================================================================
+
+%% Diagnostic/test endpoint for exercising CRL revocation checking with
+%% greater flexibility than /_cbauth/crlsValidate.
+%%
+%% Unlike the regular CRL check, this endpoint IGNORES the policy currently
+%% configured for any scope (even when that policy is 'Disabled') and uses a
+%% caller-supplied test policy instead.  The policy defaults to 'Require'
+%% (strict) when not specified, and 'Disabled' is not an accepted value (there
+%% is nothing to test with a disabled policy).
+%%
+%% The CRL check itself is scope-agnostic (a cert is checked against the loaded
+%% CRLs under the given policy), so there is no scope parameter.
+%%
+%% All certificates in a chain are checked (not just the leaf).
+%% A self-signed root cannot be revoked by a CRL and is reported valid
+%% without a CRL lookup.
+%%
+%% Two modes:
+%%   * certs supplied — each supplied entry is decoded and every certificate in
+%%     it is checked independently against the loaded CRLs under the test
+%%     policy; one result per cert.  Each entry may be a PEM string (whose
+%%     whole chain is checked) or a single base64-encoded DER certificate.
+%%   * certs omitted  — the cluster's own certificates (every certificate in
+%%     the stored chain of both the client and node certs for every node) are
+%%     checked.  The response reports whether all are allowed and lists any
+%%     that are not.
+handle_post_diagnostics_validate(Req) ->
+    assert_supported(),
+    validator:handle(
+      fun (Values) ->
+              Policy = proplists:get_value(policy, Values),
+              DerCerts = proplists:get_value(certs, Values),
+              Body =
+                  case DerCerts of
+                      undefined -> validate_cluster_certs(Policy);
+                      _         -> validate_supplied_certs(DerCerts, Policy)
+                  end,
+              menelaus_util:reply_json(
+                Req, {[{policy, mode_to_json(Policy)} | Body]})
+      end, Req, json, validate_post_validators()).
+
+validate_post_validators() ->
+    [%% 'Disabled' is intentionally not allowed: the test policy must
+     %% actually exercise the CRL check.  Defaults to 'Require' (strict).
+     validator:string(policy, _),
+     validator:one_of(policy, ["Permissive", "Require"], _),
+     validator:convert(policy, fun (P) -> mode_atom(list_to_binary(P)) end, _),
+     validator:default(policy, require, _),
+     validator:string_array(certs, fun decode_cert_input/1, _),
+     validator:validate(
+       fun (L) ->
+               case length(L) > 100 of
+                   true  -> {error, "too many certificates"};
+                   false -> ok
+               end
+       end, certs, _),
+     validator:unsupported(_)].
+
+%% Accept a certificate (or chain) either as a PEM string or as base64-encoded
+%% DER.  PEM is detected by its "-----BEGIN" header, in which case every
+%% certificate in the chain is returned; base64 DER is a single certificate.
+%% Returns a non-empty list of DER binaries.
+decode_cert_input(C) ->
+    Bin = list_to_binary(C),
+    case string:find(Bin, <<"-----BEGIN">>) of
+        nomatch ->
+            try {value, [base64:decode(Bin)]}
+            catch _:_ -> {error, "Invalid base64 encoding"} end;
+        _ ->
+            case ns_server_cert:decode_cert_chain(Bin) of
+                {ok, [_ | _] = DerChain} -> {value, DerChain};
+                _                        -> {error, "Invalid PEM certificate"}
+            end
+    end.
+
+%% Per-cert mode: check every supplied cert independently.  A PEM entry may
+%% carry a chain, in which case every certificate in it is checked.
+validate_supplied_certs(CertChains, Policy) ->
+    Results = [{Props} || {_Allowed, Props}
+                              <- [check_der_cert(D, Policy)
+                                  || Chain <- CertChains, D <- Chain]],
+    [{results, Results}].
+
+%% Cluster mode: check the cluster's own certs (both client and node certs
+%% for every node).
+validate_cluster_certs(Policy) ->
+    Checked =
+        [begin
+             {Allowed, Props} = check_der_cert(Der, Policy),
+             FullProps = [{node, atom_to_binary(Node, utf8)},
+                          {certificateType, atom_to_binary(CertType, utf8)}
+                          | Props],
+             {Allowed, {FullProps}}
+         end || {Node, CertType, Der} <- collect_cluster_certs()],
+    Results    = [R || {_, R} <- Checked],
+    Disallowed = [R || {false, R} <- Checked],
+    [{usingClusterCertificates, true},
+     {certificatesChecked, length(Results)},
+     {allAllowed, Disallowed =:= []},
+     {results, Results},
+     {disallowed, Disallowed}].
+
+%% Gather every certificate in the stored chain of both types (client_cert and
+%% node_cert) from every node in the cluster.  Nodes without a stored cert of a
+%% given type are skipped.
+collect_cluster_certs() ->
+    [{Node, CertType, Der}
+     || Node     <- ns_node_disco:nodes_wanted(),
+        CertType <- [client_cert, node_cert],
+        {ok, DerChain} <- [chain_certs(Node, CertType)],
+        Der            <- DerChain].
+
+chain_certs(Node, CertType) ->
+    Props = ns_server_cert:get_cert_info(CertType, Node),
+    case proplists:get_value(pem, Props) of
+        undefined -> error;
+        Pem ->
+            case ns_server_cert:decode_cert_chain(Pem) of
+                {ok, [_ | _] = DerChain} -> {ok, DerChain};
+                _                        -> error
+            end
+    end.
+
+%% Decode a cert and run the CRL check under the explicit test policy.
+%% Returns {Allowed :: boolean(), JsonProps :: [{atom(), term()}]}.
+%% Only the decode is guarded so that an unexpected failure elsewhere is not
+%% mislabelled as a "cert decode error".
+check_der_cert(Der, Policy) ->
+    try public_key:pkix_decode_cert(Der, otp) of
+        OtpCert ->
+            Subject = unicode:characters_to_binary(
+                        ns_server_cert:get_subject(OtpCert)),
+            {Allowed, StatusProps} = check_otp_cert(OtpCert, Policy),
+            {Allowed, [{subject, Subject} | StatusProps]}
+    catch
+        C:E:ST ->
+            ?log_error("CRL validate cert decode error ~p:~p~n~p", [C, E, ST]),
+            {false, [{status, <<"failed">>},
+                     {details, <<"cert decode error">>}]}
+    end.
+
+%% A self-signed root cannot be revoked by a CRL (it would have to revoke
+%% itself), so it is reported valid without a CRL lookup — matching the
+%% production check_intermediate_certs behaviour in cb_crl, which skips
+%% self-signed certs.  All other certs (leaf and intermediate CAs) are checked.
+check_otp_cert(OtpCert, Policy) ->
+    case public_key:pkix_is_self_signed(OtpCert) of
+        true ->
+            {true, [{status, <<"valid">>},
+                    {details, <<"self-signed root; not CRL-checked">>}]};
+        false ->
+            {Result, _Expiry} = cb_crl:crl_check(OtpCert, Policy),
+            crl_result_to_props(Result)
+    end.
+
+crl_result_to_props(valid) ->
+    {true, [{status, <<"valid">>}]};
+crl_result_to_props({fail, {bad_cert, {revoked, Reason}}}) ->
+    {false, [{status, <<"revoked">>}, {details, format_crl_term(Reason)}]};
+crl_result_to_props({fail, {bad_cert,
+                            {revocation_status_undetermined, Info}}}) ->
+    {false, [{status, <<"undetermined">>}, {details, format_crl_term(Info)}]};
+crl_result_to_props({fail, {bad_cert, Reason}}) ->
+    {false, [{status, <<"failed">>}, {details, format_crl_term(Reason)}]};
+crl_result_to_props({fail, Reason}) ->
+    {false, [{status, <<"failed">>}, {details, format_crl_term(Reason)}]}.
+
+format_crl_term(Term) ->
+    iolist_to_binary(io_lib:format("~p", [Term])).
 
 %%%===================================================================
 %%% Helpers

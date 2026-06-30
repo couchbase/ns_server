@@ -7,6 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
+import base64
 import contextlib
 import datetime
 import http.server
@@ -180,6 +181,143 @@ class CRLTests(testlib.BaseTestSet):
             set_crl_settings(self.cluster,
                              policy_per_scope={'clientAuth': 'Disabled',
                                                'nodeToNode': 'Disabled'})
+
+    def diagnostics_validate_test(self):
+        """Test the /settings/crl/diagnostics/validate test endpoint.
+
+        Covers:
+          * the test policy overrides the configured policy (the scopes are
+            left Disabled, yet the endpoint still reports revocations);
+          * the policy defaults to 'Require' (strict) when not specified;
+          * 'Disabled' is rejected as a test policy (HTTP 400);
+          * per-cert mode returns one result per supplied cert;
+          * certs may be supplied as PEM as well as base64-encoded DER;
+          * every cert in a supplied chain is validated, not just the leaf;
+          * a self-signed root is reported valid without a CRL lookup;
+          * Permissive vs Require differ for an undetermined (no-CRL) cert;
+          * cluster mode (no certs) checks the cluster's own certs (both
+            client and node certs) and the OOTB certs come out all-allowed.
+        """
+        node = self.cluster.connected_nodes[0]
+        crl_dir = tempfile.mkdtemp()
+        ca_ids = []
+
+        try:
+            # PKI: a trusted root CA with a CRL revoking exactly one cert.
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            ca_ids = load_multiple_cas(node, [root_ca_pem])
+
+            good_cert_pem, _ = generate_client_cert_cn(
+                root_ca_pem, root_ca_key_pem, 'good-user')
+            revoked_cert_pem, _ = generate_client_cert_cn(
+                root_ca_pem, root_ca_key_pem, 'revoked-user')
+
+            crl_filepath = os.path.join(crl_dir, 'validate_crl.pem')
+            generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem,
+                                 [revoked_cert_pem])
+
+            # Load the CRL into the cache but leave the clientAuth policy
+            # DISABLED on purpose: the test endpoint must ignore it.
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             poll_interval_ms=5000,
+                             directory=crl_dir)
+            assert_crl_status(self.cluster, expected_status='active')
+
+            good_b64 = cert_pem_to_b64_der(good_cert_pem)
+            revoked_b64 = cert_pem_to_b64_der(revoked_cert_pem)
+
+            # --- Per-cert mode, default policy (Require), config ignored. ---
+            r = crl_test_validate(self.cluster, certs=[good_b64, revoked_b64])
+            testlib.assert_eq(r['policy'], 'Require')   # defaulted
+            results = r['results']
+            testlib.assert_eq(len(results), 2)
+            testlib.assert_eq(results[0]['status'], 'valid')
+            testlib.assert_eq(results[1]['status'], 'revoked')
+            print("Per-cert Require: good=valid, revoked=revoked (config "
+                  "Disabled was correctly ignored)")
+
+            # --- PEM input is accepted as well as base64-encoded DER. ---
+            r = crl_test_validate(self.cluster,
+                                  certs=[good_cert_pem, revoked_cert_pem])
+            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            testlib.assert_eq(r['results'][1]['status'], 'revoked')
+            print("Per-cert Require: PEM-encoded certs accepted")
+
+            # --- Permissive vs Require for an undetermined (no-CRL) cert. ---
+            # Use a CA with a DISTINCT subject name and no CRL of its own, so
+            # the cert's revocation status is genuinely undetermined.  (A CA
+            # reusing the root's CN would accidentally match the root's CRL by
+            # issuer name and resolve as 'valid'.)
+            nocrl_ca_pem, nocrl_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test NoCRL CA')
+            ca_ids += load_multiple_cas(node, [nocrl_ca_pem])
+            nocrl_cert_pem, _ = generate_client_cert_cn(
+                nocrl_ca_pem, nocrl_ca_key_pem, 'nocrl-user')
+            nocrl_b64 = cert_pem_to_b64_der(nocrl_cert_pem)
+
+            r = crl_test_validate(self.cluster,
+                                  policy='Require', certs=[nocrl_b64])
+            testlib.assert_eq(r['results'][0]['status'], 'undetermined')
+
+            r = crl_test_validate(self.cluster,
+                                  policy='Permissive', certs=[nocrl_b64])
+            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            print("No-CRL cert: undetermined under Require, valid under "
+                  "Permissive")
+
+            # --- Every cert in a supplied chain is validated, not just the
+            # leaf.  A single PEM entry carrying multiple certs must yield one
+            # result per cert (previously only the leaf was checked, so the
+            # revoked cert would have been missed). ---
+            chain_pem = good_cert_pem + revoked_cert_pem
+            r = crl_test_validate(self.cluster, certs=[chain_pem])
+            results = r['results']
+            testlib.assert_eq(len(results), 2)
+            testlib.assert_eq(results[0]['status'], 'valid')
+            testlib.assert_eq(results[1]['status'], 'revoked')
+            print("PEM chain: every cert in a single entry is validated")
+
+            # --- A self-signed root is reported valid without a CRL lookup,
+            # even under Require (a root cannot be revoked by a CRL). ---
+            root_b64 = cert_pem_to_b64_der(root_ca_pem)
+            r = crl_test_validate(self.cluster,
+                                  policy='Require', certs=[root_b64])
+            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            print("Self-signed root reported valid without CRL check")
+
+            # --- 'Disabled' is not an accepted test policy. ---
+            testlib.post_fail(
+                self.cluster, '/settings/crl/diagnostics/validate',
+                json={'policy': 'Disabled'},
+                expected_code=400)
+            print("Disabled test policy correctly rejected")
+
+            # --- Cluster mode (no certs): OOTB certs must all be allowed. ---
+            # No scope: both client and node certs are checked in one call.
+            r = crl_test_validate(self.cluster)
+            assert r['usingClusterCertificates'] is True, r
+            assert r['certificatesChecked'] >= 1, r
+            assert r['allAllowed'] is True, \
+                f'Expected all cluster certs allowed: {r}'
+            testlib.assert_eq(r['disallowed'], [])
+            cert_types = {res['certificateType'] for res in r['results']}
+            assert 'node_cert' in cert_types, \
+                f'Expected node_cert among checked cluster certs: {r}'
+            print("Cluster-mode: all OOTB cluster certs allowed under Require "
+                  f"(checked types: {sorted(cert_types)})")
+
+        finally:
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory='')
+            for f in get_crl_files(node):
+                delete_crl_file(node, f['filename'])
+            shutil.rmtree(crl_dir, ignore_errors=True)
 
     def custom_internal_client_cert_crl_test(self):
         """Test that custom internal client certs are subject to CRL checks.
@@ -1158,6 +1296,35 @@ def set_allow_expired_crls(cluster, value):
 def get_crl_settings(cluster):
     """GET /settings/crl to retrieve current CRL settings."""
     return testlib.get_succ(cluster, '/settings/crl').json()
+
+
+def cert_pem_to_b64_der(cert_pem):
+    """Convert a PEM-encoded certificate to base64-encoded DER.
+
+    This is the encoding expected by the certs field of the
+    /settings/crl/diagnostics/validate endpoint.
+    """
+    cert = x509.load_pem_x509_certificate(cert_pem.encode(), default_backend())
+    der = cert.public_bytes(serialization.Encoding.DER)
+    return base64.b64encode(der).decode()
+
+
+def crl_test_validate(cluster, policy=None, certs=None):
+    """POST /settings/crl/diagnostics/validate (the CRL test endpoint).
+
+    policy: 'Permissive' | 'Require' (omit to let the server default to
+            'Require').
+    certs:  list of certs (each either a PEM string or base64-encoded DER),
+            or None to validate the cluster's own certs (client and node
+            certs for every node).
+    """
+    body = {}
+    if policy is not None:
+        body['policy'] = policy
+    if certs is not None:
+        body['certs'] = certs
+    return testlib.post_succ(
+        cluster, '/settings/crl/diagnostics/validate', json=body).json()
 
 
 def get_crl_status(cluster):

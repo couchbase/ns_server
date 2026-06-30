@@ -12,7 +12,7 @@
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
 
--export([verify_fun/1, verify/4, verify_local_with_expiry/4]).
+-export([verify_fun/1, verify/4, verify_local_with_expiry/4, crl_check/2]).
 
 -spec verify_fun(CRLScope :: crl_scope()) ->
           fun((#'OTPCertificate'{}, term(), term()) ->
@@ -83,14 +83,9 @@ verify_local_with_expiry(OtpCert, valid_peer, CRLScope, State) ->
             %% other cert: the cluster publishes an empty CRL issued by the OOTB
             %% CA (see ns_server_cert / cb_crl_manager generated CRLs), so their
             %% serial is simply not on a revocation list -> good.
-            try crl_check(OtpCert, Policy) of
+            case crl_check(OtpCert, Policy) of
                 {valid, Expiry} -> {{valid, State}, Expiry};
                 {{fail, Reason}, Expiry} -> {{fail, Reason}, Expiry}
-            catch
-                C:E:ST ->
-                    ?log_error("CRL check exception ~p:~p~n~p",
-                                [C, E, ST]),
-                    {{fail, internal_error}, undefined}
             end;
         timeout ->
             %% This can happen during startup when cb_crl_manager has
@@ -152,21 +147,27 @@ wait_for_value(GetFun, Remaining) ->
 -spec crl_check(#'OTPCertificate'{}, permissive | require) ->
           {valid | {fail, term()}, calendar:datetime() | undefined}.
 crl_check(OtpCert, Policy) when Policy == permissive; Policy == require ->
-    DPsAndCRLs = build_dps_and_crls(OtpCert),
-    Expiry = compute_expiry(DPsAndCRLs),
-    TrustedDerCAs = ns_server_cert:trusted_CAs(der),
-    IssuerFun = make_issuer_fun(TrustedDerCAs),
-    Opts = [{issuer_fun, {IssuerFun, undefined}},
-            {undetermined_details, true}],
-    Result =
-        case public_key:pkix_crls_validate(OtpCert, DPsAndCRLs, Opts) of
-            valid ->
-                valid;
-            {bad_cert, Reason} ->
-                SubjectStr = ns_server_cert:get_subject(OtpCert),
-                handle_bad_cert_crl_reason(Reason, Policy, SubjectStr)
-        end,
-    {Result, Expiry}.
+    try
+        DPsAndCRLs = build_dps_and_crls(OtpCert),
+        Expiry = compute_expiry(DPsAndCRLs),
+        TrustedDerCAs = ns_server_cert:trusted_CAs(der),
+        IssuerFun = make_issuer_fun(TrustedDerCAs),
+        Opts = [{issuer_fun, {IssuerFun, undefined}},
+                {undetermined_details, true}],
+        Result =
+            case public_key:pkix_crls_validate(OtpCert, DPsAndCRLs, Opts) of
+                valid ->
+                    valid;
+                {bad_cert, Reason} ->
+                    SubjectStr = ns_server_cert:get_subject(OtpCert),
+                    handle_bad_cert_crl_reason(Reason, Policy, SubjectStr)
+            end,
+        {Result, Expiry}
+    catch
+        C:E:ST ->
+            ?log_error("CRL check exception ~p:~p~n~p", [C, E, ST]),
+            {{fail, internal_error}, undefined}
+    end.
 
 handle_bad_cert_crl_reason({revoked, Reason}, Policy, SubjectStr) ->
     ?log_debug("(CRL) Certificate revoked \"~s\" (policy=~p): ~p",
