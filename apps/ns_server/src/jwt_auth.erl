@@ -502,12 +502,15 @@ validate_boolean_claim(ClaimValue, Config) ->
     end.
 
 -spec validate_custom_number_enum_check(number(), map()) -> ok |
-    {error, binary()}.
+          {error, binary()}.
 validate_custom_number_enum_check(Value, Config) ->
     case maps:get(enum, Config, undefined) of
         undefined -> ok;
         Enum ->
-            case lists:member(Value, Enum) of
+            %% lists:member/2 uses =:= (strict equality), which would treat 1.0
+            %% and 1 as distinct; use == so integer and float representations of
+            %% the same number match, per JSON Schema number semantics.
+            case lists:any(fun(E) -> Value == E end, Enum) of
                 true -> ok;
                 false ->
                     EnumStr = lists:join(", ", [format_number(N) || N <- Enum]),
@@ -1152,6 +1155,20 @@ custom_claims_validation_test() ->
                                    #{type => number,
                                      enum => [1, 2, 3, 4, 5],
                                      mandatory => true})),
+     %% Float representation of an integer enum value must match (e.g. Keycloak
+     %% serializes integer claims as JSON floats like 1.0)
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"level">> => 2.0},
+                         <<"level">>,
+                         #{type => number,
+                           enum => [1, 2, 3, 4, 5],
+                           mandatory => true})),
+     ?_assertMatch({error, _}, validate_single_custom_claim(
+                                 #{<<"level">> => 6.0},
+                                 <<"level">>,
+                                 #{type => number,
+                                   enum => [1, 2, 3, 4, 5],
+                                   mandatory => true})),
 
      %% Test boolean validation
      ?_assertEqual(ok, validate_single_custom_claim(
