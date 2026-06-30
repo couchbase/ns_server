@@ -57,6 +57,11 @@
 %% @doc Validate a mapping rule that transforms a claim's value. A mapping rule
 %% is a space-separated pair of a regular expression pattern and a substitution
 %% template.
+%%
+%% The rule is split on the first space, so the pattern cannot contain a literal
+%% space. Use \s (or \x20, [[:space:]]) to match whitespace in the value being
+%% mapped. The template cannot contain whitespace at all, because every value it
+%% can produce is a user, group or role name, and none of those may contain it.
 -spec validate_mapping_rule(MappingRule :: mapping_rule_str()) ->
           {value, mapping_rule()} | {error, binary()}.
 validate_mapping_rule(RuleStr) ->
@@ -68,13 +73,22 @@ validate_mapping_rule(RuleStr) ->
         {ok, _} ->
             case string:split(Trimmed, " ", leading) of
                 [Pattern, Template] ->
-                    %% Validate the pattern separately.
-                    case re:compile(Pattern) of
-                        {ok, _} -> {value, {Pattern, Template}};
-                        {error, {Error, At}} ->
-                            Err = io_lib:format("~s (at character #~b)",
-                                                [Error, At]),
-                            {error, lists:flatten(Err)}
+                    case re:run(Template, "\\s") of
+                        {match, _} ->
+                            {error, "Mapping rule template must not contain "
+                             "whitespace, since user, group and role names "
+                             "cannot. To match whitespace in the value being "
+                             "mapped, use \\s in the pattern"};
+                        nomatch ->
+                            %% Validate the pattern separately.
+                            case re:compile(Pattern) of
+                                {ok, _} -> {value, {Pattern, Template}};
+                                {error, {Error, At}} ->
+                                    Err = io_lib:format(
+                                            "~s (at character #~b)",
+                                            [Error, At]),
+                                    {error, lists:flatten(Err)}
+                            end
                     end;
                 _ ->
                     {error, "Invalid mapping rule"}
@@ -87,7 +101,10 @@ validate_mapping_rule(RuleStr) ->
 %% @doc Applies a single regex mapping rule
 %% A mapping rule is a string of the form "pattern template" where pattern is
 %% a regex pattern to match on the input value and template is a replacement
-%% template string, separated by whitespace.
+%% template string, separated by a single space. The template is an re:replace
+%% replacement rather than a regex, so it understands capture group references
+%% only. Escapes such as \s or \x20 are not interpreted there and yield the
+%% literal characters that follow the backslash.
 %% For example, the rule "(.*)@example.com cb-\\1" will map any email
 %% address ending in @example.com to cb-<token preceding @example.com>.
 -spec apply_mapping_rule(Value :: input_value(), Rule :: mapping_rule()) ->
@@ -232,7 +249,24 @@ validate_mapping_rule_test_() ->
 
      %% Invalid template references
      ?_assertMatch({error, _},
-                   validate_mapping_rule("(.*) \\2")) % Non-existent group
+                   validate_mapping_rule("(.*) \\2")), % Non-existent group
+
+     %% Template must not contain whitespace
+     ?_assertMatch({error, _},
+                   validate_mapping_rule("^my group$ cb-admins")),
+     ?_assertMatch({error, _},
+                   validate_mapping_rule("^admin$ role one")),
+     ?_assertMatch({error, _},
+                   validate_mapping_rule("(.*) \\1 extra")),
+
+     %% Whitespace in the value being mapped is matched from the pattern with
+     %% an escape instead of a literal space.
+     ?_assertEqual({value, {"^my\\sgroup$", "cb-admins"}},
+                   validate_mapping_rule("^my\\sgroup$ cb-admins")),
+     ?_assertEqual({value, {"^my[[:space:]]group$", "cb-admins"}},
+                   validate_mapping_rule("^my[[:space:]]group$ cb-admins")),
+     ?_assertEqual({value, {"(.*)\\s(.*)", "cb-\\1-\\2"}},
+                   validate_mapping_rule("(.*)\\s(.*) cb-\\1-\\2"))
     ].
 
 mapping_test_() ->
