@@ -35,7 +35,7 @@
 
 -define(CONFIG_KEY, lighthouse).
 -define(TABLE, external_payloads).
--define(SENDS_METRIC, <<"lighthouse_telemetry_sends">>).
+-define(SENDS_METRIC, <<"telemetry_sends">>).
 
 -record(state, {
                 enabled = true :: boolean(),
@@ -156,7 +156,7 @@ default_config() ->
     #{reporting_enabled => true,
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
-      reporting_endpoint => <<"lighthouse.couchbase.internal">>,
+      reporting_endpoint => <<"couchbase.fleetmanager.internal">>,
       reporting_port => 443,
       external_nodes_max_payload_bytes => 10_240,  %% 10KiB
       external_nodes_max_count => 100}.
