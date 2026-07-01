@@ -816,7 +816,11 @@ handle_import_ear_dek(Req) ->
        validator:required(dekPaths, _),
        validator:string_array(dekPaths, fun (_) -> ok end, false, _),
        validator:default(timeout, 300000, _),
-       validator:integer(timeout, 1, max, _),
+       %% Bound the timeout to the max value accepted by gen_server:call/
+       %% receive..after (2^32-1 ms). A larger value (e.g. a caller passing a
+       %% duration in nanoseconds) makes gen_server:call raise timeout_value,
+       %% crashing the request with a 500 instead of returning a clean 400.
+       validator:integer(timeout, 1, ?MAX_32BIT_SIGNED_INT, _),
        validator:unsupported(_)]).
 
 %% Returns warning as binary if master password is not configured on some
