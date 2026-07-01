@@ -33,9 +33,9 @@ params_internal() ->
      {"reportTimeoutSeconds",
       #{cfg_key => reporting_timeout_seconds, type => pos_int}},
      {"externalNodesMaxPayloadBytes",
-      #{cfg_key => external_nodes_max_payload_bytes, type => int}},
+      #{cfg_key => external_nodes_max_payload_bytes, type => non_neg_int}},
      {"externalNodesMaxCount",
-      #{cfg_key => external_nodes_max_count, type => int}}].
+      #{cfg_key => external_nodes_max_count, type => non_neg_int}}].
 
 type_spec(endpoint) ->
     #{validators => [string, validate_endpoint()]}.
