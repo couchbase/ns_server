@@ -614,7 +614,8 @@ class Cluster:
         # get an error creating the bucket
         self.wait_for_rebalance(wait_balanced=False, verbose=verbose)
         response = testlib.post_succ(self, "/pools/default/buckets",
-                                     expected_code=expected_code, data=data)
+                                     expected_code=expected_code, data=data,
+                                     retry_on_503=3)
 
         # When the bucket creation was successful, we may wish to wait for the
         # bucket to be ready on all nodes
@@ -648,7 +649,8 @@ class Cluster:
         self.wait_for_rebalance(wait_balanced=False, verbose=verbose)
         bucket_name = data['name']
         return testlib.post_succ(self, f"/pools/default/buckets/{bucket_name}",
-                                 data=data, expected_code=expected_code)
+                                 data=data, expected_code=expected_code,
+                                 retry_on_503=3)
 
     def delete_bucket(self, name, verbose=False):
         # Note: no need to wait for the cluster to be balanced
@@ -658,7 +660,7 @@ class Cluster:
     def is_bucket_healthy_on_all_nodes(self, name):
         # Check if bucket is in the buckets list yet
         all_buckets_json = testlib.get_succ(
-            self, "/pools/default/buckets").json()
+            self, "/pools/default/buckets", retry_on_503=3).json()
         bucket_missing = True
         for bucket in all_buckets_json:
             if name == bucket["name"]:
@@ -669,7 +671,8 @@ class Cluster:
 
         # Check if the bucket is healthy on every node
         r = testlib.get_succ(self,
-                             f"/pools/default/buckets/{name}")
+                             f"/pools/default/buckets/{name}",
+                             retry_on_503=3)
         nodes = r.json()["nodes"]
         if len(nodes) == 0:
             return False
@@ -898,7 +901,8 @@ class Cluster:
                                  data="erlang:get_cookie()").text
 
     def get_bucket_uuid(self, bucket, none_if_not_found=False):
-        r = testlib.get(self, f'/pools/default/buckets/{bucket}')
+        r = testlib.get(self, f'/pools/default/buckets/{bucket}',
+                        retry_on_503=3)
         if r.status_code == 404 and none_if_not_found:
             return None
         assert r.status_code == 200, testlib.format_http_error(r, [200])
@@ -911,12 +915,13 @@ class Cluster:
         return nodes[0]
 
     def get_buckets(self):
-        r = testlib.get_succ(self, f'/pools/default/buckets')
+        r = testlib.get_succ(self, f'/pools/default/buckets', retry_on_503=3)
         return r.json()
 
     def get_bucket(self, name):
         return testlib.json_response(
-            testlib.get_succ(self, f"/pools/default/buckets/{name}"),
+            testlib.get_succ(self, f"/pools/default/buckets/{name}",
+                             retry_on_503=3),
             "non-json response for " + f"/pools/default/buckets/{name}")
 
     def get_vbucket_map(self, name):

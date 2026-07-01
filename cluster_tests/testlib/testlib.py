@@ -512,7 +512,7 @@ def request(method, cluster_or_node, path, https=False, session=None,
                         print_session=print_session, **kwargs_with_auth)
 
 def http_request(method, url, expected_code=None, verbose=True, session=None,
-                 print_session=True, **kwargs):
+                 print_session=True, retry_on_503=0, **kwargs):
     if 'timeout' not in kwargs:
         kwargs['timeout'] = 60
 
@@ -523,10 +523,17 @@ def http_request(method, url, expected_code=None, verbose=True, session=None,
     if verbose:
         print(f'sending {session_str}{method} {url} {kwargs} ' \
               f'(expected code {expected_code})')
-    if session is not None:
-        res = session.request(method, url, **kwargs)
-    else:
-        res = requests.request(method, url, **kwargs)
+    for attempt in range(retry_on_503 + 1):
+        if session is not None:
+            res = session.request(method, url, **kwargs)
+        else:
+            res = requests.request(method, url, **kwargs)
+        if res.status_code != 503 or attempt == retry_on_503:
+            break
+        if verbose:
+            print(f'result: {res.status_code}, retrying in 100 ms '
+                  f'({attempt + 1}/{retry_on_503})')
+        time.sleep(0.1)
     if verbose:
         text = ''
         if hasattr(res, 'text') and res.text is not None:
