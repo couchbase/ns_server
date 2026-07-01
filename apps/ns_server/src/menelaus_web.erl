@@ -414,9 +414,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_alerts_srv:handle_settings_alerts_limits_get/1};
                 ["settings", "stats"] ->
                     {{[settings], read}, fun menelaus_web_settings:handle_settings_stats/1};
-                ["internal", "settings", "lighthouse" | PathRest] ->
-                    {{[admin, settings, lighthouse], read},
-                     fun menelaus_web_lighthouse:handle_get_settings/2,
+                ["internal", "settings", "telemetry" | PathRest] ->
+                    {{[admin, settings, telemetry], read},
+                     fun menelaus_web_telemetry:handle_get_settings/2,
                      [PathRest]};
                 ["internal", "settings", "metrics" | PathRest] ->
                     {{[admin, settings, metrics], read},
@@ -801,9 +801,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                      fun menelaus_web_alerts_srv:handle_settings_alerts_limits_post/1};
                 ["settings", "stats"] ->
                     {{[settings], write}, fun menelaus_web_settings:handle_settings_stats_post/1};
-                ["internal", "settings", "lighthouse" | PathRest] ->
-                    {{[admin, settings, lighthouse], write},
-                     fun menelaus_web_lighthouse:handle_post_settings/2,
+                ["internal", "settings", "telemetry" | PathRest] ->
+                    {{[admin, settings, telemetry], write},
+                     fun menelaus_web_telemetry:handle_post_settings/2,
                      [PathRest]};
                 ["internal", "settings", "metrics" | PathRest] ->
                     {{[admin, settings, metrics], write},
@@ -1149,9 +1149,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                 ["_cbauth", "extractUserFromCert"] ->
                     {{[admin, internal], all},
                      fun menelaus_cbauth:handle_extract_user_from_cert_post/1};
-                ["_lighthouseCollector", "ingest"] ->
-                    {{[lighthouse_telemetry], write},
-                     fun menelaus_web_lighthouse:handle_ingest/1, []};
+                ["_telemetryCollector", "ingest"] ->
+                    {{[telemetry], write},
+                     fun menelaus_web_telemetry:handle_ingest/1, []};
                 ["_log"] ->
                     {{[admin, internal], all}, fun menelaus_web_misc:handle_log_post/1};
                 ["_event"] ->

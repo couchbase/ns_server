@@ -7,10 +7,9 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 
-%% @doc This process sends telemetry reports to a lighthouse portal, at regular
-%% intervals.
+%% @doc This process sends telemetry reports to a portal at regular intervals.
 
--module(lighthouse_reporter).
+-module(telemetry_reporter).
 
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
@@ -33,9 +32,9 @@
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
--define(CONFIG_KEY, lighthouse).
+-define(CONFIG_KEY, telemetry).
 -define(TABLE, external_payloads).
--define(SENDS_METRIC, <<"lighthouse_telemetry_sends">>).
+-define(SENDS_METRIC, <<"telemetry_sends">>).
 
 -record(state, {
                 enabled = true :: boolean(),
@@ -93,7 +92,7 @@ handle_info(report, State) ->
     %% a report is already in progress
     {noreply, State};
 handle_info(report_done, State) ->
-    %% Clear the external payloads now they've been sent to the lighthouse which
+    %% Clear the external payloads now they've been sent to the portal which
     %% should retain the information
     ets:delete_all_objects(?TABLE),
     {noreply, State#state{report_pid = undefined}};
@@ -156,7 +155,7 @@ default_config() ->
     #{reporting_enabled => true,
       reporting_interval_hours => 2,
       reporting_timeout_seconds => 1,
-      reporting_endpoint => <<"lighthouse.couchbase.internal">>,
+      reporting_endpoint => <<"couchbase.fleetmanager.internal">>,
       reporting_port => 443,
       external_nodes_max_payload_bytes => 10_240,  %% 10KiB
       external_nodes_max_count => 100}.
@@ -209,26 +208,27 @@ post(URL, Port, Body, Timeout) ->
                                            [{connect_timeout, Timeout},
                                             {server_verification, false}]) of
         ok ->
-            ?log_debug("Lighthouse report sent successfuly"),
+            ?log_debug("Telemetry report sent successfuly"),
             success;
         {error, rest_error, Reason, _} ->
-            %% When the lighthouse isn't available, we will usually get an
+            %% When the portal isn't available, we will usually get an
             %% nxdomain error, so we don't need to log it at error level
-            ?log_debug("Sending lighthouse report failed. Error: ~s", [Reason]),
+            ?log_debug("Sending telemetry report failed. Error: ~s",
+                       [Reason]),
             failure;
         {client_error, JsonResponse} ->
-            %% Error from lighthouse itself
-            ?log_debug("Lighthouse report rejected by portal. Error: ~s",
+            %% Error from portal itself
+            ?log_debug("Telemetry report rejected by portal. Error: ~s",
                        [ejson:encode(JsonResponse)]),
             failure;
         {ok, _JsonResponse} ->
             %% Ignore unexpected success payload
-            ?log_debug("Lighthouse report sent successfuly. Ignored unexpected "
-                       "response"),
+            ?log_debug("Telemetry report sent successfuly. Ignored "
+                       "unexpected response"),
             success
     catch
         _:Error:Stack ->
-            ?log_error("Sending lighthouse report crashed with error: ~p"
+            ?log_error("Sending telemetry report crashed with error: ~p"
                        "~nStacktrace: ~p",
                        [Error, Stack]),
             failure
