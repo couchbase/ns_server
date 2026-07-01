@@ -452,6 +452,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
 
     let isMembase = formData.bucketType === 'membase';
     let isEphemeral = formData.bucketType === 'ephemeral';
+    let isMemcached = formData.bucketType === 'memcached';
 
     copyProperty('name');
     copyProperty('ramQuotaMB');
@@ -541,7 +542,7 @@ class MnBucketDialogComponent extends MnLifeCycleHooksToStream {
     copyProperty('flushEnabled');
     saveData.flushEnabled = saveData.flushEnabled ? 1 : 0;
 
-    if (isEnterprise && !(this.bucket && this.bucket.enableCrossClusterVersioning)) {
+    if (isEnterprise && !isMemcached && !(this.bucket && this.bucket.enableCrossClusterVersioning)) {
       copyProperty('enableCrossClusterVersioning');
     }
     return saveData;
