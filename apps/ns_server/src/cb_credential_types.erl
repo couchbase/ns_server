@@ -433,9 +433,9 @@ validate_pkey_with_passphrase(Props) ->
 
 export_value(V) when is_binary(V)  -> V;
 export_value(V) when is_list(V)    -> list_to_binary(V);
+export_value(V) when is_boolean(V) -> V;
 export_value(V) when is_atom(V)    -> atom_to_binary(V);
 export_value(V) when is_integer(V) -> V;
-export_value(V) when is_boolean(V) -> V;
 export_value(V)                    -> V.
 
 -ifdef(TEST).

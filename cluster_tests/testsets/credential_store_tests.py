@@ -123,6 +123,7 @@ def http_body():
             "authScheme": "bearer",
             "token": "sk_live_secret_token",
             "headerName": "Authorization",
+            "skipVerify": True,
         }
     }
 
@@ -168,7 +169,8 @@ ALL_CRED_TYPES = {
     "http": (http_body,
              ["token"],
              {"authScheme": "bearer",
-              "headerName": "Authorization"}),
+              "headerName": "Authorization",
+              "skipVerify": True}),
     "couchbase": (couchbase_body,
                   ["password"],
                   {"encryptionType": "none",
