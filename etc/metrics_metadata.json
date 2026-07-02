@@ -459,9 +459,9 @@
             }
         ]
     },
-    "cm_lighthouse_telemetry_sends_total": {
+    "cm_telemetry_sends_total": {
         "type": "counter",
-        "help": "Number of times lighthouse telemetry sends were attempted",
+        "help": "Number of times telemetry sends were attempted",
         "added": "7.6.12",
         "stability": "internal",
         "labels": [

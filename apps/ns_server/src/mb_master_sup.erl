@@ -54,9 +54,9 @@ child_specs() ->
       permanent, 1000, worker, []},
      {activity_aggregator, {activity_aggregator, start_link, []},
       permanent, 1000, worker, []},
-     {lighthouse_reporter, {lighthouse_reporter, start_link, []},
+     {telemetry_reporter, {telemetry_reporter, start_link, []},
       permanent, 1000, worker, []}] ++
-    [{cb_cluster_secrets, {cb_cluster_secrets, start_link_master_monitor, []},
-      permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()] ++
-    [{license_reporting, {license_reporting, start_link, []},
-      permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].
+        [{cb_cluster_secrets, {cb_cluster_secrets, start_link_master_monitor, []},
+          permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()] ++
+        [{license_reporting, {license_reporting, start_link, []},
+          permanent, 1000, worker, []} || cluster_compat_mode:is_enterprise()].
