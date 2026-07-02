@@ -334,7 +334,9 @@ validate_json_object(Value) when is_binary(Value) ->
         _ -> {error, "must be a JSON object"}
     catch
         _:_ -> {error, "invalid JSON"}
-    end.
+    end;
+validate_json_object(_Value) ->
+    {error, "must be a JSON-encoded string"}.
 
 %% HTTP: require scheme-specific fields based on authScheme.
 cross_field_validators(http) ->
