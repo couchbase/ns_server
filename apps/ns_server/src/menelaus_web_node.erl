@@ -199,7 +199,11 @@ node_init(Req, Props) ->
 handle_node("self", Req) ->
     handle_node(node(), Req);
 handle_node(S, Req) when is_list(S) ->
-    handle_node(list_to_atom(S), Req);
+    try list_to_existing_atom(S) of
+        Node -> handle_node(Node, Req)
+    catch
+        error:badarg -> menelaus_util:reply_not_found(Req)
+    end;
 handle_node(Node, Req) when is_atom(Node) ->
     case lists:member(Node, ns_node_disco:nodes_wanted()) of
         true ->
