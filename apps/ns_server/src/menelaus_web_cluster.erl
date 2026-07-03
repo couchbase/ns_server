@@ -631,16 +631,16 @@ do_eject_myself() ->
 
 handle_eject_post(Req) ->
     PostArgs = mochiweb_request:parse_post(Req),
-    %
-    % either Eject a running node, or eject a node which is down.
-    %
-    % request is a urlencoded form with otpNode
-    %
-    % responses are 200 when complete
-    %               401 if creds were not supplied and are required
-    %               403 if creds were supplied and are incorrect
-    %               400 if the node to be ejected doesn't exist
-    %
+    %%
+    %% either Eject a running node, or eject a node which is down.
+    %%
+    %% request is a urlencoded form with otpNode
+    %%
+    %% responses are 200 when complete
+    %%               401 if creds were not supplied and are required
+    %%               403 if creds were supplied and are incorrect
+    %%               400 if the node to be ejected doesn't exist
+    %%
     OtpNodeStr = case proplists:get_value("otpNode", PostArgs) of
                      undefined -> undefined;
                      "Self" -> atom_to_list(node());
@@ -650,12 +650,12 @@ handle_eject_post(Req) ->
         undefined ->
             reply_text(Req, "Bad Request\n", 400);
         _ ->
-            OtpNode = list_to_atom(OtpNodeStr),
-            case ns_cluster_membership:get_cluster_membership(OtpNode) of
-                active ->
-                    reply_text(Req, "Cannot remove active server.\n", 400);
-                _ ->
-                    do_handle_eject_post(Req, OtpNode)
+            try list_to_existing_atom(OtpNodeStr) of
+                OtpNode ->
+                    check_if_active_and_continue_handle_eject_post(Req, OtpNode)
+            catch
+                error:badarg ->
+                    reply_eject_unknown_node_error(Req, OtpNodeStr)
             end
     end.
 
@@ -673,6 +673,14 @@ try_leave_node(Req, OtpNode) ->
         reply_text(Req, Msg, 503)
     end.
 
+check_if_active_and_continue_handle_eject_post(Req, OtpNode) ->
+    case ns_cluster_membership:get_cluster_membership(OtpNode) of
+        active ->
+            reply_text(Req, "Cannot remove active server.\n", 400);
+        _ ->
+            do_handle_eject_post(Req, OtpNode)
+    end.
+
 do_handle_eject_post(Req, OtpNode) ->
     %% Verify that the server lists are consistent with cluster membership
     %% states in all buckets.
@@ -684,23 +692,26 @@ do_handle_eject_post(Req, OtpNode) ->
     case OtpNode =:= node() of
         true ->
             menelaus_util:survive_web_server_restart(
-                fun() ->
-                    ns_audit:remove_node(Req, node()),
-                    do_eject_myself(),
-                    reply(Req, 200)
-                end);
+              fun() ->
+                      ns_audit:remove_node(Req, node()),
+                      do_eject_myself(),
+                      reply(Req, 200)
+              end);
         false ->
             case lists:member(OtpNode, ns_node_disco:nodes_wanted()) of
                 true ->
                     try_leave_node(Req, OtpNode);
                 false ->
-                                                % Node doesn't exist.
-                    ?MENELAUS_WEB_LOG(0018, "Request to eject nonexistant "
-                                      "server failed.  Requested node: ~p",
-                                      [OtpNode]),
-                    reply_text(Req, "Server does not exist.\n", 400)
+                    reply_eject_unknown_node_error(Req, OtpNode)
+
             end
     end.
+
+reply_eject_unknown_node_error(Req, OtpNode) ->
+    ?MENELAUS_WEB_LOG(0018, "Request to eject nonexistant "
+                             "server failed.  Requested node: ~p",
+                             [OtpNode]),
+    reply_text(Req, "Server does not exist.\n", 400).
 
 setup_services_validators() ->
     FixedServices = config_profile:get_value(fixed_services, undefined),
