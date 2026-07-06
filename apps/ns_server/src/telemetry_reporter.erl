@@ -265,7 +265,7 @@ build_external_nodes() ->
 
 create_report() ->
     Config = ns_config:get(),
-    Nodes = ns_node_disco:nodes_actual(),
+    Nodes = ns_node_disco:nodes_wanted(),
     NodesData =
         lists:map(
           fun (Node) ->
@@ -352,7 +352,7 @@ create_report_test_() ->
              PidMap1 = mock_helpers:setup_mocks([ns_heart]),
              {ok, NsDoctorPid} = ns_doctor:start_link(),
              PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
-             meck:expect(ns_node_disco, nodes_actual, 0, [node()]),
+             meck:expect(ns_node_disco, nodes_wanted, 0, [node()]),
              ets:new(?TABLE, [named_table, set]),
              PidMap2
      end,
