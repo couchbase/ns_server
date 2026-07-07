@@ -496,6 +496,8 @@ validate_volumes(Name, State) ->
       Name,
       [validator:required(logManifestName, _),
        validator:string(logManifestName, _),
+       validator:required(logManifestTerm, _),
+       validator:integer(logManifestTerm, 1, max_uint64, _),
        validator:convert(logManifestName, fun list_to_binary/1, _),
        validator:required(logicalSize, _),
        validator:integer(logicalSize, _),
