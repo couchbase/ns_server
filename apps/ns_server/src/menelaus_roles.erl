@@ -335,6 +335,7 @@ default_roles_totoro() ->
        {folder, admin},
        {desc, <<"Can perform backup related tasks.">>}],
       [{[{catalog, any}], none},
+       {[admin, catalogs], [read]},
        {[admin], none},
        {[settings, metrics], none},
        {[{credentials, any}], none},
@@ -2386,6 +2387,7 @@ catalog_admin_access_matrix_test__() ->
           <<"ro_admin">>                  => {true, false},
           <<"cluster_admin">>             => {true, true},
           <<"service_admin">>             => {true, true},
+          <<"backup_admin">>              => {true, false},
           <<"external_catalog_reader">>   => {true, false},
           <<"external_catalog_admin">>    => {true, true}},
     lists:foreach(
