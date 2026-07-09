@@ -44,6 +44,7 @@ from testlib import test_tag_decorator
 from testlib.util import Service, strings_to_services
 
 from testsets import \
+    audit_tests, \
     authn_tests, \
     auto_failover_test, \
     sample_buckets, \

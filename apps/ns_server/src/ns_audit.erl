@@ -1071,7 +1071,7 @@ set_user_group(Req, Id, Roles, Description, LDAPGroup, Reason) ->
          {roles, {list, [menelaus_web_rbac:role_to_string(Role)
                          || Role <- Roles]}},
          {ldap_group_ref, LDAPGroup},
-         {description, Description},
+         {group_description, Description},
          {reason, Reason}]).
 
 delete_user_group(Req, Id) ->

@@ -945,7 +945,7 @@
           "optional_fields" : {
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
-              "description" : "",
+              "group_description" : "",
               "ldap_group_ref" : ""
           }
       },
