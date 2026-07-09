@@ -61,6 +61,14 @@
 %% Amount of time to wait between state checks (ms)
 -define(SAMPLE_RATE, ?get_timeout(sample_rate, 60000)).
 
+%% Upper bound on how long we cache CRL alert results before re-gathering
+%% status from every node (s)
+-define(CRL_CHECK_MAX_INTERVAL_SEC,
+        ?get_timeout(crl_check_interval_sec, 60 * 60 )).
+
+%% Per-node timeout for the get_status RPC issued during the CRL check (ms).
+-define(CRL_STATUS_CALL_TIMEOUT, ?get_timeout(crl_status_call, 30000)).
+
 %% Amount of time between sending users the same alert (s)
 -define(ALERT_TIMEOUT, 60 * 10).
 
@@ -155,6 +163,10 @@ short_description(cert_expires_soon) ->
     "certificate will expire soon";
 short_description(cert_expired) ->
     "certificate has expired";
+short_description(crl_expires_soon) ->
+    "certificate revocation list will expire soon";
+short_description(crl_expired) ->
+    "certificate revocation list has expired";
 short_description(memory_threshold) ->
     "system memory usage threshold exceeded";
 short_description(history_size_warning) ->
@@ -247,6 +259,12 @@ errors(xdcr_ca_expires_soon) ->
     "XDCR CA certificate (subject: '~s') will expire at ~s.";
 errors(xdcr_ca_expired) ->
     "XDCR CA certificate (subject: '~s') has expired.";
+errors(crl_expires_soon) ->
+    "Certificate Revocation List (CRL) issued by '~s' (CRL number: ~s, "
+    "file(s): ~s) will expire at ~s (present on node(s): ~s).";
+errors(crl_expired) ->
+    "Certificate Revocation List (CRL) issued by '~s' (CRL number: ~s, "
+    "file(s): ~s) has expired (present on node(s): ~s).";
 errors(memory_critical) ->
     "CRITICAL: On node ~s ~p memory use is ~.2f% of total available "
     "memory, above the critical threshold of ~b%.";
@@ -574,7 +592,9 @@ alert_keys_added_in_totoro() ->
      backup_failure,
      cont_backup_event_failed,
      cont_backup_gaps,
-     cm_bucket_autoreprovision_total].
+     cm_bucket_autoreprovision_total,
+     crl_expired,
+     crl_expires_soon].
 
 -spec alert_keys_disabled_by_default() -> [atom()].
 alert_keys_disabled_by_default() ->
@@ -618,7 +638,7 @@ start_timer() ->
 global_checks() ->
     [oom, ip, write_fail, overhead, disk, audit_write_fail,
      indexer_ram_max_usage, cas_drift_threshold, communication_issue,
-     time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs,
+     time_out_of_sync, disk_usage_analyzer_stuck, certs, xdcr_certs, crls,
      memory_threshold, history_size_warning, indexer_low_resident_percentage,
      stuck_rebalance, memcached_connections, disk_guardrail,
      indexer_diverging_replicas, xdcr_replication_deleted, encr_at_rest,
@@ -976,6 +996,13 @@ check(xdcr_certs, Opaque, _History, _Stats) ->
     case mb_master:master_node() == node() andalso
         cluster_compat_mode:is_goxdcr_enabled() of
         true -> check_xdcr_certs(Opaque);
+        false -> Opaque
+    end;
+
+check(crls, Opaque, _History, _Stats) ->
+    case mb_master:master_node() == node() andalso
+        cluster_compat_mode:is_cluster_totoro() of
+        true -> check_crls(Opaque);
         false -> Opaque
     end;
 
@@ -1370,6 +1397,185 @@ calculate_xdcr_cert_alerts(#{trusted_certs := TrustedCerts,
     {CAAlerts, CARecheckTime} = AlertsFun(TrustedCerts, ca),
     {ClientAlerts, ClientRecheckTime} = AlertsFun(ClientCerts, client_cert),
     {min(CARecheckTime, ClientRecheckTime), CAAlerts ++ ClientAlerts}.
+
+check_crls(Opaque) ->
+    Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+    {NewOpaque, Aggregated} =
+        case dict:find(crls_check, Opaque) of
+            {ok, #{retry_time := RetryTime, result := Res}}
+              when Now < RetryTime ->
+                {Opaque, Res};
+            _ ->
+                {RecheckTime, Agg} = gather_crl_alerts(Now),
+                {dict:store(crls_check,
+                            #{retry_time => crl_retry_time(RecheckTime, Now),
+                              result     => Agg},
+                            Opaque), Agg}
+        end,
+
+    fire_crl_alerts(Aggregated),
+    NewOpaque.
+
+crl_retry_time(infinity, Now) ->
+    Now + ?CRL_CHECK_MAX_INTERVAL_SEC;
+crl_retry_time(RecheckTime, Now) ->
+    min(RecheckTime, Now + ?CRL_CHECK_MAX_INTERVAL_SEC).
+
+%% Gather CRL status from every node and aggregate by CRL content (checksum).
+%% Returns {RecheckTime, Aggregated} where RecheckTime is the earliest time any
+%% CRL could change alert state (or 'infinity' if none can on their own).
+gather_crl_alerts(Now) ->
+    WarningDays = cb_crl_manager:crl_expiration_warning_days(),
+    WarningSeconds = WarningDays * 24 * 60 * 60,
+
+    Nodes = ns_node_disco:nodes_actual(),
+    case ns_node_disco:nodes_wanted() -- Nodes of
+        [] ->
+            ok;
+        Remaining ->
+            ?log_debug("Skipping CRL alert checks for unalive nodes: ~p",
+                       [Remaining])
+    end,
+
+    Results =
+        misc:parallel_map(
+            fun (Node) ->
+                rpc:call(Node, cb_crl_manager, get_status, [],
+                         ?CRL_STATUS_CALL_TIMEOUT)
+            end, Nodes, infinity),
+
+    {Aggregated, RecheckTime} =
+        lists:foldl(
+          fun ({Node, StatusList}, Acc) when is_list(StatusList) ->
+                  aggregate_node_crls(Node, StatusList, Now, WarningSeconds,
+                                      Acc);
+              ({Node, Error}, Acc) ->
+                  ?log_debug("Skipping CRL alerts for node ~p: ~p",
+                             [Node, Error]),
+                  Acc
+          end, {#{}, infinity}, lists:zip(Nodes, Results)),
+
+    {RecheckTime, Aggregated}.
+
+%% Fold one node's per-file CRL status into the {by-checksum map, recheck time}
+%% accumulator
+aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Acc) ->
+    lists:foldl(
+      fun (#{filename := Filename, entries := Entries}, Acc1) ->
+              lists:foldl(
+                fun (Entry, Acc2) ->
+                        add_crl_entry(Node, Filename, Entry, Now,
+                                      WarningSeconds, Acc2)
+                end, Acc1, Entries);
+          (_, Acc1) ->
+              Acc1
+      end, Acc, StatusList).
+
+add_crl_entry(Node, Filename,
+              #{status := Status,
+                checksum := Checksum,
+                next_update := NextUpdate} = Entry,
+              Now, WarningSeconds, {Map, Recheck}) when Checksum =/= <<>> ->
+    NextUpdateSecs =
+        case NextUpdate of
+            undefined -> undefined;
+            _ -> calendar:datetime_to_gregorian_seconds(NextUpdate)
+        end,
+    WarningThreshold = Now + WarningSeconds,
+    State =
+        case Status of
+            expired ->
+                expired;
+            ok when NextUpdateSecs =/= undefined ->
+                case NextUpdateSecs =< WarningThreshold of
+                    true  -> expires_soon;
+                    false -> none
+                end;
+            _ ->
+                none
+        end,
+
+    {merge_crl_alert(Entry, Filename, State, Node, Map),
+     min(Recheck,
+         crl_entry_recheck(Status, State, NextUpdateSecs, WarningSeconds))};
+add_crl_entry(_Node, _Filename, _Entry, _Now, _WarningSeconds, Acc) ->
+    Acc.
+
+%% Earliest time an entry could change alert state. Only entries that are valid
+%% right now (status ok) transition on their own as time passes
+crl_entry_recheck(ok, expires_soon, NextUpdateSecs, _WarningSeconds) ->
+    %% Flips to expired at next_update.
+    NextUpdateSecs;
+crl_entry_recheck(ok, none, NextUpdateSecs, WarningSeconds)
+  when is_integer(NextUpdateSecs) ->
+    %% Enters the warning window WarningSeconds before next_update.
+    NextUpdateSecs - WarningSeconds;
+crl_entry_recheck(_Status, _State, _NextUpdateSecs, _WarningSeconds) ->
+    infinity.
+
+merge_crl_alert(_Entry, _Filename, none=_State, _Node, Map) ->
+    Map;
+merge_crl_alert(#{checksum := Checksum,
+                  issuer := Issuer,
+                  next_update := NextUpdate,
+                  crl_number := CrlNum}, Filename, State, Node, Map) ->
+    case maps:find(Checksum, Map) of
+        {ok, #{state := Existing, nodes := Nodes, files := Files} = Info} ->
+            NewState = case Existing =:= expired orelse State =:= expired of
+                           true  -> expired;
+                           false -> expires_soon
+                       end,
+            Map#{Checksum =>
+                     Info#{state => NewState,
+                           nodes => ordsets:add_element(Node, Nodes),
+                           files => ordsets:add_element(Filename, Files)}};
+        error ->
+            Map#{Checksum => #{issuer      => Issuer,
+                               next_update => NextUpdate,
+                               crl_number  => CrlNum,
+                               state       => State,
+                               nodes       => [Node],
+                               files       => [Filename]}}
+    end.
+
+%% Raise one global alert per unique CRL, naming the issuing CA, the CRL number,
+%% the file(s) the CRL is stored in, the expiry time, and the nodes it is
+%% present on.
+fire_crl_alerts(Aggregated) ->
+    maps:foreach(
+      fun (Checksum, #{issuer := Issuer, next_update := NextUpdate,
+                       crl_number := CrlNum, state := State,
+                       nodes := Nodes, files := Files}) ->
+              NodesStr = format_crl_nodes(Nodes),
+              FilesStr = format_crl_files(Files),
+              CrlNumStr = format_crl_number(CrlNum),
+              case State of
+                  expired ->
+                      Error = fmt_to_bin(errors(crl_expired),
+                                         [Issuer, CrlNumStr, FilesStr,
+                                          NodesStr]),
+                      global_alert({crl_expired, {checksum, Checksum}}, Error);
+                  expires_soon ->
+                      Secs = calendar:datetime_to_gregorian_seconds(NextUpdate),
+                      Date = menelaus_web_cert:format_time(Secs),
+                      Error = fmt_to_bin(errors(crl_expires_soon),
+                                         [Issuer, CrlNumStr, FilesStr, Date,
+                                          NodesStr]),
+                      global_alert({crl_expires_soon, {checksum, Checksum}},
+                                   Error)
+              end
+      end, Aggregated).
+
+format_crl_nodes(Nodes) ->
+    string:join([misc:extract_node_address(N) || N <- lists:sort(Nodes)], ", ").
+
+format_crl_files(Files) ->
+    string:join([binary_to_list(F) || F <- lists:sort(Files)], ", ").
+
+format_crl_number(undefined) ->
+    "unknown";
+format_crl_number(CrlNum) when is_integer(CrlNum) ->
+    integer_to_list(CrlNum).
 
 alert_if_time_out_of_sync({time_offset_status, true}) ->
     Err = fmt_to_bin(errors(time_out_of_sync), [node()]),
@@ -1807,6 +2013,8 @@ params() ->
                              cfg_key => [alert_limits, max_indexer_ram]}},
      {"certExpirationDays", #{type => pos_int,
                               cfg_key => cert_exp_alert_days}},
+     {"crlExpirationDays", #{type => pos_int,
+                             cfg_key => crl_exp_alert_days}},
      {"lowIndexerResidentPerc", #{type => {int, 0, 100},
                                   cfg_key => [alert_limits,
                                               low_indexer_resident_percentage],
@@ -1856,9 +2064,11 @@ build_alert_limits() ->
 
 handle_settings_alerts_limits_get(Req) ->
     CertWarnDays = ns_server_cert:cert_expiration_warning_days(),
+    CrlWarnDays = cb_crl_manager:crl_expiration_warning_days(),
     menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
                                       [{alert_limits, build_alert_limits()},
-                                       {cert_exp_alert_days, CertWarnDays}], Req).
+                                       {cert_exp_alert_days, CertWarnDays},
+                                       {crl_exp_alert_days, CrlWarnDays}], Req).
 
 handle_settings_alerts_limits_post(Req) ->
     menelaus_web_settings2:handle_post(
@@ -1875,6 +2085,12 @@ handle_settings_alerts_limits_post(Req) ->
                 CertWarningDays ->
                     ns_config:set({cert, expiration_warning_days},
                                   CertWarningDays)
+            end,
+            case proplists:get_value([crl_exp_alert_days], Params) of
+                undefined -> ok;
+                CrlWarningDays ->
+                    ns_config:set({crl, expiration_warning_days},
+                                  CrlWarningDays)
             end,
             handle_settings_alerts_limits_get(Req2)
         end, [], params(), fun type_spec/1, Req).
@@ -1920,7 +2136,11 @@ all_test_() ->
     {setup, fun test_setup/0, fun test_teardown/1,
      [fun basic_test__/0,
       fun check_kv_rebalance_progress_test__/0,
-      fun check_index_rebalance_progress_test__/0]}.
+      fun check_index_rebalance_progress_test__/0,
+      fun crl_entry_recheck_test__/0,
+      fun crl_retry_time_test__/0,
+      fun crl_aggregation_test__/0,
+      fun crl_format_test__/0]}.
 
 test_setup() ->
     ok = meck:new(basic_test_modules(), [passthrough]),
@@ -2076,4 +2296,99 @@ check_index_rebalance_progress_test__() ->
     _Opaque7 = test_index_rebalance_progress(
                 5, {<<>>, 0},
                 4, Opaque6).
+
+%% The recheck time for a single CRL entry, mirroring the cert warning logic.
+crl_entry_recheck_test__() ->
+    Day = 24 * 60 * 60,
+    Warn = 3 * Day,
+    %% An expired CRL never transitions on its own.
+    ?assertEqual(infinity, crl_entry_recheck(expired, expired, 1000, Warn)),
+    %% One already in the warning window flips to expired at next_update.
+    ?assertEqual(5000, crl_entry_recheck(ok, expires_soon, 5000, Warn)),
+    %% A healthy one enters the warning window Warn seconds before next_update.
+    ?assertEqual(5000 - Warn, crl_entry_recheck(ok, none, 5000, Warn)),
+    %% No next_update means there is nothing time-based to recheck.
+    ?assertEqual(infinity, crl_entry_recheck(ok, none, undefined, Warn)),
+    %% A non-ok entry (e.g. untrusted) stays 'none' regardless of time, even
+    %% with a valid next_update, so it never needs a recheck.
+    ?assertEqual(infinity, crl_entry_recheck(untrusted, none, 5000, Warn)).
+
+%% The recheck time is turned into an absolute deadline, capped so we still
+%% re-gather periodically.
+crl_retry_time_test__() ->
+    Now = 1000000,
+    Cap = Now + ?CRL_CHECK_MAX_INTERVAL_SEC,
+    %% Nothing can transition on its own -> capped fallback.
+    ?assertEqual(Cap, crl_retry_time(infinity, Now)),
+    %% A near transition is used verbatim.
+    ?assertEqual(Now + 60, crl_retry_time(Now + 60, Now)),
+    %% A distant transition is clamped to the cap.
+    ?assertEqual(Cap, crl_retry_time(Now + 100 * Cap, Now)).
+
+%% Aggregation dedups by checksum across nodes/files, keeps only expired and
+%% expiring CRLs, and reports the soonest possible transition as the recheck.
+crl_aggregation_test__() ->
+    Day = 24 * 60 * 60,
+    Warn = 3 * Day,
+    Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
+    DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
+    Entry =
+        fun (Status, Checksum, Issuer, CrlNum, NUSecs) ->
+                #{issuer      => Issuer,
+                  status      => Status,
+                  this_update => DT(Now - Day),
+                  next_update => case NUSecs of
+                                     undefined -> undefined;
+                                     _         -> DT(NUSecs)
+                                 end,
+                  checksum    => Checksum,
+                  crl_number  => CrlNum}
+        end,
+    File = fun (Name, Entries) ->
+                   #{filename    => Name,
+                     source      => local_dir,
+                     status      => aggregated,
+                     entries     => Entries,
+                     last_reload => #{result => loaded, time => undefined,
+                                      errors => []}}
+           end,
+
+    Expired = Entry(expired, <<"c1">>, <<"CN=CA1">>, 7, Now - Day),
+    Soon    = Entry(ok,      <<"c2">>, <<"CN=CA2">>, 3, Now + Day),
+    Healthy = Entry(ok,      <<"c3">>, <<"CN=CA3">>, 9, Now + 30 * Day),
+
+    StatusA = [File(<<"expired.crl">>, [Expired]),
+               File(<<"soon.crl">>,    [Soon]),
+               File(<<"healthy.crl">>, [Healthy])],
+    %% Same expired CRL (checksum c1) present on a second node.
+    StatusB = [File(<<"expired.crl">>, [Expired])],
+
+    Acc1 = aggregate_node_crls('n1@host', StatusA, Now, Warn, {#{}, infinity}),
+    {Map, Recheck} = aggregate_node_crls('n2@host', StatusB, Now, Warn, Acc1),
+
+    %% Only expired and expiring CRLs yield alert entries; the healthy one does
+    %% not.
+    ?assertEqual([<<"c1">>, <<"c2">>], lists:sort(maps:keys(Map))),
+
+    #{<<"c1">> := C1, <<"c2">> := C2} = Map,
+    ?assertMatch(#{state := expired, crl_number := 7, issuer := <<"CN=CA1">>},
+                 C1),
+    %% The expired CRL is aggregated across both nodes but a single filename.
+    ?assertEqual(['n1@host', 'n2@host'], maps:get(nodes, C1)),
+    ?assertEqual([<<"expired.crl">>], maps:get(files, C1)),
+
+    ?assertMatch(#{state := expires_soon, crl_number := 3}, C2),
+    ?assertEqual(['n1@host'], maps:get(nodes, C2)),
+    ?assertEqual([<<"soon.crl">>], maps:get(files, C2)),
+
+    %% The soonest transition drives the recheck: the expiring CRL becomes
+    %% expired at its next_update (Now + 1 day), sooner than the healthy CRL
+    %% entering the warning window.
+    ?assertEqual(Now + Day, Recheck).
+
+crl_format_test__() ->
+    ?assertEqual("unknown", format_crl_number(undefined)),
+    ?assertEqual("42", format_crl_number(42)),
+    ?assertEqual("a.crl, b.crl",
+                 format_crl_files([<<"b.crl">>, <<"a.crl">>])).
 -endif.
