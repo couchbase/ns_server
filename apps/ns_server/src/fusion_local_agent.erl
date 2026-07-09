@@ -150,7 +150,7 @@ get_namespaces() ->
 
 should_have_namespace(BucketConfig) ->
     lists:member(ns_bucket:get_fusion_state(BucketConfig),
-                 [enabled, stopped, stopping]).
+                 [enabled, enabling, stopped, stopping]).
 
 namespace(BucketName, Snapshot) ->
     iolist_to_binary(["kv/", ns_bucket:uuid(BucketName, Snapshot)]).
