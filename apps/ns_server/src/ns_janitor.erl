@@ -250,10 +250,29 @@ cleanup_with_membase_bucket_check_hibernation(Bucket, Options, BucketConfig,
                                               Snapshot) ->
     case ns_bucket:get_hibernation_state(BucketConfig) of
         undefined ->
-            cleanup_with_membase_bucket_check_servers(Bucket, Options,
-                                                      BucketConfig, Snapshot);
+            cleanup_unfinished_fusion_restore(Bucket, Options,
+                                              BucketConfig, Snapshot);
         State ->
             handle_hibernation_cleanup(Bucket, Options, BucketConfig, State)
+    end.
+
+cleanup_unfinished_fusion_restore(Bucket, Options, BucketConfig, Snapshot) ->
+    case fusion_backup:restore_in_progress(BucketConfig) of
+        true ->
+            ?log_info("Delete bucket ~p due to unfinished fusion restore",
+                      [Bucket]),
+            case ns_orchestrator:do_delete_bucket(Bucket) of
+                {ok, _BucketConfig} ->
+                    ?log_info("Bucket ~p successfully deleted", [Bucket]),
+                    ok;
+                Error ->
+                    ?log_warning("Failed to delete bucket ~p, Error = ~p",
+                                 [Bucket, Error]),
+                    Error
+            end;
+        false ->
+            cleanup_with_membase_bucket_check_servers(Bucket, Options,
+                                                      BucketConfig, Snapshot)
     end.
 
 cleanup_with_membase_bucket_check_map(Bucket, Options, BucketConfig) ->

@@ -43,6 +43,17 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.logstore_dir = logstore_dir
         self.cluster.backup_dir = backup_dir
 
+        # prep_restore overrides fusion_sync_rate_limit (a cluster-wide
+        # memcached global) to 0 to freeze the LogStore. Capture the baseline
+        # effective value now so test_teardown can restore it -- otherwise the
+        # override leaks into subsequent tests, whose syncLogStore then uploads
+        # nothing and the accelerator generates an empty manifest.
+        eff = testlib.get_succ(
+            self.cluster,
+            f"/pools/default/settings/memcached/effective/{node.otp_node()}"
+            ).json()
+        self.default_fusion_sync_rate_limit = eff['fusion_sync_rate_limit']
+
     def teardown(self):
         if not os.path.exists(self.cluster.logstore_dir):
             shutil.rmtree(self.cluster.logstore_dir)
@@ -59,6 +70,17 @@ class FusionTests(testlib.BaseTestSet):
         testlib.diag_eval(self.cluster,
                           'chronicle_kv:delete(kv, fusion_storage_snapshots).')
         testlib.testconditions_clear(self.cluster)
+
+        # prep_restore sets fusion_sync_rate_limit to 0 to freeze the LogStore.
+        # It's a cluster-wide memcached global that persists across tests, so
+        # restore the baseline captured in setup(); otherwise a subsequent
+        # test's syncLogStore uploads nothing and the accelerator generates an
+        # empty manifest.
+        testlib.post_succ(
+            self.cluster, "/pools/default/settings/memcached/global",
+            data={'fusion_sync_rate_limit':
+                  self.default_fusion_sync_rate_limit},
+            expected_code=202)
 
         for d in [self.cluster.logstore_dir, self.cluster.backup_dir]:
             shutil.rmtree(d)
@@ -710,13 +732,12 @@ class FusionTests(testlib.BaseTestSet):
         self.wait_for_state('disabling', 'disabled')
         self.assert_bucket_state('test', 'disabled')
 
-    def restore_test(self):
+    def prep_restore(self, ndocs):
         self.init_fusion()
 
         testlib.post_succ(self.cluster, '/fusion/enable')
         self.wait_for_state('enabling', 'enabled')
 
-        ndocs = 1000
         self.create_bucket('default', 1)
 
         # set small upload interval
@@ -745,6 +766,9 @@ class FusionTests(testlib.BaseTestSet):
         bucket_uuid = self.cluster.get_bucket_uuid('default')
         namespace = f"kv/{bucket_uuid}"
         manifest = self.accelerator_get_manifest(manifest_path, namespace)
+        assert manifest.get('volumes'), \
+            f"accelerator returned empty volumes for namespace {namespace}; " \
+            f"the LogStore was likely not synced (check fusion_sync_rate_limit)"
         expected_terms = [u['term'] + 1 for u in self.get_uploaders('default')]
 
         second_node = self.cluster.spare_node()
@@ -816,6 +840,14 @@ class FusionTests(testlib.BaseTestSet):
                 'guestVolumePaths': guest_volume_paths
             }]
         }
+        return (restore_body, restore_plan_uuid, expected_terms)
+
+    def restore_test(self):
+        ndocs = 1000
+
+        (restore_body, restore_plan_uuid,
+         expected_terms) = self.prep_restore(ndocs)
+
         testlib.post_succ(
             self.cluster,
             f'/controller/fusion/restoreSnapshot?planUUID={restore_plan_uuid}',
@@ -853,6 +885,29 @@ class FusionTests(testlib.BaseTestSet):
             f"servicesNeedRebalance={pool.get('servicesNeedRebalance')}, "
             f"bucketsNeedRebalance={pool.get('bucketsNeedRebalance')}"
         )
+
+    def restore_failure_test(self):
+        (restore_body, restore_plan_uuid,
+         expected_terms) = self.prep_restore(100)
+
+        testlib.testconditions_set(self.cluster, 'restore_fusion_bucket',
+                                   '{return, "defaultClone", fail}')
+
+        testlib.post_fail(
+            self.cluster,
+            f'/controller/fusion/restoreSnapshot?planUUID={restore_plan_uuid}',
+            json=restore_body, expected_code=500)
+
+        def create_bucket():
+            try:
+                self.create_bucket('defaultClone', 1)
+                return True
+            except AssertionError:
+                return False
+
+        testlib.poll_for_condition(
+            create_bucket, 1, attempts=60,
+            msg=f"Wait for bucket name to become available")
 
     def get_curr_items_tot(self, nodes, bucket):
         total = 0

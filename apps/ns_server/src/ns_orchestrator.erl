@@ -131,7 +131,8 @@
          sync_fusion_log_store/1,
          stop_op/0,
          prepare_fusion_snapshot_restore/1,
-         fusion_snapshot_restore/2]).
+         fusion_snapshot_restore/2,
+         do_delete_bucket/1]).
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 
@@ -2837,16 +2838,8 @@ validate_create_bucket(BucketName, BucketConfig) ->
     end.
 
 handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
-    Result = ns_bucket:remove_bucket(BucketName),
-    case Result of
+    case do_delete_bucket(BucketName) of
         {ok, BucketConfig} ->
-            master_activity_events:note_bucket_deletion(BucketName),
-            BucketUUID = proplists:get_value(uuid, BucketConfig),
-            event_log:add_log(bucket_deleted,
-                              [{bucket,
-                                list_to_binary(BucketName)},
-                               {bucket_uuid, BucketUUID}]),
-
             Servers = ns_bucket:get_servers(BucketConfig),
             Timeout = ns_bucket:get_shutdown_timeout(BucketConfig),
 
@@ -2879,6 +2872,22 @@ handle_delete_bucket(BucketName, From, CurrentState, StateData) ->
             end;
         Error ->
             {keep_state_and_data, [{reply, From, Error}]}
+    end.
+
+-spec do_delete_bucket(ns_bucket:name()) -> {ok, ns_bucket:config()} | term().
+do_delete_bucket(BucketName) ->
+    case ns_bucket:remove_bucket(BucketName) of
+        {ok, BucketConfig} ->
+            master_activity_events:note_bucket_deletion(BucketName),
+            BucketUUID = proplists:get_value(uuid, BucketConfig),
+            event_log:add_log(bucket_deleted,
+                              [{bucket,
+                                list_to_binary(BucketName)},
+                               {bucket_uuid, BucketUUID}]),
+
+            {ok, BucketConfig};
+        Error ->
+            Error
     end.
 
 verify_op(sync_fusion_log_store, _Params) ->

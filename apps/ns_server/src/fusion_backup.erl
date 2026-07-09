@@ -21,7 +21,8 @@
 -export([validate_prepare_snapshot_restore/0,
          prepare_snapshot_restore/1,
          validate_restore/2,
-         restore/2]).
+         restore/2,
+         restore_in_progress/1]).
 -export_type([validate_restore_bucket_error/0, validate_restore_error/0,
               restore_bucket_error/0]).
 
@@ -203,7 +204,9 @@ create_bucket(Servers, #{name := BucketName, uuid := UUID, map := Map,
             Uploaders = [{N, Term + 1} ||
                             {[N | _], Term} <- lists:zip(Map, Terms)],
             ok = ns_bucket:set_map_and_uploaders(BucketName, Map, MapOpts,
-                                                 Uploaders);
+                                                 Uploaders),
+            ok = testconditions:check_test_condition(
+                   ?NS_SERVER_LOGGER, restore_fusion_bucket, BucketName);
         Error ->
             Error
     end.
@@ -232,6 +235,9 @@ restore_bucket(Servers, Volumes, #{name := BucketName, map := Map}) ->
         true ?= ns_rebalancer:wait_for_bucket(BucketName, Servers) =:= ok orelse
             {error, wait_for_bucket}
     end.
+
+restore_in_progress(BucketConfig) ->
+    proplists:get_bool(fusion_restore_in_progress, BucketConfig).
 
 -spec restore(list(), list()) ->
           ok | [{ns_bucket:name(), restore_error()}].
