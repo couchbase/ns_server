@@ -12,7 +12,8 @@
 
 -module(menelaus_web_fusion).
 
--include_lib("ns_common.hrl").
+-include("ns_common.hrl").
+-include("ns_bucket.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
 -export([handle_get_settings/1,
@@ -488,6 +489,7 @@ validate_manifest(Name, State) ->
        validator:string(namespace, _),
        validator:required(volumes, _),
        validate_volumes(volumes, _),
+       validator:array_length(volumes, ?MIN_NUM_VBUCKETS, ?MAX_NUM_VBUCKETS, _),
        validator:unsupported(_)],
       State).
 

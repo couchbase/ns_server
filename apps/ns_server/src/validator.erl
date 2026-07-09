@@ -45,6 +45,7 @@
          range/5,
          greater_or_equal/3,
          length/4,
+         array_length/4,
          string/5,
          dir/2,
          email_address/2,
@@ -771,6 +772,21 @@ length(Name, Min, Max, State) ->
                           false ->
                               ok
                       end
+              end
+      end, Name, State).
+
+array_length(Name, Min, Max, State) ->
+    validate(
+      fun (Value) ->
+              Length = length(Value),
+              case Length < Min orelse Length > Max of
+                  true ->
+                      {error,
+                       io_lib:format("Length (~p) must be in the "
+                                     "range from ~p to ~p, inclusive",
+                                     [Length, Min, Max])};
+                  false ->
+                      ok
               end
       end, Name, State).
 
