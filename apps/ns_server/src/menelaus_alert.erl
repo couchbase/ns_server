@@ -741,6 +741,34 @@ validate_params_invalid_alerts_list_test() ->
         validator:handle_proplist(Params, alerts_query_validators()),
     ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
 
+%% Ensure that space separated recipients are rejected with a clean
+%% validation error instead of being accepted and later crashing when the
+%% mail is actually sent (a space is not a valid separator - only commas
+%% are).
+validate_params_space_separated_recipients_test() ->
+    Params =
+        [{"alerts",
+          "auto_failover_node,"
+          "auto_failover_maximum_reached,"
+          "auto_failover_other_nodes_down,"
+          "auto_failover_cluster_too_small"},
+         {"body", default(message_body)},
+         {"emailEncrypt", "false"},
+         {"emailHost", "foo.com"},
+         {"emailPass", "password"},
+         {"emailPort", "25"},
+         {"emailUser", "ploni"},
+         {"enabled", "true"},
+         {"recipients", "foo@bar.com bar@bar.com"},
+         {"sender", "noreply@couchbase.com"},
+         {"subject", default(subject)}],
+
+    ExpectedErrors = [{"recipients", error_message(bad_recipients)}],
+
+    {error, Errors} =
+        validator:handle_proplist(Params, alerts_query_validators()),
+    ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
+
 %% Ensure that we get an error when invalid recipients are supplied.
 validate_params_invalid_recipients_test() ->
     Params =

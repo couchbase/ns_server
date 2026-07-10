@@ -500,8 +500,10 @@ parse_validate_port_number(StringPort) ->
 
 %% does a simple email address validation
 validate_email_address(Address) ->
-    %%" "hm, even erlang-mode is buggy :("),
-    {ok, RE} = re:compile("^[^@]+@.+$", [multiline]),
+    %% Surrounding whitespace is tolerated (e.g. "a@b.com, c@d.com"), but
+    %% whitespace within/between addresses is not, since that would produce
+    %% a single recipient string that gen_smtp can't parse.
+    {ok, RE} = re:compile("^\\s*[^@\\s]+@[^@\\s]+\\s*$", [multiline]),
     RV = re:run(Address, RE),
     case RV of
         {match, _} -> true;
