@@ -79,6 +79,17 @@ field_specs(aws) ->
        type        => string}
     ];
 
+field_specs(aws_instance_metadata) ->
+    [#{storage_key => region,
+       required    => true,
+       sensitive   => false,
+       type        => string},
+     #{storage_key => endpoint,
+       required    => false,
+       sensitive   => false,
+       type        => string}
+    ];
+
 field_specs(azure_shared) ->
     [#{storage_key => account_name,
        required    => true,
@@ -441,6 +452,9 @@ export_value(V)                    -> V.
 
 aws_sensitive_fields_test() ->
     ?assertEqual([secret_access_key, session_token], sensitive_fields(aws)).
+
+aws_instance_metadata_sensitive_fields_test() ->
+    ?assertEqual([], sensitive_fields(aws_instance_metadata)).
 
 gcp_sensitive_fields_test() ->
     ?assertEqual([json_credentials, secret_access_key], sensitive_fields(gcp)).

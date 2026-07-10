@@ -66,6 +66,15 @@ def aws_body(suffix="", key_id="AKIAIOSFODNN7EXAMPLE",
     }
 
 
+def aws_instance_metadata_body():
+    return {
+        "type": "awsInstanceMetadata",
+        "fields": {
+            "region": "us-east-1",
+        }
+    }
+
+
 def azure_shared_body():
     return {
         "type": "azureShared",
@@ -149,6 +158,9 @@ ALL_CRED_TYPES = {
             ["secretAccessKey"],
             {"accessKeyId": "AKIAIOSFODNN7EXAMPLE",
              "region": "us-east-1"}),
+    "awsInstanceMetadata": (aws_instance_metadata_body,
+                            [],
+                            {"region": "us-east-1"}),
     "azureShared": (azure_shared_body,
                      ["accountKey"],
                      {"accountName": "myaccount"}),

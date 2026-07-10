@@ -44,6 +44,19 @@ Go struct: `AWSPayload`
 | `endpoint` | `endpoint` | string | No | No | S3-compatible endpoint override |
 | `sessionToken` | `session_token` | string | No | **Yes** | Temporary session token (STS) |
 
+## `awsInstanceMetadata`
+
+Go struct: `AWSInstanceMetadataPayload`
+
+Authenticates via the EC2 instance metadata service (IMDS): the S3 SDK
+obtains temporary credentials for the IAM role attached to the instance at
+runtime, so no secret material is stored in the credential.
+
+| JSON Field | Storage Key | Type | Required | Sensitive | Description |
+|---|---|---|---|---|---|
+| `region` | `region` | string | **Yes** | No | AWS region (e.g. `us-east-1`) |
+| `endpoint` | `endpoint` | string | No | No | S3-compatible endpoint override |
+
 ## `azureShared`
 
 Go struct: `AzureSharedPayload`
