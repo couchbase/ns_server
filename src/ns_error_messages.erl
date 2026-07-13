@@ -400,6 +400,16 @@ reload_node_certificate_error(bad_cert_identity) ->
     <<"Internal client certificate must contain "
     "SAN.email=", NameBin/binary ,"@"?INTERNAL_CERT_EMAIL_DOMAIN>>;
 
+reload_node_certificate_error({missing_eku_purpose, node_cert}) ->
+    <<"Please make sure the certificate's extended key usage extension "
+      "includes the serverAuth (TLS Web Server Authentication) purpose">>;
+reload_node_certificate_error({missing_eku_purpose, client_cert}) ->
+    <<"Please make sure the certificate's extended key usage extension "
+      "includes the clientAuth (TLS Web Client Authentication) purpose">>;
+reload_node_certificate_error({invalid_eku, _Type}) ->
+    <<"Please make sure the certificate's extended key usage extension "
+      "is valid">>;
+
 reload_node_certificate_error(bad_server_cert_san) ->
     reload_node_certificate_error(
         {bad_server_cert_san, misc:extract_node_address(node())});

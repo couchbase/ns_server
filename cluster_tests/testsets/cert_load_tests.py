@@ -106,6 +106,69 @@ class CertLoadTests(testlib.BaseTestSet):
         self.generate_and_load_pkcs12_cert('ec', is_client=True,
                                            passphrase=testlib.random_str(8))
 
+    def critical_eku_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(node.addr(),
+                                           self.ca_pem, self.ca_key,
+                                           critical=True)
+        load_cert(node, cert, key, passphrase=None, is_client=False)
+
+    def client_cert_with_critical_eku_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(node.addr(),
+                                           self.ca_pem, self.ca_key,
+                                           is_client=True, critical=True)
+        load_cert(node, cert, key, passphrase=None, is_client=True)
+
+    def critical_eku_multiple_purposes_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(
+            node.addr(), self.ca_pem, self.ca_key,
+            purposes=['serverAuth', 'clientAuth'], critical=True)
+        load_cert(node, cert, key, passphrase=None, is_client=False)
+
+    def missing_eku_purpose_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(
+            node.addr(), self.ca_pem, self.ca_key,
+            purposes=['clientAuth'], critical=True)
+        load_cert(node, cert, key, passphrase=None, is_client=False,
+                  expected_error='serverAuth')
+
+    def client_cert_missing_eku_purpose_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(
+            node.addr(), self.ca_pem, self.ca_key, is_client=True,
+            purposes=['serverAuth'], critical=True)
+        load_cert(node, cert, key, passphrase=None, is_client=True,
+                  expected_error='clientAuth')
+
+    # non-critical eku purpose should still be validated
+    def non_critical_missing_eku_purpose_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(
+            node.addr(), self.ca_pem, self.ca_key,
+            purposes=['clientAuth'], critical=False)
+        load_cert(node, cert, key, passphrase=None, is_client=False,
+                  expected_error='serverAuth')
+
+    def client_cert_non_critical_missing_eku_purpose_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(
+            node.addr(), self.ca_pem, self.ca_key, is_client=True,
+            purposes=['serverAuth'], critical=False)
+        load_cert(node, cert, key, passphrase=None, is_client=True,
+                  expected_error='clientAuth')
+
+    # anyExtendedKeyUsage is not accepted in place of explicit purposes by OTP
+    def any_eku_purpose_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_eku(
+            node.addr(), self.ca_pem, self.ca_key,
+            purposes=['any'], critical=True)
+        load_cert(node, cert, key, passphrase=None, is_client=False,
+                  expected_error='serverAuth')
+
     def generate_and_load_cert(self, key_type, node=None, is_client=False,
                                pkcs8=False, passphrase=None):
         if node is None:
@@ -586,7 +649,8 @@ def load_client_cert(node, cert, key, passphrase=None):
     load_cert(node, cert, key, passphrase, is_client=True)
 
 
-def load_cert(node, cert, key, passphrase, is_client, force_reload=False):
+def load_cert(node, cert, key, passphrase, is_client, force_reload=False,
+              expected_error=None):
     inbox_dir = os.path.join(node.data_path(), 'inbox')
     chain_file_name = 'client_chain.pem' if is_client else 'chain.pem'
     chain_path = os.path.join(inbox_dir, chain_file_name)
@@ -609,10 +673,18 @@ def load_cert(node, cert, key, passphrase, is_client, force_reload=False):
                 data = {'forceReload': True}
             else:
                 data['forceReload'] = True
-        testlib.post_succ(node, f'/node/controller/{endpoint}', json=data)
-        r = get_node_cert(node, is_client=is_client)
-        assert r['type'] == 'uploaded', f'cert type {r} != uploaded'
-        return r
+        if expected_error is None:
+            testlib.post_succ(node, f'/node/controller/{endpoint}', json=data)
+            r = get_node_cert(node, is_client=is_client)
+            assert r['type'] == 'uploaded', f'cert type {r} != uploaded'
+            return r
+        else:
+            r = testlib.post_fail(node, f'/node/controller/{endpoint}',
+                                  expected_code=400, json=data)
+            assert expected_error in r.text, \
+                f'expected error containing "{expected_error}", ' \
+                f'got: {r.text}'
+            return r
     finally:
         if os.path.exists(chain_path):
             os.remove(chain_path)
@@ -653,20 +725,24 @@ def run_generate_cert(args, env):
     return (cert, key)
 
 
-def generate_internal_client_cert(CA, CAKey, name_in_cert):
+def generate_internal_client_cert(CA, CAKey, name_in_cert, extra_args=None):
     return generate_client_cert(CA, CAKey,
-                                email=f'{name_in_cert}@internal.couchbase.com')
+                                email=f'{name_in_cert}@internal.couchbase.com',
+                                extra_args=extra_args)
 
 
 def generate_client_cert(CA, CAKey, cn="TEST CLIENT CERT",
-                         email='test_client@example.com'):
+                         email='test_client@example.com', extra_args=None):
     args = ['--generate-leaf', '--common-name', cn,
             '--san-emails', email, '--client']
+    if extra_args is not None:
+        args.extend(extra_args)
 
     return run_generate_cert(args, {'CACERT': CA, 'CAPKEY': CAKey})
 
 
-def generate_node_certs(node_addr, CA, CAKey, key_type='rsa'):
+def generate_node_certs(node_addr, CA, CAKey, key_type='rsa',
+                        extra_args=None):
     try:
         ipaddress.ip_address(node_addr)
         is_raw = True
@@ -676,8 +752,21 @@ def generate_node_certs(node_addr, CA, CAKey, key_type='rsa'):
     args = ['--generate-leaf', '--common-name', 'TEST Server Node',
             '--san-ip-addrs' if is_raw else '--san-dns-names', node_addr,
             '--pkey-type', key_type]
+    if extra_args is not None:
+        args.extend(extra_args)
 
     return run_generate_cert(args, {'CACERT': CA, 'CAPKEY': CAKey})
+
+
+def generate_cert_with_eku(node_addr, CA, CAKey, is_client=False,
+                           purposes=None, critical=False):
+    eku_args = ['--eku-critical'] if critical else []
+    if purposes is not None:
+        eku_args.extend(['--eku-purposes', ','.join(purposes)])
+    if is_client:
+        return generate_internal_client_cert(CA, CAKey, 'test_name',
+                                             extra_args=eku_args)
+    return generate_node_certs(node_addr, CA, CAKey, extra_args=eku_args)
 
 
 def to_pkcs8(key, passphrase):
