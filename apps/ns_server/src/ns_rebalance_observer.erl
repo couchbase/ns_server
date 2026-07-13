@@ -38,6 +38,7 @@
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
 -define(DOCS_LEFT_REFRESH_INTERVAL, 5000).
+-define(GET_VB_SIZES_TIMEOUT, ?get_timeout(get_vb_sizes, 5000)).
 
 -record(stat_info, {start_time = false,
                     end_time = false}).
@@ -540,11 +541,15 @@ get_vb_sizes(BucketName) ->
     {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
     %% Query all the nodes with vbuckets to get their data sizes
     NodesWithVBs = ns_bucket:get_servers(BucketConfig),
+    %% We need to make the query with a shorter timeout than
+    %% ?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT, as this function blocks the
+    %% observer, and a slow response here could otherwise cause calls to the
+    %% observer to time out
     {NodeResp, NodeErrors, DownNodes} =
         misc:rpc_multicall_with_plist_result(
           NodesWithVBs, ns_memcached, get_vbucket_details_stats,
           [BucketName, ["db_data_size"]],
-          ?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT),
+          ?GET_VB_SIZES_TIMEOUT),
     case NodeErrors =:= [] andalso DownNodes =:= [] of
         false ->
             %% Report the error but continue with any good responses
