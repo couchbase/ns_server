@@ -537,10 +537,12 @@ initiate_bucket_rebalance(BucketName, {Moves, UndefinedMoves}, Verbose,
     TmpState#state{bucket = BucketName}.
 
 get_vb_sizes(BucketName) ->
-    %% Query all the nodes as each doesn't have the complete picture.
+    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
+    %% Query all the nodes with vbuckets to get their data sizes
+    NodesWithVBs = ns_bucket:get_servers(BucketConfig),
     {NodeResp, NodeErrors, DownNodes} =
         misc:rpc_multicall_with_plist_result(
-          [node() | nodes()], ns_memcached, get_vbucket_details_stats,
+          NodesWithVBs, ns_memcached, get_vbucket_details_stats,
           [BucketName, ["db_data_size"]],
           ?REBALANCE_OBSERVER_TASK_DEFAULT_TIMEOUT),
     case NodeErrors =:= [] andalso DownNodes =:= [] of
@@ -558,7 +560,6 @@ get_vb_sizes(BucketName) ->
                                   {Node, {ok, Dict}} <- NodeResp]),
 
     %% Get the vbucket map to find active nodes
-    {ok, BucketConfig} = ns_bucket:get_bucket(BucketName),
     Map = proplists:get_value(map, BucketConfig, []),
 
     %% Build list of {Vb, Size} where Size is from the active node
