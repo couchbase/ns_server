@@ -3029,7 +3029,6 @@ class NativeEncryptionPermissionsTests(testlib.BaseTestSet):
         for u in self.writing:
             testlib.ensure_deleted(
                 self.cluster, f'/settings/rbac/users/local/{u}')
-        set_cfg_encryption(self.cluster, 'disabled', -1)
 
     def test_teardown(self):
         for s in get_secrets(self.cluster):
