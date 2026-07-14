@@ -410,10 +410,11 @@ alerts_query_validators() ->
      validator:default(sender, "couchbase@localhost", _),
      validator:email_address(sender, _),
 
+     validator:required(recipients, _),
      validator:string(recipients, _),
      validator:token_list(recipients, ",", _),
+     validator:non_empty_string(recipients, _),
      validate_recipients(_),
-     validator:default(recipients, [], _),
 
      validator:string(emailHost, _),
      validator:default(emailHost, "localhost",  _),
@@ -668,8 +669,9 @@ validate_all_params_correct_test() ->
     ?assertEqual(misc:sort_kv_list(ExpectedValues), misc:sort_kv_list(Values)).
 
 validate_params_defaults_test() ->
-    %% All parameters except "enabled" have default values.
-    Params = [{"enabled", "true"}],
+    %% All parameters except "enabled" and "recipients" have default values.
+    Params = [{"enabled", "true"},
+              {"recipients", "empty_makes_no_sense@bar"}],
 
     ExpectedValues =
         [{alerts, []},
@@ -683,7 +685,7 @@ validate_params_defaults_test() ->
          {pop_up_alerts, []},
          {sender, "couchbase@localhost"},
          {subject, default(subject)},
-         {recipients, []}],
+         {recipients, ["empty_makes_no_sense@bar"]}],
 
     {ok, Values} = validator:handle_proplist(Params, alerts_query_validators()),
     ?assertEqual(misc:sort_kv_list(ExpectedValues), misc:sort_kv_list(Values)).
@@ -741,37 +743,9 @@ validate_params_invalid_alerts_list_test() ->
         validator:handle_proplist(Params, alerts_query_validators()),
     ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
 
-%% Ensure that space separated recipients are rejected with a clean
-%% validation error instead of being accepted and later crashing when the
-%% mail is actually sent (a space is not a valid separator - only commas
-%% are).
-validate_params_space_separated_recipients_test() ->
-    Params =
-        [{"alerts",
-          "auto_failover_node,"
-          "auto_failover_maximum_reached,"
-          "auto_failover_other_nodes_down,"
-          "auto_failover_cluster_too_small"},
-         {"body", default(message_body)},
-         {"emailEncrypt", "false"},
-         {"emailHost", "foo.com"},
-         {"emailPass", "password"},
-         {"emailPort", "25"},
-         {"emailUser", "ploni"},
-         {"enabled", "true"},
-         {"recipients", "foo@bar.com bar@bar.com"},
-         {"sender", "noreply@couchbase.com"},
-         {"subject", default(subject)}],
-
-    ExpectedErrors = [{"recipients", error_message(bad_recipients)}],
-
-    {error, Errors} =
-        validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
-
 %% Ensure that we get an error when invalid recipients are supplied.
 validate_params_invalid_recipients_test() ->
-    Params =
+    BaseParams =
         [{"alerts",
           "auto_failover_node,"
           "auto_failover_maximum_reached,"
@@ -784,15 +758,39 @@ validate_params_invalid_recipients_test() ->
          {"emailPort", "25"},
          {"emailUser", "ploni"},
          {"enabled", "true"},
-         {"recipients", "foo@,@bar.com"},
          {"sender", "noreply@couchbase.com"},
          {"subject", default(subject)}],
 
-    ExpectedErrors = [{"recipients", error_message(bad_recipients)}],
+    TestCases =
+        %% Invalid email accounts
+        [{"foo@,@bar.com", error_message(bad_recipients)},
 
-    {error, Errors} =
-        validator:handle_proplist(Params, alerts_query_validators()),
-    ?assertEqual(misc:sort_kv_list(ExpectedErrors), misc:sort_kv_list(Errors)).
+         %% More than one "@" in a single address is invalid.
+         {"a@b@example.com", error_message(bad_recipients)},
+
+         %% Only commas allowed as separators
+         {"foo@bar.com bar@bar.com", error_message(bad_recipients)},
+
+         %% Newlines embedded in (or between) recipients must not be
+         %% tolerated as whitespace, since that would smuggle a "\n" into
+         %% the SMTP headers.
+         {"foo@bar.com,\nbar@bar.com", error_message(bad_recipients)},
+
+         %% Same as above, but with a CRLF line separator.
+         {"foo@bar.com,\r\nbar@bar.com", error_message(bad_recipients)},
+
+         %% Recipients is required and must be a non-empty string
+         {"", "Value must not be empty"}],
+
+    lists:foreach(
+      fun ({Value, ExpectedError}) ->
+              Params = [{"recipients", Value} | BaseParams],
+              ExpectedErrors = [{"recipients", ExpectedError}],
+              {error, Errors} =
+                  validator:handle_proplist(Params, alerts_query_validators()),
+              ?assertEqual(misc:sort_kv_list(ExpectedErrors),
+                           misc:sort_kv_list(Errors))
+      end, TestCases).
 
 build_alerts_config_all_specified_test() ->
     Values =

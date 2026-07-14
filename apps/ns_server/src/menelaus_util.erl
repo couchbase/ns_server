@@ -503,8 +503,12 @@ parse_validate_port_number(StringPort) ->
 validate_email_address(Address) ->
     %% Surrounding whitespace is tolerated (e.g. "a@b.com, c@d.com"), but
     %% whitespace within/between addresses is not, since that would produce
-    %% a single recipient string that gen_smtp can't parse.
-    {ok, RE} = re:compile("^\\s*[^@\\s]+@[^@\\s]+\\s*$", [multiline]),
+    %% a single recipient string that gen_smtp can't parse. Only space and
+    %% tab are tolerated as surrounding whitespace here (as opposed to
+    %% \s, which also matches newlines) and \A/\z (rather than ^/$) anchor
+    %% to the very start/end of the string so an embedded newline can't be
+    %% mistaken for a line boundary and slip through.
+    {ok, RE} = re:compile("\\A[ \\t]*[^@\\s]+@[^@\\s]+[ \\t]*\\z"),
     RV = re:run(Address, RE),
     case RV of
         {match, _} -> true;
