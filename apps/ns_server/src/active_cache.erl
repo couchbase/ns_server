@@ -23,6 +23,7 @@
          update_and_get_value/3,
          get_value_and_touch/3,
          get_value/3,
+         get_value/4,
          reload_opts/2,
          renew_cache/1,
          flush/1]).
@@ -59,28 +60,63 @@ start_link(Name, Module, Args, Opts) ->
                           [Name, Module, Args, Opts], []).
 
 update_and_get_value(Name, Key, GetValue) ->
-    Res = gen_server2:call(Name, {force_update, Key, GetValue}, ?REQ_TIMEOUT),
+    {miss, Res} = gen_server2:call(Name, {force_update, Key, GetValue},
+                                   ?REQ_TIMEOUT),
     case Res of
         {ok, Value} -> Value;
         {exception, {C, E, ST}} -> erlang:raise(C, E, ST)
     end.
 
 get_value_and_touch(Name, Key, GetValue) ->
-    Res = get_value(Name, Key, GetValue),
-    %% That value might be deleted or rewritten by that moment
-    %% but we should be ok with that
-    ets:update_element(Name, Key, {3, timestamp()}),
-    Res.
+    get_value(Name, Key, GetValue, #{touch => true}).
 
 get_value(Name, Key, GetValue) ->
-    Res =
-        case ets:lookup(Name, Key) of
-            [{_, V, _, _}] -> V;
-            [] -> gen_server2:call(Name, {cache, Key, GetValue}, ?REQ_TIMEOUT)
+    get_value(Name, Key, GetValue, #{}).
+
+get_value(Name, Key, GetValue, Opts) ->
+    %% Update value's timestamp to prevent it being cleaned up
+    ShouldTouch = maps:get(touch, Opts, false),
+    %% Instead of returning the value only, return
+    %% {hit, Value} | {miss, Value}
+    ReturnInfo = maps:get(return_info, Opts, false),
+    %% Cached value is only served when IsValidValue(Value) returns true.
+    IsValid = maps:get(is_valid_value, Opts, fun (_) -> true end),
+
+    {Info, Res} =
+        case lookup_valid(Name, Key, IsValid) of
+            {ok, V} -> {hit, V};
+            miss -> gen_server2:call(Name, {cache, Key, GetValue, IsValid},
+                                     ?REQ_TIMEOUT)
         end,
     case Res of
-        {ok, Value} -> Value;
-        {exception, {C, E, ST}} -> erlang:raise(C, E, ST)
+        {ok, Value} ->
+            %% That value might be deleted or rewritten by that moment
+            %% but we should be ok with that
+            ShouldTouch andalso
+                ets:update_element(Name, Key, {3, timestamp()}),
+
+            case ReturnInfo of
+                true -> {Info, Value};
+                false -> Value
+            end;
+        {exception, {C, E, ST}} ->
+            erlang:raise(C, E, ST)
+    end.
+
+%% Look Key up in the ETS table, honoring the IsValidValue predicate for stored
+%% {ok, Value} entries.  Cached exceptions are returned as-is (validity applies
+%% only to successful values).  Returns 'miss' when absent or rejected.
+lookup_valid(Name, Key, IsValidValue) ->
+    case ets:lookup(Name, Key) of
+        [{_, {ok, Value} = V, _, _}] ->
+            case IsValidValue(Value) of
+                true  -> {ok, V};
+                false -> miss
+            end;
+        [{_, {exception, _} = V, _, _}] ->
+            {ok, V};
+        [] ->
+            miss
     end.
 
 reload_opts(Name, Opts) ->
@@ -118,10 +154,11 @@ init([Name, Module, Args, Opts]) ->
         ignore -> ignore
     end.
 
-handle_call({cache, Key, GetValue}, From, #s{table_name = Name} = State) ->
-    case ets:lookup(Name, Key) of
-        [] -> {noreply, handle_req(Key, GetValue, From, State)};
-        [{_, V, _, _}] -> {reply, V, State}
+handle_call({cache, Key, GetValue, IsValidValue}, From,
+            #s{table_name = Name} = State) ->
+    case lookup_valid(Name, Key, IsValidValue) of
+        miss    -> {noreply, handle_req(Key, GetValue, From, State)};
+        {ok, V} -> {reply, {hit, V}, State}
     end;
 
 handle_call({force_update, Key, GetValue}, From, #s{} = State) ->
@@ -205,7 +242,7 @@ handle_res({Ref, Key, _GetValue, {exception, Exception} = Res}, From,
             ?log_error("Cache renew exception for key ~p:~n~p",
                        [Key, Exception]);
         _ ->
-            gen_server2:reply(From, Res)
+            gen_server2:reply(From, {miss, Res})
     end,
     {noreply, State};
 
@@ -225,7 +262,7 @@ handle_res({Ref, Key, GetValue, Res}, From, #s{table_name = Name,
         _ -> ok
     end,
 
-    From == undefined orelse gen_server2:reply(From, Res),
+    From == undefined orelse gen_server2:reply(From, {miss, Res}),
     {noreply, State};
 
 handle_res({_, Key, GetValue, _}, From, State) ->
@@ -296,6 +333,29 @@ basic_cache_test() ->
           ?assertEqual(1, get_value(test_cache, key1, fun () -> 2 end)),
           ?assertError(test, get_value(test_cache, key3,
                                        fun () -> erlang:error(test) end))
+      end).
+
+get_value_with_validity_test() ->
+    with_cache_settings(
+      test_cache, [],
+      fun () ->
+          Tab = ets:new(counter, [public]),
+          ets:insert(Tab, {n, 0}),
+          Compute = fun () -> ets:update_counter(Tab, n, 1) end,
+          %% Accept only values that equal the current threshold in the ETS tab.
+          ets:insert(Tab, {min_valid, 0}),
+          Valid = fun (V) -> V >= ets:lookup_element(Tab, min_valid, 2) end,
+          Opts = #{is_valid_value => Valid},
+          %% First call computes 1 and caches it.
+          ?assertEqual(1, get_value(test_cache, k, Compute, Opts)),
+          %% Still valid: served from cache, not recomputed.
+          ?assertEqual(1, get_value(test_cache, k, Compute, Opts)),
+          %% Raise the bar so the cached 1 is rejected -> recompute -> 2.
+          ets:insert(Tab, {min_valid, 2}),
+          ?assertEqual(2, get_value(test_cache, k, Compute, Opts)),
+          %% 2 satisfies the predicate now: served from cache.
+          ?assertEqual(2, get_value(test_cache, k, Compute, Opts)),
+          ?assertEqual(2, ets:lookup_element(Tab, n, 2))
       end).
 
 cache_queues_test() ->
