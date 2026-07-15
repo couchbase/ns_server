@@ -771,7 +771,7 @@ add_service_nodes_sets(Service, NewNodes, Snapshot) ->
     lists:filtermap(
       fun (N) ->
               Key = {node, N, services},
-              {Services, _R} = maps:get(Key, Snapshot),
+              Services = node_services(Snapshot, N),
               case lists:member(Service, Services) of
                   true ->
                       false;
@@ -784,7 +784,7 @@ delete_service_nodes_sets(Service, ToDelete, Snapshot) ->
     lists:filtermap(
       fun (N) ->
               Key = {node, N, services},
-              {Services, _R} = maps:get(Key, Snapshot),
+              Services = node_services(Snapshot, N),
               case Services -- [Service] of
                   Services ->
                       false;

@@ -293,3 +293,130 @@ def parse_nodes_list(text):
     if sansbrackets == '':
         return []
     return [v.strip(" \n'") for v in sansbrackets.split(",")]
+
+
+class SingleNodeServiceTopologyTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(
+            edition="Enterprise",
+            afamily="ipv4",
+            encryption=False,
+            memsize=256,
+            num_nodes=1,
+            num_connected=1,
+            include_services=[Service.KV],
+            balanced=True)
+
+    def setup(self):
+        # Remember the memory quota so we can restore it after hard resetting.
+        self.memory_quota = self.cluster.memory_quota()
+
+    def teardown(self):
+        pass
+
+    def test_teardown(self):
+        node = self.cluster.connected_nodes[0]
+
+        testlib.post_succ(node, "/controller/hardResetNode")
+        wait_hard_reset_node_up(node)
+
+        # Restore everything to match cluster described in requirements()
+        data = {'afamily': "ipv4",
+                'hostname': node.host,
+                'nodeEncryption': "off",
+                'memoryQuota': 256,
+                'port': "SAME",
+                'username': self.cluster.admin_user(),
+                'password': self.cluster.admin_password(),
+                'services': "kv"}
+        testlib.post_succ(node, f"/clusterInit", data=data).json()
+
+        def check_node_ready():
+            r = testlib.get(node, "/pools/default")
+            return r.status_code == 200
+
+        testlib.poll_for_condition(check_node_ready, sleep_time=5, timeout=300,
+                                   msg="wait for node to be ready")
+
+    def provision_without_services(self, node):
+        # Provision the node without going through setupServices: just set a
+        # memory quota and the credentials (which makes the system provisioned).
+        # Order mirrors /clusterInit: the memory quota is set first (no web
+        # server restart), credentials last (/settings/web restarts the web
+        # server but only replies once it is back up).
+        testlib.post_succ(node, "/pools/default",
+                          data={"memoryQuota": self.memory_quota})
+        testlib.post_succ(node, "/settings/web",
+                          data={"port": "SAME",
+                                "username": self.cluster.admin_user(),
+                                "password": self.cluster.admin_password()})
+
+    def node_services(self, node):
+        return node.get_services(use_cache=False)
+
+    # Regression test for MB-72855.
+    #
+    # When chronicle is provisioned from scratch (chronicle_upgrade:initialize/0
+    # - which happens e.g. after a hard reset) the node's membership is set to
+    # 'active' but its {node, Node, services} key is never written; readers rely
+    # on ns_cluster_membership:node_services/2 defaulting to default_services()
+    # ([kv]). If such a node is then provisioned without going through
+    # setupServices (just credentials + memory quota), it ends up system
+    # provisioned but with no services key in chronicle.
+    #
+    # A subsequent service topology rebalance used to crash in
+    # add_service_nodes_sets/3 with {badkey, {node, Node, services}} because it
+    # read the key with a raw maps:get/2 instead of the defaulting reader.
+    def topology_change_without_setupservices_test(self):
+        node = self.cluster.connected_nodes[0]
+
+        # Hard reset wipes chronicle and clears the credentials. On restart the
+        # node re-provisions chronicle via chronicle_upgrade:initialize/0, which
+        # sets membership=active but leaves the services key unset.
+        testlib.post_succ(node, "/controller/hardResetNode")
+        wait_hard_reset_node_up(node)
+
+        # Re-provision the node WITHOUT setupServices: just credentials and a
+        # memory quota. This reproduces the MB-72855 state (system provisioned,
+        # membership active, no services key) without touching chronicle
+        # directly.
+        self.provision_without_services(node)
+
+        testlib.assert_eq(self.node_services(node), [Service.KV],
+                          "node services")
+
+        # Add a topology aware service (n1ql needs no memory quota) via a
+        # rebalance. Prior to the fix add_service_nodes_sets/3 crashed here with
+        # {badkey, {node, Node, services}} and the rebalance failed.
+        otp = node.otp_node()
+        testlib.post_succ(node, "/controller/rebalance",
+                          data={"knownNodes": otp,
+                                "ejectedNodes": "",
+                                f"topology[{Service.QUERY.value}]": otp})
+        # wait_for_rebalance returns an error string (not raise) if the
+        # rebalance failed, so check it explicitly - that's where the MB-72855
+        # crash surfaces.
+        err = self.cluster.wait_for_rebalance(wait_balanced=True)
+        assert err is None, f"rebalance to add n1ql failed: {err}"
+
+        # The service was added and the key now exists in chronicle.
+        assert Service.QUERY in self.node_services(node), \
+            f"n1ql missing after rebalance: {self.node_services(node)}"
+
+
+def wait_hard_reset_node_up(node):
+    # After a hard reset the node leaves the cluster and restarts its web
+    # server. Wait until it is up again and reports as uninitialized.
+    def node_is_up():
+        try:
+            resp = testlib.get(node, '/pools/default')
+            return resp.status_code == 404 and '"unknown pool"' == resp.text
+        except Exception as e:
+            print(f'got exception: {e}')
+            return False
+
+    testlib.poll_for_condition(
+        node_is_up, sleep_time=1, timeout=60,
+        msg=f'wait for hard reset node {node} to be up')

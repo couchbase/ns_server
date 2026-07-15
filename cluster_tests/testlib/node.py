@@ -150,8 +150,8 @@ class Node:
         print(f'Killing ns_server for node {self.url}...')
         os.kill(self.get_ns_server_pid(), 9)
 
-    def get_services(self):
-        if self.services_cached is None:
+    def get_services(self, use_cache=True):
+        if self.services_cached is None or not use_cache:
             r = testlib.get_succ(self, '/nodes/self')
             self.services_cached = strings_to_services(r.json()['services'])
         return self.services_cached
