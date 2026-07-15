@@ -113,8 +113,14 @@ lookup_valid(Name, Key, IsValidValue) ->
                 true  -> {ok, V};
                 false -> miss
             end;
-        [{_, {exception, _} = V, _, _}] ->
-            {ok, V};
+        [{_, {exception, _} = V, TS, _}] ->
+            CurTS = timestamp(),
+            case TS + ?MIN_CLEANUP_INTERVAL =< CurTS of
+                true ->
+                    miss; %% expired
+                false ->
+                    {ok, V}
+            end;
         [] ->
             miss
     end.
