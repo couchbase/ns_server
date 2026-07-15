@@ -144,6 +144,8 @@ get_dek_ids_in_use({bucketDek, BucketUUID}, Snapshot) ->
     case ns_memcached:get_dek_ids_in_use(BucketUUID) of
         {ok, Ids} ->
             {ok, Ids};
+        {error, retry} ->
+            {error, retry};
         {error, not_found} ->
             case bucket_exists_on_node(BucketUUID,
                                        Snapshot) of
