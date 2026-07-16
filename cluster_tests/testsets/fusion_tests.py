@@ -299,6 +299,127 @@ class FusionTests(testlib.BaseTestSet):
             self.cluster,
             f"/pools/default/buckets/test/controller/doFlush")
 
+    def sync_log_store_test(self):
+        url = "/controller/fusion/syncLogStore"
+
+        # Create the bucket before enabling fusion so that it becomes a
+        # fusion bucket once fusion is enabled.
+        self.init_fusion()
+        self.create_bucket('test', 1)
+        testlib.post_succ(self.cluster, '/fusion/enable')
+        self.wait_for_state('enabling', 'enabled')
+        self.assert_bucket_state('test', 'enabled')
+
+        # ---- Query string parameter validation ----
+        # timeout must be an integer in range 1..300000
+        testlib.post_fail(self.cluster, url + "?timeout=0", expected_code=400)
+        testlib.post_fail(self.cluster, url + "?timeout=300001",
+                          expected_code=400)
+        testlib.post_fail(self.cluster, url + "?timeout=abc",
+                          expected_code=400)
+        # reset must be a boolean
+        testlib.post_fail(self.cluster, url + "?reset=maybe",
+                          expected_code=400)
+        # unsupported query string parameter
+        testlib.post_fail(self.cluster, url + "?something=1",
+                          expected_code=400)
+
+        # ---- Case 1: no body -> sync all fusion buckets ----
+        testlib.post_succ(self.cluster, url)
+        # valid query string parameters are accepted
+        testlib.post_succ(self.cluster, url + "?timeout=120000&reset=false")
+
+        # ---- Body validation (must be a json object) ----
+        resp = testlib.post_fail(self.cluster, url, data="not json",
+                                 expected_code=400)
+        assert_json_error(resp.json(), "_", "Invalid Json")
+        resp = testlib.post_fail(self.cluster, url, json=[1, 2, 3],
+                                 expected_code=400)
+        assert_json_error(resp.json(), "_", "Invalid Json")
+
+        # "buckets" is required
+        resp = testlib.post_fail(self.cluster, url, json={}, expected_code=400)
+        assert_json_error(resp.json(), "buckets", "The value must be supplied")
+        # unsupported top level key
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test'}], 'bogus': 1},
+            expected_code=400)
+        assert_json_error(resp.json(), "bogus", "Unsupported key")
+        # "buckets" must be a json array
+        resp = testlib.post_fail(self.cluster, url, json={'buckets': 'test'},
+                                 expected_code=400)
+        assert_json_error(resp.json(), "buckets",
+                          "The value must be a json array")
+
+        # ---- Case 2: buckets without vbuckets ----
+        # bucket "name" is required
+        resp = testlib.post_fail(self.cluster, url, json={'buckets': [{}]},
+                                 expected_code=400)
+        assert_bucket_error(resp.json(), 0, "name",
+                            "The value must be supplied")
+        # "name" must be a string
+        resp = testlib.post_fail(self.cluster, url,
+                                 json={'buckets': [{'name': 123}]},
+                                 expected_code=400)
+        assert_bucket_error(resp.json(), 0, "name", "Value must be json string")
+        # unknown bucket is not a fusion bucket
+        resp = testlib.post_fail(self.cluster, url,
+                                 json={'buckets': [{'name': 'unknown'}]},
+                                 expected_code=400)
+        assert_bucket_error(resp.json(), 0, "name",
+                            'Bucket "unknown" is not a fusion bucket')
+        # unsupported per-bucket key
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'bogus': 1}]},
+            expected_code=400)
+        assert_bucket_error(resp.json(), 0, "bogus", "Unsupported key")
+        # success
+        testlib.post_succ(self.cluster, url,
+                          json={'buckets': [{'name': 'test'}]})
+
+        # ---- Case 3: buckets with vbuckets ----
+        # vbuckets must not be empty
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'vbuckets': []}]},
+            expected_code=400)
+        assert_bucket_error(
+            resp.json(), 0, "vbuckets",
+            "Length (0) must be in the range from 1 to infinity, inclusive")
+        # vbuckets must be a json array
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'vbuckets': 'foo'}]},
+            expected_code=400)
+        assert_bucket_error(resp.json(), 0, "vbuckets", "Must be an array")
+        # vbuckets must be integers
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'vbuckets': ['a']}]},
+            expected_code=400)
+        assert_bucket_error(resp.json(), 0, "vbuckets",
+                            "Must be an array of integers")
+        # vbucket out of range (cluster has 16 vbuckets: 0..15)
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'vbuckets': [16]}]},
+            expected_code=400)
+        assert_bucket_error(resp.json(), 0, "vbuckets",
+                            "16 - must be in range 0..15")
+        # negative vbucket is out of range
+        resp = testlib.post_fail(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'vbuckets': [-1]}]},
+            expected_code=400)
+        assert_bucket_error(resp.json(), 0, "vbuckets",
+                            "-1 - must be in range 0..15")
+        # success
+        testlib.post_succ(
+            self.cluster, url,
+            json={'buckets': [{'name': 'test', 'vbuckets': [0, 1, 2]}]})
+
     def initial_configuration_test(self):
         testlib.post_fail(self.cluster, '/fusion/enable', expected_code=503)
         self.assert_state('disabled')
@@ -998,6 +1119,27 @@ def get_json_error(json, field):
 def assert_json_error(json, field, prefix):
     value = get_json_error(json, field)
     assert value.startswith(prefix)
+
+
+# Errors reported by validator:json_array come back as a list with one object
+# per element of the array (empty for elements without errors). This extracts
+# the error for a given field of the bucket at the given index.
+def assert_bucket_error(json, index, field, expected):
+    assert isinstance(json, dict)
+    assert "errors" in json, f"'errors' not in response: {json}"
+    errors = json["errors"]
+    assert isinstance(errors, dict)
+    assert "buckets" in errors, f"'buckets' not in errors: {errors}"
+    buckets = errors["buckets"]
+    assert isinstance(buckets, list), \
+        f"expected list of per-bucket errors, got: {buckets}"
+    assert index < len(buckets), \
+        f"no bucket error at index {index}: {buckets}"
+    elem = buckets[index]
+    assert isinstance(elem, dict)
+    assert field in elem, f"'{field}' not in bucket error: {elem}"
+    assert elem[field] == expected, \
+        f"expected '{expected}', got '{elem[field]}'"
 
 
 def generate_nodes_volumes(nodes):

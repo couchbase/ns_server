@@ -472,25 +472,39 @@ get_fusion_sync_info(Bucket, VBucketMap) ->
                           mb_map:map_to_vbuckets_dict(VBucketMap))],
     call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
 
--spec sync_fusion_log_store([ns_bucket:name()], integer(), boolean()) ->
+-spec sync_fusion_log_store([{ns_bucket:name(), all | [vbucket_id()]}],
+                            integer(), boolean()) ->
           ok | {failed_nodes, [node()]}.
-sync_fusion_log_store(BucketNames, Timeout, Reset) ->
+sync_fusion_log_store(BucketsSpec, Timeout, Reset) ->
     Replies =
         misc:parallel_map(
-          fun (Bucket) ->
+          fun ({Bucket, VBucketsSpec}) ->
                   Uploaders = ns_bucket:get_fusion_uploaders(Bucket),
+                  Enumerated = misc:enumerate(Uploaders, 0),
+                  Selected =
+                      case VBucketsSpec of
+                          all ->
+                              Enumerated;
+                          VBuckets ->
+                              VBucketsSet = sets:from_list(VBuckets),
+                              [E || {VB, _} = E <- Enumerated,
+                                    sets:is_element(VB, VBucketsSet)]
+                      end,
+                  %% Only nodes that own at least one of the selected vbuckets
+                  %% end up in the map, so we never call a node with nothing
+                  %% to sync.
                   UploadersMap =
                       lists:foldl(
                         fun ({VB, {Node, _}}, Acc) ->
                                 maps:update_with(Node, [VB | _], [VB], Acc)
-                        end, #{}, misc:enumerate(Uploaders, 0)),
+                        end, #{}, Selected),
                   NodesCalls =
                       [{Node,
                         {sync_fusion_log_store, VBuckets, Timeout, Reset}} ||
                           {Node, VBuckets} <- maps:to_list(UploadersMap)],
                   {Bucket,
                    call_on_nodes(Bucket, NodesCalls, fun servant_call/3)}
-          end, BucketNames, Timeout),
+          end, BucketsSpec, Timeout),
 
     case [R || {_, RV} = R <- Replies, RV =/= ok] of
         [] ->

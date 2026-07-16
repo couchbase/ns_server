@@ -382,31 +382,13 @@ handle_sync_log_store(Req) ->
 
     validator:handle(
       fun (Params) ->
-              RV = ns_orchestrator:sync_fusion_log_store(
-                     proplists:get_value(timeout, Params) * 1000,
-                     proplists:get_value(reset, Params)),
-              case RV of
-                  ok ->
-                      menelaus_util:reply_json(Req, [], 200);
-                  {failed_nodes, Nodes} ->
-                      menelaus_util:reply_text(
-                        Req, io_lib:format("Fusion log store sync failed on "
-                                           "following nodes: ~p", [Nodes]),
-                        400);
-                  stopped ->
-                      menelaus_util:reply_text(
-                        Req, <<"Operation was stopped.">>, 409);
-                  timeout ->
-                      menelaus_util:reply_text(
-                        Req, <<"Operation had timed out.">>, 408);
-                  failed_to_run_janitor ->
-                      menelaus_util:reply_text(
-                        Req, <<"Failed to run janitor.">>, 500);
-                  Other ->
-                      {ErrCode, Msg} =
-                          menelaus_web_cluster:busy_reply(
-                            "synchronize fusion log store", Other),
-                      menelaus_util:reply_text(Req, Msg, ErrCode)
+              Timeout = proplists:get_value(timeout, Params) * 1000,
+              Reset = proplists:get_value(reset, Params),
+              case mochiweb_request:recv_body(Req) of
+                  Body when Body =:= undefined; Body =:= <<>> ->
+                      do_sync_log_store(Req, Timeout, Reset, all);
+                  Body ->
+                      handle_sync_log_store_body(Req, Timeout, Reset, Body)
               end
       end, Req, qs,
       [validator:integer(timeout, 1, 300000, _),
@@ -414,6 +396,96 @@ handle_sync_log_store(Req) ->
        validator:boolean(reset, _),
        validator:default(reset, false, _),
        validator:unsupported(_)]).
+
+handle_sync_log_store_body(Req, Timeout, Reset, Body) ->
+    case (try ejson:decode(Body) catch _:_ -> error end) of
+        {_} = Obj ->
+            validator:handle(
+              fun (Params) ->
+                      Buckets = proplists:get_value(buckets, Params),
+                      Spec =
+                          [{proplists:get_value(name, BucketProps),
+                            case proplists:get_value(vbuckets, BucketProps) of
+                                undefined -> all;
+                                VBuckets -> VBuckets
+                            end} || {BucketProps} <- Buckets],
+                      do_sync_log_store(Req, Timeout, Reset, Spec)
+              end, Req, Obj,
+              [validator:required(buckets, _),
+               validator:json_array(
+                 buckets,
+                 [validator:required(name, _),
+                  validator:string(name, _),
+                  validate_sync_bucket(_),
+                  validator:unsupported(_)],
+                 _),
+               validator:unsupported(_)]);
+        _ ->
+            menelaus_util:reply_json(
+              Req, {[{errors, {[{<<"_">>, <<"Invalid Json">>}]}}]}, 400)
+    end.
+
+%% Validates that the specified bucket is a fusion bucket and, if present,
+%% that its "vbuckets" is a non-empty list of integers within the bucket's
+%% vbucket range. The bucket is validated first: if it is not found there is
+%% no point validating its vbuckets.
+validate_sync_bucket(State) ->
+    validator:validate(
+      fun (Name, St) ->
+              case proplists:get_value(Name, ns_bucket:get_fusion_buckets(),
+                                       not_found) of
+                  not_found ->
+                      {error,
+                       io_lib:format("Bucket \"~s\" is not a fusion bucket",
+                                     [Name]),
+                       %% Mark vbuckets as handled so it is not reported as
+                       %% an unsupported key.
+                       validator:touch(vbuckets, St)};
+                  BucketConfig ->
+                      {ok, validate_sync_vbuckets(BucketConfig, St)}
+              end
+      end, name, State).
+
+%% Validates that "vbuckets", if present, is a non-empty list of integers
+%% within the bucket's vbucket range [0, NumVBuckets - 1].
+validate_sync_vbuckets(BucketConfig, State) ->
+    NumVBuckets = ns_bucket:get_num_vbuckets(BucketConfig),
+    State1 =
+        validator:int_array(
+          vbuckets,
+          fun (V) when V >= 0, V < NumVBuckets ->
+                  ok;
+              (_) ->
+                  {error, io_lib:format("must be in range 0..~p",
+                                        [NumVBuckets - 1])}
+          end, State),
+    validator:array_length(vbuckets, 1, infinity, State1).
+
+do_sync_log_store(Req, Timeout, Reset, BucketsSpec) ->
+    RV = ns_orchestrator:sync_fusion_log_store(Timeout, Reset, BucketsSpec),
+    case RV of
+        ok ->
+            menelaus_util:reply_json(Req, [], 200);
+        {failed_nodes, Nodes} ->
+            menelaus_util:reply_text(
+              Req, io_lib:format("Fusion log store sync failed on "
+                                 "following nodes: ~p", [Nodes]),
+              400);
+        stopped ->
+            menelaus_util:reply_text(
+              Req, <<"Operation was stopped.">>, 409);
+        timeout ->
+            menelaus_util:reply_text(
+              Req, <<"Operation had timed out.">>, 408);
+        failed_to_run_janitor ->
+            menelaus_util:reply_text(
+              Req, <<"Failed to run janitor.">>, 500);
+        Other ->
+            {ErrCode, Msg} =
+                menelaus_web_cluster:busy_reply(
+                  "synchronize fusion log store", Other),
+            menelaus_util:reply_text(Req, Msg, ErrCode)
+    end.
 
 handle_prepare_snapshot_restore(Req) ->
     menelaus_util:assert_is_enterprise(),

@@ -128,7 +128,7 @@
          validate_fusion_plan/1,
          has_fusion_plan/0,
          fusion_upload_mounted_volumes/2,
-         sync_fusion_log_store/2,
+         sync_fusion_log_store/3,
          stop_op/0,
          prepare_fusion_snapshot_restore/1,
          fusion_snapshot_restore/2,
@@ -654,11 +654,13 @@ commit_vbucket(Bucket, UUID, VBucket) ->
 stop_recovery(Bucket, UUID) ->
     call({stop_recovery, Bucket, UUID}).
 
--spec sync_fusion_log_store(integer(), boolean()) -> ok | stopped | timeout |
-          {failed_nodes, [node()]} | failed_to_run_janitor | busy().
-sync_fusion_log_store(Timeout, Reset) ->
+-spec sync_fusion_log_store(integer(), boolean(),
+                            all | [{string(), all | [vbucket_id()]}]) ->
+          ok | stopped | timeout | {failed_nodes, [node()]} |
+          failed_to_run_janitor | busy().
+sync_fusion_log_store(Timeout, Reset, BucketsSpec) ->
     call({start_op, sync_fusion_log_store,
-          [{timeout, Timeout}, {reset, Reset}]}).
+          [{timeout, Timeout}, {reset, Reset}, {buckets, BucketsSpec}]}).
 
 -spec fusion_snapshot_restore(string(), list()) ->
           ok | stopped | not_found | id_mismatch |
@@ -2891,8 +2893,14 @@ do_delete_bucket(BucketName) ->
             Error
     end.
 
-verify_op(sync_fusion_log_store, _Params) ->
-    {ok, [Name || {Name, _} <- ns_bucket:get_fusion_buckets()]};
+verify_op(sync_fusion_log_store, Params) ->
+    case proplists:get_value(buckets, Params) of
+        all ->
+            {ok, [{Name, all} ||
+                     {Name, _} <- ns_bucket:get_fusion_buckets()]};
+        BucketsSpec ->
+            {ok, BucketsSpec}
+    end;
 verify_op(prepare_fusion_snapshot_restore, _Params) ->
     case fusion_backup:validate_prepare_snapshot_restore() of
         ok ->
@@ -2917,11 +2925,11 @@ verify_op(fusion_snapshot_restore, Params) ->
             Error
     end.
 
-handle_op(sync_fusion_log_store, Props, BucketNames) ->
+handle_op(sync_fusion_log_store, Props, BucketsSpec) ->
     Timeout = proplists:get_value(timeout, Props),
     Reset = proplists:get_value(reset, Props),
     RV = async:run_with_timeout(
-           ?cut(handle_sync_fusion_log_store(BucketNames, Timeout, Reset)),
+           ?cut(handle_sync_fusion_log_store(BucketsSpec, Timeout, Reset)),
            Timeout),
     case RV of
         {ok, R} ->
@@ -2942,7 +2950,8 @@ handle_op(prepare_fusion_snapshot_restore, BucketInfos, []) ->
 handle_op(fusion_snapshot_restore, _Params, {BucketInfos, Volumes}) ->
     fusion_backup:restore(Volumes, BucketInfos).
 
-handle_sync_fusion_log_store(BucketNames, Timeout, Reset) ->
+handle_sync_fusion_log_store(BucketsSpec, Timeout, Reset) ->
+    BucketNames = [BucketName || {BucketName, _} <- BucketsSpec],
     ?log_debug("Ensure janitor runs for ~p.", [BucketNames]),
     functools:sequence_(
       [fun () ->
@@ -2959,7 +2968,7 @@ handle_sync_fusion_log_store(BucketNames, Timeout, Reset) ->
           [?cut(?log_debug("Synchronize fusion log store for buckets ~p.",
                            [BucketNames])),
            ?cut(janitor_agent:sync_fusion_log_store(
-                  BucketNames, Timeout, Reset))]).
+                  BucketsSpec, Timeout, Reset))]).
 
 -ifdef(TEST).
 needs_rebalance_api_changed_test() ->
