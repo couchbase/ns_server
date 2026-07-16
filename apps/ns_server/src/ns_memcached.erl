@@ -168,7 +168,7 @@
          maybe_start_fusion_uploaders/2,
          maybe_stop_fusion_uploaders/2,
          get_active_guest_volumes/1,
-         sync_fusion_log_store/3,
+         sync_fusion_log_store/4,
          bucket_metadata_file/1,
          get_fusion_sync_info/2,
          get_fusion_uploaders_state/1,
@@ -2835,10 +2835,11 @@ get_active_guest_volumes(Bucket) ->
               {reply, fetch_fusion_stats(Sock, Bucket, "active_guest_volumes")}
       end, Bucket, [json]).
 
--spec sync_fusion_log_store(ns_bucket:name(), [vbucket_id()], integer()) ->
+-spec sync_fusion_log_store(ns_bucket:name(), [vbucket_id()], integer(),
+                            boolean()) ->
           ok | {errors, [{vbucket_id(), mc_error()}]}.
-sync_fusion_log_store(Bucket, VBuckets, Timeout) ->
-    PropsJson = ejson:encode({[{reset, false}]}),
+sync_fusion_log_store(Bucket, VBuckets, Timeout, Reset) ->
+    PropsJson = ejson:encode({[{reset, Reset}]}),
     perform_very_long_call(
       fun (Sock) ->
               Errors =

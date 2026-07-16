@@ -128,7 +128,7 @@
          validate_fusion_plan/1,
          has_fusion_plan/0,
          fusion_upload_mounted_volumes/2,
-         sync_fusion_log_store/1,
+         sync_fusion_log_store/2,
          stop_op/0,
          prepare_fusion_snapshot_restore/1,
          fusion_snapshot_restore/2,
@@ -654,10 +654,11 @@ commit_vbucket(Bucket, UUID, VBucket) ->
 stop_recovery(Bucket, UUID) ->
     call({stop_recovery, Bucket, UUID}).
 
--spec sync_fusion_log_store(integer()) -> ok | stopped | timeout |
+-spec sync_fusion_log_store(integer(), boolean()) -> ok | stopped | timeout |
           {failed_nodes, [node()]} | failed_to_run_janitor | busy().
-sync_fusion_log_store(Timeout) ->
-    call({start_op, sync_fusion_log_store, [{timeout, Timeout}]}).
+sync_fusion_log_store(Timeout, Reset) ->
+    call({start_op, sync_fusion_log_store,
+          [{timeout, Timeout}, {reset, Reset}]}).
 
 -spec fusion_snapshot_restore(string(), list()) ->
           ok | stopped | not_found | id_mismatch |
@@ -2918,8 +2919,9 @@ verify_op(fusion_snapshot_restore, Params) ->
 
 handle_op(sync_fusion_log_store, Props, BucketNames) ->
     Timeout = proplists:get_value(timeout, Props),
+    Reset = proplists:get_value(reset, Props),
     RV = async:run_with_timeout(
-           ?cut(handle_sync_fusion_log_store(BucketNames, Timeout)),
+           ?cut(handle_sync_fusion_log_store(BucketNames, Timeout, Reset)),
            Timeout),
     case RV of
         {ok, R} ->
@@ -2940,7 +2942,7 @@ handle_op(prepare_fusion_snapshot_restore, BucketInfos, []) ->
 handle_op(fusion_snapshot_restore, _Params, {BucketInfos, Volumes}) ->
     fusion_backup:restore(Volumes, BucketInfos).
 
-handle_sync_fusion_log_store(BucketNames, Timeout) ->
+handle_sync_fusion_log_store(BucketNames, Timeout, Reset) ->
     ?log_debug("Ensure janitor runs for ~p.", [BucketNames]),
     functools:sequence_(
       [fun () ->
@@ -2956,7 +2958,8 @@ handle_sync_fusion_log_store(BucketNames, Timeout) ->
        end || BucketName <- BucketNames] ++
           [?cut(?log_debug("Synchronize fusion log store for buckets ~p.",
                            [BucketNames])),
-           ?cut(janitor_agent:sync_fusion_log_store(BucketNames, Timeout))]).
+           ?cut(janitor_agent:sync_fusion_log_store(
+                  BucketNames, Timeout, Reset))]).
 
 -ifdef(TEST).
 needs_rebalance_api_changed_test() ->

@@ -385,7 +385,8 @@ handle_sync_log_store(Req) ->
     validator:handle(
       fun (Params) ->
               RV = ns_orchestrator:sync_fusion_log_store(
-                     proplists:get_value(timeout, Params) * 1000),
+                     proplists:get_value(timeout, Params) * 1000,
+                     proplists:get_value(reset, Params)),
               case RV of
                   ok ->
                       menelaus_util:reply_json(Req, [], 200);
@@ -412,6 +413,8 @@ handle_sync_log_store(Req) ->
       end, Req, qs,
       [validator:integer(timeout, 1, 300000, _),
        validator:default(timeout, 60, _),
+       validator:boolean(reset, _),
+       validator:default(reset, false, _),
        validator:unsupported(_)]).
 
 handle_prepare_snapshot_restore(Req) ->
