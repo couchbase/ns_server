@@ -1089,7 +1089,8 @@ oidc_provider_validators() ->
        end, clientSecret, _),
      validator:required(baseRedirectUris, _),
      validator:string_array(baseRedirectUris,
-                            fun validate_redirect_uri/1, false, _),
+                            fun validate_redirect_uri/1, _),
+     validator:array_length(baseRedirectUris, 1, infinity, _),
      validator:required(endpointSource, _),
      validator:one_of(endpointSource, [discovery, manual], _),
      validator:convert(endpointSource, fun binary_to_existing_atom/1, _),
@@ -1161,7 +1162,8 @@ oidc_provider_validators() ->
      validator:boolean(pkceEnabled, _),
      validator:default(pkceEnabled, true, _),
      validator:string_array(postLogoutRedirectUris,
-                            fun validate_redirect_uri/1, false, _)
+                            fun validate_redirect_uri/1, _),
+     validator:array_length(postLogoutRedirectUris, 1, infinity, _)
     ] ++ tls_validators(tlsVerifyPeer, tlsCa, tlsSni, addressFamily) ++
         [validator:integer(httpTimeoutMs,
                            ?OIDC_HTTP_TIMEOUT_MIN_MS,

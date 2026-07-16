@@ -814,7 +814,8 @@ handle_import_ear_dek(Req) ->
              (_) -> {error, "only bucket DEKs can be imported"}
          end, type, _),
        validator:required(dekPaths, _),
-       validator:string_array(dekPaths, fun (_) -> ok end, false, _),
+       validator:string_array(dekPaths, _),
+       validator:array_length(dekPaths, 1, infinity, _),
        validator:default(timeout, 300000, _),
        %% Bound the timeout to the max value accepted by gen_server:call/
        %% receive..after (2^32-1 ms). A larger value (e.g. a caller passing a

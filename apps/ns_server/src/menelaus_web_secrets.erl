@@ -658,7 +658,7 @@ format_datetime(DateTime) ->
     misc:utc_to_iso8601(DateTime, local).
 
 validate_key_usage(Name, Snapshot, State) ->
-    validator:string_array(
+    NewState = validator:string_array(
       Name,
       fun (Str) ->
           case iolist_to_binary(Str) of
@@ -684,7 +684,8 @@ validate_key_usage(Name, Snapshot, State) ->
               _ ->
                   {error, "unknown usage"}
           end
-      end, false, State).
+      end, State),
+    validator:array_length(Name, 1, infinity, NewState).
 
 %% Note: CurSecretProps can only be used for static fields validation here.
 %% Any field that can be modified and needs to use CurProps should be

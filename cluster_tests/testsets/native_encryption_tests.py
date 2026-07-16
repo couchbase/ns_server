@@ -488,7 +488,7 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             kv_node, '/_cbauth/importEaRDEK', 400,
             json={'type': 'bucket', 'dekPaths': []})
         assert r.json()['errors']['dekPaths'] == \
-               'Must contain at least one element', \
+               'Length (0) must be in the range from 1 to infinity, inclusive', \
                f'unexpected error: {r.json()}'
         # Valid body but nonexistent file returns 400 (global error in "_")
         # Need a real bucket UUID, otherwise the server returns 500

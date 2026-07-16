@@ -62,7 +62,6 @@
          valid_in_enterprise_only/2,
          string_array/2,
          string_array/3,
-         string_array/4,
          return_value/3,
          return_error/3,
          default/3,
@@ -984,13 +983,8 @@ string_array(Name, State) ->
 -spec string_array(atom(), Fun, #state{}) -> #state{} when
       Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
 string_array(Name, Fun, State) ->
-    string_array(Name, Fun, true, State).
-
-string_array(Name, Fun, CanBeEmpty, State) ->
     validate(
-      fun ([]) when not CanBeEmpty ->
-              {error, "Must contain at least one element"};
-          (Array) when is_list(Array) ->
+      fun (Array) when is_list(Array) ->
               case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
                   false ->
                       {error, "Must be an array of non-empty strings"};
@@ -1445,15 +1439,16 @@ string_array_test() ->
     ?assertEqual([{"names", "alice - Name must start with a capital letter"}],
                  Errors3),
 
-    %% Test with empty input and CanBeEmpty = false
+    %% Test with empty input and array_length requiring at least one element
     State4 = #state{kv = [{"names", []}]},
-    ResultState4 = string_array(names, Fun, false, State4),
+    ResultState4 = array_length(names, 1, infinity,
+                               string_array(names, Fun, State4)),
     #state{errors = Errors4} = ResultState4,
-    ?assertEqual([{"names", "Must contain at least one element"}], Errors4),
+    ?assertMatch([{"names", _}], Errors4),
 
-    %% Test with empty input and CanBeEmpty = true
+    %% Test with empty input allowed (plain string_array)
     State5 = #state{kv = [{"names", []}]},
-    ResultState5 = string_array(names, Fun, true, State5),
+    ResultState5 = string_array(names, Fun, State5),
     ?assertEqual([], get_value(names, ResultState5)),
 
     %% Test with invalid input (non-list)

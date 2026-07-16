@@ -243,7 +243,7 @@ diag_status_validators_json(Req) ->
                    {error, _} ->
                        {error, "unknown node"}
                end
-       end, true, _),
+       end, _),
      validator:unsupported(_)].
 
 resolve_hostnames([], _Req) ->

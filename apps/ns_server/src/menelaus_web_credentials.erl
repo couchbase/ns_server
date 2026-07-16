@@ -927,15 +927,16 @@ guardrails_validators() ->
                                                [S, lists:join(", ",
                                                               ServiceNames)])}
                                     end
-                            end, false, _),
+                            end, _),
+     validator:array_length(allowedServices, 1, infinity, _),
      validator:convert(allowedServices, ConvertArray, _),
      validator:decoded_json(urlWhitelist,
                             url_whitelist_validators(), _),
-     validator:string_array(allowedResources,
-                            fun (_) -> ok end, false, _),
+     validator:string_array(allowedResources, _),
+     validator:array_length(allowedResources, 1, infinity, _),
      validator:convert(allowedResources, ConvertArray, _),
-     validator:string_array(allowedOperations,
-                            fun (_) -> ok end, false, _),
+     validator:string_array(allowedOperations, _),
+     validator:array_length(allowedOperations, 1, infinity, _),
      validator:convert(allowedOperations, ConvertArray, _),
      validator:unsupported(_)].
 
@@ -966,10 +967,12 @@ url_whitelist_validators() ->
     [validator:has_params(_),
      validator:boolean(allAccess, _),
      validator:string_array(allowedUrls,
-                            UrlValidatorFun, false, _),
+                            UrlValidatorFun, _),
+     validator:array_length(allowedUrls, 1, infinity, _),
      validator:convert(allowedUrls, ConvertUrlArray, _),
      validator:string_array(disallowedUrls,
-                            UrlValidatorFun, false, _),
+                            UrlValidatorFun, _),
+     validator:array_length(disallowedUrls, 1, infinity, _),
      validator:convert(disallowedUrls, ConvertUrlArray, _),
      validator:unsupported(_)].
 

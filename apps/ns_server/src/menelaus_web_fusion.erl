@@ -296,9 +296,7 @@ validate_guest_volumes(Name, State) ->
                          [validator:required(name, _),
                           validator:string(name, _),
                           validator:required(guestVolumePaths, _),
-                          validator:string_array(
-                            guestVolumePaths, fun (_) -> ok end,
-                            true, _),
+                          validator:string_array(guestVolumePaths, _),
                           validator:unsupported(_)],
                          State).
 
