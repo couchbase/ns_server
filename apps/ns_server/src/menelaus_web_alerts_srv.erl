@@ -1423,16 +1423,22 @@ calculate_xdcr_cert_alerts(#{trusted_certs := TrustedCerts,
 
 check_crls(Opaque) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
+    WarningDays = cb_crl_manager:crl_expiration_warning_days(),
     {NewOpaque, Aggregated} =
         case dict:find(crls_check, Opaque) of
-            {ok, #{retry_time := RetryTime, result := Res}}
+            %% WarningDays is bound above, so this matches only while the
+            %% configured warning window is unchanged; a change forces a
+            %% re-gather so the new threshold takes effect on the next check.
+            {ok, #{warning_days := WarningDays,
+                   retry_time := RetryTime, result := Res}}
               when Now < RetryTime ->
                 {Opaque, Res};
             _ ->
-                {RecheckTime, Agg} = gather_crl_alerts(Now),
+                {RecheckTime, Agg} = gather_crl_alerts(Now, WarningDays),
                 {dict:store(crls_check,
-                            #{retry_time => crl_retry_time(RecheckTime, Now),
-                              result     => Agg},
+                            #{warning_days => WarningDays,
+                              retry_time   => crl_retry_time(RecheckTime, Now),
+                              result       => Agg},
                             Opaque), Agg}
         end,
 
@@ -1447,8 +1453,7 @@ crl_retry_time(RecheckTime, Now) ->
 %% Gather CRL status from every node and aggregate by CRL content (checksum).
 %% Returns {RecheckTime, Aggregated} where RecheckTime is the earliest time any
 %% CRL could change alert state (or 'infinity' if none can on their own).
-gather_crl_alerts(Now) ->
-    WarningDays = cb_crl_manager:crl_expiration_warning_days(),
+gather_crl_alerts(Now, WarningDays) ->
     WarningSeconds = WarningDays * 24 * 60 * 60,
 
     Nodes = ns_node_disco:nodes_actual(),
