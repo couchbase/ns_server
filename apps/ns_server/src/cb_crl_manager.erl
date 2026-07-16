@@ -14,6 +14,10 @@
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% public API
 -export([start_link/0,
          get_config/0,
@@ -109,7 +113,14 @@
     %% URL-fetched files held in config/crls/url/ (base name => checksum).
     loaded_from_urls     :: active_files(),
     url_poll_interval_ms :: pos_integer(),
-    url_poll_timer       :: reference() | undefined
+    url_poll_timer       :: reference() | undefined,
+    %% Snapshot of the last-applied configuration (as returned by get_config/0),
+    %% taken by apply_config/2.  Together with the loaded-file maps above it feeds
+    %% crl_config_version/1 (which otherwise only reads the trusted CAs live).
+    config                   :: map() | undefined,
+    %% The CRL version last published to cb_crl_cache / CRL consumers.  Used to
+    %% detect a real change (vs a no-op reconcile) before notifying.
+    crl_version              :: integer() | undefined
 }).
 
 %%%===================================================================
@@ -322,6 +333,10 @@ init([]) ->
           (_)                       -> ok
       end),
     Cfg = get_config(),
+    %% One trusted-CA snapshot for the whole init: the CRL-loading functions and
+    %% the version calculation must agree on the same set (see
+    %% maybe_notify_crl_consumers/2).
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
     %% Crash on startup if we cannot create the directories we depend on.
     ok = ensure_dir(crls_dir()),
     ok = ensure_dir(local_crls_dir()),
@@ -345,12 +360,14 @@ init([]) ->
                     loaded_from_urls     = LoadedFromUrls0,
                     retry_timer          = undefined,
                     url_poll_interval_ms = ?DEFAULT_URL_POLL_INTERVAL_MS,
-                    url_poll_timer       = undefined},
+                    url_poll_timer       = undefined,
+                    config               = #{},
+                    crl_version          = undefined},
     %% apply_config handles poll_directory and policy changes.
     %% reconcile_url_files (called from apply_config) adds configured URLs,
     %% fetches them using conditional GET, and reads ETags lazily from the
     %% .etag sidecar files on first access.
-    State1 = apply_config(Cfg, State0),
+    State1 = apply_config(Cfg, TrustedCAs, State0),
     %% Reconcile: remove local uploaded files no longer in chronicle
     %% (deleted while this node was down) and download any files that
     %% are in chronicle but missing or stale locally.
@@ -366,7 +383,13 @@ init([]) ->
                                    State3#state.uploaded,
                                    State3#state.generated,
                                    State3#state.loaded_from_urls),
-    {ok, schedule_poll_dir_timer(schedule_url_timer(State3))}.
+    %% Publish the CRL version now that CRL data and policies are loaded, so the
+    %% verdict cache has a clean baseline to validate against.  Same publish
+    %% path as the change handlers: on first boot the consumers are not up yet,
+    %% so the notify is a safe no-op (both notify helpers are guarded); on a
+    %% manager restart it re-syncs them.
+    State4 = maybe_notify_crl_consumers(TrustedCAs, State3),
+    {ok, schedule_poll_dir_timer(schedule_url_timer(State4))}.
 
 handle_call(reload, _From, #state{url_file_state = UrlsState} = State) ->
     Dir = State#state.poll_directory,
@@ -374,17 +397,18 @@ handle_call(reload, _From, #state{url_file_state = UrlsState} = State) ->
                [Dir, maps:size(State#state.url_file_state)]),
     ?flush(poll_directory),
     ?flush(poll_urls),
-    State1 = scan_directory(Dir, State, true),
-    State2 = reconcile_url_files(maps:keys(UrlsState), true, State1),
-    maybe_notify_crl_consumers(State, State2),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    State1 = scan_directory(Dir, true, TrustedCAs, State),
+    State2 = reconcile_url_files(maps:keys(UrlsState), true, TrustedCAs, State1),
+    State3 = maybe_notify_crl_consumers(TrustedCAs, State2),
     ?log_debug("CRL manual reload done: ~b locally, ~b from URLs",
-               [maps:size(State2#state.loaded_locally),
-                maps:size(State2#state.loaded_from_urls)]),
-    {reply, build_status_map(State2),
-     schedule_poll_dir_timer(schedule_url_timer(State2))};
+               [maps:size(State3#state.loaded_locally),
+                maps:size(State3#state.loaded_from_urls)]),
+    {reply, build_status_map(TrustedCAs, State3),
+     schedule_poll_dir_timer(schedule_url_timer(State3))};
 
 handle_call(get_status, _From, State) ->
-    {reply, build_status_map(State), State};
+    {reply, build_status_map(ns_server_cert:trusted_CAs(der), State), State};
 
 handle_call(get_expiry_info, _From, State) ->
     {reply, build_expiry_info(State), State};
@@ -392,26 +416,24 @@ handle_call(get_expiry_info, _From, State) ->
 handle_call(sync, _From, State) ->
     {reply, ok, State};
 
-handle_call(get_push_config, _From, State) ->
-    Cfg = get_config(),
-    PolicyPerScope = maps:to_list(maps:get(policy_per_scope, Cfg)),
-    CheckInterm = maps:get(check_intermediate_certs, Cfg, false),
-    TrustedCAs = ns_server_cert:trusted_CAs(der),
+handle_call(get_push_config, _From, #state{config = Config,
+                                           crl_version = CrlVersion} = State) ->
+    PolicyPerScope = maps:get(policy_per_scope, Config, #{}),
+    CheckInterm = maps:get(check_intermediate_certs, Config, false),
     FileVersions = build_file_versions(State),
     Files = [F || {F, _} <- FileVersions],
-    Version = erlang:phash2({PolicyPerScope, lists:sort(FileVersions),
-                             CheckInterm, lists:sort(TrustedCAs)}),
-    Result = #{policy_per_scope => PolicyPerScope,
+    Result = #{policy_per_scope => maps:to_list(PolicyPerScope),
                files => Files,
-               version => Version,
+               version => CrlVersion,
                check_intermediate_certs => CheckInterm},
     {reply, Result, State};
 
 handle_call({upload_crl_file, Filename, Binary}, _From, State) ->
-    case do_upload_crl_file(Filename, Binary, State) of
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    case do_upload_crl_file(Filename, Binary, TrustedCAs, State) of
         {ok, NewState} ->
-            notify_crl_consumers(),
-            {reply, ok, NewState};
+            NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
+            {reply, ok, NewState2};
         {error, _} = Err ->
             {reply, Err, State}
     end;
@@ -419,8 +441,9 @@ handle_call({upload_crl_file, Filename, Binary}, _From, State) ->
 handle_call({delete_crl_file, Filename}, _From, State) ->
     case do_delete_crl_file(Filename, State) of
         {ok, NewState} ->
-            notify_crl_consumers(),
-            {reply, ok, NewState};
+            NewState2 = maybe_notify_crl_consumers(
+                          ns_server_cert:trusted_CAs(der), NewState),
+            {reply, ok, NewState2};
         {error, _} = Err ->
             {reply, Err, State}
     end;
@@ -428,8 +451,9 @@ handle_call({delete_crl_file, Filename}, _From, State) ->
 handle_call(sync_uploaded_files, _From, State) ->
     ChronicleFiles = get_crl_files_metadata(quorum),
     NewState = reconcile_uploaded_files(ChronicleFiles, State),
-    maybe_notify_crl_consumers(State, NewState),
-    {reply, ok, NewState};
+    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
+                                           NewState),
+    {reply, ok, NewState2};
 
 handle_call(Req, _From, State) ->
     ?log_error("Received unknown call: ~p", [Req]),
@@ -441,17 +465,19 @@ handle_cast(Msg, State) ->
 
 handle_info(config_changed, State) ->
     Cfg = get_config(),
-    State1 = apply_config(Cfg, State),
-    notify_crl_consumers(),
-    {noreply, schedule_poll_dir_timer(schedule_url_timer(State1))};
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    State1 = apply_config(Cfg, TrustedCAs, State),
+    State2 = maybe_notify_crl_consumers(TrustedCAs, State1),
+    {noreply, schedule_poll_dir_timer(schedule_url_timer(State2))};
 
 handle_info(ootb_crl_changed, State) ->
     %% The OOTB CRL (ootb_crl chronicle key) changed: it is written
     %% transactionally with root_cert_and_pkey on CA generation, and during
     %% node addition via the engage payload.  Reconcile it to disk + cache.
     NewState = reconcile_generated_crl(State),
-    maybe_notify_crl_consumers(State, NewState),
-    {noreply, NewState};
+    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
+                                           NewState),
+    {noreply, NewState2};
 
 handle_info(compat_version_changed, State) ->
     %% On the chronicle upgrade that enables CRL support, back-fill the OOTB CRL
@@ -465,35 +491,38 @@ handle_info(compat_version_changed, State) ->
         true  -> ns_server_cert:ensure_ootb_crl();
         false -> ok
     end,
-    {noreply, State};
+    {noreply, maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
+                                        State)};
 
 handle_info(crl_files_changed, State) ->
     ChronicleFiles = get_crl_files_metadata(),
     NewState = reconcile_uploaded_files(ChronicleFiles, State),
-    maybe_notify_crl_consumers(State, NewState),
-    {noreply, NewState};
+    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
+                                          NewState),
+    {noreply, NewState2};
 
 handle_info(retry_reconcile, State) ->
     ?log_debug("CRL uploaded-file reconcile retry", []),
     ?flush(retry_reconcile),
     ChronicleFiles = get_crl_files_metadata(),
     NewState = reconcile_uploaded_files(ChronicleFiles, State),
-    maybe_notify_crl_consumers(State, NewState),
-    {noreply, NewState};
+    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
+                                          NewState),
+    {noreply, NewState2};
 
 handle_info(poll_directory, #state{poll_directory = Dir} = State) ->
     ?flush(poll_directory),
-    State1 = scan_directory(Dir, State, false),
-    %% Only the set of active (good) files matters to consumers; reload-attempt
-    %% bookkeeping changing on its own does not warrant a push.
-    maybe_notify_crl_consumers(State, State1),
-    {noreply, schedule_poll_dir_timer(State1)};
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    State1 = scan_directory(Dir, false, TrustedCAs, State),
+    State2 = maybe_notify_crl_consumers(TrustedCAs, State1),
+    {noreply, schedule_poll_dir_timer(State2)};
 
 handle_info(poll_urls, #state{url_file_state = URLsState} = State) ->
     ?flush(poll_urls),
-    State1 = reconcile_url_files(maps:keys(URLsState), false, State),
-    maybe_notify_crl_consumers(State, State1),
-    {noreply, schedule_url_timer(State1)};
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    State1 = reconcile_url_files(maps:keys(URLsState), false, TrustedCAs, State),
+    State2 = maybe_notify_crl_consumers(TrustedCAs, State1),
+    {noreply, schedule_url_timer(State2)};
 
 handle_info(Msg, State) ->
     ?log_error("Received unknown info: ~p", [Msg]),
@@ -653,10 +682,9 @@ download_from_nodes([Node | Rest], FilenameBin, ExpectedChecksum) ->
     end.
 
 %% Execute the upload logic inside the gen_server.
--spec do_upload_crl_file(string(), binary(), #state{}) ->
+-spec do_upload_crl_file(string(), binary(), [binary()], #state{}) ->
           {ok, #state{}} | {error, term()}.
-do_upload_crl_file(Filename, Binary, State) ->
-    TrustedCAs = ns_server_cert:trusted_CAs(der),
+do_upload_crl_file(Filename, Binary, TrustedCAs, State) ->
     TS = calendar:universal_time(),
     AllowExpired = ?get_param(allow_expired_crls, false),
     case decode_and_verify_crl(Binary, TrustedCAs, AllowExpired) of
@@ -839,20 +867,45 @@ get_crl_number(#'CertificateList'{tbsCertList = TBS}) ->
             catch _:_ -> undefined end
     end.
 
-maybe_notify_crl_consumers(StateBefore, StateCurrent) ->
-    %% Only call notify_crl_consumers when the set of CRL files changes
-    %% It doesn't check if policies have changed !!!
-    case (StateBefore#state.loaded_locally =:=
-              StateCurrent#state.loaded_locally) andalso
-         (StateBefore#state.uploaded =:=
-              StateCurrent#state.uploaded) andalso
-         (StateBefore#state.generated =:=
-              StateCurrent#state.generated) andalso
-         (StateBefore#state.loaded_from_urls =:=
-              StateCurrent#state.loaded_from_urls) of
-        true  -> ok;
-        false -> notify_crl_consumers()
+%% Recompute the CRL version from the (final) State and, when it differs from
+%% the last published one, publish it (to cb_crl_cache and State) and notify the
+%% CRL consumers.  Called at the end of every configuration-change handler, after
+%% the CRL data/policy writes to cb_crl_cache, so the version is observed only
+%% once the data behind it is in place.  A no-op reconcile leaves the version
+%% unchanged and thus notifies no one and does not disturb cached verdicts;
+%% a real change produces a new version that both revalidates the verdict cache
+%% and prompts consumers to re-pull (spec 6.8).  Returns the updated State.
+%%
+%% TrustedCAs is passed in (not read here) so that the version reflects exactly
+%% the CA set the handler used for its CRL-loading work; reading it here would
+%% risk hashing a different snapshot than the data was validated against.
+-spec maybe_notify_crl_consumers([binary()], #state{}) -> #state{}.
+maybe_notify_crl_consumers(TrustedCAs, State) ->
+    NewVersion = crl_config_version(TrustedCAs, State),
+    case NewVersion =:= State#state.crl_version of
+        true ->
+            State;
+        false ->
+            %% Record the version in cb_crl_cache (so the verdict cache,
+            %% cb_crl_status_cache, validates its entries against it) and in
+            %% State, then prompt consumers to re-pull.
+            cb_crl_cache:set_crl_version(NewVersion),
+            notify_crl_consumers(),
+            State#state{crl_version = NewVersion}
     end.
+
+%% The CRL "version": an order-independent hash of everything that can change a
+%% revocation verdict — the 'hashed' config keys (see crl_config_key_classes/0),
+%% the loaded CRL files (path + checksum), and the trusted CAs.  Returned to CRL
+%% consumers via get_push_config.
+-spec crl_config_version([binary()], #state{}) -> integer().
+crl_config_version(TrustedCAs, #state{config = Config} = State) ->
+    HashedConfig = [{Key, maps:get(Key, Config)}
+                    || {Key, hashed} <- crl_config_key_classes()],
+    FileVersions = build_file_versions(State),
+    erlang:phash2({lists:sort(HashedConfig),
+                   lists:sort(FileVersions),
+                   lists:sort(TrustedCAs)}).
 
 %% Notify memcached and cbauth that CRL data has changed.
 %% Called after config changes, manual reload, and poll when files changed.
@@ -865,6 +918,8 @@ notify_crl_consumers() ->
     menelaus_web_alerts_srv:notify_crl_change(),
     ok.
 
+%% Every key added here must also be classified in crl_config_key_classes/0
+%% (enforced by crl_config_key_classes_complete_test/0).
 -spec default_config() -> map().
 default_config() ->
     #{poll_directory => default_local_crl_source_dir(),
@@ -875,6 +930,22 @@ default_config() ->
       check_intermediate_certs => false,
       crl_urls => [],
       url_poll_interval_ms => ?DEFAULT_URL_POLL_INTERVAL_MS}.
+
+%% Classifies each config key by its effect on the CRL version:
+%%   hashed      — verdict-relevant; folded into crl_config_version/2.
+%%   via_files   — verdict-relevant, but already captured via
+%%                 build_file_versions/1 (hashing it too would double-count).
+%%   operational — no verdict impact (e.g. poll cadence).
+%% Prefer 'hashed' when unsure: a spurious version bump is safer than serving a
+%% stale revocation verdict.
+-spec crl_config_key_classes() -> [{atom(), hashed | via_files | operational}].
+crl_config_key_classes() ->
+    [{policy_per_scope,         hashed},
+     {check_intermediate_certs, hashed},
+     {crl_urls,                 via_files},
+     {poll_directory,           via_files},
+     {poll_interval_ms,         operational},
+     {url_poll_interval_ms,     operational}].
 
 %% Apply a new configuration to State without creating a window where the
 %% cache is empty and without the race where a non-disabled policy is
@@ -900,9 +971,9 @@ default_config() ->
 %%     Write non-disabled policies to ETS only after Phase 2 completes.
 %%     Any verify_fun call that now sees a non-disabled policy is guaranteed
 %%     to find its CRLs in the cache.
--spec apply_config(map(), #state{}) -> #state{}.
-apply_config(Cfg, #state{poll_directory = OldPollDir,
-                         url_file_state = OldUrlsState} = State) ->
+-spec apply_config(map(), [binary()], #state{}) -> #state{}.
+apply_config(Cfg, TrustedCAs, #state{poll_directory = OldPollDir,
+                                     url_file_state = OldUrlsState} = State) ->
     NewPollDir     = maps:get(poll_directory, Cfg),
     NewInterval    = maps:get(poll_interval_ms, Cfg),
     NewPolicies    = maps:get(policy_per_scope, Cfg),
@@ -911,7 +982,9 @@ apply_config(Cfg, #state{poll_directory = OldPollDir,
     NewUrlInterval = maps:get(url_poll_interval_ms, Cfg),
     State1 = State#state{poll_directory       = NewPollDir,
                          poll_interval_ms     = NewInterval,
-                         url_poll_interval_ms = NewUrlInterval},
+                         url_poll_interval_ms = NewUrlInterval,
+                         %% Snapshot the applied config for crl_config_version/1.
+                         config               = Cfg},
 
     %% Phase 1: disable scopes whose new policy is 'disabled'.
     %% Also disable intermediate-cert checking here when the new value is
@@ -937,14 +1010,14 @@ apply_config(Cfg, #state{poll_directory = OldPollDir,
                 ?log_info(
                    "CRL source cleared; removing ~p poll-based CRL file(s)",
                    [maps:size(State1#state.loaded_locally)]),
-                scan_directory(undefined, State1, false);
+                scan_directory(undefined, false, TrustedCAs, State1);
             {undefined, Dir} ->
                 ?log_info("CRL poll directory set to ~p", [Dir]),
-                scan_directory(Dir, State1, false);
+                scan_directory(Dir, false, TrustedCAs, State1);
             {OldDir, Dir} ->
                 ?log_info("CRL poll directory changed from ~p to ~p",
                           [OldDir, Dir]),
-                scan_directory(Dir, State1, true)
+                scan_directory(Dir, true, TrustedCAs, State1)
         end,
 
     %% Phase 2b: update URL-based CRL data.
@@ -953,7 +1026,7 @@ apply_config(Cfg, #state{poll_directory = OldPollDir,
     %% (ETag-based, so unchanged CRLs are not re-downloaded).
     State3 = case lists:sort(NewUrls) /= lists:sort(maps:keys(OldUrlsState)) of
                  %% Something has changed:
-                 true -> reconcile_url_files(NewUrls, false, State2);
+                 true -> reconcile_url_files(NewUrls, false, TrustedCAs, State2);
                  %% Nothing changed:
                  false -> State2
              end,
@@ -1030,8 +1103,9 @@ schedule_url_timer(#state{url_poll_interval_ms = Ms,
 %%   All URLs     — fetched using conditional GET; the stored ETag is sent
 %%                  as If-None-Match so unchanged CRLs produce a 304 and
 %%                  require no re-download.
--spec reconcile_url_files([binary()], boolean(), #state{}) -> #state{}.
-reconcile_url_files(NewURLList, Force, State) ->
+-spec reconcile_url_files([binary()], boolean(), [binary()], #state{}) ->
+          #state{}.
+reconcile_url_files(NewURLList, Force, TrustedCAs, State) ->
     NewUrlSet = sets:from_list(NewURLList),
     %% Remove files for URLs no longer in the configuration.
     ExpectedFilenamesSet = sets:from_list([url_filename(E) || E <- NewURLList]),
@@ -1051,7 +1125,7 @@ reconcile_url_files(NewURLList, Force, State) ->
                  fun (URL, _Status) -> sets:is_element(URL, NewUrlSet) end,
                  State#state.url_file_state),
     %% Download all URLs; ETags prevent redundant transfers.
-    fetch_all_urls(NewURLList, Force,
+    fetch_all_urls(NewURLList, Force, TrustedCAs,
                    State#state{loaded_from_urls = NewLoaded,
                                url_file_state = NewUrlFS}).
 
@@ -1077,10 +1151,10 @@ reconcile_url_files(NewURLList, Force, State) ->
 %% that files sharing a base name across different directories are never
 %% confused.  active is keyed by base name: it mirrors crls_dir(), which is a
 %% flat, fixed directory, so there is no ambiguity there.
--spec scan_directory(file:filename_all() | undefined, #state{},
-                     ForceReload :: boolean()) ->
+-spec scan_directory(file:filename_all() | undefined,
+                     ForceReload :: boolean(), [binary()], #state{}) ->
           #state{}.
-scan_directory(undefined, State, _ForceReload) ->
+scan_directory(undefined, _ForceReload, _TrustedCAs, State) ->
     %% Poll directory is turned off, try to remove all poll based files
     NewLoaded =
         maps:filter(
@@ -1093,11 +1167,11 @@ scan_directory(undefined, State, _ForceReload) ->
             maps:is_key(filename:basename(FilePath), NewLoaded)
         end, State#state.file_state),
     State#state{file_state = NewFS, loaded_locally = NewLoaded};
-scan_directory(DirBin, State, ForceReload) when is_binary(DirBin) ->
-    scan_directory(binary_to_list(DirBin), State, ForceReload);
-scan_directory(Dir, State, ForceReload) ->
+scan_directory(DirBin, ForceReload, TrustedCAs, State)
+  when is_binary(DirBin) ->
+    scan_directory(binary_to_list(DirBin), ForceReload, TrustedCAs, State);
+scan_directory(Dir, ForceReload, TrustedCAs, State) ->
     maybe
-        TrustedCAs = ns_server_cert:trusted_CAs(der),
         TS = calendar:universal_time(),
         {ok, DiskNames} ?=
             case file:list_dir(Dir) of
@@ -1488,14 +1562,14 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
 %%                 | invalid | not_loaded
 %%   entries     — per-entry breakdown
 %%   last_reload — #{result, time, errors}
--spec build_status_map(#state{}) -> [map()].
-build_status_map(#state{file_state       = FS,
+-spec build_status_map([binary()], #state{}) -> [map()].
+build_status_map(TrustedDerCAs,
+                 #state{file_state       = FS,
                         loaded_locally   = LoadedLocally,
                         uploaded         = Uploaded,
                         generated        = Generated,
                         url_file_state   = UrlFS,
                         loaded_from_urls = LoadedFromUrls}) ->
-    TrustedDerCAs = ns_server_cert:trusted_CAs(der),
     LocalDir     = local_crls_dir(),
     UploadedDir  = crls_dir(),
     GeneratedDir = generated_crls_dir(),
@@ -1818,11 +1892,11 @@ get_etag_header(Headers) ->
     end.
 
 %% Fetch all configured URLs and update the state accordingly.
--spec fetch_all_urls([binary()], boolean(), #state{}) -> #state{}.
-fetch_all_urls(URLList, Force, State) ->
+-spec fetch_all_urls([binary()], boolean(), [binary()], #state{}) -> #state{}.
+fetch_all_urls(URLList, Force, TrustedCAs, State) ->
     TS = calendar:universal_time(),
     lists:foldl(fun (URL, S) ->
-                    fetch_one_url(URL, TS, Force, S)
+                    fetch_one_url(URL, TS, Force, TrustedCAs, S)
                 end, State, URLList).
 
 %% Fetch a single URL using a conditional GET (If-None-Match when an ETag
@@ -1831,9 +1905,10 @@ fetch_all_urls(URLList, Force, State) ->
 %%   304 Not Modified → keep existing cached file; record loaded status.
 %%   200 OK           → verify and install; store new ETag if present.
 %%   Other / error    → record failure; leave any existing good copy.
--spec fetch_one_url(binary(), calendar:datetime(), boolean(), #state{}) ->
-          #state{}.
-fetch_one_url(URL, TS, Force, #state{url_file_state = UrlFS} = State) ->
+-spec fetch_one_url(binary(), calendar:datetime(), boolean(), [binary()],
+                    #state{}) -> #state{}.
+fetch_one_url(URL, TS, Force, TrustedCAs,
+              #state{url_file_state = UrlFS} = State) ->
     Name = url_filename(URL),
     CrlPath = filename:join(url_crls_dir(), Name),
     %% Use ETag from state when available; read the .etag sidecar from disk
@@ -1862,7 +1937,7 @@ fetch_one_url(URL, TS, Force, #state{url_file_state = UrlFS} = State) ->
             ResponseETag = get_etag_header(RespHeaders),
             ?log_debug("CRL URL ~s: 200 (etag=~p)", [URL, ResponseETag]),
             install_url_crl(URL, Name, CrlPath, Body, ResponseETag, StoredETag,
-                            TS, State);
+                            TS, TrustedCAs, State);
         {ok, {{HttpStatus, _}, _, Body}} ->
             ?log_warning("CRL URL ~s: unexpected HTTP status ~p~nBody: ~p",
                             [URL, HttpStatus, Body]),
@@ -1887,12 +1962,11 @@ fetch_one_url(URL, TS, Force, #state{url_file_state = UrlFS} = State) ->
 %% On failure any existing good copy is left untouched.
 -spec install_url_crl(binary(), string(), file:filename_all(),
                       binary(), binary() | undefined, binary() | undefined,
-                      calendar:datetime(), #state{}) -> #state{}.
-install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS,
+                      calendar:datetime(), [binary()], #state{}) -> #state{}.
+install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS, TrustedCAs,
                 #state{loaded_from_urls = LoadedFromUrls,
                        url_file_state = UrlFS} = State) ->
     AllowExpired = ?get_param(allow_expired_crls, false),
-    TrustedCAs = ns_server_cert:trusted_CAs(der),
     maybe
         {ok, Results} ?= decode_and_verify_crl(Body, TrustedCAs, AllowExpired),
         Bad = [R || R <- Results, R#entry_result.result =/= ok],
@@ -2108,3 +2182,17 @@ verify_crl_signature(CRL, TrustedDerCAs) ->
         true  -> ok;
         false -> {error, crl_issuer_not_trusted}
     end.
+
+-ifdef(TEST).
+
+%% Fails if a default_config/0 key is missing from (or stale in)
+%% crl_config_key_classes/0, forcing every new key to be classified.
+crl_config_key_classes_complete_test() ->
+    DefaultKeys = lists:sort(maps:keys(default_config())),
+    ClassifiedKeys = lists:sort([K || {K, _Class} <- crl_config_key_classes()]),
+    Unclassified = DefaultKeys -- ClassifiedKeys,
+    Stale = ClassifiedKeys -- DefaultKeys,
+    ?assertEqual({unclassified, []}, {unclassified, Unclassified}),
+    ?assertEqual({stale, []}, {stale, Stale}).
+
+-endif.

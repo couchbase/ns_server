@@ -84,8 +84,8 @@ verify_local_with_expiry(OtpCert, valid_peer, CRLScope, State) ->
             %% CA (see ns_server_cert / cb_crl_manager generated CRLs), so their
             %% serial is simply not on a revocation list -> good.
             case crl_check(OtpCert, Policy) of
-                {valid, Expiry} -> {{valid, State}, Expiry};
-                {{fail, Reason}, Expiry} -> {{fail, Reason}, Expiry}
+                {valid, NextUpdate} -> {{valid, State}, NextUpdate};
+                {{fail, Reason}, NextUpdate} -> {{fail, Reason}, NextUpdate}
             end;
         timeout ->
             %% This can happen during startup when cb_crl_manager has

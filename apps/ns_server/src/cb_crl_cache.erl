@@ -38,7 +38,9 @@
          set_policy/2,
          get_policy/1,
          set_check_intermediate_certs/1,
-         get_check_intermediate_certs/0]).
+         get_check_intermediate_certs/0,
+         set_crl_version/1,
+         get_crl_version/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -54,6 +56,8 @@
 %%   {crl_file, NormPath}         => [#crl_elem{}]
 %%   {issuer,   NormIssuer}       => [{crl_file, NormPath}]
 %%   {policy,   Scope}            => crl_policy()
+%%   check_intermediate_certs     => boolean()
+%%   crl_version                  => integer()  (opaque config/data version)
 %%
 %% Each #crl_elem{} stores the normalised issuer, the DER-encoded CRL, and
 %% a caller-supplied metadata map (stored verbatim, never interpreted here).
@@ -183,6 +187,30 @@ get_check_intermediate_certs() ->
         end
     catch
         error:badarg -> unknown
+    end.
+
+%% Store the current CRL "version" (an opaque integer computed by cb_crl_manager
+%% from the effective revocation configuration + CRL data; see
+%% cb_crl_manager:crl_config_version/1).  It is written here, in the same
+%% serialization point that owns the CRL data, at the end of every configuration
+%% change, so it is guaranteed to be observed only after the corresponding data
+%% writes.  cb_crl_status_cache reads it (get_crl_version/0) to decide whether a
+%% cached verdict was computed against the current CRL data.
+-spec set_crl_version(integer()) -> ok.
+set_crl_version(Version) ->
+    gen_server:call(?SERVER, {set_crl_version, Version}).
+
+%% Fast, lock-free read of the current CRL version.  Returns 'undefined' when no
+%% version has been written yet or the cache table is not up.
+-spec get_crl_version() -> integer() | undefined.
+get_crl_version() ->
+    try
+        case ets:lookup(?ETS, crl_version) of
+            [{_, V}] -> V;
+            []       -> undefined
+        end
+    catch
+        error:badarg -> undefined
     end.
 
 %%%===================================================================
@@ -357,6 +385,10 @@ handle_call({set_policy, Scope, Policy}, _From, State) ->
 
 handle_call({set_check_intermediate_certs, V}, _From, State) ->
     ets:insert(?ETS, {check_intermediate_certs, V}),
+    {reply, ok, State};
+
+handle_call({set_crl_version, Version}, _From, State) ->
+    ets:insert(?ETS, {crl_version, Version}),
     {reply, ok, State};
 
 handle_call(Req, _From, State) ->
