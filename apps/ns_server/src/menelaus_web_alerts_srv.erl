@@ -55,7 +55,8 @@
           opaque = dict:new(),
           checker_pid,
           change_counter = 0,
-          xdcr_replications = #{}
+          xdcr_replications = #{},
+          crl_cache_dirty = false
          }).
 
 %% Amount of time to wait between state checks (ms)
@@ -128,7 +129,7 @@
 
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
          fetch_alerts/0, consume_alerts/1, reset/0,
-         filter_alerts/1]).
+         filter_alerts/1, notify_crl_change/0]).
 
 -type alert_key() :: atom() | {atom(), any()}.
 
@@ -379,6 +380,19 @@ filter_alerts(FilterFun) ->
 stop() ->
     gen_server:cast(?MODULE, stop).
 
+-spec notify_crl_change() -> ok.
+notify_crl_change() ->
+    try mb_master:master_node() of
+        Master when Master =/= undefined ->
+            gen_server:cast({?SERVER, Master}, invalidate_crl_cache);
+        _ ->
+            ?log_debug("No master node found")
+    catch
+        T:E ->
+            ?log_debug("Failed to notify master of CRL change: ~p:~p", [T, E])
+    end,
+    ok.
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -504,6 +518,8 @@ handle_cast({update_config_key,
             #state{xdcr_replications = Rs} = State) ->
     NewRs = add_xdcr_replication(Key, Value, Rs),
     {noreply, State#state{xdcr_replications = NewRs}};
+handle_cast(invalidate_crl_cache, State) ->
+    {noreply, State#state{crl_cache_dirty = true}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -518,13 +534,14 @@ handle_info(check_alerts, #state{checker_pid = Pid} = State) ->
         true ->
             {noreply, State};
         _ ->
+            State1 = maybe_clear_crl_cache(State),
             Self = self(),
             CheckerPid = erlang:spawn_link(fun () ->
-                                                   NewOpaque = do_handle_check_alerts_info(State),
+                                                   NewOpaque = do_handle_check_alerts_info(State1),
                                                    Self ! {merge_opaque_from_checker, NewOpaque}
                                            end),
-            {noreply, State#state{checker_pid = CheckerPid,
-                                  xdcr_replications = #{}}}
+            {noreply, State1#state{checker_pid = CheckerPid,
+                                   xdcr_replications = #{}}}
     end;
 
 handle_info({merge_opaque_from_checker, NewOpaque},
@@ -544,6 +561,12 @@ do_handle_check_alerts_info(#state{history=Hist, opaque=Opaque,
     StatsOrddict = orddict:from_list([{K, orddict:from_list(V)}
                                           || {K, V} <- Stats]),
     check_alerts(dict:store(xdcr_replications, Rs, Opaque), Hist, StatsOrddict).
+
+maybe_clear_crl_cache(#state{crl_cache_dirty = true, opaque = Opaque} = State) ->
+    State#state{opaque = dict:erase(crls_check, Opaque),
+                crl_cache_dirty = false};
+maybe_clear_crl_cache(#state{crl_cache_dirty = false} = State) ->
+    State.
 
 terminate(_Reason, _State) ->
     ok.
@@ -2140,7 +2163,8 @@ all_test_() ->
       fun crl_entry_recheck_test__/0,
       fun crl_retry_time_test__/0,
       fun crl_aggregation_test__/0,
-      fun crl_format_test__/0]}.
+      fun crl_format_test__/0,
+      fun maybe_clear_crl_cache_test__/0]}.
 
 test_setup() ->
     ok = meck:new(basic_test_modules(), [passthrough]),
@@ -2391,4 +2415,18 @@ crl_format_test__() ->
     ?assertEqual("42", format_crl_number(42)),
     ?assertEqual("a.crl, b.crl",
                  format_crl_files([<<"b.crl">>, <<"a.crl">>])).
+
+%% A pending CRL-change notification drops the cached result and clears the
+%% flag; without one the cache and flag are left untouched.
+maybe_clear_crl_cache_test__() ->
+    Cached = dict:store(crls_check, #{retry_time => 1, result => #{}},
+                        dict:new()),
+
+    Dirty = #state{opaque = Cached, crl_cache_dirty = true},
+    Cleared = maybe_clear_crl_cache(Dirty),
+    ?assertEqual(false, Cleared#state.crl_cache_dirty),
+    ?assertEqual(error, dict:find(crls_check, Cleared#state.opaque)),
+
+    Clean = #state{opaque = Cached, crl_cache_dirty = false},
+    ?assertEqual(Clean, maybe_clear_crl_cache(Clean)).
 -endif.

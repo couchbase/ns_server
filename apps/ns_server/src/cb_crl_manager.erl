@@ -827,10 +827,13 @@ maybe_notify_crl_consumers(StateBefore, StateCurrent) ->
 
 %% Notify memcached and cbauth that CRL data has changed.
 %% Called after config changes, manual reload, and poll when files changed.
+%% Also notify the master's alert server so CRL expiry alerts pick up the new
+%% content
 -spec notify_crl_consumers() -> ok.
 notify_crl_consumers() ->
     memcached_config_mgr:trigger_tls_config_push(),
     menelaus_cbauth:notify_crl_change(),
+    menelaus_web_alerts_srv:notify_crl_change(),
     ok.
 
 -spec default_config() -> map().
