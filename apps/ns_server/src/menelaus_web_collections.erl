@@ -70,7 +70,7 @@ maybe_audit(_, _Req, _SuccessfulAuditFun) ->
     ok.
 
 %% Add event logs for a specific set of operations.
-get_event_and_attributes({create_scope, Name, _}) ->
+get_event_and_attributes({create_scope, Name}) ->
     {scope_created, [{scope, Name}]};
 get_event_and_attributes({drop_scope, Name}) ->
     {scope_deleted, [{scope, Name}]};
