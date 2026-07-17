@@ -19,7 +19,9 @@
 %% Internal record — not exposed outside this module.
 -record(crl_elem, {
     issuer,   %% public_key:issuer_name()   — normalised
-    der       %% binary()                   — DER-encoded CertificateList
+    der,      %% binary()                   — DER-encoded CertificateList
+    meta      %% map()                      — caller-supplied metadata, stored
+              %%                              verbatim (see get_file_crls_meta)
 }).
 
 %% ssl_crl_cache_api behaviour
@@ -32,6 +34,7 @@
          remove_all_crls/0,
          get_all_file_paths/0,
          get_file_crls/1,
+         get_file_crls_meta/1,
          set_policy/2,
          get_policy/1,
          set_check_intermediate_certs/1,
@@ -53,7 +56,7 @@
 %%   {policy,   Scope}            => crl_policy()
 %%
 %% Each #crl_elem{} stores the normalised issuer, the DER-encoded CRL, and
-%% the timestamp at which it was loaded (passed in by the caller).
+%% a caller-supplied metadata map (stored verbatim, never interpreted here).
 %%
 %% Path normalization: misc:normalize_path/1 — resolves relative components
 %%   and collapses . / .. segments (raises badarg if the path escapes root).
@@ -73,17 +76,18 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% Insert (or atomically overwrite) all CRLs from one file.
-%% CRLPairs is a list of {RawIssuer, DerCRL} pairs — one element per CRL
-%% entry found in the file (a PEM may contain several).
-%% LoadTS is the timestamp to store in each #crl_elem{} (caller supplies it
-%% so the cache does not need its own clock).
+%% CRLEntries is a list of {RawIssuer, DerCRL, Meta} triples — one element per
+%% CRL entry found in the file (a PEM may contain several).  Meta is an
+%% opaque map stored next to the DER so information captured when the CRL was
+%% decoded (e.g. expiration dates) can be read back via get_file_crls_meta/1
+%% without decoding the CRL again.
 %% Path is normalized internally with misc:normalize_path/1.
 %% Issuer normalization (pkix_normalize_name/1) is performed here so callers
 %% do not need to do it.
 -spec insert_file(file:filename_all(),
-                  [{public_key:issuer_name(), der_crl()}]) -> ok.
-insert_file(Path, CRLPairs) ->
-    gen_server:call(?SERVER, {insert_file, Path, CRLPairs}).
+                  [{public_key:issuer_name(), der_crl(), map()}]) -> ok.
+insert_file(Path, CRLEntries) ->
+    gen_server:call(?SERVER, {insert_file, Path, CRLEntries}).
 
 %% Remove all CRLs associated with a file path.
 %% Determines the affected issuers from the existing {crl_file, _} entry and
@@ -120,6 +124,22 @@ get_file_crls(Path) ->
         case ets:lookup(?ETS, {crl_file, NormPath}) of
             []           -> [];
             [{_, Elems}] -> [E#crl_elem.der || E <- Elems]
+        end
+    catch
+        error:badarg -> []
+    end.
+
+%% Return the metadata map supplied at insert time for each CRL entry of a
+%% single file, without touching the DER data.
+%% Reads directly from ETS (safe: table is 'protected').
+%% Returns [] when the path is not cached or the table does not exist yet.
+-spec get_file_crls_meta(file:filename_all()) -> [map()].
+get_file_crls_meta(Path) ->
+    NormPath = misc:normalize_path(Path),
+    try
+        case ets:lookup(?ETS, {crl_file, NormPath}) of
+            []           -> [];
+            [{_, Elems}] -> [E#crl_elem.meta || E <- Elems]
         end
     catch
         error:badarg -> []
@@ -276,11 +296,12 @@ init([]) ->
     ets:new(?ETS, [named_table, protected, set]),
     {ok, #state{}}.
 
-handle_call({insert_file, Path, CRLPairs}, _From, State) ->
+handle_call({insert_file, Path, CRLEntries}, _From, State) ->
     NormPath  = misc:normalize_path(Path),
     FileKey   = {crl_file, NormPath},
     NewElems  = [#crl_elem{issuer  = public_key:pkix_normalize_name(I),
-                           der     = D} || {I, D} <- CRLPairs],
+                           der     = D,
+                           meta    = M} || {I, D, M} <- CRLEntries],
     NewIssuers = lists:usort([E#crl_elem.issuer || E <- NewElems]),
     %% Determine which issuers are present in the existing record (if any).
     OldIssuers =

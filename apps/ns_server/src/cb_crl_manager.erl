@@ -21,6 +21,7 @@
          sync/0,
          reload/0,
          get_status/0,
+         get_expiry_info/0,
          get_push_config/0,
          crl_expiration_warning_days/0,
          upload_crl_file/2,
@@ -198,6 +199,15 @@ reload() ->
 get_status() ->
     gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
 
+%% Lightweight expiry view for CRL expiration alerts: one map per loaded
+%% file (filename => binary(), entries => [entry_meta/1 map]), built from the
+%% metadata stored in cb_crl_cache when each CRL was decoded at load time.
+%% Unlike get_status/0 this never decodes or re-verifies CRLs, so it is cheap
+%% enough to be polled periodically (see menelaus_web_alerts_srv).
+-spec get_expiry_info() -> [map()].
+get_expiry_info() ->
+    gen_server:call(?SERVER, get_expiry_info, ?STATUS_TIMEOUT).
+
 %% Number of days before a CRL's nextUpdate at which the "expires soon" alert
 %% starts firing. Settable via POST /settings/alerts/limits (crlExpirationDays).
 -spec crl_expiration_warning_days() -> pos_integer().
@@ -359,6 +369,9 @@ handle_call(reload, _From, #state{url_file_state = UrlsState} = State) ->
 
 handle_call(get_status, _From, State) ->
     {reply, build_status_map(State), State};
+
+handle_call(get_expiry_info, _From, State) ->
+    {reply, build_expiry_info(State), State};
 
 handle_call(sync, _From, State) ->
     {reply, ok, State};
@@ -1208,9 +1221,9 @@ add_to_cache(CacheType, Name, Binary, VerifiedEntries) ->
     ?log_debug("Adding CRL file ~p to cache", [FilePath]),
     maybe
         ok ?= misc:atomic_write_file(FilePath, Binary),
-        Pairs = [{I, D}
-                 || #entry_result{issuer = I, der = D} <- VerifiedEntries],
-        cb_crl_cache:insert_file(FilePath, Pairs),
+        CacheEntries = [{E#entry_result.issuer, E#entry_result.der,
+                         entry_meta(E)} || E <- VerifiedEntries],
+        cb_crl_cache:insert_file(FilePath, CacheEntries),
         {ok, file_checksum(Binary)}
     else
         {error, Err} ->
@@ -1393,10 +1406,10 @@ populate_cache_from_dir(Dir) ->
                   {ok, Binary} ->
                       case decode_to_entries(Binary) of
                           {ok, Entries} ->
-                              Pairs = [{I, D}
-                                       || #entry_result{issuer = I,
-                                                        der = D} <- Entries],
-                              cb_crl_cache:insert_file(Path, Pairs),
+                              CacheEntries =
+                                  [{E#entry_result.issuer, E#entry_result.der,
+                                    entry_meta(E)} || E <- Entries],
+                              cb_crl_cache:insert_file(Path, CacheEntries),
                               ?log_debug("CRL seeded from ~p", [Path]),
                               maps:put(Name, file_checksum(Binary), Acc);
                           {error, Reason} ->
@@ -1550,6 +1563,36 @@ build_status_map(#state{file_state       = FS,
           end, maps:to_list(Generated)),
     PollList ++ UploadedList ++ GeneratedList ++ UrlList.
 
+%% Lightweight counterpart of build_status_map/1 for get_expiry_info/0.
+%% Returns one map per loaded file (filename => binary(), entries =>
+%% [entry_meta/1 map]) built purely from the metadata stored in cb_crl_cache
+%% at load time — no CRL decoding or signature verification.  Files that are
+%% not currently loaded have no cached entries and nothing that can expire,
+%% so they are omitted.
+-spec build_expiry_info(#state{}) -> [map()].
+build_expiry_info(#state{loaded_locally   = LoadedLocally,
+                         uploaded         = Uploaded,
+                         generated        = Generated,
+                         url_file_state   = UrlFS,
+                         loaded_from_urls = LoadedFromUrls}) ->
+    FileInfo =
+        fun (Dir, Name, DisplayName) ->
+                #{filename => DisplayName,
+                  entries  => cb_crl_cache:get_file_crls_meta(
+                                filename:join(Dir, Name))}
+        end,
+    [FileInfo(local_crls_dir(), Name, list_to_binary(Name))
+     || Name <- maps:keys(LoadedLocally)] ++
+    [FileInfo(crls_dir(), Name, list_to_binary(Name))
+     || Name <- maps:keys(Uploaded)] ++
+    [FileInfo(generated_crls_dir(), Name, list_to_binary(Name))
+     || Name <- maps:keys(Generated)] ++
+    %% URL-fetched files are keyed on disk by url_filename/1 (a hash); report
+    %% the URL itself as the filename, consistent with build_status_map/1.
+    [FileInfo(url_crls_dir(), url_filename(URL), iolist_to_binary(URL))
+     || URL <- maps:keys(UrlFS),
+        maps:is_key(url_filename(URL), LoadedFromUrls)].
+
 %% Compute the current status of an active CRL by reading DER entries from
 %% the cache and re-verifying them now.  Returns {FileStatus, [EntryMap]}.
 -spec current_status(file:filename_all(), [binary()]) -> {atom(), [map()]}.
@@ -1632,6 +1675,23 @@ entry_to_map(#entry_result{result = Result,
              end,
     #{issuer      => iolist_to_binary(ns_server_cert:format_name(Issuer)),
       status      => Status,
+      this_update => ThisUpdate,
+      next_update => NextUpdate,
+      checksum    => file_checksum(Der),
+      crl_number  => CrlNum}.
+
+%% Per-entry metadata handed to cb_crl_cache:insert_file/2 so that expiry
+%% information can be read back later (see build_expiry_info/1) without
+%% decoding the CRL again.  Field values match entry_to_map/1 where the two
+%% overlap; there is no status field because status depends on the current
+%% time and trusted-CA set, not on the entry itself.
+-spec entry_meta(entry_result()) -> map().
+entry_meta(#entry_result{issuer      = Issuer,
+                         this_update = ThisUpdate,
+                         next_update = NextUpdate,
+                         der         = Der,
+                         crl_number  = CrlNum}) ->
+    #{issuer      => iolist_to_binary(ns_server_cert:format_name(Issuer)),
       this_update => ThisUpdate,
       next_update => NextUpdate,
       checksum    => file_checksum(Der),

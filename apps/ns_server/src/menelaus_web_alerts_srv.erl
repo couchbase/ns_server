@@ -67,7 +67,8 @@
 -define(CRL_CHECK_MAX_INTERVAL_SEC,
         ?get_timeout(crl_check_interval_sec, 60 * 60 )).
 
-%% Per-node timeout for the get_status RPC issued during the CRL check (ms).
+%% Per-node timeout for the get_expiry_info RPC issued during the CRL check
+%% (ms).
 -define(CRL_STATUS_CALL_TIMEOUT, ?get_timeout(crl_status_call, 30000)).
 
 %% Amount of time between sending users the same alert (s)
@@ -1450,7 +1451,9 @@ crl_retry_time(infinity, Now) ->
 crl_retry_time(RecheckTime, Now) ->
     min(RecheckTime, Now + ?CRL_CHECK_MAX_INTERVAL_SEC).
 
-%% Gather CRL status from every node and aggregate by CRL content (checksum).
+%% Gather CRL expiry info from every node and aggregate by CRL content
+%% (checksum).  get_expiry_info returns metadata captured when each CRL was
+%% loaded, so no node decodes or re-verifies CRLs for this check.
 %% Returns {RecheckTime, Aggregated} where RecheckTime is the earliest time any
 %% CRL could change alert state (or 'infinity' if none can on their own).
 gather_crl_alerts(Now, WarningDays) ->
@@ -1468,7 +1471,7 @@ gather_crl_alerts(Now, WarningDays) ->
     Results =
         misc:parallel_map(
             fun (Node) ->
-                rpc:call(Node, cb_crl_manager, get_status, [],
+                rpc:call(Node, cb_crl_manager, get_expiry_info, [],
                          ?CRL_STATUS_CALL_TIMEOUT)
             end, Nodes, infinity),
 
@@ -1500,8 +1503,7 @@ aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Acc) ->
       end, Acc, StatusList).
 
 add_crl_entry(Node, Filename,
-              #{status := Status,
-                checksum := Checksum,
+              #{checksum := Checksum,
                 next_update := NextUpdate} = Entry,
               Now, WarningSeconds, {Map, Recheck}) when Checksum =/= <<>> ->
     NextUpdateSecs =
@@ -1509,36 +1511,33 @@ add_crl_entry(Node, Filename,
             undefined -> undefined;
             _ -> calendar:datetime_to_gregorian_seconds(NextUpdate)
         end,
-    WarningThreshold = Now + WarningSeconds,
+
     State =
-        case Status of
-            expired ->
+        case NextUpdateSecs of
+            undefined ->
+                none;
+            _ when NextUpdateSecs =< Now ->
                 expired;
-            ok when NextUpdateSecs =/= undefined ->
-                case NextUpdateSecs =< WarningThreshold of
-                    true  -> expires_soon;
-                    false -> none
-                end;
+            _ when NextUpdateSecs =< Now + WarningSeconds ->
+                expires_soon;
             _ ->
                 none
         end,
 
     {merge_crl_alert(Entry, Filename, State, Node, Map),
-     min(Recheck,
-         crl_entry_recheck(Status, State, NextUpdateSecs, WarningSeconds))};
+     min(Recheck, crl_entry_recheck(State, NextUpdateSecs, WarningSeconds))};
 add_crl_entry(_Node, _Filename, _Entry, _Now, _WarningSeconds, Acc) ->
     Acc.
 
-%% Earliest time an entry could change alert state. Only entries that are valid
-%% right now (status ok) transition on their own as time passes
-crl_entry_recheck(ok, expires_soon, NextUpdateSecs, _WarningSeconds) ->
+%% Earliest time an entry could change alert state as time passes.
+crl_entry_recheck(expires_soon, NextUpdateSecs, _WarningSeconds) ->
     %% Flips to expired at next_update.
     NextUpdateSecs;
-crl_entry_recheck(ok, none, NextUpdateSecs, WarningSeconds)
+crl_entry_recheck(none, NextUpdateSecs, WarningSeconds)
   when is_integer(NextUpdateSecs) ->
     %% Enters the warning window WarningSeconds before next_update.
     NextUpdateSecs - WarningSeconds;
-crl_entry_recheck(_Status, _State, _NextUpdateSecs, _WarningSeconds) ->
+crl_entry_recheck(_State, _NextUpdateSecs, _WarningSeconds) ->
     infinity.
 
 merge_crl_alert(_Entry, _Filename, none=_State, _Node, Map) ->
@@ -2331,16 +2330,13 @@ crl_entry_recheck_test__() ->
     Day = 24 * 60 * 60,
     Warn = 3 * Day,
     %% An expired CRL never transitions on its own.
-    ?assertEqual(infinity, crl_entry_recheck(expired, expired, 1000, Warn)),
+    ?assertEqual(infinity, crl_entry_recheck(expired, 1000, Warn)),
     %% One already in the warning window flips to expired at next_update.
-    ?assertEqual(5000, crl_entry_recheck(ok, expires_soon, 5000, Warn)),
+    ?assertEqual(5000, crl_entry_recheck(expires_soon, 5000, Warn)),
     %% A healthy one enters the warning window Warn seconds before next_update.
-    ?assertEqual(5000 - Warn, crl_entry_recheck(ok, none, 5000, Warn)),
+    ?assertEqual(5000 - Warn, crl_entry_recheck(none, 5000, Warn)),
     %% No next_update means there is nothing time-based to recheck.
-    ?assertEqual(infinity, crl_entry_recheck(ok, none, undefined, Warn)),
-    %% A non-ok entry (e.g. untrusted) stays 'none' regardless of time, even
-    %% with a valid next_update, so it never needs a recheck.
-    ?assertEqual(infinity, crl_entry_recheck(untrusted, none, 5000, Warn)).
+    ?assertEqual(infinity, crl_entry_recheck(none, undefined, Warn)).
 
 %% The recheck time is turned into an absolute deadline, capped so we still
 %% re-gather periodically.
@@ -2361,10 +2357,11 @@ crl_aggregation_test__() ->
     Warn = 3 * Day,
     Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
     DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
+    %% Entries have the shape produced by cb_crl_manager:entry_meta/1 and
+    %% files the shape produced by cb_crl_manager:build_expiry_info/1.
     Entry =
-        fun (Status, Checksum, Issuer, CrlNum, NUSecs) ->
+        fun (Checksum, Issuer, CrlNum, NUSecs) ->
                 #{issuer      => Issuer,
-                  status      => Status,
                   this_update => DT(Now - Day),
                   next_update => case NUSecs of
                                      undefined -> undefined;
@@ -2374,17 +2371,13 @@ crl_aggregation_test__() ->
                   crl_number  => CrlNum}
         end,
     File = fun (Name, Entries) ->
-                   #{filename    => Name,
-                     source      => local_dir,
-                     status      => aggregated,
-                     entries     => Entries,
-                     last_reload => #{result => loaded, time => undefined,
-                                      errors => []}}
+                   #{filename => Name,
+                     entries  => Entries}
            end,
 
-    Expired = Entry(expired, <<"c1">>, <<"CN=CA1">>, 7, Now - Day),
-    Soon    = Entry(ok,      <<"c2">>, <<"CN=CA2">>, 3, Now + Day),
-    Healthy = Entry(ok,      <<"c3">>, <<"CN=CA3">>, 9, Now + 30 * Day),
+    Expired = Entry(<<"c1">>, <<"CN=CA1">>, 7, Now - Day),
+    Soon    = Entry(<<"c2">>, <<"CN=CA2">>, 3, Now + Day),
+    Healthy = Entry(<<"c3">>, <<"CN=CA3">>, 9, Now + 30 * Day),
 
     StatusA = [File(<<"expired.crl">>, [Expired]),
                File(<<"soon.crl">>,    [Soon]),
