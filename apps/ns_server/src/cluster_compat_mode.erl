@@ -80,14 +80,28 @@ n1ql_cluster_capabilities(Version) ->
                 []
         end.
 
+search_cluster_capabilities(Version) ->
+    case is_enabled_at(Version, ?VERSION_76) of
+        true ->
+            [vectorSearch, scopedSearchIndex];
+        false ->
+            []
+    end ++
+    case is_enabled_at(Version, ?VERSION_TOTORO) of
+        true ->
+            [scoreFusion];
+        false ->
+            []
+    end.
+
 cluster_capabilities(Version) ->
     [{n1ql, n1ql_cluster_capabilities(Version)}] ++
-        case is_cluster_76() of
-            true ->
-                [{search, [vectorSearch, scopedSearchIndex]}];
-            false ->
-                []
-        end.
+    case search_cluster_capabilities(Version) of
+        [] ->
+            [];
+        SearchCapabilities ->
+            [{search, SearchCapabilities}]
+    end.
 
 get_cluster_capabilities() ->
     cluster_capabilities(get_compat_version()).
