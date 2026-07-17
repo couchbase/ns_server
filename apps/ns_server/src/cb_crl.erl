@@ -12,14 +12,16 @@
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
 
--export([verify_fun/1, verify/4, verify_local_with_expiry/4,
-         crl_check_safe/2]).
+-export([verify_fun/1, verify/4, verify_local_with_expiry/4, crl_check_safe/2,
+         crl_check/1]).
 
 -type pkix_crls_validate_verdict() :: valid | {bad_cert, Reason :: term()}.
 -type verify_fun_verdict(State) :: {valid, State} |
                                    {fail, {bad_cert, term()} | internal_error |
                                           crl_unavailable} |
                                    {unknown, State}.
+
+-export_type([pkix_crls_validate_verdict/0]).
 
 -spec verify_fun(CRLScope :: crl_scope()) ->
           fun((#'OTPCertificate'{}, term(), State) ->
@@ -150,8 +152,14 @@ wait_for_value(GetFun, Remaining) ->
             {ok, Value}
     end.
 
-%% Perform the actual CRL revocation check and map the result to a
-%% verify_fun return value according to the active policy.
+%% Determine the revocation status of a certificate under the active policy.
+%% The policy-independent verdict (from public_key:pkix_crls_validate/3) is
+%% cached by cb_crl_status_cache keyed on the certificate, so repeated
+%% handshakes for the same cert do not re-run the validation; the per-scope
+%% policy is then applied to the cached verdict (apply_policy/3), so the same
+%% cached verdict serves all scopes.  Returns the verify_fun result together
+%% with the source nextUpdate (used for the diagnostic `expiration` field and
+%% cache freshness).
 -spec crl_check_safe(#'OTPCertificate'{}, permissive | require) ->
           {pkix_crls_validate_verdict() | internal_error,
            calendar:datetime() | undefined}.
@@ -167,12 +175,14 @@ crl_check_safe(OtpCert, Policy) when Policy == permissive; Policy == require ->
 -spec crl_check(#'OTPCertificate'{}, permissive | require) ->
           {pkix_crls_validate_verdict(), calendar:datetime() | undefined}.
 crl_check(OtpCert, Policy) when Policy == permissive; Policy == require ->
-    {RawVerdict, NextUpdate} = crl_check(OtpCert),
+    {RawVerdict, NextUpdate} = cb_crl_status_cache:crl_check(OtpCert),
     {apply_policy(RawVerdict, Policy, OtpCert), NextUpdate}.
 
 %% Run the actual CRL validation for a certificate and return the raw
 %% public_key:pkix_crls_validate/3 result verbatim (valid | {bad_cert, Reason}),
-%% together with the source nextUpdate.
+%% together with the source nextUpdate.  This is the (potentially expensive)
+%% computation that cb_crl_status_cache memoizes; interpretation per the active
+%% policy happens later, in apply_policy/3.
 -spec crl_check(#'OTPCertificate'{}) ->
           {pkix_crls_validate_verdict(), calendar:datetime() | undefined}.
 crl_check(OtpCert) ->

@@ -50,6 +50,12 @@ child_specs() ->
      {cb_crl_manager, {cb_crl_manager, start_link, []},
       permanent, 1000, worker, [cb_crl_manager]},
 
+     %% The verdict cache lives next to cb_crl_manager: a manager restart
+     %% (rest_for_one) restarts it too, giving a clean cache once the manager
+     %% re-seeds cb_crl_cache and republishes the CRL version.
+     {cb_crl_status_cache, {cb_crl_status_cache, start_link, []},
+      permanent, 1000, worker, [cb_crl_status_cache]},
+
      {remote_monitors, {remote_monitors, start_link, []},
       permanent, 1000, worker, []},
 
