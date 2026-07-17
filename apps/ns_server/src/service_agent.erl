@@ -16,6 +16,10 @@
 -include("ns_config.hrl").
 -include("service_api.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([start_link/1]).
 -export([get_status/2]).
 -export([wait_for_agents/4]).
@@ -56,7 +60,10 @@
           service_manager :: undefined | pid(),
           service_manager_mref :: undefined | reference(),
           task_runner :: undefined | pid(),
-          task_runner_queue :: undefined | queue:queue(),
+          %% {Ref, From, OwningManager | undefined}, in submission order
+          %% Replies match the queue head, as the task runner is strictly
+          %% serial and sends exactly one reply per task
+          task_runner_queue :: queue:queue(),
           task_observer :: undefined | pid(),
 
           tasks :: undefined | {revision(), [any()]},
@@ -368,7 +375,7 @@ handle_call({set_service_manager, Pid} = Call, From,
         end,
     NewState = handle_set_service_manager(Pid, State),
     %% reply only when the revrpc connection is fully established
-    run_on_task_runner(From, NewState, fun (_) -> ok end);
+    run_manager_task(From, NewState, fun (_) -> ok end);
 
 %% if_rebalance is called when the cluster_compat_mode is less than 7.6.
 handle_call({if_rebalance, Pid, Call}, From, State) ->
@@ -390,7 +397,7 @@ handle_call({validate_bucket_config, ConfigString, Options}, From,
     %% clause) as a service_agent can only be associated with a single service
     %% manager as this is called by the REST API (may be multiple callers).
     State1 = State#state{type = validate_bucket_config},
-    run_on_task_runner(
+    run_standalone_task(
       From, State1,
       fun (Conn) ->
               handle_validate_bucket_config(Conn, ConfigString,
@@ -400,7 +407,7 @@ handle_call({validate_external_catalog_config,
              CatalogConfig, Options}, From, State) ->
     State1 = State#state{
                type = validate_external_catalog_config},
-    run_on_task_runner(
+    run_standalone_task(
       From, State1,
       fun (Conn) ->
               handle_validate_external_catalog_config(
@@ -410,7 +417,7 @@ handle_call({validate_external_collection_config,
              CollectionConfig, Options}, From, State) ->
     State1 = State#state{
                type = validate_external_collection_config},
-    run_on_task_runner(
+    run_standalone_task(
       From, State1,
       fun (Conn) ->
               handle_validate_external_collection_config(
@@ -450,11 +457,18 @@ handle_cast(Cast, State) ->
                  [Cast, State]),
     {noreply, State}.
 
-handle_info({task_call_reply, RV}, #state{task_runner_queue = Waiters}
+handle_info({task_call_reply, Ref, RV}, #state{task_runner_queue = Waiters}
             = State) ->
-    {{value, From}, NewWaiters} = queue:out(Waiters),
-    gen_server:reply(From, RV),
-    {noreply, State#state{task_runner_queue = NewWaiters}};
+    case queue:out(Waiters) of
+        {{value, {Ref, From, _Owner}}, NewWaiters} ->
+            gen_server:reply(From, RV),
+            {noreply, State#state{task_runner_queue = NewWaiters}};
+        _ ->
+            %% The waiter was already answered with an error when its
+            %% service manager was unset
+            ?log_debug("Dropping reply ~p for removed waiter", [Ref]),
+            {noreply, State}
+    end;
 handle_info({set_task_observer, Observer}, State) ->
     {noreply, handle_set_task_observer(Observer, State)};
 handle_info({new_tasks, Tasks}, State) ->
@@ -590,10 +604,15 @@ handle_unset_service_manager(#state{service_manager = Pid,
   when is_pid(Pid) ->
     erlang:demonitor(MRef, [flush]),
 
+    %% Answer and remove only this manager's waiters, so standalone tasks
+    %% stay queued
+    {ManagerWaiters, OtherWaiters} =
+        lists:partition(fun ({_Ref, _From, Owner}) -> Owner =:= Pid end,
+                        queue:to_list(Waiters)),
     lists:foreach(
-      fun (Waiter) ->
-              gen_server:reply(Waiter, {error, service_manager_terminated})
-      end, queue:to_list(Waiters)),
+      fun ({_Ref, From, _Owner}) ->
+              gen_server:reply(From, {error, service_manager_terminated})
+      end, ManagerWaiters),
 
     drop_messages(),
 
@@ -620,6 +639,7 @@ handle_unset_service_manager(#state{service_manager = Pid,
 
     State1#state{service_manager = undefined,
                  service_manager_mref = undefined,
+                 task_runner_queue = queue:from_list(OtherWaiters),
                  task_observer = undefined}.
 
 when_have_connection(Fun, #state{conn = Conn,
@@ -637,8 +657,6 @@ when_have_connection(Fun, #state{conn = Conn,
 
 drop_messages() ->
     receive
-        {task_call_reply, _} ->
-            drop_messages();
         {set_task_observer, _} ->
             drop_messages()
     after
@@ -651,10 +669,10 @@ do_handle_call(unset_rebalancer, From, State) ->
 do_handle_call(unset_service_manager, _From, State) ->
     {reply, ok, handle_unset_service_manager(State)};
 do_handle_call(get_node_info, From, State) ->
-    run_on_task_runner(From, State, fun handle_get_node_info/1);
+    run_manager_task(From, State, fun handle_get_node_info/1);
 do_handle_call({prepare_rebalance, Id, Type, KeepNodes, EjectNodes}, From,
                State) ->
-    run_on_task_runner(
+    run_manager_task(
       From, State,
       fun (Conn) ->
               handle_prepare_rebalance(Conn, Id, Type, KeepNodes, EjectNodes)
@@ -664,7 +682,7 @@ do_handle_call({start_rebalance, Id, Type, KeepNodes, EjectNodes, Observer},
     Self = self(),
     State1 = State#state{type = Type},
 
-    run_on_task_runner(
+    run_manager_task(
       From, State1,
       fun (Conn) ->
               handle_start_rebalance(Conn, Id, Type, KeepNodes,
@@ -672,7 +690,7 @@ do_handle_call({start_rebalance, Id, Type, KeepNodes, EjectNodes, Observer},
       end);
 do_handle_call({prepare_pause_bucket, Id, Args},
                From, State) ->
-    run_on_task_runner(
+    run_manager_task(
       From, State,
       fun (Conn) ->
               handle_prepare_pause_bucket(Conn, Id, Args)
@@ -682,14 +700,14 @@ do_handle_call({pause_bucket, Id, Args, Observer},
     Self = self(),
     State1 = State#state{type = pause_bucket},
 
-    run_on_task_runner(
+    run_manager_task(
       From, State1,
       fun (Conn) ->
               handle_pause_bucket(Conn, Id, Args, Self, Observer)
       end);
 do_handle_call({prepare_resume_bucket, Id, Args, DryRun},
                From, State) ->
-    run_on_task_runner(
+    run_manager_task(
       From, State,
       fun (Conn) ->
               handle_prepare_resume_bucket(Conn, Id, Args, DryRun)
@@ -704,7 +722,7 @@ do_handle_call({resume_bucket, Id, Args, DryRun, Observer},
                      State#state{type = resume_bucket}
              end,
 
-    run_on_task_runner(
+    run_manager_task(
       From, State1,
       fun (Conn) ->
               handle_resume_bucket(Conn, Id, Args, DryRun, Self, Observer)
@@ -821,10 +839,26 @@ process_topology({Props}) ->
                     is_balanced = IsBalanced,
                     messages = Messages}}.
 
-run_on_task_runner(From, #state{task_runner = TaskRunner,
-                                task_runner_queue = Waiters} = State, Body) ->
+%% Manager tasks are answered with an error and removed from the queue
+%% when the owning service manager is unset
+run_manager_task(From, #state{service_manager = Manager} = State, Body) ->
+    true = is_pid(Manager),
+    run_on_task_runner(From, Manager, State, Body).
+
+%% Standalone tasks such as config validation outlive service manager
+%% sessions, so are not answered on unset
+run_standalone_task(From, State, Body) ->
+    run_on_task_runner(From, undefined, State, Body).
+
+run_on_task_runner(From, Owner, #state{task_runner = TaskRunner,
+                                       task_runner_queue = Waiters} = State,
+                   Body) ->
     Parent = self(),
-    NewWaiters = queue:in(From, Waiters),
+    Ref = make_ref(),
+    %% Owner is tracked separately from From, as multi_call reaches us
+    %% through a transient per-call worker, so From is neither the manager
+    %% nor shared across a session's tasks
+    NewWaiters = queue:in({Ref, From, Owner}, Waiters),
 
     work_queue:submit_work(
       TaskRunner,
@@ -833,7 +867,7 @@ run_on_task_runner(From, #state{task_runner = TaskRunner,
               true = is_pid(Conn),
 
               RV = Body(Conn),
-              Parent ! {task_call_reply, RV}
+              Parent ! {task_call_reply, Ref, RV}
       end),
 
     {noreply, State#state{task_runner_queue = NewWaiters}}.
@@ -1206,3 +1240,151 @@ is_noproc(_) ->
 multi_call(Nodes, Service, Request, Timeout) ->
     misc:multi_call(Nodes, server_name(Service),
                     Request, Timeout, fun is_good_result/1).
+
+-ifdef(TEST).
+
+%% Time to wait for an expected reply, and the shorter time to confirm a
+%% reply has not been sent
+-define(REPLY_TIMEOUT, 1000).
+-define(NO_REPLY_TIMEOUT, 50).
+
+%% Overall time and per-attempt interval when polling for agent state
+-define(POLL_TIMEOUT, 1000).
+-define(POLL_INTERVAL, 5).
+
+setup() ->
+    fake_ns_config:setup(),
+    meck:new(ns_pubsub, [passthrough]),
+    meck:expect(ns_pubsub, subscribe_link,
+                fun (json_rpc_events) -> spawn_link_idle() end),
+    meck:new(json_rpc_connection_sup, [passthrough]),
+    meck:expect(json_rpc_connection_sup, reannounce, fun () -> ok end),
+    meck:new(service_api, [passthrough]),
+    meck:expect(service_api, validate_bucket_config,
+                fun (_, _, _) -> validated end),
+    {ok, Agent} = service_agent:start_link(index),
+    %% Unlink so an agent crash during a test fails that test, not the runner
+    unlink(Agent),
+    Agent.
+
+teardown(Agent) ->
+    gen_server:stop(Agent),
+    meck:unload(),
+    fake_ns_config:teardown().
+
+service_agent_test_() ->
+    Tests =
+        [{"unset answers only the unset manager's waiters",
+          fun unset_keeps_standalone_waiters/1},
+         {"a stale reply is not delivered to the next manager",
+          fun manager_handoff_reply_matching/1}],
+    {foreach, fun setup/0, fun teardown/1,
+     [fun (Agent) -> {Name, ?_test(Test(Agent))} end || {Name, Test} <- Tests]}.
+
+%% Unsetting a manager answers and removes only its own waiters, leaving a
+%% standalone validation queued to finish once the connection arrives
+unset_keeps_standalone_waiters(Agent) ->
+    Conn = spawn_link_idle(),
+    Manager = spawn_link_idle(),
+
+    %% Both calls block until the connection appears, so both queue
+    SetCall = start_call(Agent, {set_service_manager, Manager}),
+    wait_queue_len(Agent, 1),
+    ValidateCall = start_call(Agent, {validate_bucket_config, <<"cfg">>, #{}}),
+    wait_queue_len(Agent, 2),
+
+    misc:unlink_terminate_and_wait(Manager, kill),
+    ?assertEqual({error, service_manager_terminated}, await_reply(SetCall)),
+    ?assertEqual(no_reply, await_reply(ValidateCall, ?NO_REPLY_TIMEOUT)),
+
+    %% The connection arrives, so the standalone validation completes and the
+    %% removed manager waiter's stale reply is dropped
+    pass_connection(task_runner(Agent), Conn),
+    ?assertEqual(validated, await_reply(ValidateCall)),
+
+    misc:unlink_terminate_and_wait(Conn, kill).
+
+%% A reply already in flight when its manager is unset must be dropped, not
+%% delivered to the next manager's set_service_manager call
+manager_handoff_reply_matching(Agent) ->
+    TaskRunner = task_runner(Agent),
+    Conn = spawn_link_idle(),
+    Manager1 = spawn_link_idle(),
+    Manager2 = spawn_link_idle(),
+
+    Set1Call = start_call(Agent, {set_service_manager, Manager1}),
+    wait_queue_len(Agent, 1),
+
+    %% Freeze the agent and arrange its mailbox as [down, reply], so the unset
+    %% runs with manager1's reply already in flight
+    sys:suspend(Agent),
+    misc:unlink_terminate_and_wait(Manager1, kill),
+    wait_for_msg(Agent,
+                 fun ({'DOWN', _, process, M, _}) -> M =:= Manager1;
+                     (_) -> false
+                 end),
+    pass_connection(TaskRunner, Conn),
+    wait_for_msg(Agent,
+                 fun ({task_call_reply, _, _}) -> true;
+                     (_) -> false
+                 end),
+    sys:resume(Agent),
+
+    ?assertEqual({error, service_manager_terminated}, await_reply(Set1Call)),
+
+    %% Manager2's reply must reach it, not the removed manager1 waiter
+    Set2Call = start_call(Agent, {set_service_manager, Manager2}),
+    ?assertEqual(ok, await_reply(Set2Call)),
+
+    lists:foreach(misc:unlink_terminate_and_wait(_, kill),  [Conn, Manager2]).
+
+spawn_link_idle() ->
+    spawn_link(fun idle/0).
+
+idle() ->
+    receive after infinity -> ok end.
+
+%% Issue Request from a separate process, so it is a distinct caller, and
+%% return a handle to await its reply
+start_call(Agent, Request) ->
+    Parent = self(),
+    Call = make_ref(),
+    spawn(fun () ->
+                  Reply = gen_server:call(Agent, Request, infinity),
+                  Parent ! {reply, Call, Reply}
+          end),
+    Call.
+
+await_reply(Call) ->
+    await_reply(Call, ?REPLY_TIMEOUT).
+
+await_reply(Call, Timeout) ->
+    receive
+        {reply, Call, Reply} -> Reply
+    after
+        Timeout -> no_reply
+    end.
+
+task_runner(Agent) ->
+    #state{task_runner = TaskRunner} = sys:get_state(Agent),
+    TaskRunner.
+
+task_runner_queue(Agent) ->
+    #state{task_runner_queue = Queue} = sys:get_state(Agent),
+    Queue.
+
+wait_queue_len(Agent, N) ->
+    true = misc:poll_for_condition(
+             fun () ->
+                     Q = task_runner_queue(Agent),
+                     queue:len(Q) =:= N
+             end, ?POLL_TIMEOUT, ?POLL_INTERVAL).
+
+wait_for_msg(Agent, Pred) ->
+    true = misc:poll_for_condition(
+             fun () ->
+                     {messages, Msgs} = erlang:process_info(Agent, messages),
+                     lists:any(Pred, Msgs)
+             end, ?POLL_TIMEOUT, ?POLL_INTERVAL).
+
+-endif.
