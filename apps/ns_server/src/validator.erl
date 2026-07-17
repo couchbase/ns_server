@@ -62,6 +62,7 @@
          valid_in_enterprise_only/2,
          string_array/2,
          string_array/3,
+         int_array/3,
          return_value/3,
          return_error/3,
          default/3,
@@ -977,35 +978,67 @@ valid_in_enterprise_only(Name, State) ->
            end,
     is_changeable(Name, Pred, State).
 
+-spec int_array(atom(), Fun, #state{}) -> #state{} when
+      Fun :: fun((integer()) -> ok | {value, term()} | {error, string()}).
+int_array(Name, Fun, State) ->
+    Error = {error, "Must be an array of integers"},
+    array(Name,
+          fun (X) when is_integer(X) -> {ok, X};
+              (_) -> Error
+          end, Fun, State).
+
+-spec string_array(atom(), #state{}) -> #state{}.
 string_array(Name, State) ->
     string_array(Name, fun (_) -> ok end, State).
 
 -spec string_array(atom(), Fun, #state{}) -> #state{} when
       Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
 string_array(Name, Fun, State) ->
+    Error = {error, "Must be an array of non-empty strings"},
+    array(Name,
+          fun (X) when is_binary(X) ->
+                  case binary_to_list(X) of
+                      "" -> Error;
+                      String -> {ok, String}
+                  end;
+              (_) -> Error
+          end, Fun, State).
+
+array(Name, ItemValidator, Fun, State) ->
     validate(
       fun (Array) when is_list(Array) ->
-              case lists:all(?cut(is_binary(_1) andalso _1 =/= <<>>), Array) of
-                  false ->
-                      {error, "Must be an array of non-empty strings"};
-                  true ->
-                      List = [binary_to_list(B) || B <- Array],
+              case validate_array(Array, ItemValidator, []) of
+                  {error, _} = Error ->
+                      Error;
+                  {ok, List} ->
                       validate_fun_tokens(List, Fun)
               end;
           (_) ->
-              {error, "Must be an array of non-empty strings"}
+              {error, "Must be an array"}
       end, Name, State).
 
--spec validate_fun_tokens([string()], Fun) ->
+validate_array([], _, Acc) ->
+    {ok, lists:reverse(Acc)};
+validate_array([X | Rest], ItemValidator, Acc) ->
+    case ItemValidator(X) of
+        {ok, Value} ->
+            validate_array(Rest, ItemValidator, [Value | Acc]);
+        {error, _} = Error ->
+            Error
+    end.
+
+-spec validate_fun_tokens([term()], Fun) ->
           {value, list()} | {error, string()} when
-      Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
+      Fun :: fun((term()) -> ok | {value, term()} | {error, string()}).
 validate_fun_tokens(List, Fun) ->
     List2 = lists:map(fun (V) ->
                               case Fun(V) of
                                   ok -> {value, V};
                                   {value, V2} -> {value, V2};
                                   {error, E} ->
-                                      {error, V ++ " - " ++ E}
+                                      {error, lists:flatten(
+                                                io_lib:format("~p - ~s",
+                                                              [V, E]))}
                               end
                       end, List),
     Errors = [E || {error, E} <- List2],
@@ -1436,8 +1469,8 @@ string_array_test() ->
     State3 = #state{kv = [{"names", [<<"alice">>, <<"Bob">>, <<"Charlie">>]}]},
     ResultState3 = string_array(names, Fun, State3),
     #state{errors = Errors3} = ResultState3,
-    ?assertEqual([{"names", "alice - Name must start with a capital letter"}],
-                 Errors3),
+    ?assertEqual([{"names", "\"alice\" - Name must start with a capital "
+                   "letter"}], Errors3),
 
     %% Test with empty input and array_length requiring at least one element
     State4 = #state{kv = [{"names", []}]},
@@ -1455,13 +1488,60 @@ string_array_test() ->
     State6 = #state{kv = [{"names", <<"Not a list">>}]},
     ResultState6 = string_array(names, Fun, State6),
     #state{errors = Errors6} = ResultState6,
-    ?assertEqual([{"names", "Must be an array of non-empty strings"}], Errors6),
+    ?assertEqual([{"names", "Must be an array"}], Errors6),
 
     %% Test with invalid input (empty strings in list)
     State7 = #state{kv = [{"names", [<<"Alice">>, <<"">>, <<"Charlie">>]}]},
     ResultState7 = string_array(names, Fun, State7),
     #state{errors = Errors7} = ResultState7,
     ?assertEqual([{"names", "Must be an array of non-empty strings"}], Errors7).
+
+int_array_test() ->
+    %% Test with valid input and default fun
+    State1 = #state{kv = [{"ports", [1, 2, 3]}]},
+    ResultState1 = int_array(ports, fun (_) -> ok end, State1),
+    ?assertEqual([1, 2, 3], get_value(ports, ResultState1)),
+
+    %% Test with valid input and custom fun
+    Fun = fun (Port) ->
+                  case Port > 0 of
+                      true -> {value, Port};
+                      false -> {error, "Port must be positive"}
+                  end
+          end,
+    State2 = #state{kv = [{"ports", [1, 2, 3]}]},
+    ResultState2 = int_array(ports, Fun, State2),
+    ?assertEqual([1, 2, 3], get_value(ports, ResultState2)),
+
+    %% Test with invalid input (port not positive)
+    State3 = #state{kv = [{"ports", [0, 2, 3]}]},
+    ResultState3 = int_array(ports, Fun, State3),
+    #state{errors = Errors3} = ResultState3,
+    ?assertEqual([{"ports", "0 - Port must be positive"}], Errors3),
+
+    %% Test with empty input and array_length requiring at least one element
+    State4 = #state{kv = [{"ports", []}]},
+    ResultState4 = array_length(ports, 1, infinity,
+                                int_array(ports, Fun, State4)),
+    #state{errors = Errors4} = ResultState4,
+    ?assertMatch([{"ports", _}], Errors4),
+
+    %% Test with empty input allowed (plain int_array)
+    State5 = #state{kv = [{"ports", []}]},
+    ResultState5 = int_array(ports, Fun, State5),
+    ?assertEqual([], get_value(ports, ResultState5)),
+
+    %% Test with invalid input (non-list)
+    State6 = #state{kv = [{"ports", <<"Not a list">>}]},
+    ResultState6 = int_array(ports, Fun, State6),
+    #state{errors = Errors6} = ResultState6,
+    ?assertEqual([{"ports", "Must be an array"}], Errors6),
+
+    %% Test with invalid input (non-integer elements in list)
+    State7 = #state{kv = [{"ports", [1, <<"two">>, 3]}]},
+    ResultState7 = int_array(ports, Fun, State7),
+    #state{errors = Errors7} = ResultState7,
+    ?assertEqual([{"ports", "Must be an array of integers"}], Errors7).
 
 token_list_test() ->
     %% Test with valid input and default fun
@@ -1485,7 +1565,7 @@ token_list_test() ->
     State4 = #state{kv = [{"names", "Alice,bob,charlie"}]},
     ResultState4 = token_list(names, ",", Fun, State4),
     #state{errors = Errors4} = ResultState4,
-    ?assertEqual([{"names", "Alice - Name must start with a lower case "
+    ?assertEqual([{"names", "\"Alice\" - Name must start with a lower case "
                    "letter"}], Errors4),
 
     %% Test with empty input
