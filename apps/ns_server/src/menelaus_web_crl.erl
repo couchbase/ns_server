@@ -440,20 +440,19 @@ check_otp_cert(OtpCert, Policy) ->
             {true, [{status, <<"valid">>},
                     {details, <<"self-signed root; not CRL-checked">>}]};
         false ->
-            {Result, _Expiry} = cb_crl:crl_check(OtpCert, Policy),
+            {Result, _Expiry} = cb_crl:crl_check_safe(OtpCert, Policy),
             crl_result_to_props(Result)
     end.
 
 crl_result_to_props(valid) ->
     {true, [{status, <<"valid">>}]};
-crl_result_to_props({fail, {bad_cert, {revoked, Reason}}}) ->
+crl_result_to_props({bad_cert, {revoked, Reason}}) ->
     {false, [{status, <<"revoked">>}, {details, format_crl_term(Reason)}]};
-crl_result_to_props({fail, {bad_cert,
-                            {revocation_status_undetermined, Info}}}) ->
+crl_result_to_props({bad_cert, {revocation_status_undetermined, Info}}) ->
     {false, [{status, <<"undetermined">>}, {details, format_crl_term(Info)}]};
-crl_result_to_props({fail, {bad_cert, Reason}}) ->
+crl_result_to_props({bad_cert, Reason}) ->
     {false, [{status, <<"failed">>}, {details, format_crl_term(Reason)}]};
-crl_result_to_props({fail, Reason}) ->
+crl_result_to_props(Reason) ->
     {false, [{status, <<"failed">>}, {details, format_crl_term(Reason)}]}.
 
 format_crl_term(Term) ->
