@@ -175,8 +175,34 @@ crl_check_safe(OtpCert, Policy) when Policy == permissive; Policy == require ->
 -spec crl_check(#'OTPCertificate'{}, permissive | require) ->
           {pkix_crls_validate_verdict(), calendar:datetime() | undefined}.
 crl_check(OtpCert, Policy) when Policy == permissive; Policy == require ->
-    {RawVerdict, NextUpdate} = cb_crl_status_cache:crl_check(OtpCert),
-    {apply_policy(RawVerdict, Policy, OtpCert), NextUpdate}.
+    try
+        {CacheStatus, {RawVerdict, NextUpdate}} =
+            cb_crl_status_cache:crl_check(OtpCert),
+        Res = {apply_policy(RawVerdict, Policy, OtpCert), NextUpdate},
+        notify_verdict(verdict_label(RawVerdict), CacheStatus),
+        Res
+    catch
+        C:E:ST ->
+            notify_verdict(internal_error, miss),
+            erlang:raise(C, E, ST)
+    end.
+
+%% Report one crl_status_checks tick, labelled with the check's verdict.
+-spec notify_verdict(valid | revoked | undetermined | internal_error,
+                     hit | miss) -> ok.
+notify_verdict(Verdict, CacheStatus) ->
+    ns_server_stats:notify_counter(
+      {<<"crl_status_checks">>, [{verdict, Verdict}, {cache, CacheStatus}]}).
+
+%% Verdict label for the metric: the revocation determination this check
+%% produced, independent of policy (an 'undetermined' cert is reported as
+%% undetermined even when a permissive policy lets it through as valid).
+-spec verdict_label(pkix_crls_validate_verdict()) ->
+          valid | revoked | undetermined | internal_error.
+verdict_label(valid) -> valid;
+verdict_label({bad_cert, {revoked, _}}) -> revoked;
+verdict_label({bad_cert, {revocation_status_undetermined, _}}) -> undetermined;
+verdict_label({bad_cert, _}) -> internal_error.
 
 %% Run the actual CRL validation for a certificate and return the raw
 %% public_key:pkix_crls_validate/3 result verbatim (valid | {bad_cert, Reason}),

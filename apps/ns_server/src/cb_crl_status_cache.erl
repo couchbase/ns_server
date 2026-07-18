@@ -120,8 +120,9 @@ opts() ->
 %% When the cache has not been started yet (early boot, before it is placed in
 %% the supervision tree), the status is computed directly and not cached.
 -spec crl_check(#'OTPCertificate'{}) ->
-          {cb_crl:pkix_crls_validate_verdict(),
-           calendar:datetime() | undefined}.
+          {hit | miss,
+           {cb_crl:pkix_crls_validate_verdict(),
+            calendar:datetime() | undefined}}.
 crl_check(OtpCert) ->
     get_or_compute(OtpCert, fun () -> cb_crl:crl_check(OtpCert) end).
 
@@ -140,8 +141,9 @@ translate_options(_) ->
 %%%===================================================================
 
 -spec get_or_compute(#'OTPCertificate'{}, compute_fun()) -> 
-          {cb_crl:pkix_crls_validate_verdict(),
-           calendar:datetime() | undefined}.
+          {hit | miss,
+           {cb_crl:pkix_crls_validate_verdict(),
+            calendar:datetime() | undefined}}.
 get_or_compute(OtpCert, ComputeFun) ->
     Key = make_cache_key(OtpCert),
     %% get_value_and_touch (not get_value): refresh the entry's
@@ -150,13 +152,15 @@ get_or_compute(OtpCert, ComputeFun) ->
     try active_cache:get_value(
           ?MODULE, Key, fun () -> compute_entry(ComputeFun) end,
           #{touch => true,
-            is_valid_value => fun fresh/1}) of
-        Entry ->
-            {Entry#status_entry.verdict, Entry#status_entry.next_update}
+            is_valid_value => fun fresh/1,
+            return_info => true}) of
+        {CacheRes, Entry} ->
+            {CacheRes,
+             {Entry#status_entry.verdict, Entry#status_entry.next_update}}
     catch
         %% Cache doesn't exist yet.  Fall back to a direct computation.
         error:badarg ->
-            ComputeFun()
+            {miss, ComputeFun()}
     end.
 
 %% active_cache validity predicate: a cached entry is usable only if it was
@@ -333,9 +337,9 @@ not_started_fallback_test() ->
                   counters:add(Ref, 1, 1),
                   {valid, DT}
           end,
-    ?assertEqual({valid, DT}, get_or_compute(Cert, Fun)),
+    ?assertEqual({miss, {valid, DT}}, get_or_compute(Cert, Fun)),
     ?assertEqual(1, counters:get(Ref, 1)),
-    ?assertEqual({valid, DT}, get_or_compute(Cert, Fun)),
+    ?assertEqual({miss, {valid, DT}}, get_or_compute(Cert, Fun)),
     ?assertEqual(2, counters:get(Ref, 1)).
 
 caching_test_() ->
@@ -350,20 +354,20 @@ caching_test_() ->
                                      counters:add(Ref, 1, 1),
                                      {valid, DT}
                              end,
-                       ?assertEqual({valid, DT},
+                       ?assertEqual({miss, {valid, DT}},
                                     get_or_compute(Cert, Fun)),
                        ?assertEqual(1, counters:get(Ref, 1)),
                        %% Second lookup is a hit; Fun is not re-run.
-                       ?assertEqual({valid, DT},
+                       ?assertEqual({hit, {valid, DT}},
                                     get_or_compute(Cert, Fun)),
                        ?assertEqual(1, counters:get(Ref, 1)),
                        %% A new CRL version makes the entry stale; Fun runs again.
                        set_crl_version(1),
-                       ?assertEqual({valid, DT},
+                       ?assertEqual({miss, {valid, DT}},
                                     get_or_compute(Cert, Fun)),
                        ?assertEqual(2, counters:get(Ref, 1)),
                        %% ...and is fresh again under the new version.
-                       ?assertEqual({valid, DT},
+                       ?assertEqual({hit, {valid, DT}},
                                     get_or_compute(Cert, Fun)),
                        ?assertEqual(2, counters:get(Ref, 1))
                end)
@@ -384,9 +388,9 @@ expired_not_served_test_() ->
                                      counters:add(Ref, 1, 1),
                                      {valid, DT}
                              end,
-                       ?assertEqual({valid, DT},
+                       ?assertEqual({miss, {valid, DT}},
                                     get_or_compute(Cert, Fun)),
-                       ?assertEqual({valid, DT},
+                       ?assertEqual({miss, {valid, DT}},
                                     get_or_compute(Cert, Fun)),
                        %% Expired ⇒ recomputed on the second lookup too.
                        ?assertEqual(2, counters:get(Ref, 1))

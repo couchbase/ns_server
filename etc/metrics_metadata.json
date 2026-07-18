@@ -116,6 +116,22 @@
         "help": "Total number of cbauth client_cert cache misses",
         "added": "7.6.0"
     },
+    "cm_crl_status_checks_total": {
+        "type": "counter",
+        "help": "Total number of certificate revocation status checks performed by the Cluster Manager only",
+        "added": "8.1.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "verdict",
+                "help": "Revocation determination the check produced, independent of policy (valid, revoked, undetermined, internal_error)"
+            },
+            {
+                "name": "cache",
+                "help": "Whether the verdict was served from the CRL status cache (hit) or freshly computed (miss)"
+            }
+        ]
+    },
     "cm_encr_at_rest_data_status": {
         "type": "gauge",
         "help": "Encryption at rest status per data type (1 - encrypted, 0.5 - partially encrypted, 0 - unencrypted, -1 - unknown)",
