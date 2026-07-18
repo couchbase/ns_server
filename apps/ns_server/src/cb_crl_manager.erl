@@ -24,6 +24,7 @@
          get_expiry_info/0,
          get_push_config/0,
          crl_expiration_warning_days/0,
+         crl_warning_validity_fraction/0,
          upload_crl_file/2,
          delete_crl_file/1,
          get_crl_files_metadata/0,
@@ -40,6 +41,7 @@
 -define(DEFAULT_POLL_INTERVAL_MS, 60000).
 -define(DEFAULT_URL_POLL_INTERVAL_MS, 3600000).
 -define(DEFAULT_CRL_EXPIRATION_WARNING_DAYS, 3).
+-define(DEFAULT_CRL_WARNING_VALIDITY_FRACTION, 4).
 -define(RELOAD_TIMEOUT, ?get_timeout(reload_timeout, 60000)).
 -define(STATUS_TIMEOUT, ?get_timeout(status_timeout, 60000)).
 -define(SYNC_TIMEOUT, ?get_timeout(sync_timeout, 60000)).
@@ -210,10 +212,24 @@ get_expiry_info() ->
 
 %% Number of days before a CRL's nextUpdate at which the "expires soon" alert
 %% starts firing. Settable via POST /settings/alerts/limits (crlExpirationDays).
+%% The window actually applied to each CRL is capped at a fraction of that
+%% CRL's own validity period, so CRLs re-issued more often than this window
+%% (e.g. daily delta CRLs) alert only when their replacement is overdue
 -spec crl_expiration_warning_days() -> pos_integer().
 crl_expiration_warning_days() ->
     ns_config:read_key_fast({crl, expiration_warning_days},
                             ?DEFAULT_CRL_EXPIRATION_WARNING_DAYS).
+
+%% The "expires soon" warning window applied to a single CRL is capped at
+%% 1/crl_warning_validity_fraction of that CRL's own validity period, so CRLs
+%% re-issued more often than crl_expiration_warning_days (e.g. daily delta
+%% CRLs) alert only when their replacement is overdue.  Settable via POST
+%% /settings/alerts/limits (crlWarningValidityFraction); 0 disables the cap so
+%% the configured warning window applies as is.
+-spec crl_warning_validity_fraction() -> non_neg_integer().
+crl_warning_validity_fraction() ->
+    ns_config:read_key_fast({crl, warning_validity_fraction},
+                            ?DEFAULT_CRL_WARNING_VALIDITY_FRACTION).
 
 %% Return CRL config data for pushing to memcached and cbauth.
 %%

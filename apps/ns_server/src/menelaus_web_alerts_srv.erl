@@ -1425,19 +1425,22 @@ calculate_xdcr_cert_alerts(#{trusted_certs := TrustedCerts,
 check_crls(Opaque) ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
     WarningDays = cb_crl_manager:crl_expiration_warning_days(),
+    Fraction = cb_crl_manager:crl_warning_validity_fraction(),
     {NewOpaque, Aggregated} =
         case dict:find(crls_check, Opaque) of
-            %% WarningDays is bound above, so this matches only while the
-            %% configured warning window is unchanged; a change forces a
-            %% re-gather so the new threshold takes effect on the next check.
-            {ok, #{warning_days := WarningDays,
+            %% WarningDays and Fraction are bound above, so this matches only
+            %% while the configured warning window is unchanged; a change forces
+            %% a re-gather so the new threshold takes effect on the next check.
+            {ok, #{warning_days := WarningDays, validity_fraction := Fraction,
                    retry_time := RetryTime, result := Res}}
               when Now < RetryTime ->
                 {Opaque, Res};
             _ ->
-                {RecheckTime, Agg} = gather_crl_alerts(Now, WarningDays),
+                {RecheckTime, Agg} = gather_crl_alerts(Now, WarningDays,
+                                                       Fraction),
                 {dict:store(crls_check,
-                            #{warning_days => WarningDays,
+                            #{warning_days      => WarningDays,
+                              validity_fraction => Fraction,
                               retry_time   => crl_retry_time(RecheckTime, Now),
                               result       => Agg},
                             Opaque), Agg}
@@ -1456,7 +1459,7 @@ crl_retry_time(RecheckTime, Now) ->
 %% loaded, so no node decodes or re-verifies CRLs for this check.
 %% Returns {RecheckTime, Aggregated} where RecheckTime is the earliest time any
 %% CRL could change alert state (or 'infinity' if none can on their own).
-gather_crl_alerts(Now, WarningDays) ->
+gather_crl_alerts(Now, WarningDays, Fraction) ->
     WarningSeconds = WarningDays * 24 * 60 * 60,
 
     Nodes = ns_node_disco:nodes_actual(),
@@ -1479,7 +1482,7 @@ gather_crl_alerts(Now, WarningDays) ->
         lists:foldl(
           fun ({Node, StatusList}, Acc) when is_list(StatusList) ->
                   aggregate_node_crls(Node, StatusList, Now, WarningSeconds,
-                                      Acc);
+                                      Fraction, Acc);
               ({Node, Error}, Acc) ->
                   ?log_debug("Skipping CRL alerts for node ~p: ~p",
                              [Node, Error]),
@@ -1490,13 +1493,13 @@ gather_crl_alerts(Now, WarningDays) ->
 
 %% Fold one node's per-file CRL status into the {by-checksum map, recheck time}
 %% accumulator
-aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Acc) ->
+aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Fraction, Acc) ->
     lists:foldl(
       fun (#{filename := Filename, entries := Entries}, Acc1) ->
               lists:foldl(
                 fun (Entry, Acc2) ->
                         add_crl_entry(Node, Filename, Entry, Now,
-                                      WarningSeconds, Acc2)
+                                      WarningSeconds, Fraction, Acc2)
                 end, Acc1, Entries);
           (_, Acc1) ->
               Acc1
@@ -1505,12 +1508,15 @@ aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Acc) ->
 add_crl_entry(Node, Filename,
               #{checksum := Checksum,
                 next_update := NextUpdate} = Entry,
-              Now, WarningSeconds, {Map, Recheck}) when Checksum =/= <<>> ->
+              Now, WarningSeconds, Fraction, {Map, Recheck})
+  when Checksum =/= <<>> ->
     NextUpdateSecs =
         case NextUpdate of
             undefined -> undefined;
             _ -> calendar:datetime_to_gregorian_seconds(NextUpdate)
         end,
+    EffectiveWarning = effective_crl_warning(Entry, NextUpdateSecs,
+                                             WarningSeconds, Fraction),
 
     State =
         case NextUpdateSecs of
@@ -1518,16 +1524,37 @@ add_crl_entry(Node, Filename,
                 none;
             _ when NextUpdateSecs =< Now ->
                 expired;
-            _ when NextUpdateSecs =< Now + WarningSeconds ->
+            _ when NextUpdateSecs =< Now + EffectiveWarning ->
                 expires_soon;
             _ ->
                 none
         end,
 
     {merge_crl_alert(Entry, Filename, State, Node, Map),
-     min(Recheck, crl_entry_recheck(State, NextUpdateSecs, WarningSeconds))};
-add_crl_entry(_Node, _Filename, _Entry, _Now, _WarningSeconds, Acc) ->
+     min(Recheck, crl_entry_recheck(State, NextUpdateSecs, EffectiveWarning))};
+add_crl_entry(_Node, _Filename, _Entry, _Now, _WarningSeconds, _Fraction,
+              Acc) ->
     Acc.
+
+%% The warning window applied to a single CRL entry: the configured window,
+%% capped at 1/Fraction of the entry's own validity period
+%% (thisUpdate..nextUpdate).  Without the cap a CRL that is re-issued more
+%% often than the configured window — e.g. a delta CRL published every 24h,
+%% against the default 3-day window — would spend its entire life inside the
+%% window and alert continuously; with it, such a CRL alerts only once its
+%% routine replacement is overdue.  A Fraction of 0 disables the cap, and
+%% entries without a thisUpdate (or without a nextUpdate, where no time-based
+%% state applies anyway) use the configured window as is.
+effective_crl_warning(_Entry, _NextUpdateSecs, WarningSeconds, 0) ->
+    WarningSeconds;
+effective_crl_warning(#{this_update := ThisUpdate}, NextUpdateSecs,
+                      WarningSeconds, Fraction)
+  when ThisUpdate =/= undefined, is_integer(NextUpdateSecs) ->
+    ThisUpdateSecs = calendar:datetime_to_gregorian_seconds(ThisUpdate),
+    ValiditySeconds = max(0, NextUpdateSecs - ThisUpdateSecs),
+    min(WarningSeconds, ValiditySeconds div Fraction);
+effective_crl_warning(_Entry, _NextUpdateSecs, WarningSeconds, _Fraction) ->
+    WarningSeconds.
 
 %% Earliest time an entry could change alert state as time passes.
 crl_entry_recheck(expires_soon, NextUpdateSecs, _WarningSeconds) ->
@@ -2042,6 +2069,9 @@ params() ->
                               cfg_key => cert_exp_alert_days}},
      {"crlExpirationDays", #{type => pos_int,
                              cfg_key => crl_exp_alert_days}},
+     {"crlWarningValidityFraction",
+      #{type => non_neg_int,
+        cfg_key => crl_warning_validity_fraction}},
      {"lowIndexerResidentPerc", #{type => {int, 0, 100},
                                   cfg_key => [alert_limits,
                                               low_indexer_resident_percentage],
@@ -2092,10 +2122,13 @@ build_alert_limits() ->
 handle_settings_alerts_limits_get(Req) ->
     CertWarnDays = ns_server_cert:cert_expiration_warning_days(),
     CrlWarnDays = cb_crl_manager:crl_expiration_warning_days(),
-    menelaus_web_settings2:handle_get([], params(), fun type_spec/1,
-                                      [{alert_limits, build_alert_limits()},
-                                       {cert_exp_alert_days, CertWarnDays},
-                                       {crl_exp_alert_days, CrlWarnDays}], Req).
+    CrlValidityFraction = cb_crl_manager:crl_warning_validity_fraction(),
+    menelaus_web_settings2:handle_get(
+      [], params(), fun type_spec/1,
+      [{alert_limits, build_alert_limits()},
+       {cert_exp_alert_days, CertWarnDays},
+       {crl_exp_alert_days, CrlWarnDays},
+       {crl_warning_validity_fraction, CrlValidityFraction}], Req).
 
 handle_settings_alerts_limits_post(Req) ->
     menelaus_web_settings2:handle_post(
@@ -2118,6 +2151,13 @@ handle_settings_alerts_limits_post(Req) ->
                 CrlWarningDays ->
                     ns_config:set({crl, expiration_warning_days},
                                   CrlWarningDays)
+            end,
+            case proplists:get_value([crl_warning_validity_fraction],
+                                     Params) of
+                undefined -> ok;
+                CrlValidityFraction ->
+                    ns_config:set({crl, warning_validity_fraction},
+                                  CrlValidityFraction)
             end,
             handle_settings_alerts_limits_get(Req2)
         end, [], params(), fun type_spec/1, Req).
@@ -2167,6 +2207,7 @@ all_test_() ->
       fun crl_entry_recheck_test__/0,
       fun crl_retry_time_test__/0,
       fun crl_aggregation_test__/0,
+      fun crl_short_lived_warning_test__/0,
       fun crl_format_test__/0,
       fun maybe_clear_crl_cache_test__/0]}.
 
@@ -2355,14 +2396,18 @@ crl_retry_time_test__() ->
 crl_aggregation_test__() ->
     Day = 24 * 60 * 60,
     Warn = 3 * Day,
+    Fraction = 4,
     Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
     DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
     %% Entries have the shape produced by cb_crl_manager:entry_meta/1 and
     %% files the shape produced by cb_crl_manager:build_expiry_info/1.
+    %% Long-lived (30-day-old) CRLs, so the validity-period cap leaves the
+    %% configured warning window untouched (short-lived CRLs are covered by
+    %% crl_short_lived_warning_test__).
     Entry =
         fun (Checksum, Issuer, CrlNum, NUSecs) ->
                 #{issuer      => Issuer,
-                  this_update => DT(Now - Day),
+                  this_update => DT(Now - 30 * Day),
                   next_update => case NUSecs of
                                      undefined -> undefined;
                                      _         -> DT(NUSecs)
@@ -2385,8 +2430,10 @@ crl_aggregation_test__() ->
     %% Same expired CRL (checksum c1) present on a second node.
     StatusB = [File(<<"expired.crl">>, [Expired])],
 
-    Acc1 = aggregate_node_crls('n1@host', StatusA, Now, Warn, {#{}, infinity}),
-    {Map, Recheck} = aggregate_node_crls('n2@host', StatusB, Now, Warn, Acc1),
+    Acc1 = aggregate_node_crls('n1@host', StatusA, Now, Warn, Fraction,
+                               {#{}, infinity}),
+    {Map, Recheck} = aggregate_node_crls('n2@host', StatusB, Now, Warn,
+                                         Fraction, Acc1),
 
     %% Only expired and expiring CRLs yield alert entries; the healthy one does
     %% not.
@@ -2407,6 +2454,68 @@ crl_aggregation_test__() ->
     %% expired at its next_update (Now + 1 day), sooner than the healthy CRL
     %% entering the warning window.
     ?assertEqual(Now + Day, Recheck).
+
+%% A CRL whose validity period is shorter than the configured warning window
+%% (e.g. a delta CRL re-issued every 24h) must not warn for its entire life:
+%% the window applied to it is capped at 1/Fraction of its validity period, so
+%% it warns only once its replacement is overdue.  A Fraction of 0 disables the
+%% cap.
+crl_short_lived_warning_test__() ->
+    Day = 24 * 60 * 60,
+    Hour = 60 * 60,
+    Warn = 3 * Day,
+    Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
+    DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
+    Entry =
+        fun (TUSecs, NUSecs) ->
+                #{issuer      => <<"CN=CA">>,
+                  this_update => case TUSecs of
+                                     undefined -> undefined;
+                                     _         -> DT(TUSecs)
+                                 end,
+                  next_update => DT(NUSecs),
+                  checksum    => <<"c">>,
+                  crl_number  => 1}
+        end,
+    Fraction = 4,
+    AddEntry =
+        fun (Frac, E) ->
+                add_crl_entry('n1@host', <<"f.crl">>, E, Now, Warn, Frac,
+                              {#{}, infinity})
+        end,
+
+    %% A 24h delta CRL half-way through its life: inside the configured 3-day
+    %% window, but healthy under the capped window (24h/4 = 6h).
+    {FreshMap, FreshRecheck} = AddEntry(Fraction, Entry(Now - 12 * Hour,
+                                                        Now + 12 * Hour)),
+    ?assertEqual(#{}, FreshMap),
+    %% It enters the capped window 6h before next_update.
+    ?assertEqual(Now + 6 * Hour, FreshRecheck),
+
+    %% The same CRL once its daily replacement is overdue: 3h left of 24h,
+    %% inside the capped 6h window.
+    {OverdueMap, OverdueRecheck} = AddEntry(Fraction, Entry(Now - 21 * Hour,
+                                                            Now + 3 * Hour)),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, OverdueMap),
+    ?assertEqual(Now + 3 * Hour, OverdueRecheck),
+
+    %% A long-lived CRL keeps the configured window: a 14-day validity period
+    %% caps the window at 3.5 days, so 2 days remaining warns as before.
+    {BaseMap, _} = AddEntry(Fraction, Entry(Now - 12 * Day, Now + 2 * Day)),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, BaseMap),
+
+    %% Without a thisUpdate the configured window applies as is.
+    {NoTUMap, _} = AddEntry(Fraction, Entry(undefined, Now + 2 * Day)),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, NoTUMap),
+
+    %% A fraction of 0 disables the cap: the fresh 24h delta CRL from above is
+    %% no longer healthy — the full 3-day window applies, so it warns for its
+    %% entire life just as it would without the validity-period cap.
+    {DisabledMap, DisabledRecheck} = AddEntry(0, Entry(Now - 12 * Hour,
+                                                       Now + 12 * Hour)),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, DisabledMap),
+    %% Already inside the window, so it can only change state at next_update.
+    ?assertEqual(Now + 12 * Hour, DisabledRecheck).
 
 crl_format_test__() ->
     ?assertEqual("unknown", format_crl_number(undefined)),
