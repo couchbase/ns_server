@@ -56,6 +56,124 @@ class CRLTests(testlib.BaseTestSet):
         """Test CRL revocation using a full (base) CRL."""
         self._run_crl_revocation_checks(_setup_full_crl, _update_full_crl)
 
+    def crl_status_cache_test(self):
+        """Verify the CRL verdict cache and its CRL-version invalidation.
+
+        The verdict cache (cb_crl_status_cache) memoizes per-cert revocation
+        results keyed on the current CRL version (cb_crl_cache:get_crl_version/0,
+        bumped by cb_crl_manager at the end of every CRL config change).  This
+        test drives that mechanism end to end, and cross-checks each step
+        against the crl_status_checks / crl_status_check_cache_misses metrics
+        (via /metrics) to prove whether the verdict came from the cache:
+          - a not-revoked cert authenticates (its 'good' verdict is cached) --
+            the first check is a miss (both counters advance);
+          - reloading identical CRL data leaves the version unchanged, so the
+            cached verdict keeps serving -- the re-auth is a cache hit (checks
+            advances, misses does not);
+          - revoking the cert changes the version, which invalidates the cached
+            'good' verdict, so the very same cert is now rejected (proving no
+            stale verdict is served) and the verdict is recomputed (a miss).
+        """
+        node = self.cluster.connected_nodes[0]
+        user = testlib.random_str(8)
+        password = testlib.random_str(8)
+        crl_dir = tempfile.mkdtemp()
+        ca_ids = []
+        try:
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='CRL Cache Test CA')
+            client_cert_pem, client_key_pem = generate_client_cert_cn(
+                inter_ca_pem, inter_ca_key_pem, user)
+
+            testlib.put_succ(self.cluster,
+                             f'/settings/rbac/users/local/{user}',
+                             data={'roles': 'ro_admin', 'password': password})
+
+            testlib.toggle_client_cert_auth(
+                node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+
+            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca_pem])
+
+            with client_cert_file(client_cert_pem, inter_ca_pem,
+                                  client_key_pem) as cert_path:
+                # Initial CRL revokes nothing (cert is valid).
+                crl_state = _setup_full_crl(crl_dir, inter_ca_pem,
+                                            inter_ca_key_pem, [])
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Require',
+                                      'nodeToNode': 'Disabled'},
+                    poll_interval_ms=5000, directory=crl_dir)
+                _wait_crl_policy(node, 'client_auth', 'require')
+                assert_reload_crl(node)
+
+                # Not revoked -> authenticates.  This is the first check for
+                # this cert, so it is a cache miss: both the total-checks and
+                # the cache-miss counters advance.
+                checks0, misses0 = _crl_cache_counters(node)
+                self._check_cert_access(node, cert_path, user, True,
+                                        'crl-cache/before-revoke')
+                checks1, misses1 = _crl_cache_counters(node)
+                assert checks1 > checks0, \
+                    f'expected a CRL check (checks {checks0}->{checks1})'
+                assert misses1 > misses0, \
+                    f'first check must be a cache miss (misses {misses0}->' \
+                    f'{misses1})'
+                version_before = get_crl_version(node)
+
+                # Reloading identical CRL data must not change the version, so
+                # the cached 'good' verdict stays valid and is reused.  The
+                # re-auth still runs a check, but it is served from the cache:
+                # the total-checks counter advances while misses does NOT.
+                assert_reload_crl(node)
+                testlib.assert_eq(get_crl_version(node), version_before,
+                                  name='crl version stable on no-op reload')
+                self._check_cert_access(node, cert_path, user, True,
+                                        'crl-cache/no-op-reload')
+                checks2, misses2 = _crl_cache_counters(node)
+                assert checks2 > checks1, \
+                    f'expected a CRL check (checks {checks1}->{checks2})'
+                testlib.assert_eq(misses2, misses1,
+                                  name='cache hit: no new miss on no-op reload')
+
+                # Revoke the cert and reload.
+                _update_full_crl(crl_dir, inter_ca_pem, inter_ca_key_pem,
+                                 [client_cert_pem], crl_state)
+                assert_reload_crl(node)
+
+                # The CRL data changed, so the version must change too -- this is
+                # what invalidates the previously cached 'good' verdict.
+                version_after = get_crl_version(node)
+                assert version_after != version_before, \
+                    (f'Expected CRL version to change after revocation '
+                     f'(before={version_before}, after={version_after})')
+
+                # ...and the same cert is now rejected: the cache did not serve
+                # the stale 'good' verdict.  The bumped version invalidated the
+                # entry, so the verdict is recomputed -- another cache miss.
+                assert_cert_rejected(
+                    lambda: try_client_auth(node, cert_path))
+                checks3, misses3 = _crl_cache_counters(node)
+                assert checks3 > checks2, \
+                    f'expected a CRL check (checks {checks2}->{checks3})'
+                assert misses3 > misses2, \
+                    ('stale verdict must be invalidated and recomputed '
+                     f'(misses {misses2}->{misses3})')
+        finally:
+            testlib.toggle_client_cert_auth(node, enabled=False)
+            testlib.ensure_deleted(
+                self.cluster, f'/settings/rbac/users/local/{user}')
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory="", urls=[])
+            shutil.rmtree(crl_dir, ignore_errors=True)
+
     def client_cert_upload_crl_test(self):
         """Test CRL revocation using the REST file upload API."""
         node = self.cluster.connected_nodes[0]
@@ -2372,6 +2490,39 @@ def _http_request_to_node(from_node, to_node, cluster):
     )
     r = testlib.diag_eval(from_node, code)
     return r.text.strip() == 'ok'
+
+
+def _crl_cache_counters(node):
+    metrics = testlib.get_prometheus_metrics(node)
+    # stat format
+    # {'TYPE': 'counter',
+    #  'HELP': 'help',
+    #  'VALUES': {(('cache', 'miss'), ('verdict', 'valid')): 1}}
+    stat = metrics.get('cm_crl_status_checks')
+    if stat is None:
+        return (0, 0)
+    values = stat['VALUES']
+    total = 0
+    misses = 0
+    for k in values:
+        total += values[k]
+        d = dict(k)
+        if d['cache'] == 'miss':
+            misses += values[k]
+
+    return (total, misses)
+
+
+def get_crl_version(node):
+    """Return the node's current CRL version (cb_crl_cache:get_crl_version/0).
+
+    It is an opaque integer (a phash2 of the effective CRL configuration and
+    data) that cb_crl_manager republishes at the end of every CRL config change;
+    cb_crl_status_cache keys cached verdicts on it.  Returned as a string (its
+    diag/eval text form), suitable for equality comparison.
+    """
+    r = testlib.diag_eval(node, "cb_crl_cache:get_crl_version().")
+    return r.text.strip()
 
 
 def _wait_crl_policy(node, scope, expected_policy, timeout_s=15):
