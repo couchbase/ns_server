@@ -37,7 +37,9 @@
          sasl_mechanisms/2,
          ssl_sasl_mechanisms/2,
          get_config_profile/2,
-         get_fusion_rate/2]).
+         get_fusion_rate/2,
+         get_dcp_backfill_moves_per_node/2,
+         get_file_based_backfill_moves_per_node/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -264,6 +266,8 @@ is_notable_config_key(scram_sha256_enabled) -> true;
 is_notable_config_key(scram_sha512_enabled) -> true;
 is_notable_config_key(oauthbearer_enabled) -> true;
 is_notable_config_key(force_crash_dumps) -> true;
+is_notable_config_key(rebalance_moves_per_node) -> true;
+is_notable_config_key(data_service_file_based_rebalance_moves_per_node) -> true;
 is_notable_config_key(_) ->
     false.
 
@@ -746,6 +750,12 @@ get_fusion_rate(Name, Params) ->
         _ ->
             proplists:get_value(Name, Params)
     end.
+
+get_dcp_backfill_moves_per_node([], _Params) ->
+    menelaus_web_settings:get_rebalance_moves_per_node().
+
+get_file_based_backfill_moves_per_node([], _Params) ->
+    menelaus_web_settings:get_data_service_file_based_rebalance_moves_per_node().
 
 is_external_auth_service_enabled() ->
     SaslauthdEnabled =
