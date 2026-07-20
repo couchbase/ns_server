@@ -115,6 +115,11 @@ rebalance_test_setup(SetupConfig) ->
                         dict:store(9, {"db_data_size", "1234"}, Stats)
                 end),
 
+    meck:expect(ns_memcached, raw_stats,
+                fun (_Node, _Bucket, <<"diskinfo version">>, _, _) ->
+                        {ok, []}
+                end),
+
     mock_helpers:setup_mocks([leader_activities,
                               rebalance_agent,
                               compat_mode_manager,

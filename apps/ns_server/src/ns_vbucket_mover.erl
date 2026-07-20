@@ -24,7 +24,7 @@
         ns_config:read_key_fast(rebalance_inflight_moves_per_node, 64)).
 
 %% API
--export([start_link/8]).
+-export([start_link/9]).
 
 %% gen_server callbacks
 -export([code_change/3, init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -53,13 +53,14 @@
 -spec start_link(ns_bucket:name(), ns_bucket:config(), [node()],
                  vbucket_map(), vbucket_map(), progress_callback(),
                  list() | undefined,
-                 fusion_uploaders:fast_forward_info() | undefined) ->
+                 fusion_uploaders:fast_forward_info() | undefined,
+                 boolean()) ->
           {ok, pid()} | {error, any()}.
 start_link(Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
-           RebalancePlan, FusionUploadersInfo) ->
+           RebalancePlan, FusionUploadersInfo, FileBasedEnabled) ->
     gen_server:start_link(
       ?MODULE, {Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
-                RebalancePlan, FusionUploadersInfo}, []).
+                RebalancePlan, FusionUploadersInfo, FileBasedEnabled}, []).
 
 note_move_done(Pid, Worker) ->
     Pid ! {move_done, Worker}.
@@ -118,8 +119,8 @@ is_swap_rebalance(OldMap, NewMap) ->
             false
     end.
 
-init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
-      RebalancePlan, FusionUploadersInfo}) ->
+init({Bucket, _BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
+      RebalancePlan, FusionUploadersInfo, FileBasedEnabled}) ->
     case is_swap_rebalance(OldMap, NewMap) of
         true ->
             ale:info(?USER_LOGGER, "Bucket ~p rebalance appears to be swap "
@@ -145,8 +146,6 @@ init({Bucket, BucketConfig, Nodes, OldMap, NewMap, ProgressCallback,
     ets:new(workers, [named_table, private, set]),
 
     Quirks = rebalance_quirks:get_quirks(Nodes, project_intact),
-    FileBasedEnabled = ns_bucket:is_data_service_file_based_rebalance_enabled(
-                         BucketConfig),
     Options =
         [{fusion_use_snapshot, true} || RebalancePlan =/= undefined] ++
         [{data_service_file_based_rebalance_enabled, true} || FileBasedEnabled],

@@ -297,7 +297,8 @@ move_vbuckets(Bucket, Moves) ->
     NewMap = tuple_to_list(TMap),
     ProgressFun = make_progress_fun(0, 1),
     run_mover(Bucket, Config, ns_bucket:get_servers(Config),
-              ProgressFun, Map, NewMap, undefined, undefined).
+              ProgressFun, Map, NewMap, undefined, undefined,
+              file_based_backfill_enabled(Bucket, Config)).
 
 rebalance_services(#{services := all} = Params) ->
     rebalance_services(
@@ -714,12 +715,14 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers,
                           {TMap, RebalancePlan}
                   end,
               RebalanceMethod = determine_rebalance_method(
-                                  RebalancePlanToPass, BucketConfig),
+                                  RebalancePlanToPass, BucketName,
+                                  BucketConfig),
               ns_rebalance_observer:report_rebalance_method(BucketName,
                                                             RebalanceMethod),
               rebalance_bucket(BucketName, BucketConfig, ProgressFun,
                                KeepKVNodes, EjectNodes, ForcedMap,
-                               RebalancePlanToPass)
+                               RebalancePlanToPass,
+                               RebalanceMethod =:= file_based)
       end, misc:enumerate(BucketConfigs, 0)),
 
     not bucket_placer:is_enabled() orelse
@@ -734,7 +737,8 @@ rebalance_kv(KeepNodes, EjectNodes, DeltaRecoveryBuckets, DesiredServers,
     update_kv_progress(LiveKVNodes, 1.0).
 
 rebalance_bucket(BucketName, BucketConfig, ProgressFun,
-                 KeepKVNodes, EjectNodes, ForcedMap, RebalancePlan) ->
+                 KeepKVNodes, EjectNodes, ForcedMap, RebalancePlan,
+                 FileBasedEnabled) ->
     ale:info(?USER_LOGGER, "Started rebalancing bucket ~s", [BucketName]),
     ?rebalance_info("Rebalancing bucket ~p with config ~p",
                     [BucketName, BucketConfig]),
@@ -744,7 +748,7 @@ rebalance_bucket(BucketName, BucketConfig, ProgressFun,
         membase ->
             rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
                                      KeepKVNodes, EjectNodes, ForcedMap,
-                                     RebalancePlan)
+                                     RebalancePlan, FileBasedEnabled)
     end.
 
 rebalance_memcached_bucket(BucketName, KeepKVNodes) ->
@@ -763,13 +767,12 @@ calculate_servers(BucketConfig, KeepKVNodes, EjectNodes) ->
             ns_bucket:get_servers(BucketConfig) -- DesiredServers}
     end.
 
-determine_rebalance_method(RebalancePlan, BucketConfig) ->
+determine_rebalance_method(RebalancePlan, Bucket, BucketConfig) ->
     case RebalancePlan =/= undefined of
         true ->
             fusion;
         false ->
-            case ns_bucket:is_data_service_file_based_rebalance_enabled(
-                   BucketConfig) of
+            case file_based_backfill_enabled(Bucket, BucketConfig) of
                 true ->
                     file_based;
                 false ->
@@ -777,8 +780,40 @@ determine_rebalance_method(RebalancePlan, BucketConfig) ->
             end
     end.
 
+%% FBR can only be used if all nodes support it /and/ all nodes files are a
+%% compatible format. To allow KV to update file formats (either offline or
+%% during a compaction) we must check that the support file formats are the
+%% same. If not, we fall back to DCP.
+file_based_backfill_enabled(Bucket, BucketConfig) ->
+    ns_bucket:is_data_service_file_based_rebalance_enabled(BucketConfig)
+        andalso file_based_backfill_versions_compatible(Bucket, BucketConfig).
+
+file_based_backfill_versions_compatible(Bucket, BucketConfig) ->
+    Nodes = ns_bucket:get_servers(BucketConfig),
+    Versions = [node_file_version(Bucket, N) || N <- Nodes],
+    case lists:usort(Versions) of
+        [_] ->
+            true;
+        DistinctVersions ->
+            ?rebalance_info(
+               "Falling back to DCP backfill for bucket ~p: file "
+               "versions differ across nodes ~0p (versions ~0p)",
+               [Bucket, Nodes, DistinctVersions]),
+            false
+
+    end.
+
+node_file_version(Bucket, Node) ->
+    %% Any error would tear down the rebalance, which is fine, because all
+    %% nodes should be reachable
+    {ok, Stats} = ns_memcached:raw_stats(
+          Node, Bucket, <<"diskinfo version">>,
+          fun (K, V, Acc) -> [{K, V} | Acc] end, []),
+    lists:sort(Stats).
+
 rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
-                         KeepKVNodes, EjectNodes, ForcedMap, RebalancePlan) ->
+                         KeepKVNodes, EjectNodes, ForcedMap, RebalancePlan,
+                         FileBasedEnabled) ->
     {Servers, ServersToRemove} =
         calculate_servers(BucketConfig, KeepKVNodes, EjectNodes),
 
@@ -817,7 +852,7 @@ rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
     {NewMap, MapOptions} =
         do_rebalance_membase_bucket(BucketName, NewConf,
                                     Servers, ProgressFun, ForcedMap,
-                                    RebalancePlan),
+                                    RebalancePlan, FileBasedEnabled),
     ns_bucket:set_map_opts(BucketName, MapOptions),
     ns_bucket:update_bucket_props(BucketName,
                                   [{deltaRecoveryMap, undefined}]),
@@ -857,7 +892,8 @@ generate_fast_forward_map(Map, Servers, Bucket, Config, Uploaders) ->
 %% either return ok or exit with reason 'stopped' or whatever reason
 %% was given by whatever failed.
 do_rebalance_membase_bucket(Bucket, Config,
-                            Servers, ProgressFun, ForcedMap, RebalancePlan) ->
+                            Servers, ProgressFun, ForcedMap, RebalancePlan,
+                            FileBasedEnabled) ->
     Map = proplists:get_value(map, Config),
     {FastForwardMap, MapOptions} =
         case ForcedMap of
@@ -875,7 +911,7 @@ do_rebalance_membase_bucket(Bucket, Config,
                         Bucket, Config, Map, FastForwardMap, length(Servers)),
 
     {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap,
-               RebalancePlan, FusionUploaders),
+               RebalancePlan, FusionUploaders, FileBasedEnabled),
      MapOptions}.
 
 sleep_for_sdk_clients(Type) ->
@@ -887,7 +923,7 @@ sleep_for_sdk_clients(Type) ->
     timer:sleep(SecondsToWait * 1000).
 
 run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap,
-          RebalancePlan, FusionUploaders) ->
+          RebalancePlan, FusionUploaders, FileBasedEnabled) ->
     Servers = ns_bucket:get_servers(Config),
 
     %% At this point the server list must have already been updated to include
@@ -906,7 +942,8 @@ run_mover(Bucket, Config, KeepNodes, ProgressFun, Map, FastForwardMap,
                                                       Map, FastForwardMap,
                                                       ProgressFun,
                                                       RebalancePlan,
-                                                      FusionUploaders),
+                                                      FusionUploaders,
+                                                      FileBasedEnabled),
               wait_for_mover(Pid)
       end),
 
@@ -1509,7 +1546,8 @@ do_run_graceful_failover_moves(Nodes, BucketName, BucketConfig, I, N) ->
     ProgressFun = make_progress_fun(I, N),
     RV = run_mover(BucketName, BucketConfig,
                    ns_bucket:get_servers(BucketConfig),
-                   ProgressFun, Map, Map1, undefined, undefined),
+                   ProgressFun, Map, Map1, undefined, undefined,
+                   file_based_backfill_enabled(BucketName, BucketConfig)),
     master_activity_events:note_bucket_rebalance_ended(BucketName),
     RV.
 
