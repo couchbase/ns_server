@@ -705,6 +705,11 @@ verify_cert_crl(Der, Scope, Event) ->
                     {[{status, <<"failed">>},
                       {subject, Subject},
                       {details, format_crl_details(Reason)},
+                      {expiration, ExpiryStr}]};
+                {fail, internal_error} ->
+                    {[{status, <<"failed">>},
+                      {subject, Subject},
+                      {details, <<"internal error">>},
                       {expiration, ExpiryStr}]}
             end
     catch
@@ -1045,4 +1050,42 @@ cbauth_test_() ->
       {"cbauth notify multiple versions test",
        fun cbauth_notify_multiple_versions_t/0}
      | cbauth_notify_tests()]}.
+
+%% verify_cert_crl/3 maps each cb_crl:verify_local_with_expiry/4 verdict to a
+%% JSON status.  Mock the cert decode and the CRL check so we can drive every
+%% verdict shape, and confirm none of them crashes the handler -- in particular
+%% {fail, internal_error}, which is neither a {bad_cert, _} nor 'valid'.
+verify_cert_crl_test() ->
+    meck:new(public_key, [passthrough, unstick]),
+    meck:new(ns_server_cert, [passthrough]),
+    meck:new(cb_crl, [passthrough]),
+    try
+        meck:expect(public_key, pkix_decode_cert,
+                    fun (_Der, otp) -> fake_otp_cert end),
+        meck:expect(ns_server_cert, get_subject,
+                    fun (fake_otp_cert) -> "CN=test" end),
+        Status =
+            fun (Verdict) ->
+                    meck:expect(cb_crl, verify_local_with_expiry,
+                                fun (_, _, _, _) -> {Verdict, undefined} end),
+                    {Props} = verify_cert_crl(<<"der">>, client_auth,
+                                              valid_peer),
+                    proplists:get_value(status, Props)
+            end,
+        %% The verdict the fix targets: must degrade to "failed", not crash.
+        ?assertEqual(<<"failed">>, Status({fail, internal_error})),
+        %% Existing paths remain unaffected.
+        ?assertEqual(<<"valid">>, Status({valid, []})),
+        ?assertEqual(<<"revoked">>,
+                     Status({fail, {bad_cert, {revoked, key_compromise}}})),
+        ?assertEqual(<<"undetermined">>,
+                     Status({fail, {bad_cert,
+                                    {revocation_status_undetermined, no_crl}}})),
+        ?assertEqual(<<"failed">>,
+                     Status({fail, {bad_cert, crl_policy_not_available_yet}}))
+    after
+        meck:unload(cb_crl),
+        meck:unload(ns_server_cert),
+        meck:unload(public_key)
+    end.
 -endif.
