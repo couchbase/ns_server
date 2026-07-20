@@ -15,6 +15,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -67,6 +68,37 @@ func derToPKey(octets []byte) (pkey *rsa.PrivateKey) {
 	panic("cannot happen")
 }
 
+var oidExtensionExtendedKeyUsage = asn1.ObjectIdentifier{2, 5, 29, 37}
+
+func ekuPurposeOID(name string) asn1.ObjectIdentifier {
+	switch name {
+	case "serverAuth":
+		return asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 1}
+	case "clientAuth":
+		return asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 3, 2}
+	case "any":
+		return asn1.ObjectIdentifier{2, 5, 29, 37, 0}
+	}
+	log.Fatalf("unknown eku purpose \"%s\"", name)
+	panic("cannot happen")
+}
+
+// Go's x509 always emits ExtKeyUsage as non-critical, so the extension is
+// built by hand to control criticality
+func extKeyUsageExtension(purposeNames []string, critical bool) pkix.Extension {
+	purposes := []asn1.ObjectIdentifier{}
+	for _, name := range purposeNames {
+		purposes = append(purposes, ekuPurposeOID(name))
+	}
+	value, err := asn1.Marshal(purposes)
+	mustNoErr(err)
+	return pkix.Extension{
+		Id:       oidExtensionExtendedKeyUsage,
+		Critical: critical,
+		Value:    value,
+	}
+}
+
 var keyLength = 2048
 // testSSL.sh complains when certificate validity is longer than 824 days
 // This apparently comes from Apple's 825 day restriction
@@ -83,6 +115,8 @@ func main() {
 	var sanEmailsArg string
 	var useSha1 bool
 	var pkeyType string
+	var ekuPurposesArg string
+	var ekuCritical bool
 	var notAfterDuration int
 
 	flag.StringVar(&commonName, "common-name", "*", "common name field of certificate (hostname)")
@@ -93,6 +127,8 @@ func main() {
 	flag.BoolVar(&genereateLeaf, "generate-leaf", false, "whether to generate leaf certificate (passing ca cert and pkey via environment variables)")
 	flag.StringVar(&pkeyType, "pkey-type", "rsa", "what kind of private key to generate (rsa or ec)")
 	flag.BoolVar(&isClient, "client", false, "whether to add client auth extension")
+	flag.StringVar(&ekuPurposesArg, "eku-purposes", "", "override the extended key usage purposes of a leaf certificate (comma separated: serverAuth, clientAuth, any)")
+	flag.BoolVar(&ekuCritical, "eku-critical", false, "mark the extended key usage extension of a leaf certificate critical")
 
 	flag.BoolVar(&useSha1, "use-sha1", false, "whether to use sha1 instead of default sha256 signature algorithm")
 
@@ -140,6 +176,20 @@ func main() {
                 if pkeyType == "ec" {
                     leafTemplate.KeyUsage |= x509.KeyUsageKeyAgreement
                 }
+
+		if ekuPurposesArg != "" || ekuCritical {
+			purposeNames := []string{"serverAuth"}
+			if isClient {
+				purposeNames = []string{"clientAuth"}
+			}
+			if ekuPurposesArg != "" {
+				purposeNames = strings.Split(ekuPurposesArg, ",")
+			}
+			leafTemplate.ExtKeyUsage = nil
+			leafTemplate.ExtraExtensions = append(
+				leafTemplate.ExtraExtensions,
+				extKeyUsageExtension(purposeNames, ekuCritical))
+		}
 
 		if sanIPAddrsArg != "" {
 			ips := []net.IP{}
