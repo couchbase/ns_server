@@ -494,9 +494,9 @@ get_all_workers() ->
     ets:tab2list(workers).
 
 get_backfills_per_node(false = _IsFileBasedRebalance) ->
-    menelaus_web_settings:get_rebalance_moves_per_node();
+    menelaus_web_settings:get_data_service_rebalance_moves_per_node(dcp);
 get_backfills_per_node(true = _IsFileBasedRebalance) ->
-    menelaus_web_settings:get_data_service_file_based_rebalance_moves_per_node().
+    menelaus_web_settings:get_data_service_rebalance_moves_per_node(file_based).
 
 -ifdef(TEST).
 is_swap_rebalance_test() ->

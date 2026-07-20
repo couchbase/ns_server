@@ -752,10 +752,10 @@ get_fusion_rate(Name, Params) ->
     end.
 
 get_dcp_backfill_moves_per_node([], _Params) ->
-    menelaus_web_settings:get_rebalance_moves_per_node().
+    menelaus_web_settings:get_data_service_rebalance_moves_per_node(dcp).
 
 get_file_based_backfill_moves_per_node([], _Params) ->
-    menelaus_web_settings:get_data_service_file_based_rebalance_moves_per_node().
+    menelaus_web_settings:get_data_service_rebalance_moves_per_node(file_based).
 
 is_external_auth_service_enabled() ->
     SaslauthdEnabled =

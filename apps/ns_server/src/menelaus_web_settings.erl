@@ -42,8 +42,7 @@
 
          handle_settings_rebalance/1,
          handle_settings_rebalance_post/1,
-         get_rebalance_moves_per_node/0,
-         get_data_service_file_based_rebalance_moves_per_node/0,
+         get_data_service_rebalance_moves_per_node/1,
 
          handle_settings_auto_reprovision/1,
          handle_settings_auto_reprovision_post/1,
@@ -1828,19 +1827,20 @@ handle_reset_ciphers_suites(Req) ->
     reset_per_service_cipher_suites(Req),
     reply_json(Req, {[]}).
 
-get_rebalance_moves_per_node() ->
+get_data_service_rebalance_moves_per_node(dcp) ->
     ns_config:read_key_fast(rebalance_moves_per_node,
-                            ?DEFAULT_MAX_MOVES_PER_NODE).
-
-get_data_service_file_based_rebalance_moves_per_node() ->
+                            ?DEFAULT_MAX_MOVES_PER_NODE);
+get_data_service_rebalance_moves_per_node(file_based) ->
     ns_config:read_key_fast(data_service_file_based_rebalance_moves_per_node,
                             ?DEFAULT_MAX_MOVES_PER_NODE).
 
 handle_settings_rebalance(Req) ->
     reply_json(Req,
-               {[{rebalanceMovesPerNode, get_rebalance_moves_per_node()},
+               {[{rebalanceMovesPerNode,
+                  get_data_service_rebalance_moves_per_node(dcp)},
                  {dataServiceFileBasedRebalanceMovesPerNode,
-                  get_data_service_file_based_rebalance_moves_per_node()}]},
+                  get_data_service_rebalance_moves_per_node(file_based)}]},
+
                200).
 
 handle_settings_rebalance_post(Req) ->
