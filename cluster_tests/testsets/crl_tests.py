@@ -2819,7 +2819,7 @@ def generate_crl_to_file(filepath, *args, **kwargs):
 
 
 def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
-                 this_update=None, only_some_reasons=None,
+                 this_update=None, next_update=None, only_some_reasons=None,
                  critical_extension_oid=None,
                  critical_entry_extension_oid=None):
     """Return a PEM-encoded CRL signed by the given CA.
@@ -2827,10 +2827,14 @@ def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
     If expired=True, generates a CRL with nextUpdate in the past (expired).
     If this_update is given it is used as thisUpdate (last_update); otherwise
     defaults to now - 2 days.
+    If next_update is given it is used as nextUpdate verbatim (overriding the
+    expired flag); this is useful for controlling the exact expiry time, e.g.
+    for CRL expiration alert tests.
     """
     pem, _ = generate_crl_with_number(
         ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=expired,
-        this_update=this_update, only_some_reasons=only_some_reasons,
+        this_update=this_update, next_update=next_update,
+        only_some_reasons=only_some_reasons,
         critical_extension_oid=critical_extension_oid,
         critical_entry_extension_oid=critical_entry_extension_oid)
     return pem
@@ -2838,7 +2842,8 @@ def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
 
 def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
                              expired=False, freshest_crl_uri=None,
-                             this_update=None, only_some_reasons=None,
+                             this_update=None, next_update=None,
+                             only_some_reasons=None,
                              critical_extension_oid=None,
                              critical_entry_extension_oid=None):
     """Return (pem, crl_number) for a CRL signed by the given CA.
@@ -2847,6 +2852,10 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
     added to the revocation list.
 
     If expired=True, generates a CRL with nextUpdate in the past (expired).
+
+    If next_update is provided it is used as nextUpdate verbatim, overriding the
+    expired flag (useful for controlling the exact expiry time in CRL
+    expiration alert tests).
 
     If freshest_crl_uri is provided, a FreshestCRL extension is added
     pointing to the delta CRL location (required when using delta CRLs).
@@ -2889,11 +2898,13 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
         only_contains_attribute_certs=False
     )
 
-    # Set nextUpdate to past (expired) or future (valid) based on flag
-    if expired:
-        next_update = now - datetime.timedelta(days=1)
-    else:
-        next_update = now + datetime.timedelta(days=1)
+    # Set nextUpdate: an explicit next_update wins; otherwise derive it from
+    # the expired flag (past = expired, future = valid).
+    if next_update is None:
+        if expired:
+            next_update = now - datetime.timedelta(days=1)
+        else:
+            next_update = now + datetime.timedelta(days=1)
 
     builder = (
         x509.CertificateRevocationListBuilder()

@@ -7,7 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import testlib
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import os
 import re
 import random
@@ -25,6 +25,10 @@ from testsets.native_encryption_tests import create_secret, \
                                              write_good_aws_creds_file, \
                                              write_bad_aws_creds_file, \
                                              set_min_timer_interval
+from testsets.crl_tests import generate_root_ca, generate_crl, \
+                               upload_crl_file, delete_crl_file, \
+                               get_crl_files, load_multiple_cas, \
+                               set_allow_expired_crls
 
 from testlib.mock_smtp_server import start_mock_smtp_server
 from testlib.test_tag_decorator import tag, Tag
@@ -345,6 +349,133 @@ class AlertTests(testlib.BaseTestSet):
             testlib.post_succ(self.cluster, "/settings/alerts/limits",
                               data={"certExpirationDays":
                                     str(prev_cert_expiration)})
+
+    def _setup_crl_ca(self):
+        """Generate a root CA and load it as a trusted CA on the connected
+        node so that CRLs signed by it pass upload verification.
+
+        Returns (node, ca_pem, ca_key_pem, ca_ids); ca_ids is for teardown.
+        """
+        node = self.cluster.connected_nodes[0]
+        ca_pem, ca_key_pem = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [ca_pem])
+        return node, ca_pem, ca_key_pem, ca_ids
+
+    def _cleanup_crl(self, node, ca_ids):
+        """Remove any uploaded CRL files and the trusted CAs loaded for a
+        CRL alert test."""
+        for f in get_crl_files(node):
+            try:
+                delete_crl_file(node, f['filename'])
+            except Exception as e:
+                print(f"Failed to delete CRL file {f['filename']}: {e}")
+        for ca_id in ca_ids:
+            try:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            except Exception as e:
+                print(f"Failed to delete trusted CA {ca_id}: {e}")
+
+    # An uploaded CRL whose nextUpdate is within the warning window (default
+    # 3 days) must raise a crl_expires_soon alert (pop-up + email). A CRL that
+    # is comfortably in date must not.
+    def crl_expires_soon_alert_test(self):
+        node, ca_pem, ca_key_pem, ca_ids = self._setup_crl_ca()
+        # The "expires soon" window is normally capped at 1/N of each CRL's own
+        # validity period (crlWarningValidityFraction, default 4) so that
+        # short-lived CRLs don't warn for their entire life. Setting the
+        # fraction to 0 disables that cap, so the alert here depends purely on
+        # nextUpdate falling inside the configured warning window (default 3
+        # days), regardless of the CRL's validity length.
+        limits = testlib.get_succ(self.cluster,
+                                  "/settings/alerts/limits").json()
+        prev_fraction = limits["crlWarningValidityFraction"]
+        this_update = datetime.now(timezone.utc) - timedelta(days=30)
+        filename = f'alert_{testlib.random_str(8)}.pem'
+        # Regexps match the msg surfaced in /pools/default and the email body.
+        soon_re = (
+            r"Certificate Revocation List \(CRL\) issued by 'CN=Test Root CA' "
+            r"\(CRL number: \d+, file\(s\): " + re.escape(filename) +
+            r"\) will expire at .+ \(present on node\(s\): .+\)\.")
+        any_crl_re = (r"Certificate Revocation List \(CRL\) issued by "
+                      r"'CN=Test Root CA' ")
+        try:
+            testlib.post_succ(self.cluster, "/settings/alerts/limits",
+                              data={"crlWarningValidityFraction": "0"})
+
+            # Upload a healthy CRL (expires in 60 days) - no alert expected.
+            healthy_pem = generate_crl(
+                ca_pem, ca_key_pem, [], this_update=this_update,
+                next_update=datetime.now(timezone.utc) + timedelta(days=60))
+            upload_crl_file(node, filename, healthy_pem)
+
+            # Give the alert checker a chance to run, then confirm no CRL
+            # alert has fired for our CA.
+            time.sleep(alert_check_interval_s + 1)
+            assert_no_alerts(self.cluster, [any_crl_re])
+
+            # Re-upload the same file with a nextUpdate inside the warning
+            # window (12 hours from now) - crl_expires_soon must fire.
+            soon_pem = generate_crl(
+                ca_pem, ca_key_pem, [], this_update=this_update,
+                next_update=datetime.now(timezone.utc) + timedelta(hours=12))
+            upload_crl_file(node, filename, soon_pem)
+
+            testlib.poll_for_condition(
+                lambda: assert_alerts(self.cluster, [soon_re],
+                                      verify_email=True,
+                                      mock_smtp_server=self.mock_smtp_server),
+                sleep_time=1, timeout=120, verbose=True, retry_on_assert=True,
+                msg="wait for CRL expires-soon alert")
+        finally:
+            testlib.post_succ(
+                self.cluster, "/settings/alerts/limits",
+                data={"crlWarningValidityFraction": str(prev_fraction)})
+            self._cleanup_crl(node, ca_ids)
+
+    # An uploaded CRL whose nextUpdate is in the past must raise a crl_expired
+    # alert (pop-up + email).
+    def crl_expired_alert_test(self):
+        node, ca_pem, ca_key_pem, ca_ids = self._setup_crl_ca()
+        filename = f'alert_{testlib.random_str(8)}.pem'
+        expired_re = (
+            r"Certificate Revocation List \(CRL\) issued by 'CN=Test Root CA' "
+            r"\(CRL number: \d+, file\(s\): " + re.escape(filename) +
+            r"\) has expired \(present on node\(s\): .+\)\.")
+        any_crl_re = (r"Certificate Revocation List \(CRL\) issued by "
+                      r"'CN=Test Root CA' ")
+        try:
+            # Expired CRLs are only loaded when the node is configured to allow
+            # them; otherwise the upload is rejected during verification.
+            set_allow_expired_crls(self.cluster, True)
+
+            this_update = datetime.now(timezone.utc) - timedelta(days=30)
+
+            # Upload a healthy CRL first - no alert expected.
+            healthy_pem = generate_crl(
+                ca_pem, ca_key_pem, [], this_update=this_update,
+                next_update=datetime.now(timezone.utc) + timedelta(days=60))
+            upload_crl_file(node, filename, healthy_pem)
+
+            time.sleep(alert_check_interval_s + 1)
+            assert_no_alerts(self.cluster, [any_crl_re])
+
+            # Re-upload the same file already expired (nextUpdate in the past).
+            expired_pem = generate_crl(
+                ca_pem, ca_key_pem, [], this_update=this_update,
+                next_update=datetime.now(timezone.utc) - timedelta(days=1))
+            upload_crl_file(node, filename, expired_pem)
+
+            testlib.poll_for_condition(
+                lambda: assert_alerts(self.cluster, [expired_re],
+                                      verify_email=True,
+                                      mock_smtp_server=self.mock_smtp_server),
+                sleep_time=1, timeout=120, verbose=True, retry_on_assert=True,
+                msg="wait for CRL expired alert")
+        finally:
+            try:
+                self._cleanup_crl(node, ca_ids)
+            finally:
+                set_allow_expired_crls(self.cluster, False)
 
     # Return the pid of the cbbackupmgr which is started by the backup
     # service.
