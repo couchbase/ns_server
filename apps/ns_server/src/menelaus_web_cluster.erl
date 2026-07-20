@@ -1196,9 +1196,13 @@ do_handle_start_hard_failover(Req, FailoverBody) ->
                             %% We will always use the new orchestrator API
                             %% post-7.9 such that we can eventually remove
                             %% the old non-map API.
+                            InitiatedBy =
+                                ns_audit:prepare_log_body(
+                                  Req, [{node, node()}]),
                             failover_audit_and_reply(
-                              FailoverBody(Nodes, Opts#{allow_unsafe =>
-                                                            AllowUnsafe}),
+                              FailoverBody(Nodes,
+                                           Opts#{allow_unsafe => AllowUnsafe,
+                                                 initiated_by => InitiatedBy}),
                               Req, Nodes, hard)
                     end
             end;
@@ -1223,9 +1227,13 @@ handle_start_graceful_failover(Req) ->
                             %% We will always use the new orchestrator
                             %% API post-7.9 such that we can
                             %% eventually remove the old non-map API.
+                            InitiatedBy =
+                                ns_audit:prepare_log_body(
+                                  Req, [{node, node()}]),
+                            Opts1 = Opts#{initiated_by => InitiatedBy},
                             failover_audit_and_reply(
                               ns_orchestrator:start_graceful_failover(Nodes,
-                                                                      Opts),
+                                                                      Opts1),
                               Req, Nodes, graceful)
                     end
             end;
@@ -1396,8 +1404,10 @@ do_handle_rebalance(Req, Params) ->
       services := Services,
       desired_services_nodes := DesiredSevicesTopology,
       plan_uuid := PlanUUID} = Params,
+    InitiatedBy = ns_audit:prepare_log_body(Req, [{node, node()}]),
+    Params1 = Params#{initiated_by => InitiatedBy},
     ?log_info("Starting rebalance with params ~p", [Params]),
-    case rebalance:start(Params) of
+    case rebalance:start(Params1) of
         in_progress ->
             reply(Req, 200);
         nodes_mismatch ->

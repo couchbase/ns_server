@@ -534,7 +534,8 @@ ensure_janitor_run(Item, Timeout) ->
                         defragment_zones := [list()],
                         services := all | [atom()],
                         desired_services_nodes := map() | undefined,
-                        plan_uuid := fusion_plan_uuid() | undefined}) ->
+                        plan_uuid := fusion_plan_uuid() | undefined,
+                        initiated_by := list() | undefined}) ->
           {ok, binary()} | ok | in_progress |
           nodes_mismatch |
           no_active_nodes_left | in_recovery |
@@ -1111,6 +1112,7 @@ idle({start_graceful_failover, Nodes, Opts, Id, RetryChk}, From, _State) ->
                  {master_node, node()}],
     Services = [kv],
     Type = graceful_failover,
+    InitiatedBy = maps:get(initiated_by, Opts, undefined),
     {ok, ObserverPid} = ns_rebalance_observer:start_link(
                           Services, NodesInfo, Type, Id),
 
@@ -1119,10 +1121,20 @@ idle({start_graceful_failover, Nodes, Opts, Id, RetryChk}, From, _State) ->
             ale:info(?USER_LOGGER,
                      "Starting graceful failover of nodes ~p. "
                      "Operation Id = ~s", [Nodes, Id]),
+            case InitiatedBy of
+                undefined -> ok;
+                _ -> ?log_debug("Graceful failover initiated by ~p",
+                                [InitiatedBy])
+            end,
             Type = graceful_failover,
+            InitiatedByAttrs =
+                case InitiatedBy of
+                    undefined -> [];
+                    _ -> [{initiated_by, {InitiatedBy}}]
+                end,
             event_log:add_log(graceful_failover_initiated,
                               [{nodes_info, {NodesInfo}},
-                               {operation_id, Id}]),
+                               {operation_id, Id}] ++ InitiatedByAttrs),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
@@ -1153,6 +1165,9 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                                       DeltaRecoveryBuckets,
                                   services := Services,
                                   id := RebalanceId}}, From, _State) ->
+    %% initiated_by is absent when this call originates from a down-rev
+    %% node that predates this field (e.g. during a rolling upgrade)
+    InitiatedBy = maps:get(initiated_by, Params, undefined),
 
     NodesInfo = [{active_nodes, KeepNodes ++ EjectNodes},
                  {keep_nodes, KeepNodes},
@@ -1203,6 +1218,10 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                ServicesMsg, RebalanceId])) ++ MsgServicesTopology,
 
     ?log_info(Msg),
+    case InitiatedBy of
+        undefined -> ok;
+        _ -> ?log_debug("Rebalance initiated by ~p", [InitiatedBy])
+    end,
     case ns_rebalancer:start_link_rebalance(Params) of
         {ok, Pid} ->
             ale:info(?USER_LOGGER, Msg),
@@ -1214,10 +1233,16 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                         [{set_services_topology,
                           {maps:to_list(DesiredServicesNodes)}}]
                 end,
+            InitiatedByAttrs =
+                case InitiatedBy of
+                    undefined -> [];
+                    _ -> [{initiated_by, {InitiatedBy}}]
+                end,
             event_log:add_log(rebalance_initiated,
                               [{operation_id, RebalanceId},
                                {nodes_info, {NodesInfo}},
-                               {services, Services}] ++ TopologyParams),
+                               {services, Services}] ++ TopologyParams
+                              ++ InitiatedByAttrs),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
             ReturnValue =
@@ -2560,6 +2585,7 @@ rebalance_allowed(Snapshot) ->
 
 handle_start_failover(Nodes, From, Wait, FailoverType, Options) ->
     #{allow_unsafe := AllowUnsafe} = Options,
+    InitiatedBy = maps:get(initiated_by, Options, undefined),
     auto_rebalance:cancel_any_pending_retry_async("failover"),
 
     ActiveNodes = ns_cluster_membership:active_nodes(),
@@ -2575,6 +2601,10 @@ handle_start_failover(Nodes, From, Wait, FailoverType, Options) ->
         {ok, Pid} ->
             ale:info(?USER_LOGGER, "Starting failover of nodes ~p AllowUnsafe = ~p "
                      "Operation Id = ~s", [Nodes, AllowUnsafe, Id]),
+            case InitiatedBy of
+                undefined -> ok;
+                _ -> ?log_debug("Failover initiated by ~p", [InitiatedBy])
+            end,
 
             Event = list_to_atom(atom_to_list(FailoverType) ++ "_initiated"),
 
@@ -2592,10 +2622,15 @@ handle_start_failover(Nodes, From, Wait, FailoverType, Options) ->
                                        {[{Node, JSONFun(Reason)} ||
                                          {Node, Reason} <- FailoverReasons]}}]
                              end,
+            InitiatedByAttrs =
+                case InitiatedBy of
+                    undefined -> [];
+                    _ -> [{initiated_by, {InitiatedBy}}]
+                end,
             event_log:add_log(Event, [{operation_id, Id},
                                       {nodes_info, {NodesInfo}},
                                       {allow_unsafe, AllowUnsafe}] ++
-                                      FOReasonsJSON),
+                                      FOReasonsJSON ++ InitiatedByAttrs),
 
             Type = failover,
             ns_cluster:counter_inc(Type, start),
