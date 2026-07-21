@@ -771,6 +771,8 @@ default_roles_totoro() ->
        {folder, xdcr},
        {desc, <<"Can create XDCR streams into a given bucket.">>}],
       [{[{bucket, bucket_name}, settings], [read]},
+       {[{collection,
+          [bucket_name, ?SYSTEM_SCOPE_NAME, "_mobile"]}, data, docs], [swrite]},
        {[{bucket, bucket_name}, data, docs], [read, sread, upsert]},
        {[{bucket, bucket_name}, data, meta], [write]},
        {[{bucket, bucket_name}, data, sxattr], [read, write]},
@@ -2664,26 +2666,36 @@ system_collections_write_permissions_test__() ->
                                               data, docs], swrite}, Roles))
       end, SysWrite),
 
-    %% Ensure none of the roles in NoSysWrite can write to system collections.
+    %% Ensure none of the roles in NoSysWrite can write bucket-wide, to a
+    %% user collection, or to a system collection other than _mobile.
     Roles0 = compile_roles(NoSysWrite, AllRoles),
     ?assertEqual(false, is_allowed({[{bucket, "default"}, data, docs], swrite},
                                    Roles0)),
     ?assertEqual(false, is_allowed({[{collection, ["default", "s", "c"]},
                                      data, docs], swrite}, Roles0)),
-
-    %% Ensure that mobile_sync_gateway can write only to _mobile and not to
-    %% other system collections.
-    Roles1 = compile_roles([{<<"mobile_sync_gateway">>, ["default"]}],
-        AllRoles),
-    ?assertEqual(true, is_allowed({[{collection, ["default",
-                                                  ?SYSTEM_SCOPE_NAME,
-                                                  "_mobile"]},
-                                    data, docs], swrite}, Roles1)),
-
     ?assertEqual(false, is_allowed({[{collection, ["default",
                                                    ?SYSTEM_SCOPE_NAME,
                                                    "_query"]},
-                                     data, docs], swrite}, Roles1)).
+                                     data, docs], swrite}, Roles0)),
+
+    %% _mobile is the one system collection with narrow grant holders:
+    %% mobile_sync_gateway and replication_target (XDCR inbound), and only
+    %% those two.
+    MobileWrite = [<<"mobile_sync_gateway">>, <<"replication_target">>],
+    MobilePerm = {[{collection, ["default", ?SYSTEM_SCOPE_NAME, "_mobile"]},
+                   data, docs], swrite},
+    ?assertEqual(false,
+                 is_allowed(MobilePerm,
+                            compile_roles(
+                              remove_exempted_names(NoSysWrite, MobileWrite),
+                              AllRoles))),
+    lists:foreach(
+      fun (Name) ->
+              ?assertEqual(true,
+                           is_allowed(MobilePerm,
+                                      compile_roles([{Name, ["default"]}],
+                                                    AllRoles)))
+      end, MobileWrite).
 
 system_collections_read_permissions_test__() ->
     AllRoles = roles(),
