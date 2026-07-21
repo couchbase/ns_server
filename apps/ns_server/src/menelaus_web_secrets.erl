@@ -126,8 +126,7 @@ handle_put_secret(IdStr, Req) ->
                         true -> cb_cluster_secrets:test(Props, CurProps);
                         false -> ok
                     end,
-              IsSecretWritableMFA = {?MODULE, is_writable_remote,
-                                      [?HIDE(Req), node()]},
+              IsSecretWritableMFA = is_writable_mfa(Req),
               %% replace_secret will check "old usages" inside txn
               {ok, Res} ?= cb_cluster_secrets:replace_secret(
                               Id, Props, IsSecretWritableMFA),
@@ -288,7 +287,7 @@ handle_delete_secret(IdStr, Req) ->
     menelaus_util:assert_is_enterprise(),
     assert_is_79(),
     Id = parse_id(IdStr),
-    IsSecretWritableMFA = {?MODULE, is_writable_remote, [?HIDE(Req), node()]},
+    IsSecretWritableMFA = is_writable_mfa(Req),
     case cb_cluster_secrets:delete_secret(Id, IsSecretWritableMFA) of
         {ok, Name} ->
             ns_audit:delete_encryption_secret(Req, Id, Name),
@@ -308,7 +307,7 @@ handle_delete_historical_key(IdStr, HistKeyIdStr, Req) ->
     assert_is_79(),
     Id = parse_id(IdStr),
     HistKeyId = list_to_binary(HistKeyIdStr),
-    IsSecretWritableMFA = {?MODULE, is_writable_remote, [?HIDE(Req), node()]},
+    IsSecretWritableMFA = is_writable_mfa(Req),
     case cb_cluster_secrets:delete_historical_key(Id,
                                                   HistKeyId,
                                                   IsSecretWritableMFA) of
@@ -1200,32 +1199,56 @@ usage_extra_permissions(Usage, _PermType, _Snapshot)
 -define(usage_read_perm, {[admin, security], read}).
 -define(usage_write_perm, {[admin, security], write}).
 
-is_usage_allowed(Usage, PermType, Req, Snapshot) ->
+is_usage_allowed(Usage, PermType, Roles, Snapshot) ->
     FullAccessPerm = case PermType of
                          read -> ?usage_read_perm;
                          write -> ?usage_write_perm
                      end,
     AllowedPerms = [FullAccessPerm | usage_extra_permissions(Usage, PermType,
                                                              Snapshot)],
-    lists:any(menelaus_auth:has_permission(_, Req), AllowedPerms).
+    lists:any(menelaus_roles:is_allowed(_, Roles), AllowedPerms).
 
 read_filter_secrets_by_permission(Secrets, Req) ->
-    lists:filter(is_readable(_, Req), Secrets).
-
-is_readable(#{usage := Usages}, Req) ->
     Snapshot = ns_bucket:get_snapshot(all, [uuid]),
+    Roles = compiled_roles(Req),
+    lists:filter(is_readable(_, Roles, Snapshot), Secrets).
+
+is_readable(#{usage := Usages}, Roles, Snapshot) ->
     ExistingUsages = only_existing_usages(Usages, Snapshot),
-    menelaus_auth:has_permission(?usage_read_perm, Req) orelse
-       lists:any(is_usage_allowed(_, read, Req, Snapshot), ExistingUsages).
+    menelaus_roles:is_allowed(?usage_read_perm, Roles) orelse
+        lists:any(is_usage_allowed(_, read, Roles, Snapshot), ExistingUsages).
 
 is_writable(Secret, Req) ->
     is_writable(Secret, Req, ns_bucket:get_snapshot(all, [uuid])).
 
-is_writable(#{usage := Usages}, Req, Snapshot) ->
+is_writable(Secret, Req, Snapshot) ->
+    is_writable_with_roles(compiled_roles(Req), Secret, Snapshot).
+
+is_writable_with_roles(Roles, #{usage := Usages}, Snapshot) ->
     ExistingUsages = only_existing_usages(Usages, Snapshot),
-    menelaus_auth:has_permission(?usage_write_perm, Req) orelse
-        (ExistingUsages =/= [] andalso
-            lists:all(is_usage_allowed(_, write, Req, Snapshot), ExistingUsages)).
+    case menelaus_roles:is_allowed(?usage_write_perm, Roles) of
+        true ->
+            true;
+        false when ExistingUsages =:= [] ->
+            false;
+        false ->
+            lists:all(is_usage_allowed(_, write, Roles, Snapshot),
+                      ExistingUsages)
+    end.
+
+%% Compiled in the web process, not inside the transaction where the roles
+%% cache would deadlock (see is_writable_mfa/1). Expired credentials are
+%% rejected earlier by check_permission, so plain get_compiled_roles is fine.
+compiled_roles(Req) ->
+    menelaus_roles:get_compiled_roles(menelaus_auth:get_authn_res(Req)).
+
+%% The MFA is applied inside a chronicle transaction, so it must not block on
+%% a process that itself reads chronicle, or they deadlock (MB-71799). Hence
+%% the roles are compiled now rather than by the MFA. is_writable_remote/4
+%% keeps its arity so a pre-totoro master can still apply the MFA: it does not
+%% handle {roles, _} itself, but erpcs it back to this node to evaluate.
+is_writable_mfa(Req) ->
+    {?MODULE, is_writable_remote, [{roles, compiled_roles(Req)}, node()]}.
 
 only_existing_usages(Usages, Snapshot) ->
     ExistingUUIDs = [U || {_, U} <- ns_bucket:uuids(Snapshot)],
@@ -1443,6 +1466,11 @@ assert_is_79() ->
               <<"Not supported until cluster is fully 7.9">>)
     end.
 
+is_writable_remote({roles, Roles}, _Node, Secret, Snapshot) ->
+    is_writable_with_roles(Roles, Secret, Snapshot);
+%% Legacy clauses for MFAs built by pre-totoro nodes, which close over the
+%% request and must evaluate it on the node that built them. Can be removed
+%% when pre-totoro support ends.
 is_writable_remote(ReqHidden, Node, Secret, Snapshot) when Node =:= node() ->
     is_writable(Secret, ?UNHIDE(ReqHidden), Snapshot);
 is_writable_remote(ReqHidden, Node, Secret, Snapshot) ->
@@ -1656,5 +1684,29 @@ validate_hashi_key_test() ->
         lists:flatten(Error3)),
 
     ok = validate_hashi_key("https://dome.domain/key").
+
+%% The check runs inside a chronicle transaction and must not call another
+%% process that reads chronicle, or they deadlock (MB-71799). Nothing runs in
+%% eunit, so beyond checking results this also fails if the check regains a
+%% dependency on another process.
+is_writable_with_roles_test() ->
+    Snapshot = #{bucket_names => {[], no_rev}},
+    ConfigSecret = #{usage => [config_encryption]},
+    BucketsSecret = #{usage => [{bucket_encryption, <<"*">>}]},
+    FullAccess = [[{[], all}]],
+    %% Can create buckets, so can manage secrets that encrypt any bucket,
+    %% but nothing else
+    BucketCreators = [[{[buckets], all}]],
+
+    ?assertEqual(true, is_writable_with_roles(FullAccess, ConfigSecret,
+                                              Snapshot)),
+    ?assertEqual(false, is_writable_with_roles([], ConfigSecret, Snapshot)),
+    ?assertEqual(true, is_writable_with_roles(BucketCreators, BucketsSecret,
+                                              Snapshot)),
+    ?assertEqual(false, is_writable_with_roles(BucketCreators, ConfigSecret,
+                                               Snapshot)),
+    %% What the writability MFA built by is_writable_mfa/1 evaluates
+    ?assertEqual(true, is_writable_remote({roles, FullAccess}, other_node,
+                                          ConfigSecret, Snapshot)).
 
 -endif.
