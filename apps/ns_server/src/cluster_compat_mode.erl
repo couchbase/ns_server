@@ -353,9 +353,9 @@ do_consider_switching_compat_mode(Config, CompatVersion, NsConfigVersion) ->
                             case do_upgrades(CompatVersion, AnotherVersion,
                                              Config, NodesWanted) of
                                 ok ->
-                                    do_switch_compat_mode(AnotherVersion,
-                                                          NodesWanted),
-                                    changed;
+                                    switch_compat_mode(CompatVersion,
+                                                       AnotherVersion,
+                                                       NodesWanted, NodeInfos);
                                 Name ->
                                     ?log_error(
                                        "Refusing to upgrade the compat "
@@ -378,10 +378,37 @@ do_consider_switching_compat_mode(Config, CompatVersion, NsConfigVersion) ->
             ok
     end.
 
+switch_compat_mode(CompatVersion, NewVersion, NodesWanted, NodeInfos) ->
+    case do_switch_compat_mode(NewVersion, NodesWanted) of
+        ok ->
+            changed;
+        Error ->
+            ?log_error("Failed to switch compat mode from ~p to ~p with error: "
+                       "~p~nNodesWanted~p~n NodesInfos ~p ",
+                       [CompatVersion, NewVersion, Error,
+                        NodesWanted, NodeInfos]),
+            ok
+    end.
+
 %% This upgrades ns_config and chronicle to the new compat_version (NewVersion)
 do_switch_compat_mode(NewVersion, NodesWanted) ->
     functools:sequence_(
-      [?cut(chronicle_upgrade:upgrade(NewVersion, NodesWanted)),
+      %% Before we change the compat version - which can change the semantics
+      %% of config keys - make sure that every node in the cluster has observed
+      %% all chronicle updates so far. This ensures that ns_config_rep has
+      %% an up to date view of cluster membership such that it will reject
+      %% merges from nodes that are no longer part of the cluster.
+      %%
+      %% We must do this before we update the cluster compat mode (and apply the
+      %% related configuration updates) as this can change semantics of
+      %% configuration and a rogue down-version node that has not processed its
+      %% ejection from the cluster may still attempt to push an update to those
+      %% that remain. This covers the scenario in MB-68155.
+      %%
+      %% If a node cannot be reached then we will abort the switch and try again
+      %% later.
+      [?cut(chronicle_compat:push_and_sync_events(NodesWanted)),
+       ?cut(chronicle_upgrade:upgrade(NewVersion, NodesWanted)),
        ?cut(upgrade_ns_config(NewVersion, NodesWanted))]).
 
 upgrade_ns_config(NewVersion, NodesWanted) ->

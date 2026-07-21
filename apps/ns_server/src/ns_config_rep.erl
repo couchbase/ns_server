@@ -50,7 +50,7 @@
          get_timeout/1]).
 
 -export([get_remote/2, pull_remotes/1, pull_remotes/2,
-         push_keys/1, update_nodes/0]).
+         push_keys/1, update_nodes/0, sync/0]).
 
 -record(state, { nodes,
                  nodes_rev }).
@@ -151,6 +151,10 @@ handle_call(synchronize_everything, {Pid, _Tag} = From,
     {noreply, State};
 handle_call({pull_remotes, Nodes, Timeout}, _From, State) ->
     {reply, pull_from_all_nodes(Nodes, Timeout), State};
+handle_call(sync, _From, State) ->
+    %% Call sync point lets us assert that the previous info messages
+    %% (update_nodes) have been processed after this returns.
+    {reply, ok, State};
 handle_call(Msg, _From, State) ->
     ?log_warning("Unhandled call: ~p", [Msg]),
     {reply, error, State}.
@@ -271,9 +275,23 @@ handle_info({'EXIT', _From, Reason} = Msg, _State) ->
     {stop, Reason};
 handle_info(update_nodes, State) ->
     misc:flush(update_nodes),
-    NewState = update_nodes(State),
-    maybe_force_pull(NewState, State),
-    {noreply, NewState};
+    case testconditions:get(skip_update_nodes) of
+        true ->
+            %% Test only hook. See MB-68155.
+            %%
+            %% Skip refreshing our cached nodes_wanted (and its revision) from
+            %% chronicle, so this node stays behind - mimicking a node that
+            %% never observed its own ejection. Its subsequent config pushes
+            %% then carry a stale (lesser) topology revision, so peers compare
+            %% them 'lt' and subject them to the membership check rather than
+            %% trusting them outright. Triggered by:
+            %%   testconditions:set(skip_update_nodes, true).
+            {noreply, State};
+        _ ->
+            NewState = update_nodes(State),
+            maybe_force_pull(NewState, State),
+            {noreply, NewState}
+    end;
 handle_info(Msg, State) ->
     ?log_debug("Unhandled msg: ~p", [Msg]),
     {noreply, State}.
@@ -331,6 +349,9 @@ push_keys(Keys) ->
 
 update_nodes() ->
     ?MODULE ! update_nodes.
+
+sync() ->
+    gen_server:call(?MODULE, sync, infinity).
 
 %
 % Privates
@@ -548,9 +569,19 @@ accept_merge(Node, OtherRev,
                       "Their revision: ~w",
                       [Node, OurRev, OtherRev]),
             false;
-        lt ->
-            %% The other node is potentially behind. Check that it's part of
-            %% the topology known to us.
+        R when R =:= lt orelse R =:= eq ->
+            %% If the node has either a lower or equal revision to us then we
+            %% will check that the node is a member of our cached nodes wanted
+            %% list. The `lt` case covers down version nodes from sending us
+            %% config, this is particularly important at node ejection/compat
+            %% mode upgrade as that can change the semantics of configuration
+            %% and accepting a merge would lead to logical corruption of the
+            %% configuration. The `eq` case is necessary too to handle a race on
+            %% a node being ejected - if the other nodes ns_config_rep
+            %% replicates a key with the revision in which that node is
+            %% removed, but before ns_config_rep is shut down, then the rev is
+            %% `eq`. To check against cached nodes should be quick, so it's
+            %% best to be safe and close this window.
             Member = lists:member(Node, Nodes),
             case Member of
                 false ->

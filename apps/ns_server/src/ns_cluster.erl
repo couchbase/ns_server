@@ -494,6 +494,27 @@ leave_init() ->
 leave_body() ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
 
+    case testconditions:get(leave_body) of
+        stuck ->
+            %% Test only hook. See MB-68155.
+            %%
+            %% Mimic the field's rogue node that got stuck in its leave
+            %% procedure (a crash loop here). Rather than completing the leave
+            %% below, we return early: ns_server stays up, the node stays
+            %% connected to its former peers via distributed erlang, and it
+            %% never advances past the revision at which it was removed - so it
+            %% keeps looking (to itself) like a cluster member and can still
+            %% push ns_config updates into the cluster it was ejected from.
+            %% Triggered by: testconditions:set(leave_body, stuck).
+            testconditions:delete(leave_body),
+            ?cluster_log(0001, "Node ~p is stuck leaving cluster (test).",
+                         [node()]);
+        _ ->
+            testconditions:check_test_condition(leave_body),
+            perform_leave_body()
+    end.
+
+perform_leave_body() ->
     %% stop nearly everything
     ok = ns_server_cluster_sup:stop_ns_server(),
 

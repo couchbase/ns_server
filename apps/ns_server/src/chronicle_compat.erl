@@ -34,6 +34,8 @@
          pull/1,
          push/1,
          push/2,
+         push_and_sync_events/1,
+         push_and_sync_events/2,
          node_keys/2,
          service_keys/1]).
 
@@ -41,7 +43,8 @@
 -export_type([source/0]).
 
 %% RPC from another nodes
--export([do_pull/1]).
+-export([do_pull/1,
+         do_pull_and_notify/1]).
 
 -spec get(term(), map()) -> {ok, term()} | {error, not_found} | term().
 get(Key, Opts) ->
@@ -179,12 +182,37 @@ pull(Timeout) ->
 do_pull(Timeout) ->
     ok = chronicle_kv:sync(kv, Timeout).
 
+%% Like do_pull/1 but, in addition to pulling the latest chronicle config, also
+%% flushes the local chronicle_compat_events so that subscribers (e.g. the
+%% nodes_wanted cache in ns_config_rep) have observed the change before we
+%% return. See push_and_sync_events/2 and MB-68155.
+do_pull_and_notify(Timeout) ->
+    ok = do_pull(Timeout),
+    ok = chronicle_compat_events:sync(),
+
+    %% The sync event generally sends async messages to process the updates to
+    %% nodes_wanted to the ns_config_rep gen_server. We want to ensure that the
+    %% event has been processed, so we force it to sync via a call.
+    ok = ns_config_rep:sync().
+
 push(Nodes) ->
     push(Nodes, ns_config_rep:get_timeout(push)).
 
 push(Nodes, Timeout) ->
+    push(Nodes, do_pull, Timeout).
+
+%% Like push/2 but also ensures each node has flushed its chronicle_compat
+%% events, so subscribers there have observed the latest config (not just
+%% pulled it). See MB-68155.
+push_and_sync_events(Nodes) ->
+    push_and_sync_events(Nodes, ns_config_rep:get_timeout(push)).
+
+push_and_sync_events(Nodes, Timeout) ->
+    push(Nodes, do_pull_and_notify, Timeout).
+
+push(Nodes, Fun, Timeout) ->
     {_, BadRPC, BadNodes} =
-        misc:rpc_multicall_with_plist_result(Nodes, ?MODULE, do_pull, [Timeout],
+        misc:rpc_multicall_with_plist_result(Nodes, ?MODULE, Fun, [Timeout],
                                              Timeout),
     case BadNodes =:= [] andalso BadRPC =:= [] of
         true ->
