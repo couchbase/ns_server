@@ -1781,6 +1781,9 @@ is_cluster_encryption_fully_enabled() ->
 
 %% Returns true if there is at least one node with n2n client cert auth enabled
 is_n2n_client_cert_verification_enabled(Config) ->
+    is_n2n_client_cert_verification_enabled(Config, direct).
+
+is_n2n_client_cert_verification_enabled(Config, Snapshot) ->
     IsEnabled =
         fun (N) ->
             ns_config:search_node_with_default(
@@ -1790,7 +1793,7 @@ is_n2n_client_cert_verification_enabled(Config) ->
               N, Config, n2n_client_cert_auth, false)
         end,
 
-    lists:any(IsEnabled, ns_node_disco:nodes_wanted()).
+    lists:any(IsEnabled, ns_node_disco:nodes_wanted(Snapshot)).
 
 %% get_cluster_encryption_level is internal, it's to avoid unnecessary restarts
 %% of TLS for services when we add new nodes as there is temporary blip in

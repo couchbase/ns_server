@@ -1234,10 +1234,13 @@ add_CAs_txn_fun(Type, Pem, Opts) when is_binary(Pem),
     end.
 
 cluster_uses_client_certs(Config) ->
+    cluster_uses_client_certs(Config, direct).
+
+cluster_uses_client_certs(Config, Snapshot) ->
     cluster_uses_client_certs(
       ns_config:search(Config, cluster_encryption_level, control),
       ns_ssl_services_setup:client_cert_auth_state(Config),
-      misc:is_n2n_client_cert_verification_enabled(Config)).
+      misc:is_n2n_client_cert_verification_enabled(Config, Snapshot)).
 
 cluster_uses_client_certs(strict, "mandatory",
                           _N2NClientVerification) -> true;
@@ -1324,7 +1327,8 @@ remove_CA(Id) ->
                       %% race with node_cert stored in ns_config, as we don't
                       %% have common chronicle-ns_config transactions.
                       ClusterUsesClientCert =
-                          cluster_uses_client_certs(ns_config:latest()),
+                          cluster_uses_client_certs(ns_config:latest(),
+                                                    Snapshot),
                       NodesThatUseCA =
                           filter_nodes_by_ca(node_cert, Nodes, CA) ++
                           case ClusterUsesClientCert of

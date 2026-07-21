@@ -252,7 +252,8 @@ deactivate_nodes(Nodes, Options) ->
 get_snapshot() ->
     chronicle_compat:get_snapshot(
       [ns_bucket:fetch_snapshot(all, _, [props]),
-       ns_cluster_membership:fetch_snapshot(_)]).
+       ns_cluster_membership:fetch_snapshot(_),
+       chronicle_compat:txn_get_many([cluster_compat_version], _)]).
 
 buckets_failover_commits(BucketsPrep, FailedNodes, Snapshot) ->
     BucketsUpdates =

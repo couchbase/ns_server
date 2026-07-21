@@ -255,6 +255,7 @@
          get_fusion_buckets/1,
          fusion_uploaders_key/1,
          get_fusion_uploaders/1,
+         get_fusion_uploaders/2,
          enable_fusion/1]).
 
 -import(json_builder,
@@ -277,10 +278,13 @@ sub_key_match(_) ->
     false.
 
 get_sub_key_value(BucketName, SubKey) ->
-    case chronicle_kv:get(kv, sub_key(BucketName, SubKey)) of
+    get_sub_key_value(BucketName, SubKey, direct).
+
+get_sub_key_value(BucketName, SubKey, Snapshot) ->
+    case chronicle_compat:get(Snapshot, sub_key(BucketName, SubKey), #{}) of
         {error, not_found} ->
             not_found;
-        {ok, {Value, _Rev}} ->
+        {ok, Value} ->
             Value
     end.
 
@@ -1519,7 +1523,8 @@ do_create_bucket(BucketName, Config, BucketUUID, Manifest) ->
                           case maps:find(fusion_uploaders:config_key(),
                                          Snapshot) of
                               {ok, {FusionConfig, _Rev}} ->
-                                  fusion_uploaders:get_state(FusionConfig);
+                                  fusion_uploaders:get_state_from_config(
+                                      FusionConfig);
                               error ->
                                   disabled
                           end,
@@ -3484,7 +3489,7 @@ remove_bucket(BucketName) ->
 validate_encryption_secret(?SECRET_ID_NOT_SET, _Bucket, _Snapshot) ->
     ok;
 validate_encryption_secret(SecretId, Bucket, Snapshot) ->
-    case fusion_uploaders:get_state() of
+    case fusion_uploaders:get_state(Snapshot) of
         disabled ->
             ensure_can_encrypt_bucket(SecretId, Bucket, Snapshot);
         _ ->
@@ -3734,7 +3739,12 @@ fusion_uploaders_key(BucketName) ->
 
 -spec get_fusion_uploaders(name()) -> fusion_uploaders:uploaders() | not_found.
 get_fusion_uploaders(BucketName) ->
-    get_sub_key_value(BucketName, fusion_uploaders_sub_key()).
+    get_fusion_uploaders(BucketName, direct).
+
+-spec get_fusion_uploaders(name(), chronicle_compat:source()) ->
+          fusion_uploaders:uploaders() | not_found.
+get_fusion_uploaders(BucketName, Snapshot) ->
+    get_sub_key_value(BucketName, fusion_uploaders_sub_key(), Snapshot).
 
 -ifdef(TEST).
 extract_bucket_props_test() ->

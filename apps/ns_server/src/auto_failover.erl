@@ -199,8 +199,9 @@ hidden_failover_ephemeral_setting() ->
         _ -> false
     end.
 
-allow_failover_ephemeral_no_replicas() ->
-    case cluster_compat_mode:is_cluster_79() of
+allow_failover_ephemeral_no_replicas(Snapshot) ->
+    CompatVersion = cluster_compat_mode:get_compat_version(Snapshot),
+    case cluster_compat_mode:is_version_79(CompatVersion) of
         true -> proplists:get_bool(allow_failover_ephemeral_no_replicas,
                                    get_cfg());
         false -> hidden_failover_ephemeral_setting()
@@ -995,7 +996,7 @@ validate_bucket_safety(_BucketName, Map, Nodes) ->
 
 validate_membase_buckets(Snapshot, ValidateFun) ->
     ValidateEphemeral =
-        case allow_failover_ephemeral_no_replicas() of
+        case allow_failover_ephemeral_no_replicas(Snapshot) of
             true -> fun(_, _) -> false end;
             false -> ValidateFun
         end,

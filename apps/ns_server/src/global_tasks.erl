@@ -324,7 +324,8 @@ cleanup_tasks() ->
         {true, _} ->
             %% We perform the update in a transaction to avoid a task update
             %% racing with task deletion, which could delete the updated status
-            chronicle_compat:transaction([tasks], do_cleanup_txn(_));
+            chronicle_compat:transaction([tasks, nodes_wanted],
+                                         do_cleanup_txn(_));
         false ->
             ok
     end.
@@ -339,15 +340,15 @@ do_cleanup_txn(Snapshot) ->
 
 get_cleaned_up_tasks(Snapshot, LogCleanup) ->
     Tasks = chronicle_compat:get(Snapshot, tasks, #{required => true}),
-    NewTasks = lists:filter(should_keep_task(_, LogCleanup), Tasks),
+    NewTasks = lists:filter(should_keep_task(_, LogCleanup, Snapshot), Tasks),
     case NewTasks =:= Tasks of
         true -> false;
         false -> {true, NewTasks}
     end.
 
--spec should_keep_task(task(), boolean()) -> boolean().
-should_keep_task(Task, LogCleanup) ->
-    case functools:alternative(Task, cleanup_checks()) of
+-spec should_keep_task(task(), boolean(), term()) -> boolean().
+should_keep_task(Task, LogCleanup, Snapshot) ->
+    case functools:alternative(Task, cleanup_checks(Snapshot)) of
         {ok, Reason} ->
             case LogCleanup of
                 true ->
@@ -361,9 +362,9 @@ should_keep_task(Task, LogCleanup) ->
     end.
 
 %% Checks for cleaning up tasks that are no longer relevant
-cleanup_checks() ->
+cleanup_checks(Snapshot) ->
     [task_expired(_),
-     node_missing(_)].
+     node_missing(_, Snapshot)].
 
 -spec task_expired(task()) -> false | {ok, binary()}.
 task_expired(Task) ->
@@ -375,10 +376,10 @@ task_expired(Task) ->
             false
     end.
 
--spec node_missing(task()) -> false | {ok, binary()}.
-node_missing(Task) ->
+-spec node_missing(task(), term()) -> false | {ok, binary()}.
+node_missing(Task, Snapshot) ->
     Node = source_node(Task),
-    case lists:member(Node, ns_cluster_membership:nodes_wanted()) of
+    case lists:member(Node, ns_cluster_membership:nodes_wanted(Snapshot)) of
         true ->
             false;
         false ->
@@ -447,10 +448,7 @@ assert_lists_equal(ExpectedList, ActualList) ->
                   lists:zip(lists:sort(ExpectedList), lists:sort(ActualList))).
 
 cleanup_test__() ->
-    meck:expect(ns_cluster_membership, nodes_wanted,
-                fun () ->
-                        [node()]
-                end),
+    WantedNodes = [node()],
     meck:expect(ns_config, get_timeout,
                 fun (_, Default) ->
                         Default
@@ -458,14 +456,21 @@ cleanup_test__() ->
     TasksToKeep = generate_tasks(),
     TasksToRemove = generate_all_expired_tasks(TasksToKeep),
     ExistingTasks = TasksToRemove ++ TasksToKeep,
+    %% node_missing reads nodes_wanted through nodes_wanted(Snapshot), so the
+    %% get meck emulates both the direct pre-check read and the snapshot lookup
     meck:expect(chronicle_compat, get,
                 fun(direct, tasks, #{required := true}) -> ExistingTasks;
-                   (#{tasks := {T, _}}, tasks, #{required := true}) -> T
+                   (#{tasks := {T, _}}, tasks, #{required := true}) -> T;
+                   (direct, nodes_wanted, #{default := _}) -> WantedNodes;
+                   (#{nodes_wanted := {NW, _}}, nodes_wanted,
+                      #{default := _}) ->
+                        NW
                 end),
     %% Confirm that expired tasks are removed
     meck:expect(chronicle_compat, transaction,
-                fun([tasks], Fun) ->
-                        Snapshot = #{tasks => {ExistingTasks, 0}},
+                fun([tasks, nodes_wanted], Fun) ->
+                        Snapshot = #{tasks => {ExistingTasks, 0},
+                                     nodes_wanted => {WantedNodes, 0}},
                         {commit, [{set, tasks, NewTasks}]} = Fun(Snapshot),
                         assert_lists_equal(TasksToKeep, NewTasks)
                 end),
@@ -473,9 +478,11 @@ cleanup_test__() ->
 
     %% Confirm that chronicle_compat:transaction isn't called for no change
     meck:expect(chronicle_compat, get,
-                fun(direct, tasks, #{required := true}) -> TasksToKeep end),
+                fun(direct, tasks, #{required := true}) -> TasksToKeep;
+                   (direct, nodes_wanted, #{default := _}) -> WantedNodes
+                end),
     meck:expect(chronicle_compat, transaction,
-                fun([tasks], _) -> error(unexpected_call) end),
+                fun([tasks, nodes_wanted], _) -> error(unexpected_call) end),
     ok = cleanup_tasks().
 
 get_tasks_test__() ->

@@ -18,6 +18,7 @@
 -endif.
 
 -export([get_compat_version/0,
+         get_compat_version/1,
          get_ns_config_compat_version/0,
          is_enabled/1, is_enabled_at/2,
          consider_switching_compat_mode/0,
@@ -113,7 +114,10 @@ get_ns_config_compat_version(Config) ->
     ns_config:search(Config, cluster_compat_version, undefined).
 
 get_compat_version() ->
-    chronicle_compat:get(cluster_compat_version,
+    get_compat_version(direct).
+
+get_compat_version(Snapshot) ->
+    chronicle_compat:get(Snapshot, cluster_compat_version,
                          #{default => min_supported_compat_version()}).
 
 %% This function can be called remotely

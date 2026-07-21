@@ -6259,9 +6259,9 @@ build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
     meck:new(ns_config, [passthrough]),
     config_profile:load_default_profile_for_test(),
     meck:expect(ns_config, search,
-        fun(_, cluster_compat_version, _) ->
-            Version
-        end),
+                fun(_, cluster_compat_version, _) ->
+                        Version
+                end),
 
     meck:new(cluster_compat_mode, [passthrough]),
     meck:expect(cluster_compat_mode, get_compat_version, fun() -> Version end),
@@ -6269,21 +6269,21 @@ build_dynamic_bucket_info_test_setup(Version, IsEnterprise) ->
 
     meck:new(chronicle_compat, [passthrough]),
     meck:expect(chronicle_compat, get,
-        fun(cluster_compat_version, _) ->
-            Version
-        end),
+                fun(direct, cluster_compat_version, _) ->
+                        Version
+                end),
 
     meck:new(ns_bucket, [passthrough]),
     meck:new(menelaus_web_node, [passthrough]),
     meck:expect(menelaus_web_node, get_snapshot,
-        fun(_) ->
-            []
-        end),
+                fun(_) ->
+                        []
+                end),
     meck:new(menelaus_stats, [passthrough]),
     meck:expect(menelaus_stats, basic_stats,
-        fun(_, _) ->
-            []
-        end).
+                fun(_, _) ->
+                        []
+                end).
 
 build_dynamic_bucket_info_test_teardown() ->
     meck:unload(),

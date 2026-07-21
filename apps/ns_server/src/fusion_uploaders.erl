@@ -32,6 +32,7 @@
          get_config/0,
          get_state/0,
          get_state/1,
+         get_state_from_config/1,
          get_log_store_uri/0,
          get_metadata_store_uri/0,
          update_config/1,
@@ -399,10 +400,14 @@ get_config_with_default(Source) ->
 
 -spec get_state() -> state().
 get_state() ->
-    get_state(get_config_with_default(direct)).
+    get_state(direct).
 
--spec get_state(proplists:proplist()) -> state().
-get_state(Config) ->
+-spec get_state(chronicle_compat:source()) -> state().
+get_state(Source) ->
+    get_state_from_config(get_config_with_default(Source)).
+
+-spec get_state_from_config(proplists:proplist()) -> state().
+get_state_from_config(Config) ->
     proplists:get_value(state, Config).
 
 -spec get_log_store_uri() -> string().
@@ -903,7 +908,7 @@ maybe_advance_state(enabling) ->
         * 1024 * 1024,
 
     EnabledBucketsReady =
-        fun(FusionBuckets, FusionStats) ->
+        fun(FusionBuckets, FusionStats, Snapshot) ->
                 EnabledBuckets =
                     ns_bucket:filter_buckets_by(
                       FusionBuckets,
@@ -926,7 +931,7 @@ maybe_advance_state(enabling) ->
                                   _ ->
                                       false
                               end
-                      end, 0),
+                      end, 0, Snapshot),
 
                 case Result of
                     {true, Bytes} ->
@@ -974,9 +979,13 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
             RV =
                 chronicle_compat:txn(
                   fun (Txn) ->
+                          Snapshot =
+                              ns_bucket:fetch_snapshot(
+                                all, Txn, [props, fusion_uploaders]),
                           {Sets, AllReady, AdvancedBuckets} =
                               buckets_advance_state_sets(
-                                Txn, FusionStats, BucketState, NextBucketState),
+                                Snapshot, FusionStats, BucketState,
+                                NextBucketState),
                           Sets1 =
                               case AllReady of
                                   false ->
@@ -985,7 +994,8 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
                                       case can_advance_fusion_state(
                                              KVNodes, State, DeletionInfo,
                                              ?cut(ExtraCheck(FusionBuckets,
-                                                             FusionStats))) of
+                                                             FusionStats,
+                                                             Snapshot))) of
                                           true ->
                                               [txn_update_state_set(
                                                  Txn, NextState) | Sets];
@@ -1056,7 +1066,7 @@ check_deletion_info(KVNodes, State, DeletionInfo) ->
               end
       end, KVNodes).
 
-buckets_with_correct_uploaders(Buckets, FusionStats) ->
+buckets_with_correct_uploaders(Buckets, FusionStats, Source) ->
     RV =
         analyze_fusion_stats(
           Buckets, FusionStats,
@@ -1069,7 +1079,7 @@ buckets_with_correct_uploaders(Buckets, FusionStats) ->
                                      [BucketName]),
                           lists:keydelete(BucketName, 1, Acc)
                   end
-          end, Buckets),
+          end, Buckets, Source),
     case RV of
         {true, List} ->
             List;
@@ -1099,25 +1109,25 @@ buckets_with_no_active_volumes(Buckets) ->
               end
       end, Buckets).
 
-buckets_advance_state_sets(Txn, PerBucketPerNodeMap, State, NextState) ->
-    Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
+buckets_advance_state_sets(Snapshot, PerBucketPerNodeMap, State, NextState) ->
     Buckets = [{BucketName, BucketConfig} ||
                   {BucketName, BucketConfig} <- ns_bucket:get_buckets(Snapshot),
                   ns_bucket:get_fusion_state(BucketConfig) =:= State],
     BucketsToAdvance =
         buckets_with_no_active_volumes(
-          buckets_with_correct_uploaders(Buckets, PerBucketPerNodeMap)),
+          buckets_with_correct_uploaders(Buckets, PerBucketPerNodeMap,
+                                         Snapshot)),
     {[{set, ns_bucket:sub_key(BucketName, props),
        ns_bucket:set_fusion_state(NextState, BucketConfig)} ||
          {BucketName, BucketConfig} <- BucketsToAdvance],
      length(BucketsToAdvance) =:= length(Buckets),
      [B || {B, _} <- BucketsToAdvance]}.
 
-analyze_fusion_stats([], _, _, Acc) ->
+analyze_fusion_stats([], _, _, Acc, _Source) ->
     {true, Acc};
 analyze_fusion_stats([{Bucket, BucketConfig} | Rest],
-                     PerBucketPerNodeMap, Fun, Acc) ->
-    Uploaders = ns_bucket:get_fusion_uploaders(Bucket),
+                     PerBucketPerNodeMap, Fun, Acc, Source) ->
+    Uploaders = ns_bucket:get_fusion_uploaders(Bucket, Source),
     FusionState = ns_bucket:get_fusion_state(BucketConfig),
     Servers = ns_bucket:get_servers(BucketConfig),
 
@@ -1127,7 +1137,7 @@ analyze_fusion_stats([{Bucket, BucketConfig} | Rest],
         false ->
             false;
         NewAcc ->
-            analyze_fusion_stats(Rest, PerBucketPerNodeMap, Fun, NewAcc)
+            analyze_fusion_stats(Rest, PerBucketPerNodeMap, Fun, NewAcc, Source)
     end.
 
 analyze_fusion_stats_for_bucket(_, _, _, [], _, _, Acc) ->
@@ -1284,7 +1294,7 @@ cleanup_snapshots() ->
                         [];
                     FusionStats ->
                         buckets_with_correct_uploaders(
-                          BucketsWithBC, FusionStats)
+                          BucketsWithBC, FusionStats, direct)
                 end
         end,
 
