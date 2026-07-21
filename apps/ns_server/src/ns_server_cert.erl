@@ -650,6 +650,14 @@ verify_fun(Cert, Event, State) ->
                        "     Stack: ~p~n",
                        [Cert, Trace]),
             {fail, {Error, Subject}};
+        {extension, #'Extension'{extnID = ?'id-ce-extKeyUsage'} = Ext} ->
+            %% OTP doesn't validate this extension on leaf certs, so treating
+            %% it as unknown would fail validation when marked critical.
+            %% Accept it here - the purposes are enforced by
+            %% validate_cert_ext_key_usage/2 when the cert is loaded.
+            ?log_debug("Certificate ~p validation: accepting extended key "
+                       "usage extension:~n~p", [Subject, Ext]),
+            {valid, State};
         {extension, Ext} ->
             ?log_warning(
                "Certificate ~p validation spotted an unknown extension:~n~p",
@@ -928,6 +936,10 @@ set_certificate_chain(Type, Chain, PKey, PassphraseSettings, ForceReload) ->
                     {ok, PassFun} ->
                         ValidationResult =
                             functools:sequence_([
+                                fun () ->
+                                    validate_cert_ext_key_usage(
+                                      Type, LeafCert)
+                                end,
                                 fun () ->
                                     validate_cert_and_pkey(
                                       LeafCert, PKey, PassFun)
@@ -1462,6 +1474,45 @@ extract_internal_client_cert_user(Cert) ->
                             FindInternalEmail(T)
                     end
             end (Emails)
+    end.
+
+%% Check that the leaf cert's extended key usage extension (if present)
+%% permits the purpose the cert is being loaded for, as required by
+%% RFC 5280 4.2.1.12
+-spec validate_cert_ext_key_usage(node_cert|client_cert, tuple()) ->
+    ok | {error, {missing_eku_purpose|invalid_eku, node_cert|client_cert}}.
+validate_cert_ext_key_usage(Type, {'Certificate', DerCert, not_encrypted}) ->
+    OtpCert = public_key:pkix_decode_cert(DerCert, otp),
+    TBSCert = OtpCert#'OTPCertificate'.tbsCertificate,
+    Extensions = case TBSCert#'OTPTBSCertificate'.extensions of
+                     asn1_NOVALUE -> [];
+                     List -> List
+                 end,
+    case lists:keyfind(?'id-ce-extKeyUsage', #'Extension'.extnID,
+                       Extensions) of
+        false ->
+            ok;
+        #'Extension'{extnValue = Purposes} when is_list(Purposes) ->
+            Required = case Type of
+                           node_cert -> ?'id-kp-serverAuth';
+                           client_cert -> ?'id-kp-clientAuth'
+                       end,
+            %% The anyExtendedKeyUsage purpose is not accepted, consistent with
+            %% OTP's TLS handshake logic
+            case lists:member(Required, Purposes) of
+                true ->
+                    ok;
+                false ->
+                    ?log_error("~p validation failed: extended key usage "
+                               "extension (purposes: ~p) does not include "
+                               "required purpose ~p",
+                               [Type, Purposes, Required]),
+                    {error, {missing_eku_purpose, Type}}
+            end;
+        #'Extension'{extnValue = Value} ->
+            ?log_error("~p validation failed: could not decode extended key "
+                       "usage extension: ~p", [Type, Value]),
+            {error, {invalid_eku, Type}}
     end.
 
 -spec validate_cert_identity(node_cert|client_cert, tuple()) ->
