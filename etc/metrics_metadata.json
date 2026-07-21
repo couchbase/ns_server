@@ -72,6 +72,30 @@
         "help": "Number of streaming requests processed",
         "added": "7.0.0"
     },
+    "cm_cbauth_crl_cache_current_items": {
+        "type": "gauge",
+        "help": "Current number of items available in cbauth CRL status cache",
+        "added": "8.1.0",
+        "stability": "internal"
+    },
+    "cm_cbauth_crl_cache_hit_total": {
+        "type": "counter",
+        "help": "Total number of cbauth CRL status cache hits",
+        "added": "8.1.0",
+        "stability": "internal"
+    },
+    "cm_cbauth_crl_cache_max_items": {
+        "type": "gauge",
+        "help": "Maximum capacity of cbauth CRL status cache",
+        "added": "8.1.0",
+        "stability": "internal"
+    },
+    "cm_cbauth_crl_cache_miss_total": {
+        "type": "counter",
+        "help": "Total number of cbauth CRL status cache misses",
+        "added": "8.1.0",
+        "stability": "internal"
+    },
     "cm_chronicle_append_batch_size_1m_max": {
         "type": "gauge",
         "help": "Maximum append batch size over a minute window",
