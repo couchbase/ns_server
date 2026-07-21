@@ -1033,13 +1033,12 @@ map_needs_rebalance(Bucket, Servers, BucketConfig) ->
     end.
 
 map_options_changed(Servers, BucketConfig) ->
-    case proplists:get_value(map_opts_hash, BucketConfig) of
+    case ns_bucket:get_map_opts_hash(BucketConfig) of
         undefined ->
             true;
         OptsHash ->
-            MapOpts = generate_vbucket_map_options(Servers,
-                                                   BucketConfig),
-            case erlang:phash2(MapOpts) of
+            MapOpts = generate_vbucket_map_options(Servers, BucketConfig),
+            case ns_bucket:encode_map_opts(MapOpts) of
                 OptsHash ->
                     {false, MapOpts};
                 _ ->

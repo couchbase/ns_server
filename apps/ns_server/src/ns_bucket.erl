@@ -243,7 +243,9 @@
          get_data_service_rebalance_type/1,
          get_throttle_reserved/1,
          get_throttle_hard_limit/1,
-         validate_bucket_throttle_params/3]).
+         validate_bucket_throttle_params/3,
+         get_map_opts_hash/1,
+         encode_map_opts/1]).
 
 %% fusion
 -export([is_fusion/1,
@@ -2383,7 +2385,7 @@ set_map_and_uploaders(Bucket, Map, MapOpts, Uploaders) ->
     PropsToUpdate =
         [{map, Map} | case MapOpts of
                           undefined -> [];
-                          _ -> [{map_opts_hash, erlang:phash2(MapOpts)}]
+                          _ -> [map_opts_tuple(MapOpts)]
                       end],
     RV =
         chronicle_kv:transaction(
@@ -2438,7 +2440,7 @@ set_initial_map_and_uploaders_txn(Snapshot, Bucket, Map, Servers, MapOpts) ->
             NewConfig =
                 misc:update_proplist(
                   OldConfig,
-                  [{map, Map}, {map_opts_hash, erlang:phash2(MapOpts)}]),
+                  [{map, Map}, map_opts_tuple(MapOpts)]),
             UploaderSets =
                 case is_fusion(OldConfig) of
                     true ->
@@ -2489,8 +2491,19 @@ set_restored_attributes(Bucket, Map, ServerList) ->
       Bucket, Map, proplists:get_value(map, OldBucketConfig, [])),
     ok.
 
-set_map_opts(Bucket, Opts) ->
-    set_property(Bucket, map_opts_hash, erlang:phash2(Opts)).
+-spec encode_map_opts(proplists:proplist()) -> non_neg_integer().
+encode_map_opts(MapOpts) ->
+    erlang:phash2(MapOpts).
+
+map_opts_tuple(MapOpts) ->
+    {map_opts_hash, encode_map_opts(MapOpts)}.
+
+-spec get_map_opts_hash(config()) -> non_neg_integer() | undefined.
+get_map_opts_hash(BucketConfig) ->
+  proplists:get_value(map_opts_hash, BucketConfig).
+
+set_map_opts(Bucket, MapOpts) ->
+    set_property(Bucket, map_opts_hash, encode_map_opts(MapOpts)).
 
 set_servers(Bucket, Servers) ->
     set_property(Bucket, servers, Servers).
