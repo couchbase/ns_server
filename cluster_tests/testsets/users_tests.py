@@ -1462,6 +1462,13 @@ def assert_password_expired(cluster, user, password):
     testlib.assert_eq(r.json(), {"message": "Password expired",
                                  "passwordExpired": True})
 
+    # no_check_disallow_anonymous routes reject an expired password too
+    # (MB-71799)
+    r = testlib.get_fail(cluster, '/versions', expected_code=403,
+                         auth=(user, password))
+    testlib.assert_eq(r.json(), {"message": "Password expired",
+                                 "passwordExpired": True})
+
     testlib.get_fail(cluster, '/admin/vitals', service=Service.QUERY,
                      expected_code=401, auth=(user, password))
 

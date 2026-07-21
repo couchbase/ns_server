@@ -1172,14 +1172,13 @@ match_object([Vertex1 | ObjectToCheck], [Vertex2 | ObjectSpecified],
 
 -spec is_allowed(rbac_permission(),
                  #authn_res{} | [rbac_compiled_role()]) -> boolean().
-is_allowed(_Permission, #authn_res{password_expired = true}) ->
-    false;
 is_allowed(Permission, #authn_res{} = AuthnRes) ->
-    case menelaus_auth:check_expiration(AuthnRes) of
-        {error, expired} -> false;
+    %% Expired credentials (password or session) grant nothing
+    case menelaus_auth:expiry_status(AuthnRes) of
         ok ->
-            Roles = get_compiled_roles(AuthnRes),
-            is_allowed(Permission, Roles)
+            is_allowed(Permission, get_compiled_roles(AuthnRes));
+        _ ->
+            false
     end;
 is_allowed({Object, Operation}, Roles) ->
     ObjectExpanded = lists:flatmap(expand_vertex(_, all), Object),

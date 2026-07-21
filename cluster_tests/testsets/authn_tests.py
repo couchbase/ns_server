@@ -10,6 +10,7 @@ import testlib
 from testlib.util import Service
 import base64
 import os
+import time
 from scramp import ScramClient
 import requests
 from testsets.cert_load_tests import read_cert_file, load_ca, \
@@ -157,6 +158,28 @@ class AuthnTests(testlib.BaseTestSet):
         OBO = base64.b64encode(f"{user}:wrong".encode('ascii')).decode()
         testlib.get_fail(self.cluster, '/whoami', 401,
                          headers={'cb-on-behalf-of': OBO})
+
+
+    def on_behalf_of_expiry_test(self):
+        (user, _) = self.creds
+        OBO = base64.b64encode(f"{user}:local".encode('ascii')).decode()
+
+        def extras(unix_secs):
+            # on-behalf expiry is in seconds since year 0, i.e. unix time
+            # plus the offset from year 0 to 1970
+            s = f"expiry={int(unix_secs) + 62167219200}"
+            return base64.b64encode(s.encode('ascii')).decode()
+
+        # a future expiry is accepted
+        testlib.get_succ(
+            self.cluster, self.testEndpoint,
+            headers={'cb-on-behalf-of': OBO,
+                     'cb-on-behalf-extras': extras(time.time() + 3600)})
+        # an expired one is rejected (MB-71799)
+        testlib.get_fail(
+            self.cluster, self.testEndpoint, 401,
+            headers={'cb-on-behalf-of': OBO,
+                     'cb-on-behalf-extras': extras(time.time() - 3600)})
 
 
     def client_cert_auth_test_base(self, user, mandatory=None):

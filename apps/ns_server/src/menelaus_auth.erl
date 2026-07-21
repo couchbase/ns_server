@@ -53,7 +53,8 @@
          is_external_auth_allowed/1,
          get_authn_res_audit_props/1,
          maybe_set_auth_audit_props/2,
-         check_expiration/1]).
+         check_expiration/1,
+         expiry_status/1]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
@@ -916,18 +917,38 @@ check_permission(#authn_res{identity = {"@" ++ _, local_token}}, local) ->
     allowed;
 check_permission(_, local) ->
     forbidden;
-check_permission(#authn_res{} = AuthnRes, no_check_disallow_anonymous) ->
+check_permission(#authn_res{} = AuthnRes, Permission) ->
+    %% Reject an expired credential before any route logic, so every route
+    %% except no_check (matched above, e.g. changePassword) denies it. This
+    %% is the single point where both expiry kinds are enforced.
+    case expiry_status(AuthnRes) of
+        password_expired ->
+            ?count_auth("error", "password_expired"),
+            password_expired;
+        expired ->
+            ?count_auth("error", "expired"),
+            auth_failure;
+        ok ->
+            check_authz(AuthnRes, Permission)
+    end.
+
+-spec expiry_status(#authn_res{}) -> ok | password_expired | expired.
+expiry_status(#authn_res{password_expired = true}) ->
+    password_expired;
+expiry_status(#authn_res{} = AuthnRes) ->
+    case check_expiration(AuthnRes) of
+        {error, expired} -> expired;
+        ok -> ok
+    end.
+
+check_authz(#authn_res{} = AuthnRes, no_check_disallow_anonymous) ->
     case is_anonymous(AuthnRes) of
         true ->
             auth_failure;
         false ->
             allowed
     end;
-check_permission(#authn_res{password_expired=true}, _) ->
-    ?count_auth("error", "password_expired"),
-    password_expired;
-check_permission(#authn_res{identity = Identity} = AuthnRes,
-                 Permission) ->
+check_authz(#authn_res{identity = Identity} = AuthnRes, Permission) ->
     Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     case Roles of
         [] ->
