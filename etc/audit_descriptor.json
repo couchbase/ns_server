@@ -2339,6 +2339,28 @@
       },
       {
           "id": 8303,
+          "name" : "set external catalog manifest",
+          "description" : "External catalog manifest was set",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "bucket_name" : "",
+              "scope_name" : "",
+              "collection_name" : "",
+              "new_manifest_uid" : ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
+          }
+      },
+      {
+          "id": 8304,
           "name" : "create external collection",
           "description" : "External collection was created",
           "sync" : false,
@@ -2360,7 +2382,7 @@
           }
       },
       {
-          "id": 8304,
+          "id": 8305,
           "name" : "modify external collection",
           "description" : "External collection was modified",
           "sync" : false,
@@ -2382,7 +2404,7 @@
           }
       },
       {
-          "id": 8305,
+          "id": 8306,
           "name" : "drop external collection",
           "description" : "External collection was dropped",
           "sync" : false,
