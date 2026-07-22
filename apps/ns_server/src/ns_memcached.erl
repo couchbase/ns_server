@@ -2891,7 +2891,7 @@ bucket_metadata_file(BucketDir) ->
     filename:join([BucketDir, "cm", "bucket.metadata"]).
 
 -spec get_fusion_uploaders_state(ns_bucket:name()) ->
-          {ok, null} | {ok, {list()}} | bucket_not_found | mc_error().
+          {ok, {list()}} | bucket_not_found | no_vbuckets | mc_error().
 get_fusion_uploaders_state(Bucket) ->
     case perform_very_long_call(
            fun (Sock) ->
@@ -2900,6 +2900,8 @@ get_fusion_uploaders_state(Bucket) ->
         {error, {select_bucket_failed, {memcached_error, key_enoent,
                                         undefined}}} ->
             bucket_not_found;
+        {ok, null} ->
+            no_vbuckets;
         Other ->
             Other
     end.

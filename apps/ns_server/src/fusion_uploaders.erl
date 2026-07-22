@@ -1359,8 +1359,6 @@ do_wait_for_uploaders_state(_BucketName, 0, _ConditionFun) ->
     {error, timeout};
 do_wait_for_uploaders_state(BucketName, Tries, ConditionFun) ->
     case ns_memcached:get_fusion_uploaders_state(BucketName) of
-        {ok, null} ->
-            {error, no_vbuckets};
         {ok, {VBucketsInfo}} ->
             case lists:all(
                    fun ({_VBName, {VBStats}}) ->
@@ -1374,8 +1372,6 @@ do_wait_for_uploaders_state(BucketName, Tries, ConditionFun) ->
                 true ->
                     ok
             end;
-        bucket_not_found ->
-            {error, bucket_not_found};
         Error ->
             {error, Error}
     end.
