@@ -53,8 +53,7 @@
          is_external_auth_allowed/1,
          get_authn_res_audit_props/1,
          maybe_set_auth_audit_props/2,
-         check_expiration/1,
-         expiry_status/1]).
+         check_expiration/1]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
@@ -315,9 +314,15 @@ parse_basic_auth_header(Value) ->
             error
     end.
 
--spec has_permission(rbac_permission(), mochiweb_request()) -> boolean().
+-spec has_permission(rbac_permission(),
+                     #authn_res{} | undefined | mochiweb_request()) ->
+          boolean().
+has_permission(Permission, #authn_res{} = AuthnRes) ->
+    check_permission(AuthnRes, Permission, false) =:= allowed;
+has_permission(Permission, undefined) ->
+    check_permission(undefined, Permission, false) =:= allowed;
 has_permission(Permission, Req) ->
-    menelaus_roles:is_allowed(Permission, get_authn_res(Req)).
+    has_permission(Permission, get_authn_res(Req)).
 
 -spec is_internal(mochiweb_request()) -> boolean().
 is_internal(Req) ->
@@ -799,7 +804,7 @@ apply_on_behalf_of_authn_res(AuthnRes, Req) ->
             %% is out of scope now, though it can be easily achived by checking
             %% each permission twice, against the authenticated user and against
             %% the impersonated one
-            case menelaus_roles:is_allowed(
+            case has_permission(
                    {[admin, security, admin], impersonate}, AuthnRes) of
                 true ->
                     get_authn_res_from_on_behalf_of(User, Domain, Extras);
@@ -909,27 +914,39 @@ is_anonymous(#authn_res{}) -> false;
 %% (when called as is_anonymous(get_authn_res(Req)))
 is_anonymous(undefined) -> true.
 
--spec check_permission(#authn_res{}, rbac_permission() | no_check | local) ->
+-spec check_permission(#authn_res{} | undefined,
+                       rbac_permission() | no_check | local) ->
           auth_failure | forbidden | allowed | password_expired.
-check_permission(_AuthnRes, no_check) ->
+check_permission(AuthnRes, Permission) ->
+    check_permission(AuthnRes, Permission, true).
+
+%% Report gates the denial log and auth-error counters, so soft
+%% has_permission checks stay silent while route auth still reports
+-spec check_permission(#authn_res{} | undefined,
+                       rbac_permission() | no_check | local, boolean()) ->
+          auth_failure | forbidden | allowed | password_expired.
+check_permission(_AuthnRes, no_check, _Report) ->
     allowed;
-check_permission(#authn_res{identity = {"@" ++ _, local_token}}, local) ->
+check_permission(#authn_res{identity = {"@" ++ _, local_token}}, local,
+                 _Report) ->
     allowed;
-check_permission(_, local) ->
+check_permission(_, local, _Report) ->
     forbidden;
-check_permission(#authn_res{} = AuthnRes, Permission) ->
+check_permission(undefined, _Permission, _Report) ->
+    forbidden;
+check_permission(#authn_res{} = AuthnRes, Permission, Report) ->
     %% Reject an expired credential before any route logic, so every route
     %% except no_check (matched above, e.g. changePassword) denies it. This
     %% is the single point where both expiry kinds are enforced.
     case expiry_status(AuthnRes) of
         password_expired ->
-            ?count_auth("error", "password_expired"),
+            Report andalso ?count_auth("error", "password_expired"),
             password_expired;
         expired ->
-            ?count_auth("error", "expired"),
+            Report andalso ?count_auth("error", "expired"),
             auth_failure;
         ok ->
-            check_authz(AuthnRes, Permission)
+            check_authz(AuthnRes, Permission, Report)
     end.
 
 -spec expiry_status(#authn_res{}) -> ok | password_expired | expired.
@@ -941,14 +958,14 @@ expiry_status(#authn_res{} = AuthnRes) ->
         ok -> ok
     end.
 
-check_authz(#authn_res{} = AuthnRes, no_check_disallow_anonymous) ->
+check_authz(#authn_res{} = AuthnRes, no_check_disallow_anonymous, _Report) ->
     case is_anonymous(AuthnRes) of
         true ->
             auth_failure;
         false ->
             allowed
     end;
-check_authz(#authn_res{identity = Identity} = AuthnRes, Permission) ->
+check_authz(#authn_res{identity = Identity} = AuthnRes, Permission, Report) ->
     Roles = menelaus_roles:get_compiled_roles(AuthnRes),
     case Roles of
         [] ->
@@ -960,10 +977,11 @@ check_authz(#authn_res{identity = Identity} = AuthnRes, Permission) ->
                 true ->
                     allowed;
                 false ->
-                    ?log_debug("Access denied.~nIdentity: ~p~nRoles: ~p~n"
-                               "Permission: ~p~n",
-                               [ns_config_log:tag_user_data(Identity),
-                                Roles, Permission]),
+                    Report andalso
+                        ?log_debug("Access denied.~nIdentity: ~p~nRoles: ~p~n"
+                                   "Permission: ~p~n",
+                                   [ns_config_log:tag_user_data(Identity),
+                                    Roles, Permission]),
                     case is_anonymous(AuthnRes) of
                         true ->
                             %% we do allow some api's for anonymous

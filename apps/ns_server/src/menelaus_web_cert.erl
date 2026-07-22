@@ -33,7 +33,7 @@ handle_get_trustedCAs(Req) ->
     %% Security admins should get all the information,
     %% Everybody else should get only certificates
     AuthRes = menelaus_auth:get_authn_res(Req),
-    Extended = menelaus_roles:is_allowed({[admin, security], read}, AuthRes),
+    Extended = menelaus_auth:has_permission({[admin, security], read}, AuthRes),
     Authenticated = not menelaus_auth:is_anonymous(AuthRes),
     Warnings = case Extended of
                     true -> ns_server_cert:get_warnings();

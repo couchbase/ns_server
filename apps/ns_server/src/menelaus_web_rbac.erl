@@ -1862,7 +1862,7 @@ handle_check_permission_for_cbauth(Req) ->
     AuthnRes = menelaus_auth:get_authn_res_from_on_behalf_of(User, Domain,
                                                              Extras),
 
-    case menelaus_roles:is_allowed(Permission, AuthnRes) of
+    case menelaus_auth:has_permission(Permission, AuthnRes) of
         true ->
             menelaus_util:reply_text(Req, "", 200);
         false ->

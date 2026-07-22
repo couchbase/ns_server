@@ -128,8 +128,8 @@ handle_call(#call{pid = Pid, body = Body}, From,
         {ok, #client{reply_channel = ReplyChannel,
                      handler = undefined,
                      user = AuthnRes} = Client} ->
-            case menelaus_roles:is_allowed({[app_telemetry], write},
-                                           AuthnRes) of
+            case menelaus_auth:has_permission({[app_telemetry], write},
+                                              AuthnRes) of
                 false ->
                     State1 = do_drop_client(State0, Pid),
                     {reply, {error, privilege_lost}, State1};
@@ -339,7 +339,7 @@ setup() ->
                 end),
     meck:expect(menelaus_util, respond, fun (_, _) -> ok end),
     meck:expect(menelaus_auth, get_authn_res, fun(_) -> #authn_res{} end),
-    meck:expect(menelaus_roles, is_allowed, fun(_, _) -> true end).
+    meck:expect(menelaus_auth, has_permission, fun(_, _) -> true end).
 
 teardown(_) ->
     meck:unload().
@@ -382,7 +382,7 @@ simple_test__() ->
     ?expect_message(pong_received, ?TIMEOUT),
 
     %% Remove privilege, to test that connection is lost
-    meck:expect(menelaus_roles, is_allowed, fun(_, _) -> false end),
+    meck:expect(menelaus_auth, has_permission, fun(_, _) -> false end),
     ?assertEqual({error, privilege_lost},
                  app_telemetry_pool:call(Pid, ?TEST_FRAME, ?TIMEOUT)),
     ?assertEqual(ok, misc:wait_for_process(Pid, ?TIMEOUT)).

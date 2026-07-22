@@ -716,7 +716,7 @@ is_service_identity(_) -> false.
 %% the requested credential.
 -spec check_consume_permission(credential_id(), term()) -> boolean().
 check_consume_permission(IdStr, AuthnRes) ->
-    menelaus_roles:is_allowed(
+    menelaus_auth:has_permission(
       {[{credentials, IdStr}], consume}, AuthnRes).
 
 
