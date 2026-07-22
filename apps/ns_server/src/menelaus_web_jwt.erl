@@ -1117,6 +1117,8 @@ oidc_provider_validators() ->
                    Token =/= undefined orelse
                    End =/= undefined,
                case Mode of
+                   undefined ->
+                       ok;
                    discovery when not HasDiscovery ->
                        {error, "oidcDiscoveryUri is required when"
                         " endpointSource is 'discovery'"};
