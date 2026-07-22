@@ -82,6 +82,7 @@
          enable_auto_reprovision/2,
          disable_auto_reprovision/1,
          auth_failure/1,
+         tls_auth_failure/2,
          access_forbidden/1,
          rbac_info_retrieved/2,
          admin_password_reset/1,
@@ -651,7 +652,11 @@ get_identity({User, Domain}) ->
 
 get_socket_name(Req, SockNameGetter) ->
     Socket = mochiweb_request:get(socket, Req),
-    {ok, {Host, Port}} = SockNameGetter(Socket),
+    {ok, HostPort} = SockNameGetter(Socket),
+    format_addr(HostPort).
+
+%% Format a {Host, Port} address into the audit {ip, port} JSON shape.
+format_addr({Host, Port}) ->
     {[{ip, to_binary(inet_parse:ntoa(Host))},
       {port, Port}]}.
 
@@ -1241,6 +1246,49 @@ auth_failure(Req0) ->
     JwtProps = mochiweb_request:get_meta(auth_audit_props, [], Req),
     put(auth_failure, Req, [{raw_url, RawPath}] ++ JwtProps).
 
+%% TLS handshake failure reported by the mochiweb acceptor (e.g. a client
+%% presenting a revoked certificate).  There is no "Req" because the failure
+%% happens during the TLS handshake, before any HTTP request exists; the
+%% client/server addresses are supplied in ConnInfo, gathered by mochiweb
+%% before the handshake.  Recorded as an auth_failure event.  auth_failure has
+%% raw_url as a mandatory field, but there is no request here, so a placeholder
+%% is used.
+-define(TLS_HANDSHAKE_RAW_URL, <<"-">>).
+
+tls_auth_failure(Reason, ConnInfo) ->
+    put(auth_failure, undefined, tls_auth_failure_params(Reason, ConnInfo)).
+
+%% remote and local are mandatory fields of auth_failure, and prepare_list/1
+%% drops undefined values, so both addresses must be known.  The caller only
+%% audits handshake failures where they are - see
+%% ns_ssl_services_setup:should_audit/3.
+tls_auth_failure_params(Reason, #{peername := Peer, sockname := Sock})
+  when Peer =/= undefined, Sock =/= undefined ->
+    [{raw_url, ?TLS_HANDSHAKE_RAW_URL},
+     {reason, describe_tls_reason(Reason)},
+     {remote, format_addr(Peer)},
+     {local, format_addr(Sock)}].
+
+%% Human-readable reason for a TLS handshake failure.  A {tls_alert, ...} carries
+%% OTP's descriptive text (e.g. "... Bad Certificate {bad_crls,
+%% no_relevant_crls}"), which is more informative than the alert atom alone, so
+%% use it (collapsed to a single line).  Handles both the {Alert, Description}
+%% and the bare-Description shapes of tls_alert.
+describe_tls_reason({tls_alert, {_Alert, Description}}) ->
+    tls_description_bin(Description);
+describe_tls_reason({tls_alert, Description}) ->
+    tls_description_bin(Description);
+describe_tls_reason(Reason) ->
+    misc:format_bin("~p", [Reason]).
+
+tls_description_bin(Description) when is_list(Description);
+                                      is_binary(Description) ->
+    iolist_to_binary(
+      string:trim(re:replace(Description, "\\s+", " ",
+                             [global, {return, list}])));
+tls_description_bin(Other) ->
+    misc:format_bin("~p", [Other]).
+
 access_forbidden(Req) ->
     RawPath = mochiweb_request:get(raw_path, Req),
     JwtProps = mochiweb_request:get_meta(auth_audit_props, [], Req),
@@ -1448,5 +1496,21 @@ audit_send_test() ->
 
     %% Receive message
     _ = receive_assert_handle_message(State18, none, none).
+
+tls_auth_failure_params_test() ->
+    Reason = {tls_alert, {bad_certificate, "bad cert"}},
+    ConnInfo = #{peername => {{10,0,0,1}, 1234},
+                 sockname => {{10,0,0,2}, 18091}},
+
+    %% remote/local are mandatory fields of auth_failure, so they must survive
+    %% prepare_list, which drops undefined values.
+    Prepared = prepare_list(tls_auth_failure_params(Reason, ConnInfo)),
+    ?assertEqual({[{ip, <<"10.0.0.1">>}, {port, 1234}]},
+                 proplists:get_value(remote, Prepared)),
+    ?assertEqual({[{ip, <<"10.0.0.2">>}, {port, 18091}]},
+                 proplists:get_value(local, Prepared)),
+    ?assertEqual(?TLS_HANDSHAKE_RAW_URL,
+                 proplists:get_value(raw_url, Prepared)),
+    ?assertEqual(<<"bad cert">>, proplists:get_value(reason, Prepared)).
 
 -endif.

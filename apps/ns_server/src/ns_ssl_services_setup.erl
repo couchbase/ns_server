@@ -170,7 +170,9 @@ do_start_link_capi_service(SSLPort) ->
     %% set mochiweb options
     FinalOptions = lists:append([Options, ServerOptions,
                                  [{loop, Loop},
-                                  {name, https}]]),
+                                  {name, https},
+                                  {tls_alert_handler,
+                                   tls_alert_handler_fun()}]]),
 
     %% launch mochiweb
     {ok, _Pid} = case mochiweb_http:start(FinalOptions) of
@@ -683,9 +685,125 @@ start_link_rest_service() ->
                        %% Make it a fun to avoid printing of sensitive stuff
                        %% like pkey password in progress reports
                        {ssl_opts_fun, fun () -> ssl_server_opts() end},
+                       {tls_alert_handler, tls_alert_handler_fun()},
                        {port, SSLPort}],
             menelaus_web:start_link(Config3)
     end.
+
+%% A mochiweb tls_alert_handler, called in the acceptor process when a TLS
+%% handshake fails with an alert (e.g. a client presenting a revoked
+%% certificate).  Logs the client/server address and audits an auth_failure.
+-spec tls_alert_handler_fun() -> fun((term(), map()) -> ok).
+tls_alert_handler_fun() ->
+    NsServer = ns_node_disco:ns_server_node(),
+    fun (Reason, ConnInfo) ->
+            try
+                Origin = alert_origin(Reason),
+                Peer = maps:get(peername, ConnInfo, undefined),
+                Sock = maps:get(sockname, ConnInfo, undefined),
+                ?log_debug("WEB server TLS handshake failed (~s -> ~s) "
+                        "[~p alert]: ~s",
+                        [format_conn_addr(Peer), format_conn_addr(Sock),
+                            Origin, format_tls_reason(Reason)]),
+                %% ns_audit runs on the ns_server node; the CAPI acceptor runs
+                %% on the couchdb node, so route the audit there.
+                case should_audit(Reason, Origin, Peer, Sock) of
+                    true ->
+                        rpc:cast(NsServer, ns_audit, tls_auth_failure,
+                                [Reason, ConnInfo]),
+                        ok;
+                    false ->
+                        ok
+                end
+            catch
+                C:E:ST ->
+                    ?log_error("TLS alert handler exception ~p:~p~n"
+                               "Stacktrace: ~p", [C, E, ST]),
+                    %% mochiweb ignores the crash anyway
+                    ok
+            end
+    end.
+
+%% Only a locally-generated alert about a certificate is an auth failure: it
+%% means WE rejected the peer's certificate.  An alert received from the peer is
+%% the peer rejecting us, and a local alert that is not about a certificate is a
+%% negotiation failure (no shared cipher, version mismatch, a plain-TCP client
+%% on the TLS port) with no identity involved - log but skip.
+%%
+%% mochiweb reads the addresses before starting the handshake, so an 'undefined'
+%% address means the connection was already gone by then: no certificate was
+%% presented and there is no peer to attribute a rejection to.  (It also could
+%% not be audited - remote/local are mandatory auth_failure fields.)
+should_audit(Reason, local, Peer, Sock) when Peer =/= undefined,
+                                             Sock =/= undefined ->
+    is_cert_alert(Reason);
+should_audit(_Reason, _Origin, _Peer, _Sock) ->
+    false.
+
+%% Alerts OTP generates when it rejects a peer certificate, or requires one that
+%% was not presented.  The remaining RFC certificate alerts
+%% (certificate_unobtainable, bad_certificate_status_response,
+%% bad_certificate_hash_value, access_denied) have no ALERT_REC site in OTP, so
+%% they could only arrive *from* a peer - i.e. `remote', already excluded above.
+-define(CERT_ALERTS, [bad_certificate, unsupported_certificate,
+                      certificate_revoked, certificate_expired,
+                      certificate_unknown, unknown_ca, certificate_required]).
+
+%% Is the alert about a certificate?  Two cases hide behind the generic
+%% handshake_failure, which otherwise covers ~45 unrelated OTP failures, so the
+%% atom alone cannot stand in and the description has to disambiguate:
+%%   - a missing client cert on TLS 1.2 (TLS 1.3 says certificate_required);
+%%   - a path validation verdict OTP did not map to a specific alert, which
+%%     reaches ssl_handshake:path_validation_alert/3's catch-all carrying a
+%%     {bad_cert, _} reason (cb_crl's crl_unavailable, internal_error and
+%%     cert_decode_error all land here).
+%% Depends on OTP's alert text, like alert_origin/1 - the regression guard is
+%% alert_origin_real_handshake_test_/0, which asserts this for real handshakes
+%% on both TLS versions.
+is_cert_alert({tls_alert, {handshake_failure, Text}}) ->
+    nomatch =/= re:run(Text, "no_client_certificate_provided|bad_cert",
+                       [{capture, none}]);
+is_cert_alert({tls_alert, {Alert, _Text}}) ->
+    lists:member(Alert, ?CERT_ALERTS);
+is_cert_alert(_) ->
+    false.
+
+%% Classify a handshake failure by who produced the alert - `local' (we
+%% generated it, i.e. we rejected the peer) or `remote' (the peer sent it to
+%% us).  OTP does not expose this structurally: ssl:handshake returns {error,
+%% {tls_alert, {Atom, Text}}} for both, and the only signal is the description
+%% text, where alerts we generate read "... generated <ROLE> ALERT: ..." and
+%% alerts received from the peer read "... received <ROLE> ALERT: ...".  Depends
+%% on OTP's ssl_alert text (ssl_alert:reason_code/4) - alert_origin_test/0 is a
+%% regression guard against that wording changing.
+alert_origin({tls_alert, {_Alert, Text}}) ->
+    case re:run(Text, "generated (CLIENT|SERVER) ALERT:", [{capture, none}]) of
+        match ->
+            local;
+        nomatch ->
+            case re:run(Text, "received (CLIENT|SERVER) ALERT:",
+                        [{capture, none}]) of
+                match   -> remote;
+                nomatch -> unknown_alert
+            end
+    end;
+alert_origin(_) ->
+    not_alert.
+
+format_conn_addr({IP, Port}) ->
+    misc:join_host_port(inet:ntoa(IP), Port);
+format_conn_addr(_) ->
+    "-".
+
+%% A TLS handshake failure Reason is normally {tls_alert, {Alert, Text}} where
+%% Text is OTP's verbose multi-line description; collapse it to a single line.
+format_tls_reason({tls_alert, {Alert, Text}}) ->
+    io_lib:format("~s (~s)", [Alert, collapse_whitespace(Text)]);
+format_tls_reason(Other) ->
+    io_lib:format("~0p", [Other]).
+
+collapse_whitespace(Text) ->
+    string:trim(re:replace(Text, "\\s+", " ", [global, {return, list}])).
 
 marker_path() ->
     filename:join(path_config:component_path(data, "config"), "reload_marker").
@@ -1493,6 +1611,207 @@ filter_versions_by_ciphers_test() ->
                  filter_versions_by_ciphers(['tlsv1.3'], [TLS12Cipher])),
     ?assertEqual(['tlsv1.2'],
                  filter_versions_by_ciphers(['tlsv1.2'], [TLS13Cipher])).
+
+%% Unit coverage for the branches a real handshake can't easily produce, plus
+%% documentation of the current wording.  The regression guard against OTP
+%% changing the wording is alert_origin_real_handshake_test_/0 below.
+alert_origin_test() ->
+    ?assertEqual(not_alert, alert_origin(timeout)),
+    ?assertEqual(not_alert, alert_origin(closed)),
+    ?assertEqual(unknown_alert,
+                 alert_origin({tls_alert, {bad_certificate, "no markers"}})),
+    %% Alerts we generated ("generated ... ALERT:") -> local, for both roles.
+    ?assertEqual(local,
+                 alert_origin({tls_alert,
+                               {bad_certificate,
+                                "TLS server: In state certify generated "
+                                "SERVER ALERT: Fatal - Bad Certificate"}})),
+    ?assertEqual(local,
+                 alert_origin({tls_alert,
+                               {bad_certificate,
+                                "TLS client: In state wait_cert_cr generated "
+                                "CLIENT ALERT: Fatal - Bad Certificate"}})),
+    %% Alerts received from the peer ("received ... ALERT:") -> remote, for both
+    %% roles.
+    ?assertEqual(remote,
+                 alert_origin({tls_alert,
+                               {bad_certificate,
+                                "TLS client: In state wait_cert received "
+                                "SERVER ALERT: Fatal - Bad Certificate"}})),
+    ?assertEqual(remote,
+                 alert_origin({tls_alert,
+                               {handshake_failure,
+                                "TLS server: In state cipher received "
+                                "CLIENT ALERT: Fatal - Handshake Failure"}})).
+
+should_audit_test() ->
+    Peer = {{10,0,0,1}, 1234},
+    Sock = {{10,0,0,2}, 18091},
+    Cert = {tls_alert, {certificate_revoked, "revoked"}},
+
+    %% We rejected the peer's certificate: an auth failure.
+    ?assert(should_audit(Cert, local, Peer, Sock)),
+
+    %% The peer rejected us, or the connection just failed: not an auth failure.
+    ?assertNot(should_audit(Cert, remote, Peer, Sock)),
+    ?assertNot(should_audit(Cert, unknown_alert, Peer, Sock)),
+    ?assertNot(should_audit(Cert, not_alert, Peer, Sock)),
+
+    %% Locally generated but not about a certificate: a negotiation failure, not
+    %% an auth failure.  insufficient_security is what a cipher/signature
+    %% algorithm/group mismatch produces; unexpected_message is what a plain-TCP
+    %% client on the TLS port produces.
+    ?assertNot(should_audit({tls_alert, {insufficient_security, "no cipher"}},
+                            local, Peer, Sock)),
+    ?assertNot(should_audit({tls_alert, {protocol_version, "old"}},
+                            local, Peer, Sock)),
+    ?assertNot(should_audit({tls_alert,
+                             {unexpected_message,
+                              "{unsupported_record_type,71}"}},
+                            local, Peer, Sock)),
+
+    %% The socket was already gone before the handshake started, so no
+    %% certificate was presented and there is no peer to attribute a rejection
+    %% to - not an auth failure regardless of the alert origin.
+    ?assertNot(should_audit(Cert, local, undefined, Sock)),
+    ?assertNot(should_audit(Cert, local, Peer, undefined)),
+    ?assertNot(should_audit(Cert, local, undefined, undefined)).
+
+%% Documents which alerts count as certificate-related.  The wording-dependent
+%% branches are additionally guarded against OTP changes by
+%% alert_origin_real_handshake_test_/0.
+is_cert_alert_test() ->
+    %% Every alert OTP generates for a certificate problem.
+    [?assert(is_cert_alert({tls_alert, {A, "text"}})) || A <- ?CERT_ALERTS],
+
+    %% A missing client cert: certificate_required on TLS 1.3 (above), but a
+    %% generic handshake_failure on TLS 1.2 where only the description says so.
+    ?assert(is_cert_alert(
+              {tls_alert,
+               {handshake_failure,
+                "TLS server: In state certify at "
+                "tls_dtls_server_connection.erl:147 generated SERVER ALERT: "
+                "Fatal - Handshake Failure no_client_certificate_provided"}})),
+
+    %% Path validation verdicts OTP did not map to a specific alert reach its
+    %% catch-all carrying a {bad_cert, _} reason - cb_crl's crl_unavailable,
+    %% internal_error and cert_decode_error.
+    [?assert(is_cert_alert(
+               {tls_alert,
+                {handshake_failure,
+                 "TLS server: In state certify at ssl_handshake.erl:2200 "
+                 "generated SERVER ALERT: Fatal - Handshake Failure "
+                 "{bad_cert," ++ atom_to_list(R) ++ "}"}}))
+     || R <- [crl_unavailable, internal_error, cert_decode_error]],
+
+    %% A handshake_failure with no certificate marker is not cert-related: OTP
+    %% raises it for ~45 unrelated reasons.
+    ?assertNot(is_cert_alert(
+                 {tls_alert,
+                  {handshake_failure,
+                   "TLS server: In state hello generated SERVER ALERT: Fatal - "
+                   "Handshake Failure malformed_handshake_data"}})),
+
+    %% Negotiation failures and non-alert reasons.
+    ?assertNot(is_cert_alert({tls_alert, {insufficient_security, "no cipher"}})),
+    ?assertNot(is_cert_alert({tls_alert, {protocol_version, "old"}})),
+    ?assertNot(is_cert_alert(timeout)),
+    ?assertNot(is_cert_alert(closed)).
+
+%% Regression guard: drives real TLS handshakes and checks that alert_origin/1
+%% classifies OTP's actual ssl_alert text correctly.  Runs both alert directions
+%% (we reject the peer / the peer rejects us) for both TLS 1.2 and TLS 1.3.
+%% Fails if a future OTP changes the "generated/received <ROLE> ALERT:" wording
+%% that alert_origin/1 depends on.  Certs come from OTP's own
+%% public_key:pkix_test_data/1 (generated once and reused across versions).
+alert_origin_real_handshake_test_() ->
+    {setup,
+     fun () ->
+             {ok, _} = application:ensure_all_started(ssl),
+             {handshake_test_certs(), handshake_test_certs()}
+     end,
+     fun (_) -> ok end,
+     fun ({CertsA, CertsB}) ->
+             [{lists:flatten(io_lib:format("~p server-generated alert", [V])),
+               {timeout, 30, fun () -> assert_server_generated(V, CertsA) end}}
+              || V <- ['tlsv1.2', 'tlsv1.3']] ++
+             [{lists:flatten(io_lib:format("~p client-generated alert", [V])),
+               {timeout, 30,
+                fun () -> assert_client_generated(V, CertsA, CertsB) end}}
+              || V <- ['tlsv1.2', 'tlsv1.3']]
+     end}.
+
+%% Server requires a client cert but the client presents none, so the SERVER
+%% generates the alert.  On the server that is a local (own) alert - this is the
+%% branch the audit depends on.
+assert_server_generated(Version, #{server_config := SConf}) ->
+    {ServerReason, ClientReason} =
+        do_handshake(Version,
+                     [{verify, verify_peer}, {fail_if_no_peer_cert, true} | SConf],
+                     [{verify, verify_none}]),
+    ?assertEqual(local, alert_origin(ServerReason)),
+    %% ...and it must be recognised as certificate-related, or the rejection goes
+    %% unaudited.  The alert differs by version - certificate_required on TLS 1.3
+    %% but a handshake_failure whose description carries
+    %% no_client_certificate_provided on TLS 1.2 - so this fails if a future OTP
+    %% renames the alert or rewords that description.
+    ?assert(is_cert_alert(ServerReason)),
+    %% The client either receives our alert (TLS 1.2 -> remote) or completes its
+    %% side before our post-handshake rejection (TLS 1.3 -> ok/not_alert); either
+    %% way it must never be misclassified as locally generated.
+    ?assertNotEqual(local, alert_origin(ClientReason)).
+
+%% The client verifies the server against an unrelated CA (CertsB) and rejects
+%% our cert, so the CLIENT generates the alert.  On the server that is a received
+%% (remote) alert and must NOT be audited.
+assert_client_generated(Version, #{server_config := SConf},
+                        #{client_config := CConf}) ->
+    {ServerReason, ClientReason} =
+        do_handshake(Version,
+                     [{verify, verify_none} | SConf],
+                     [{verify, verify_peer} | CConf]),
+    ?assertEqual(remote, alert_origin(ServerReason)),
+    ?assertEqual(local, alert_origin(ClientReason)),
+    %% The client rejects our CA, so this arrives as unknown_ca - a
+    %% certificate-related alert.  Only the origin keeps it out of the audit, so
+    %% assert the whole gate, not just alert_origin/1.
+    ?assertNot(should_audit(ServerReason, alert_origin(ServerReason),
+                            {{10,0,0,1}, 1234}, {{10,0,0,2}, 18091})).
+
+handshake_test_certs() ->
+    public_key:pkix_test_data(
+      #{server_chain => #{root => [{key, {rsa, 2048, 65537}}],
+                          intermediates => [],
+                          peer => [{key, {rsa, 2048, 65537}}]},
+        client_chain => #{root => [{key, {rsa, 2048, 65537}}],
+                          intermediates => [],
+                          peer => [{key, {rsa, 2048, 65537}}]}}).
+
+%% Run one loopback handshake pinned to Version and return the reason terms
+%% (as the acceptor's handler would see them) for both ends.
+do_handshake(Version, ServerOpts0, ClientOpts0) ->
+    Base = [{ip, {127, 0, 0, 1}}, {active, false}, {versions, [Version]}],
+    {ok, LSock} = ssl:listen(0, [{reuseaddr, true} | Base] ++ ServerOpts0),
+    try
+        {ok, {_, Port}} = ssl:sockname(LSock),
+        Parent = self(),
+        spawn(fun () ->
+                      R = ssl:connect({127, 0, 0, 1}, Port,
+                                      Base ++ ClientOpts0, 30000),
+                      Parent ! {client_result, ssl_reason(R)}
+              end),
+        {ok, TSock} = ssl:transport_accept(LSock, 30000),
+        ServerReason = ssl_reason(ssl:handshake(TSock, 30000)),
+        ClientReason = receive {client_result, C} -> C after 30000 -> timeout end,
+        {ServerReason, ClientReason}
+    after
+        catch ssl:close(LSock)
+    end.
+
+%% Reduce an ssl result to the reason term the acceptor's handler receives.
+ssl_reason({error, Reason}) -> Reason;
+ssl_reason({ok, Sock})      -> catch ssl:close(Sock), ok;
+ssl_reason(Other)           -> Other.
 -endif.
 
 security_config_update_warning(Version, MinVersion) ->
