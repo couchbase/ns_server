@@ -12,14 +12,14 @@
 
 -define(CREDENTIAL_TYPES,
         [aws, aws_instance_metadata, azure_shared, azure_ad, azure_sas,
-         azure_managed, gcp, http, couchbase]).
+         azure_managed, gcp, gcp_adc, http, couchbase]).
 
 -define(CREDENTIAL_CONSUMER_SERVICES,
         [n1ql, backup, index, xdcr, fts, eventing, cbas]).
 
 -type credential_type() :: aws | aws_instance_metadata | azure_shared |
                            azure_ad | azure_sas | azure_managed | gcp |
-                           http | couchbase.
+                           gcp_adc | http | couchbase.
 
 -type credential_author() :: #{user := binary(), domain := atom()}.
 -type credential_error_reason() :: config_encryption_required |

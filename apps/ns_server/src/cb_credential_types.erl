@@ -181,6 +181,9 @@ field_specs(gcp) ->
        type        => string}
     ];
 
+field_specs(gcp_adc) ->
+    [];
+
 field_specs(http) ->
     [#{storage_key => auth_scheme,
        required    => true,
@@ -458,6 +461,9 @@ aws_instance_metadata_sensitive_fields_test() ->
 
 gcp_sensitive_fields_test() ->
     ?assertEqual([json_credentials, secret_access_key], sensitive_fields(gcp)).
+
+gcp_adc_sensitive_fields_test() ->
+    ?assertEqual([], sensitive_fields(gcp_adc)).
 
 gcp_sa_cross_validator_test() ->
     %% Service-account mode: jsonCredentials alone is sufficient.

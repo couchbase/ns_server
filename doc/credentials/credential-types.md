@@ -121,6 +121,15 @@ Two mutually exclusive modes:
 
 \* Either `jsonCredentials` or both `accessKeyId` + `secretAccessKey` are required.
 
+## `gcpAdc`
+
+Go struct: `GCPADCPayload`
+
+Authenticates via Application Default Credentials (ADC): the GCS SDK
+resolves credentials from the runtime environment (e.g. the GCE/GKE
+attached service account), so no secret material is stored in the
+credential. No fields.
+
 ## `http`
 
 Go struct: `HTTPPayload`

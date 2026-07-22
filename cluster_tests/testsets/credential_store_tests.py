@@ -125,6 +125,13 @@ def gcp_body():
 
 
 
+def gcp_adc_body():
+    return {
+        "type": "gcpAdc",
+        "fields": {},
+    }
+
+
 def http_body():
     return {
         "type": "http",
@@ -178,6 +185,9 @@ ALL_CRED_TYPES = {
     "gcp": (gcp_body,
             ["jsonCredentials"],
             {}),
+    "gcpAdc": (gcp_adc_body,
+               [],
+               {}),
     "http": (http_body,
              ["token"],
              {"authScheme": "bearer",
