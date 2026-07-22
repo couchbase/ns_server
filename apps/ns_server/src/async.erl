@@ -708,13 +708,13 @@ async_interruptible_test() ->
                     async:with(
                       fun () ->
                               erlang:process_flag(trap_exit, true),
+                              GrandParent ! grandchild_spawned,
                               receive
                                   {'EXIT', _, shutdown} ->
                                       GrandParent ! grandchild_shutdown
                               end
                       end,
                       fun (Async) ->
-                              GrandParent ! grandchild_spawned,
                               try
                                   async:wait(Async, [interruptible])
                               catch
