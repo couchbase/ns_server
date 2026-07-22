@@ -1904,6 +1904,21 @@ continue_flush_bucket(BucketName, Nodes) ->
                          fusion_uploaders:advance_terms(FusionUploaders)} ||
                            FusionUploaders =/= undefined]}
           end),
+    case stop_all_fusion_uploaders(BucketName) of
+        nothing_to_do ->
+            ok;
+        ok ->
+            case fusion_janitor:delete_namespace(BucketName) of
+                ok ->
+                    do_complete_flush(BucketName, Nodes);
+                error ->
+                    {error, delete_fusion_namespace_failed}
+            end;
+        {error, {failed_nodes, FailedNodes}} ->
+            {error, {stop_fusion_uploaders_failed, FailedNodes}}
+    end.
+
+do_complete_flush(BucketName, Nodes) ->
     {_GoodNodes, FailedCalls, FailedNodes} =
         janitor_agent:complete_flush(BucketName, Nodes, ?FLUSH_BUCKET_TIMEOUT),
     case FailedCalls =:= [] andalso FailedNodes =:= [] of
@@ -1911,6 +1926,17 @@ continue_flush_bucket(BucketName, Nodes) ->
             ok;
         _ ->
             {error, {flush_wait_failed, FailedNodes, FailedCalls}}
+    end.
+
+stop_all_fusion_uploaders(BucketName) ->
+    case ns_bucket:get_fusion_uploaders(BucketName) of
+        not_found ->
+            nothing_to_do;
+        Uploaders ->
+            ToStopPerNode =
+                maps:to_list(fusion_uploaders:node_uploaders_map(
+                               misc:enumerate(Uploaders, 0))),
+            janitor_agent:maybe_stop_fusion_uploaders(BucketName, ToStopPerNode)
     end.
 
 do_flush_old_style(BucketName, BucketConfig) ->

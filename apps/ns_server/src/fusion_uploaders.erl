@@ -50,12 +50,12 @@
          init_namespace/1,
          enable_bucket/1,
          wait_for_uploaders_state/3,
-         validate_mounted_volumes/2]).
+         validate_mounted_volumes/2,
+         node_uploaders_map/1]).
 
 %% used via rpc:call
 -export([do_get_snapshots/4, do_delete_snapshots/3]).
 
--define(GET_DELETION_STATE_TIMEOUT, ?get_timeout(get_deletion_state, 5000)).
 -define(GET_SNAPSHOTS_TIMEOUT, ?get_timeout(get_snapshots, 30000)).
 -define(DELETE_SNAPSHOTS_TIMEOUT, ?get_timeout(delete_snapshots, 30000)).
 
@@ -695,8 +695,7 @@ enable(BucketUploaders, MagmaBucketNames) ->
     BucketsNamesToEnable = [BN || {BN, _} <- BucketUploaders],
     BucketsNamesNotToEnable = MagmaBucketNames -- BucketsNamesToEnable,
     AllowedStates = [disabled, disabling, stopped, stopping],
-    DeletionInfo = get_deletion_state(get_state()),
-    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+    DeletionInfo = fusion_janitor:get_state(),
 
     chronicle_kv:transaction(
       kv,
@@ -712,7 +711,7 @@ enable(BucketUploaders, MagmaBucketNames) ->
                       throw({wrong_state, State, AllowedStates}),
 
                   State =/= disabling orelse
-                      check_deletion_info(KVNodes, disabling, DeletionInfo)
+                      check_deletion_info(disabling, DeletionInfo)
                       orelse throw(pending_namespace_deletes),
 
                   BucketsNotToEnable =
@@ -788,7 +787,6 @@ maybe_grab_heartbeat_info() ->
         false ?= get_state() =:= disabled,
         active ?= ns_cluster_membership:get_cluster_membership(node()),
         true ?= lists:member(kv, ns_cluster_membership:node_services(node())),
-        {_, Deleting} = fusion_local_agent:get_state(),
         [{fusion_stats,
           [{buckets,
             lists:filtermap(
@@ -796,8 +794,7 @@ maybe_grab_heartbeat_info() ->
                       maybe_grab_heartbeat_info(
                         BucketName,
                         ns_bucket:get_fusion_state(BucketConfig))
-              end, ns_bucket:get_buckets())},
-           {deleting, Deleting}]}]
+              end, ns_bucket:get_buckets())}]}]
     else
         _ -> []
     end.
@@ -866,6 +863,16 @@ node_uploaders(ThisNode, State, Uploaders) ->
         _ ->
             [{VB, undefined} || {VB, _} <- misc:enumerate(Uploaders, 0)]
     end.
+
+-spec node_uploaders_map([{vbucket_id(), uploader()}]) ->
+          #{node() => [vbucket_id()]}.
+node_uploaders_map(Enumerated) ->
+    lists:foldl(
+      fun ({_VB, {undefined, _}}, Acc) ->
+              Acc;
+          ({VB, {Node, _}}, Acc) ->
+              maps:update_with(Node, [VB | _], [VB], Acc)
+      end, #{}, Enumerated).
 
 %% this will be fed to lists:filtermap
 maybe_grab_heartbeat_info(_BucketName, disabled) ->
@@ -969,8 +976,7 @@ maybe_advance_state(_) ->
 maybe_advance_state(State, NextState, BucketState, NextBucketState,
                     ExtraCheck) ->
     FusionBuckets = ns_bucket:get_fusion_buckets(),
-    DeletionInfo = get_deletion_state(State),
-    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+    DeletionInfo = fusion_janitor:get_state(),
 
     case fetch_fusion_stats(FusionBuckets, #{}) of
         error ->
@@ -992,7 +998,7 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
                                       Sets;
                                   true ->
                                       case can_advance_fusion_state(
-                                             KVNodes, State, DeletionInfo,
+                                             State, DeletionInfo,
                                              ?cut(ExtraCheck(FusionBuckets,
                                                              FusionStats,
                                                              Snapshot))) of
@@ -1022,49 +1028,26 @@ maybe_advance_state(State, NextState, BucketState, NextBucketState,
             end
     end.
 
-get_deletion_state(State) when State =:= enabling orelse State =:= disabling ->
-    KVNodes = ns_cluster_membership:service_active_nodes(kv),
-    case fusion_local_agent:get_states(KVNodes, ?GET_DELETION_STATE_TIMEOUT) of
-        {error, BadNodes} ->
-            ?log_debug("Failed to obtain fusion deletion state from nodes ~p",
-                       [BadNodes]),
-            error;
-        {ok, Results} ->
-            maps:from_list(Results)
-    end;
-get_deletion_state(_) ->
-    undefined.
-
-can_advance_fusion_state(_KVNodes, stopping, _, _) ->
+can_advance_fusion_state(stopping, _, _) ->
     true;
-can_advance_fusion_state(_KVNodes, disabling, error, _) ->
-    false;
-can_advance_fusion_state(KVNodes, disabling, DeletionInfo, _) ->
-    check_deletion_info(KVNodes, disabling, DeletionInfo);
-can_advance_fusion_state(_KVNodes, enabling, error, _) ->
-    false;
-can_advance_fusion_state(KVNodes, enabling, DeletionInfo, ExtraCheck) ->
-    case check_deletion_info(KVNodes, enabling, DeletionInfo) of
+can_advance_fusion_state(disabling, DeletionInfo, _) ->
+    check_deletion_info(disabling, DeletionInfo);
+can_advance_fusion_state(enabling, DeletionInfo, ExtraCheck) ->
+    case check_deletion_info(enabling, DeletionInfo) of
         true ->
             ExtraCheck();
         false ->
             false
     end.
 
-check_deletion_info(KVNodes, State, DeletionInfo) ->
-    %% We check 2 things here:
-    %%   1. current fusion status (disabling or enabling) propagated to all
-    %%      local agents (which means that all of them started deleting stuff)
-    %%   2. all local agents have nothing to delete.
-    lists:all(
-      fun (Node) ->
-              case maps:find(Node, DeletionInfo) of
-                  {ok, {State, []}} ->
-                      true;
-                  _ ->
-                      false
-              end
-      end, KVNodes).
+%% We check 2 things here:
+%%   1. fusion_janitor internal status (disabling or enabling) matches
+%%      the one in config (which means it started deleting stuff)
+%%   2. fusion_janitor has nothing to delete
+check_deletion_info(State, {State, []}) ->
+    true;
+check_deletion_info(_, _) ->
+    false.
 
 buckets_with_correct_uploaders(Buckets, FusionStats, Source) ->
     RV =

@@ -22,7 +22,9 @@ init([]) ->
     {ok, {{one_for_all, 3, 10}, child_specs()}}.
 
 child_specs() ->
-    [{ns_janitor_server, {ns_janitor_server, start_link, []},
+    [{fusion_janitor, {fusion_janitor, start_link, []},
+      permanent, 1000, worker, [fusion_janitor]},
+     {ns_janitor_server, {ns_janitor_server, start_link, []},
       permanent, 1000, worker, [ns_janitor_server]},
      {auto_reprovision, {auto_reprovision, start_link, []},
       permanent, 1000, worker, [auto_reprovision]},

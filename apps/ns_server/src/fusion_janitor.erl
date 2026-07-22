@@ -7,9 +7,9 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 %%
-%% local server that is responsible for janitoring fusion namespaces on the
-%% node if the bucket is deleted or fusion on the bucket is disabled
--module(fusion_local_agent).
+%% server that is responsible for janitoring fusion namespaces on the
+%% cluster
+-module(fusion_janitor).
 
 -behaviour(gen_server2).
 
@@ -22,34 +22,29 @@
                 failed :: [binary()],
                 to_reply :: [{binary(), {pid(), gen_server:reply_tag()}}]}).
 
--define(DELETE_NAMESPACE, ?get_timeout(delete_namespace, 60000)).
+-define(GET_STATE_TIMEOUT, ?get_timeout(get_state, 10000)).
+-define(GET_NAMESPACES_TIMEOUT, ?get_timeout(get_namespaces, 10000)).
+-define(DELETE_NAMESPACE_TIMEOUT, ?get_timeout(delete_namespace, 60000)).
 -define(RETRY_INTERVAL, ?get_timeout(retry_interval, 30000)).
 
--export([start_link/0, get_state/0, get_states/2, delete_namespace/1]).
+-export([start_link/0, get_state/0, delete_namespace/1]).
 -export([init/1, handle_info/2, handle_call/3]).
+
+%% RPC calls
+-export([do_delete_namespace/1, do_get_namespaces/0]).
 
 -type state() :: {fusion_uploaders:state(), [binary()]}.
 
 -define(UPLOADERS_STOP_TIMEOUT, ?get_timeout(uploaders_stop, 60000)).
+-define(WAIT_FOR_UPLOADERS_INTERVAL, ?get_param(wait_for_uploaders_interval,
+                                                1000)).
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 -spec get_state() -> state().
 get_state() ->
-    gen_server2:call(?MODULE, get_state).
-
--spec get_states([node()], integer()) ->
-          {error, [node()]} | {ok, [{node(), state()}]}.
-get_states(Nodes, Timeout) ->
-    {Replies, BadNodes} =
-        gen_server:multi_call(Nodes, ?MODULE, get_state, Timeout),
-    case BadNodes of
-        [] ->
-            {ok, Replies};
-        _ ->
-            {error, BadNodes}
-    end.
+    gen_server2:call(?MODULE, get_state, ?GET_STATE_TIMEOUT).
 
 -spec delete_namespace(ns_bucket:name()) -> ok | error.
 delete_namespace(BucketName) ->
@@ -57,7 +52,8 @@ delete_namespace(BucketName) ->
     case should_have_namespace(BucketConfig) of
         true ->
             ?log_info("Deleting fusion namespace for ~p", [BucketName]),
-            gen_server2:call(?MODULE, {delete, BucketName}, ?DELETE_NAMESPACE);
+            gen_server2:call(?MODULE, {delete, BucketName},
+                             ?DELETE_NAMESPACE_TIMEOUT);
         false ->
             ok
     end.
@@ -128,6 +124,7 @@ handle_info({delete_finished, Namespace, Result},
      NewState#state{
        deleting = Deleting -- [Namespace],
        to_reply = [{NS, From} || {NS, From} <- ToReply, NS =/= Namespace]}};
+
 handle_info(check_state_and_buckets, State) ->
     misc:flush(check_state_and_buckets),
     FusionState = fusion_uploaders:get_state(),
@@ -142,6 +139,15 @@ handle_info(check_state_and_buckets, State) ->
     {noreply, NewState1#state{failed = []}}.
 
 get_namespaces() ->
+    {ok, Namespaces} = ns_cluster_membership:execute_on_kv_node(
+                         ?MODULE, do_get_namespaces, [],
+                         ?GET_NAMESPACES_TIMEOUT,
+                         "get namespaces", do_get_namespaces_failed),
+    Namespaces.
+
+-spec do_get_namespaces() -> [binary()].
+do_get_namespaces() ->
+    chronicle_compat:pull(),
     {ok, Json} =
         ns_memcached:get_fusion_namespaces(
           fusion_uploaders:get_metadata_store_uri()),
@@ -181,14 +187,40 @@ schedule_deletes(ToDelete, #state{queue = Queue,
     State#state{deleting = Deleting ++ ToDelete}.
 
 wait_for_uploaders_to_stop(BucketName) ->
-    case fusion_uploaders:wait_for_uploaders_state(
-           BucketName, ?UPLOADERS_STOP_TIMEOUT, _ =:= <<"disabled">>) of
-        {error, no_vbuckets} ->
-            ok;
-        {error, bucket_not_found} ->
-            ok;
-        Other->
-            Other
+    case ns_bucket:get_bucket(BucketName) of
+        {ok, BucketConfig} ->
+            case misc:poll_for_condition(
+                   ?cut(uploaders_stopped(BucketName, BucketConfig)),
+                   ?UPLOADERS_STOP_TIMEOUT, ?WAIT_FOR_UPLOADERS_INTERVAL) of
+                timeout ->
+                    {error, timeout};
+                Other ->
+                    Other
+            end;
+        not_present ->
+            {error, bucket_not_found}
+    end.
+
+uploaders_stopped(BucketName, BucketConfig) ->
+    case janitor_agent:get_fusion_uploaders_state(BucketName, BucketConfig) of
+        {ok, PerNodeInfos} ->
+            AllStopped =
+                lists:all(
+                  fun ({_Node, {VBucketsInfo}}) ->
+                          lists:all(
+                            fun ({_VBName, {VBStats}}) ->
+                                    proplists:get_value(<<"state">>, VBStats)
+                                        =:= <<"disabled">>
+                            end, VBucketsInfo)
+                  end, PerNodeInfos),
+            case AllStopped of
+                true ->
+                    ok;
+                false ->
+                    false
+            end;
+        {error, _} = Error ->
+            Error
     end.
 
 pre_delete_data(Namespace) ->
@@ -217,10 +249,11 @@ delete_data(Parent, Namespace) ->
         case pre_delete_data(Namespace) of
             {ok, NamespaceString} ->
                 ?log_info("Start deleting namespace ~s", [NamespaceString]),
-                case ns_memcached:delete_fusion_namespace(
-                       fusion_uploaders:get_log_store_uri(),
-                       fusion_uploaders:get_metadata_store_uri(), Namespace) of
-                    ok ->
+                case ns_cluster_membership:execute_on_kv_node(
+                       ?MODULE, do_delete_namespace, [Namespace],
+                       ?DELETE_NAMESPACE_TIMEOUT,
+                       "delete namespace", delete_namespace_failed) of
+                    {ok, ok} ->
                         ?log_info("Namespace ~s deleted succesfully",
                                   [NamespaceString]),
                         ok;
@@ -233,3 +266,10 @@ delete_data(Parent, Namespace) ->
                 error
         end,
     Parent ! {delete_finished, Namespace, RV}.
+
+-spec do_delete_namespace(binary()) -> ok | mc_error().
+do_delete_namespace(Namespace) ->
+    chronicle_compat:pull(),
+    ns_memcached:delete_fusion_namespace(
+      fusion_uploaders:get_log_store_uri(),
+      fusion_uploaders:get_metadata_store_uri(), Namespace).

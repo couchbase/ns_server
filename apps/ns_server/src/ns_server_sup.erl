@@ -298,7 +298,4 @@ child_specs() ->
       permanent, 1000, worker, []},
 
      {creds_rotation, {cb_creds_rotation, start_link, []},
-      permanent, 1000, worker, [creds_rotation]},
-
-     {fusion_local_agent, {fusion_local_agent, start_link, []},
-      permanent, 1000, worker, [fusion_local_agent]}].
+      permanent, 1000, worker, [creds_rotation]}].

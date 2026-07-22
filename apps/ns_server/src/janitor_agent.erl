@@ -493,11 +493,7 @@ sync_fusion_log_store(BucketsSpec, Timeout, Reset) ->
                   %% Only nodes that own at least one of the selected vbuckets
                   %% end up in the map, so we never call a node with nothing
                   %% to sync.
-                  UploadersMap =
-                      lists:foldl(
-                        fun ({VB, {Node, _}}, Acc) ->
-                                maps:update_with(Node, [VB | _], [VB], Acc)
-                        end, #{}, Selected),
+                  UploadersMap = fusion_uploaders:node_uploaders_map(Selected),
                   NodesCalls =
                       [{Node,
                         {sync_fusion_log_store, VBuckets, Timeout, Reset}} ||
@@ -1369,7 +1365,6 @@ perform_flush(#state{bucket_name = BucketName} = State, BucketConfig,
     ?log_info("Deleting all vbuckets for ~p", [BucketName]),
     [ok = ns_memcached:sync_delete_vbucket(BucketName, VB)
      || {VB, _} <- VBStates],
-    ok = fusion_local_agent:delete_namespace(BucketName),
     save_flushseq(BucketName, ConfigFlushSeq, Snapshot),
     ?log_info("Local flush of ~p is done", [BucketName]),
     NewState.
