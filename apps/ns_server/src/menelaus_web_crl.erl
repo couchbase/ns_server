@@ -68,8 +68,9 @@ handle_post_settings(Req) ->
                       %% returning, so subsequent requests see the new state.
                       cb_crl_manager:sync(),
                       %% Re-read to get the fully merged config with defaults.
-                      menelaus_util:reply_json(
-                        Req, config_to_json(cb_crl_manager:get_config()));
+                      {NewCfg} = config_to_json(cb_crl_manager:get_config()),
+                      ns_audit:settings(Req, crl, {json, NewCfg}),
+                      menelaus_util:reply_json(Req, {NewCfg});
                   {error, R} ->
                       menelaus_util:reply_json(
                         Req,
@@ -178,6 +179,7 @@ build_config(Values) ->
 handle_reload_crl(Req) ->
     assert_supported(),
     StatusList = cb_crl_manager:reload(),
+    ns_audit:reload_crl(Req),
     menelaus_util:reply_json(Req, format_status_map(StatusList)).
 
 %%%===================================================================
@@ -565,6 +567,7 @@ handle_post_crl_file(Req) ->
                                   end,
         ok ?= validate_upload_filename(Filename),
         ok ?= cb_crl_manager:upload_crl_file(Filename, Body),
+        ns_audit:upload_crl_file(Req, Filename),
         handle_get_crl_files(Req)
     else
         {error, Reason} ->
@@ -618,6 +621,7 @@ handle_delete_crl_file(Filename, Req) ->
     assert_supported(),
     case cb_crl_manager:delete_crl_file(Filename) of
         ok ->
+            ns_audit:delete_crl_file(Req, Filename),
             menelaus_util:reply_json(Req, {[]});
         {error, not_found} ->
             menelaus_util:reply_json(

@@ -2424,6 +2424,81 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
+      },
+      {
+          "id": 8307,
+          "name" : "crl settings",
+          "description" : "CRL settings changed",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "settings" : ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
+          }
+      },
+      {
+          "id": 8308,
+          "name" : "upload crl file",
+          "description" : "A CRL file was uploaded",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "filename" : ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
+          }
+      },
+      {
+          "id": 8309,
+          "name" : "delete crl file",
+          "description" : "A CRL file was deleted",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1},
+              "filename" : ""
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
+          }
+      },
+      {
+          "id": 8310,
+          "name" : "reload crl",
+          "description" : "CRLs were reloaded",
+          "sync" : false,
+          "enabled" : true,
+          "filtering_permitted" : false,
+          "mandatory_fields" : {
+              "timestamp" : "",
+              "real_userid" : {"domain" : "", "user" : ""},
+              "remote" : {"ip" : "", "port" : 1},
+              "local" : {"ip" : "", "port" : 1}
+          },
+          "optional_fields" : {
+              "authenticated_userid" : {"domain" : "", "user" : ""},
+              "sessionid" : ""
+          }
       }
     ]
 }

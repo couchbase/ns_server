@@ -61,6 +61,9 @@
          upload_cluster_ca/3,
          reload_node_certificate/3,
          delete_cluster_ca/2,
+         upload_crl_file/2,
+         delete_crl_file/2,
+         reload_crl/1,
          modify_index_storage_mode/2,
          master_password_change/2,
          data_key_rotation/2,
@@ -569,7 +572,15 @@ code(create_external_collection) ->
 code(modify_external_collection) ->
     8305;
 code(drop_external_collection) ->
-    8306.
+    8306;
+code(crl_settings) ->
+    8307;
+code(upload_crl_file) ->
+    8308;
+code(delete_crl_file) ->
+    8309;
+code(reload_crl) ->
+    8310.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -923,6 +934,15 @@ upload_cluster_ca(Req, Subject, Expires) ->
 
 delete_cluster_ca(Req, Subject) ->
     put(delete_cluster_ca, Req, [{subject, Subject}]).
+
+upload_crl_file(Req, Filename) ->
+    put(upload_crl_file, Req, [{filename, Filename}]).
+
+delete_crl_file(Req, Filename) ->
+    put(delete_crl_file, Req, [{filename, Filename}]).
+
+reload_crl(Req) ->
+    put(reload_crl, Req, []).
 
 reload_node_certificate(Req, Subject, Expires) ->
     ExpiresDateTime = calendar:gregorian_seconds_to_datetime(Expires),
