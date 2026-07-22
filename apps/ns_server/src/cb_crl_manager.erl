@@ -871,7 +871,6 @@ default_config() ->
       policy_per_scope =>
           #{client_auth => disabled,
             node_to_node => disabled},
-      delta_crls => false,
       poll_interval_ms => ?DEFAULT_POLL_INTERVAL_MS,
       check_intermediate_certs => false,
       crl_urls => [],
