@@ -401,7 +401,8 @@ store_deks_reencrypted(Kind, EncMethod, DeksAndKekIds) ->
 
 increment_dek_encryption_counter(Kind, SecretId) ->
     MovesPerNode =
-        menelaus_web_settings:get_data_service_rebalance_moves_per_node(dcp),
+        menelaus_web_settings:get_data_service_rebalance_moves_per_node(
+          file_based),
     Retries = max(2 * length(nodes()) * MovesPerNode, 10),
     cb_cluster_secrets:chronicle_transaction_with_backoff(
       [?CHRONICLE_DEK_COUNTERS_KEY],
