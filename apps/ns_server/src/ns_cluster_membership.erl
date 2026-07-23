@@ -57,7 +57,9 @@
          fetch_snapshot/1,
          get_snapshot/1,
          get_snapshot/0,
-         node_membership_keys/1
+         node_membership_keys/1,
+         execute_on_kv_node/7,
+         execute_on_kv_node/6
         ]).
 
 -export([supported_services/0,
@@ -863,3 +865,35 @@ get_node_uuids(Nodes, UUIDDict) ->
 
 attach_node_uuids(Nodes, UUIDDict) ->
     lists:zip(Nodes, get_node_uuids(Nodes, UUIDDict)).
+
+-spec execute_on_kv_node(atom(), atom(), [term()], timeout(), string(),
+                         atom()) ->
+          {ok, term()} | {error, {atom(), node() | undefined}}.
+execute_on_kv_node(Module, Fun, Params, Timeout, What, Error) ->
+    execute_on_kv_node(service_active_nodes(kv),
+                       Module, Fun, Params, Timeout, What, Error).
+
+-spec execute_on_kv_node([node()], atom(), atom(), [term()], timeout(),
+                         string(), atom()) ->
+          {ok, term()} | {error, {atom(), node() | undefined}}.
+execute_on_kv_node(KVNodes, Module, Fun, Params, Timeout, What, Error) ->
+    case ns_node_disco:only_live_nodes(KVNodes) of
+        [] ->
+            ?log_error("Unable to select node for ~p", [What]),
+            {error, {Error, undefined}};
+        LiveNodes ->
+            NodeToQuery = case lists:member(node(), LiveNodes) of
+                              true ->
+                                  node();
+                              false ->
+                                  hd(LiveNodes)
+                          end,
+            case (catch rpc:call(NodeToQuery, Module, Fun, Params, Timeout)) of
+                {badrpc, Err} ->
+                    ?log_error("~p from ~p failed with ~p",
+                               [What, NodeToQuery, Err]),
+                    {error, {Error, NodeToQuery}};
+                Reply ->
+                    {ok, Reply}
+            end
+    end.

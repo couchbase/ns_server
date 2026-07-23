@@ -1193,22 +1193,6 @@ store_snapshots_uuid(PlanUUID, BucketUUID, NumVBuckets) ->
           end),
     ok.
 
-execute_on_kv_node(KVNodes, Fun, Params, Timeout, What, Error) ->
-    case ns_node_disco:only_live_nodes(KVNodes) of
-        [] ->
-            ?log_error("Unable to select node for ~p", [What]),
-            {error, {Error, undefined}};
-        [NodeToQuery | _] ->
-            case (catch rpc:call(NodeToQuery, ?MODULE, Fun, Params, Timeout)) of
-                {badrpc, Err} ->
-                    ?log_error("~p from ~p failed with ~p",
-                               [What, NodeToQuery, Err]),
-                    {error, {Error, NodeToQuery}};
-                Reply ->
-                    {ok, Reply}
-            end
-    end.
-
 -spec do_delete_snapshots(binary(), [vbucket_id()], string()) ->
           ok | mc_error().
 do_delete_snapshots(BucketUUID, VBuckets, SnapshotUUID) ->
@@ -1228,11 +1212,12 @@ do_delete_snapshots(BucketUUID, VBuckets, SnapshotUUID) ->
 get_snapshots(_BucketUUID, [], _SnapshotUUID, _Validity, _KVNodes) ->
     {ok, []};
 get_snapshots(BucketUUID, VBuckets, SnapshotUUID, Validity, KVNodes) ->
-    execute_on_kv_node(KVNodes, do_get_snapshots,
-                       [BucketUUID, VBuckets, SnapshotUUID, Validity],
-                       ?GET_SNAPSHOTS_TIMEOUT,
-                       "Getting fusion storage snapshot",
-                       failed_to_get_snapshots).
+    ns_cluster_membership:execute_on_kv_node(
+      KVNodes, ?MODULE, do_get_snapshots,
+      [BucketUUID, VBuckets, SnapshotUUID, Validity],
+      ?GET_SNAPSHOTS_TIMEOUT,
+      "Getting fusion storage snapshot",
+      failed_to_get_snapshots).
 
 -spec do_get_snapshots(binary(), [vbucket_id()], string(), non_neg_integer()) ->
           [{non_neg_integer(), term()}].
@@ -1245,13 +1230,13 @@ delete_snapshots({PlanUUID, BucketUUID, NumVBuckets} = Entry) ->
     ?log_debug("Deleting snapshots for ~p", [Entry]),
     SnapshotUUID = create_snapshot_uuid(PlanUUID, BucketUUID),
     VBuckets = lists:seq(0, NumVBuckets - 1),
-    KVNodes = ns_cluster_membership:service_active_nodes(kv),
 
-    execute_on_kv_node(KVNodes, do_delete_snapshots,
-                       [BucketUUID, VBuckets, SnapshotUUID],
-                       ?DELETE_SNAPSHOTS_TIMEOUT,
-                       "Deleting fusion storage snapshot",
-                       failed_to_delete_snapshots).
+    ns_cluster_membership:execute_on_kv_node(
+      ?MODULE, do_delete_snapshots,
+      [BucketUUID, VBuckets, SnapshotUUID],
+      ?DELETE_SNAPSHOTS_TIMEOUT,
+      "Deleting fusion storage snapshot",
+      failed_to_delete_snapshots).
 
 remove_snapshot_entry(Entry) ->
     chronicle_kv:update(kv, snapshots_key(), lists:delete({Entry}, _)).
