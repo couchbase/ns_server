@@ -703,7 +703,6 @@ conf(internal) ->
       fun get_bool/1},
      {internal_ssl_minimum_protocol, internalTlsMinVersion,
       ns_ssl_services_setup:internal_ssl_minimum_protocol(), get_tls_version(_)},
-     {rebalance_moves_per_node, rebalanceMovesPerNode, 4, get_number(1, 1024)},
      {rebalance_moves_before_compaction, rebalanceMovesBeforeCompaction, 64,
       get_number(1, 1024)},
      {{couchdb, max_parallel_indexers}, maxParallelIndexers, <<>>,
