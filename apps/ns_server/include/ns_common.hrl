@@ -298,7 +298,8 @@
 -define(ANALYTICS_PROD_NAME, "Enterprise Analytics").
 
 -define(MIN_OF_MAX_MOVES_PER_NODE, 1).
--define(MAX_OF_MAX_MOVES_PER_NODE, 64).
+-define(MAX_OF_MAX_MOVES_PER_NODE,
+        ?get_param(max_rebalance_moves_per_node, 64)).
 -define(DEFAULT_MAX_MOVES_PER_NODE, 4).
 
 -define(DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT, true).
