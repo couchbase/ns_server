@@ -751,6 +751,23 @@ class Cluster:
                 timeout=60,
                 msg="waiting for web service to restart")
 
+    def disable_auto_failover(self):
+        r = testlib.get_succ(self, '/settings/autoFailover').json()
+        autofailover_enabled = r['enabled']
+        autofailover_timeout = r['timeout']
+        if autofailover_enabled:
+            testlib.post_succ(self, "/settings/autoFailover",
+                              data={"enabled": "false"})
+            return {"enabled": "true" if autofailover_enabled else "false",
+                    "timeout": autofailover_timeout}
+        else:
+            return None
+
+    def maybe_enable_auto_failover(self, settings):
+        if settings is not None:
+            testlib.post_succ(self, "/settings/autoFailover",
+                              data=settings)
+
     def toggle_n2n_encryption(self, enable=True):
         """
         Helper function to enable/disable node to node encryption for all nodes
@@ -761,12 +778,7 @@ class Cluster:
         :param enable: Whether node to node encryption should be enabled.
         """
         # Need to disable autoFailover before other settings can change
-        r = testlib.get_succ(self, '/settings/autoFailover').json()
-        autofailover_enabled = r['enabled']
-        autofailover_timeout = r['timeout']
-        if autofailover_enabled:
-            testlib.post_succ(self, "/settings/autoFailover",
-                              data={"enabled": "false"})
+        auto_failover_settings = self.disable_auto_failover()
 
         for node in self.connected_nodes:
             # Create an external listener
@@ -785,11 +797,7 @@ class Cluster:
             testlib.post_succ(node,
                               "/node/controller/disableUnusedExternalListeners")
 
-        if autofailover_enabled:
-            # Re-enable autoFailover.
-            testlib.post_succ(self, "/settings/autoFailover",
-                              data={"enabled": "true",
-                                    "timeout": autofailover_timeout})
+        self.maybe_enable_auto_failover(auto_failover_settings)
 
     def can_write(self, bucket, doc):
         def f():

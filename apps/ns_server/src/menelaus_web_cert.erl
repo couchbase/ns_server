@@ -263,24 +263,57 @@ handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
     validator:handle(
       fun (Params) ->
-          ForceResetCA = proplists:get_value(forceResetCACertificate,
-                                             Params, true),
-          DropUploadedCerts = proplists:get_value(dropUploadedCertificates,
-                                                  Params, true),
-          menelaus_util:survive_web_server_restart(
-            fun () ->
-                ns_server_cert:generate_cluster_CA(ForceResetCA,
-                                                   DropUploadedCerts),
-                ns_ssl_services_setup:sync(),
-                ?log_info("Completed handling of regenerate_certificate call "
-                          "(~p)", [Params]),
-                ns_audit:regenerate_certificate(Req, Params),
-                event_log:add_log(regenerate_certificate, Params),
-                handle_cluster_certificate_simple(Req)
-            end)
+              ForceResetCA = proplists:get_value(forceResetCACertificate,
+                                                 Params, true),
+              DropUploadedCerts = proplists:get_value(dropUploadedCertificates,
+                                                      Params, true),
+              AllowUnreachableNodes =
+                  proplists:get_value(allowUnreachableNodes, Params, false),
+              %% Only a reset creates a new CA, so only a reset can lock out
+              %% an unreachable node. Skip the check when it is forced anyway
+              GuardReset = ForceResetCA andalso not AllowUnreachableNodes,
+              case GuardReset andalso unreachable_nodes() of
+                  [_ | _] = Unreachable ->
+                      reply_unreachable_nodes_error(Req, Unreachable);
+                  _ ->
+                      do_regenerate_certificate(ForceResetCA, DropUploadedCerts,
+                                                Params, Req)
+              end
       end, Req, qs, [validator:boolean(dropUploadedCertificates, _),
                      validator:boolean(forceResetCACertificate, _ ),
+                     validator:boolean(allowUnreachableNodes, _),
                      validator:unsupported(_)]).
+
+%% Nodes that are not currently connected, and so would miss a new CA. Includes
+%% failed over nodes, as they are still cluster members and can be brought back
+unreachable_nodes() ->
+    ns_cluster_membership:nodes_wanted() -- ns_node_disco:nodes_actual().
+
+reply_unreachable_nodes_error(Req, Nodes) ->
+    Hosts = [misc:extract_node_address(N) || N <- Nodes],
+    Msg = io_lib:format(
+            "Cannot regenerate the self-generated CA certificate because the "
+            "following nodes are currently unreachable: ~s. They would not "
+            "receive the new CA and may fail to reconnect once they return. "
+            "Retry when all nodes are healthy, remove the unreachable nodes "
+            "from the cluster, or pass allowUnreachableNodes=true to proceed "
+            "anyway.",
+            [lists:join(", ", Hosts)]),
+
+    menelaus_util:reply_global_error(Req, iolist_to_binary(Msg), 503).
+
+do_regenerate_certificate(ForceResetCA, DropUploadedCerts, Params, Req) ->
+    menelaus_util:survive_web_server_restart(
+      fun () ->
+              ns_server_cert:generate_cluster_CA(ForceResetCA,
+                                                 DropUploadedCerts),
+              ns_ssl_services_setup:sync(),
+              ?log_info("Completed handling of regenerate_certificate call "
+                        "(~p)", [Params]),
+              ns_audit:regenerate_certificate(Req, Params),
+              event_log:add_log(regenerate_certificate, Params),
+              handle_cluster_certificate_simple(Req)
+      end).
 
 %% deprecated, use menelaus_util:reply_global_error/2 instead
 reply_error(Req, Error) ->

@@ -23,8 +23,9 @@ class CertLoadTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(edition='Enterprise',
-                                           min_num_nodes=2,
-                                           encryption=True)
+                                           min_num_nodes=3,
+                                           encryption=True,
+                                           balanced=True)
 
     def setup(self):
         # Need to remove extras,
@@ -45,10 +46,23 @@ class CertLoadTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, '/controller/regenerateCertificate',
                           params={'forceResetCACertificate': 'false',
                                   'dropUploadedCertificates': 'true'})
+
+        def delete(ca_id):
+            r = testlib.delete(self.cluster,
+                               f'/pools/default/trustedCAs/{ca_id}')
+            # Retry if 503
+            assert r.status_code != 503
+            return r
+
         for ca_id in self.loaded_CA_ids:
-            testlib.delete_succ(self.cluster,
-                                f'/pools/default/trustedCAs/{ca_id}',
-                                expected_code=204)
+            r_final = testlib.poll_for_condition(
+                lambda: delete(ca_id),
+                sleep_time=0.5,
+                timeout=60,
+                retry_on_assert=True)
+
+            testlib.assert_eq(r_final.status_code, 204,
+                              f"status for deletion of {ca_id}")
 
     def rsa_private_key_pkcs1_test(self):
         self.generate_and_load_cert('rsa')
@@ -527,6 +541,72 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    # Resetting the self-generated CA whilst a node is unreachable would leave
+    # that node unable to reconnect once it returns, so the reset is refused
+    # unless allowUnreachableNodes overrides that
+    @tag(Tag.LowUrgency)
+    def regen_refused_when_node_unreachable_test(self):
+        node_certs_before = get_node_certs(self.cluster)
+        master = self.cluster.connected_nodes[0]
+        victim = self.cluster.connected_nodes[-1]
+        assert victim != master, "need a second connected node to stop"
+        # Disable auto-failover since we're not testing the failed over case
+        auto_failover_settings = self.cluster.disable_auto_failover()
+        try:
+            self.cluster.stop_node(victim)
+            wait_any_node_unhealthy(master)
+
+            # A CA reset is refused whilst a node is unreachable
+            r = testlib.post_fail(master, '/controller/regenerateCertificate',
+                                  expected_code=503,
+                                  params={'forceResetCACertificate': 'true'})
+            testlib.assert_in('allowUnreachableNodes', r.text, r)
+
+            # Reusing the existing CA creates no new CA, so it is not blocked
+            testlib.post_succ(master, '/controller/regenerateCertificate',
+                              params={'forceResetCACertificate': 'false',
+                                      'dropUploadedCertificates': 'false'})
+
+            # The override lets the reset proceed
+            testlib.post_succ(master, '/controller/regenerateCertificate',
+                              params={'forceResetCACertificate': 'true',
+                                      'allowUnreachableNodes': 'true'})
+        finally:
+            self.cluster.restart_node(victim)
+            self.cluster.wait_for_nodes_to_be_healthy()
+            regenerate_certs_and_remove_unused_generated_cas(self.cluster,
+                                                             node_certs_before)
+            self.cluster.maybe_enable_auto_failover(auto_failover_settings)
+
+    @tag(Tag.LowUrgency)
+    def regen_refused_when_failed_over_node_unreachable_test(self):
+        node_certs_before = get_node_certs(self.cluster)
+        master = self.cluster.connected_nodes[0]
+        victim = self.cluster.connected_nodes[-1]
+        assert victim != master, "need a second connected node to fail over"
+        node_failed_over = False
+        try:
+            self.cluster.stop_node(victim)
+            wait_any_node_unhealthy(master)
+            # A hard failover leaves the node in the cluster, so it can be
+            # recovered later and still needs the new CA
+            node_failed_over = (
+                    self.cluster.failover_node(victim, graceful=False)
+                    .status_code == 200)
+
+            r = testlib.post_fail(master, '/controller/regenerateCertificate',
+                                  expected_code=503,
+                                  params={'forceResetCACertificate': 'true'})
+            testlib.assert_in('allowUnreachableNodes', r.text, r)
+        finally:
+            self.cluster.restart_node(victim)
+            self.cluster.wait_for_nodes_to_be_healthy()
+            if node_failed_over:
+                self.cluster.recover_node(victim, recovery_type='full',
+                                          do_rebalance=True)
+                regenerate_certs_and_remove_unused_generated_cas(self.cluster,
+                                                             node_certs_before)
+
     def load_custom_certs(self):
         node_certs = []
         for node in self.cluster.connected_nodes:
@@ -626,13 +706,35 @@ def assert_cert_unchanged(node, prev_cert_before, is_client=False):
            'node_cert_after pem != node_cert_before pem'
 
 
+def wait_any_node_unhealthy(node, timeout=60):
+    # Wait until the cluster reports a node as not healthy, so the CA reset
+    # check sees it as unreachable
+    def check():
+        return testlib.diag_eval(
+            node, "length(ns_node_disco:nodes_actual()) "
+            "< length(ns_node_disco:nodes_wanted())").text == "true"
+    testlib.poll_for_condition(check, sleep_time=0.5, timeout=timeout)
+
+
 def regenerate_certs(cluster, force_reset_ca=True, drop_uploaded_certs=True):
     params = {'forceResetCACertificate': 'true' if force_reset_ca else 'false',
               'dropUploadedCertificates': 'true' if drop_uploaded_certs
                                                  else 'false'}
-    r = testlib.post_succ(cluster, '/controller/regenerateCertificate',
-                          params=params)
-    return r.text
+    def regen():
+        r = testlib.post(cluster, '/controller/regenerateCertificate',
+                         params=params)
+        # Retry if 503
+        assert r.status_code != 503
+        return r
+
+    r_final = testlib.poll_for_condition(
+        regen,
+        sleep_time=0.5,
+        timeout=60,
+        retry_on_assert=True)
+
+    assert r_final.status_code == 200
+    return r_final.text
 
 
 def get_trusted_CAs(cluster):
