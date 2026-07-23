@@ -793,11 +793,7 @@ conf(internal) ->
                 [{data_service_file_based_rebalance_enabled,
                   dataServiceFileBasedRebalanceEnabled,
                   ?DATA_SERVICE_FILE_BASED_BACKFILL_DEFAULT,
-                  fun get_bool/1},
-                 {data_service_file_based_rebalance_moves_per_node,
-                  dataServiceFileBasedRebalanceMovesPerNode,
-                  ?DEFAULT_MAX_MOVES_PER_NODE,
-                  get_number(1, 1024)}];
+                  fun get_bool/1}];
             false ->
                 []
         end;
@@ -1842,21 +1838,44 @@ get_data_service_file_based_rebalance_moves_per_node() ->
 
 handle_settings_rebalance(Req) ->
     reply_json(Req,
-               {[{rebalanceMovesPerNode, get_rebalance_moves_per_node()}]},
+               {[{rebalanceMovesPerNode, get_rebalance_moves_per_node()},
+                 {dataServiceFileBasedRebalanceMovesPerNode,
+                  get_data_service_file_based_rebalance_moves_per_node()}]},
                200).
 
 handle_settings_rebalance_post(Req) ->
     validator:handle(
       fun (Values) ->
-              Num = proplists:get_value(rebalanceMovesPerNode, Values),
-              ns_config:set(rebalance_moves_per_node, Num),
-              reply_json(Req, {[{rebalanceMovesPerNode, Num}]}, 200)
+              {ok, R} =
+                  functools:sequence(
+                    [?cut(handle_rebalance_moves_per_node(
+                            Values,
+                            rebalanceMovesPerNode,
+                            rebalance_moves_per_node)),
+                     ?cut(handle_rebalance_moves_per_node(
+                            Values,
+                            dataServiceFileBasedRebalanceMovesPerNode,
+                            data_service_file_based_rebalance_moves_per_node))
+                    ]),
+              reply_json(Req, {lists:flatten(R)}, 200)
       end, Req, form,
-      [validator:required(rebalanceMovesPerNode, _),
-       validator:integer(rebalanceMovesPerNode, ?MIN_OF_MAX_MOVES_PER_NODE,
+      [validator:integer(rebalanceMovesPerNode,
+                         ?MIN_OF_MAX_MOVES_PER_NODE,
+                         ?MAX_OF_MAX_MOVES_PER_NODE, _),
+       validator:integer(dataServiceFileBasedRebalanceMovesPerNode,
+                         ?MIN_OF_MAX_MOVES_PER_NODE,
                          ?MAX_OF_MAX_MOVES_PER_NODE, _),
        validator:no_duplicate_keys(_),
        validator:unsupported(_)]).
+
+handle_rebalance_moves_per_node(Values, APIKey, InternalKey) ->
+    V = proplists:get_value(APIKey, Values),
+    case V of
+        undefined -> {ok, []};
+        _ ->
+            ns_config:set(InternalKey, V),
+            {ok, [{APIKey, V}]}
+    end.
 
 handle_settings_data_service(Req) ->
     reply_json(Req,
