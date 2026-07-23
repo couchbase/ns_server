@@ -157,9 +157,12 @@ set_config(NewCfg0) ->
                            Merged0#{policy_per_scope => MergedPPS}),
                 {commit, [{set, ?CHRONICLE_KEY, NewCfg}]}
         end,
-    case chronicle_kv:transaction(kv, [?CHRONICLE_KEY], Fun, #{}) of
+    %% On quorum loss chronicle raises a bare exit:timeout.
+    try chronicle_kv:transaction(kv, [?CHRONICLE_KEY], Fun, #{}) of
         {ok, _} -> ok;
         {error, Err} -> {error, Err}
+    catch
+        exit:timeout -> {error, no_quorum}
     end.
 
 %% Wait for any pending config changes to be fully applied.
@@ -728,28 +731,35 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, State) ->
     %% We can't write files to disk until after the chronicle transaction
     %% succeeds, because if the transaction fails, we won't be able to recover
     %% the file that we (maybe) overwrote.
-    {ok, _} = chronicle_kv:txn(
-                kv,
-                fun (Txn) ->
-                    CurrMap = case chronicle_kv:txn_get(?CRL_FILES_KEY, Txn) of
-                                  {ok, {M, _}}       -> M;
-                                  {error, not_found} -> #{}
-                              end,
-                    {commit, [{set, ?CRL_FILES_KEY,
-                               maps:put(FilenameBin, FileInfo, CurrMap)}]}
-                end),
-    case write_uploaded_file_locally(Filename, Binary, EntryResults) of
-        ok ->
-            ?log_debug("CRL ~p: uploaded and written locally", [Filename]),
-            NewUploaded = maps:put(Filename, Checksum, State#state.uploaded),
-            {ok, State#state{uploaded = NewUploaded}};
-        {error, Reason} ->
-            ?log_error("CRL ~p: uploaded but failed to write locally: ~p",
-                       [Filename, Reason]),
-            %% We could write the file to disk, we have to remove it from
-            %% chronicle now because we don't have that file saved anywhere
-            catch do_delete_crl_file(Filename, State),
-            {error, Reason}
+    try chronicle_kv:txn(
+          kv,
+          fun (Txn) ->
+              CurrMap = case chronicle_kv:txn_get(?CRL_FILES_KEY, Txn) of
+                            {ok, {M, _}}       -> M;
+                            {error, not_found} -> #{}
+                        end,
+              {commit, [{set, ?CRL_FILES_KEY,
+                         maps:put(FilenameBin, FileInfo, CurrMap)}]}
+          end) of
+        {ok, _} ->
+            case write_uploaded_file_locally(Filename, Binary, EntryResults) of
+                ok ->
+                    ?log_debug("CRL ~p: uploaded and written locally",
+                               [Filename]),
+                    NewUploaded = maps:put(Filename, Checksum,
+                                           State#state.uploaded),
+                    {ok, State#state{uploaded = NewUploaded}};
+                {error, Reason} ->
+                    ?log_error("CRL ~p: uploaded but failed to write locally: "
+                               "~p", [Filename, Reason]),
+                    %% We could write the file to disk, we have to remove it
+                    %% from chronicle now because we don't have that file saved
+                    %% anywhere
+                    catch do_delete_crl_file(Filename, State),
+                    {error, Reason}
+            end
+    catch
+        exit:timeout -> {error, no_quorum}
     end.
 
 %% Puts the file on disk and updates the metadata in ns_config, so that other
@@ -790,25 +800,30 @@ do_delete_crl_file(Filename, State) ->
             ?log_debug("CRL delete ~p: removing from chronicle, "
                        "ns_config, and disk", [Filename]),
             %% Remove from chronicle.
-            {ok, _} = chronicle_kv:txn(
-                        kv,
-                        fun (Txn) ->
-                            CurrMap = case chronicle_kv:txn_get(
-                                             ?CRL_FILES_KEY, Txn) of
-                                          {ok, {M, _}}       -> M;
-                                          {error, not_found} -> #{}
-                                      end,
-                            {commit, [{set, ?CRL_FILES_KEY,
-                                       maps:remove(FilenameBin, CurrMap)}]}
-                        end),
-            NewUploaded = %% Don't remove the file from "uploaded" list
-                          %% if we could not delete it from disk
-                          %% This way we will retry deleting it later
-                case remove_uploaded_file_locally(Filename) of
-                    ok -> maps:remove(Filename, State#state.uploaded);
-                    {error, _} -> State#state.uploaded
-                end,
-            {ok, State#state{uploaded = NewUploaded}}
+            try chronicle_kv:txn(
+                  kv,
+                  fun (Txn) ->
+                      CurrMap = case chronicle_kv:txn_get(
+                                       ?CRL_FILES_KEY, Txn) of
+                                    {ok, {M, _}}       -> M;
+                                    {error, not_found} -> #{}
+                                end,
+                      {commit, [{set, ?CRL_FILES_KEY,
+                                 maps:remove(FilenameBin, CurrMap)}]}
+                  end) of
+                {ok, _} ->
+                    NewUploaded =
+                        %% Don't remove the file from "uploaded" list
+                        %% if we could not delete it from disk
+                        %% This way we will retry deleting it later
+                        case remove_uploaded_file_locally(Filename) of
+                            ok -> maps:remove(Filename, State#state.uploaded);
+                            {error, _} -> State#state.uploaded
+                        end,
+                    {ok, State#state{uploaded = NewUploaded}}
+            catch
+                exit:timeout -> {error, no_quorum}
+            end
     end.
 
 %% Request sync_uploaded_files/0 on every currently active node.
