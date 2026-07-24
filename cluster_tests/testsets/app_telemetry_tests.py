@@ -131,13 +131,16 @@ class AppTelemetryTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, "/settings/appTelemetry",
                           json={"enabled": "false"})
         try:
-            info = testlib.get_succ(self.cluster,
-                                    "/pools/default/nodeServices").json()
-            nodes_ext = info.get('nodesExt')
-            node0_ext = nodes_ext[0]
-            node0_path = node0_ext.get('appTelemetryPath')
-            # /_appTelemetry should not be advertised
-            testlib.assert_eq(node0_path, None)
+            # nodeServices is served from an asynchronously invalidated cache,
+            # so poll until /_appTelemetry is no longer advertised
+            def path_not_advertised():
+                info = testlib.get_succ(
+                    self.cluster, "/pools/default/nodeServices").json()
+                node0_ext = info.get('nodesExt')[0]
+                return node0_ext.get('appTelemetryPath') is None
+            testlib.poll_for_condition(
+                path_not_advertised, sleep_time=0.5, timeout=15,
+                msg="wait for /_appTelemetry to stop being advertised")
 
             testlib.get_fail(self.cluster, "/_appTelemetry", 404)
         finally:
