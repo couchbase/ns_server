@@ -158,8 +158,8 @@ get_or_compute(OtpCert, ComputeFun) ->
             {CacheRes,
              {Entry#status_entry.verdict, Entry#status_entry.next_update}}
     catch
-        %% Cache doesn't exist yet.  Fall back to a direct computation.
-        error:badarg ->
+        %% Cache not started yet (early boot); compute directly, uncached.
+        error:{active_cache_not_started, ?ETS} ->
             {miss, ComputeFun()}
     end.
 
@@ -394,6 +394,26 @@ expired_not_served_test_() ->
                                     get_or_compute(Cert, Fun)),
                        %% Expired ⇒ recomputed on the second lookup too.
                        ?assertEqual(2, counters:get(Ref, 1))
+               end)
+     end}.
+
+%% A compute error:badarg must propagate and be cached, not confused with the
+%% "cache not started" signal (which would swallow it and re-run the compute).
+compute_badarg_propagates_and_is_cached_test_() ->
+    {timeout, 30,
+     fun () ->
+             with_server(
+               fun () ->
+                       Ref = counters:new(1, []),
+                       Cert = fake_cert(<<"e">>, 99),
+                       Fun = fun () ->
+                                     counters:add(Ref, 1, 1),
+                                     erlang:error(badarg)
+                             end,
+                       ?assertError(badarg, get_or_compute(Cert, Fun)),
+                       %% Cached exception: re-raised without re-running Fun.
+                       ?assertError(badarg, get_or_compute(Cert, Fun)),
+                       ?assertEqual(1, counters:get(Ref, 1))
                end)
      end}.
 

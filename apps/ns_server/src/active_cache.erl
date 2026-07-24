@@ -73,6 +73,7 @@ get_value_and_touch(Name, Key, GetValue) ->
 get_value(Name, Key, GetValue) ->
     get_value(Name, Key, GetValue, #{}).
 
+%% Raises error:{active_cache_not_started, Name} if the cache is not started.
 get_value(Name, Key, GetValue, Opts) ->
     %% Update value's timestamp to prevent it being cleaned up
     ShouldTouch = maps:get(touch, Opts, false),
@@ -107,7 +108,7 @@ get_value(Name, Key, GetValue, Opts) ->
 %% {ok, Value} entries.  Cached exceptions are returned as-is (validity applies
 %% only to successful values).  Returns 'miss' when absent or rejected.
 lookup_valid(Name, Key, IsValidValue) ->
-    case ets:lookup(Name, Key) of
+    try ets:lookup(Name, Key) of
         [{_, {ok, Value} = V, _, _}] ->
             case IsValidValue(Value) of
                 true  -> {ok, V};
@@ -123,6 +124,9 @@ lookup_valid(Name, Key, IsValidValue) ->
             end;
         [] ->
             miss
+    catch
+        %% No ETS table => cache not started; signal it distinctly.
+        error:badarg -> erlang:error({active_cache_not_started, Name})
     end.
 
 reload_opts(Name, Opts) ->
