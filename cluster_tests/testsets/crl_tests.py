@@ -13,7 +13,9 @@ import datetime
 import http.server
 import os
 import shutil
+import socket
 import socketserver
+import ssl
 import tempfile
 import threading
 
@@ -57,6 +59,224 @@ class CRLTests(testlib.BaseTestSet):
     def client_cert_crl_test(self):
         """Test CRL revocation using a full (base) CRL."""
         self._run_crl_revocation_checks(_setup_full_crl, _update_full_crl)
+
+    def tls_handshake_audit_test(self):
+        """A failed TLS client-cert handshake is audited (MB-32989).
+
+        When the server rejects a client's certificate during the TLS
+        handshake, the tls_alert_handler in ns_ssl_services_setup emits an
+        auth_failure audit event (id 8264) via ns_audit:tls_auth_failure/2.  It
+        is distinguished from an application-layer auth_failure by its
+        placeholder raw_url == "-".
+
+        Only alerts that are BOTH locally generated (we rejected the peer) and
+        certificate-related are audited.  Every audited scenario runs on both
+        TLS 1.2 and TLS 1.3, because the alert a missing client certificate
+        produces differs between them (handshake_failure carrying
+        no_client_certificate_provided on 1.2, certificate_required on 1.3)
+        while the rest are version-independent.
+
+        Audited:      revoked cert, undetermined CRL status under 'Require',
+                      missing client cert, client cert from an unknown CA.
+        Not audited:  a client-generated alert (the client rejects OUR server
+                      cert), a plain-TCP client on the TLS port, and a
+                      successful handshake.
+        """
+        node = self.cluster.connected_nodes[0]
+        revoked_user = testlib.random_str(8)
+        good_user = testlib.random_str(8)
+        nocrl_user = testlib.random_str(8)
+        password = testlib.random_str(8)
+        crl_dir = tempfile.mkdtemp()
+        ca_ids = []
+        auditing_enabled = False
+        bogus_ca_path = None
+        client_cert_auth_on = False
+        try:
+            testlib.set_auditd_enabled(self.cluster, True)
+            auditing_enabled = True
+
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='TLS Audit Test CA')
+            # A second trusted intermediate with NO CRL published, so a cert it
+            # issued has an undetermined revocation status.
+            nocrl_ca_pem, nocrl_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='TLS Audit No CRL CA')
+            # An untrusted CA, never loaded, for the unknown_ca scenario.
+            untrusted_ca_pem, untrusted_ca_key_pem = generate_root_ca()
+
+            revoked_cert_pem, revoked_key_pem = generate_client_cert_cn(
+                inter_ca_pem, inter_ca_key_pem, revoked_user)
+            good_cert_pem, good_key_pem = generate_client_cert_cn(
+                inter_ca_pem, inter_ca_key_pem, good_user)
+            nocrl_cert_pem, nocrl_key_pem = generate_client_cert_cn(
+                nocrl_ca_pem, nocrl_ca_key_pem, nocrl_user)
+            untrusted_cert_pem, untrusted_key_pem = generate_client_cert_cn(
+                untrusted_ca_pem, untrusted_ca_key_pem, good_user)
+
+            for u in (revoked_user, good_user, nocrl_user):
+                testlib.put_succ(
+                    self.cluster, f'/settings/rbac/users/local/{u}',
+                    data={'roles': 'ro_admin', 'password': password})
+
+            testlib.toggle_client_cert_auth(
+                node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+            client_cert_auth_on = True
+
+            ca_ids = load_multiple_cas(node,
+                                       [root_ca_pem, inter_ca_pem,
+                                        nocrl_ca_pem])
+
+            # CRL revokes the 'revoked' cert; the 'good' cert stays valid.  No
+            # CRL is published for nocrl_ca_pem.
+            _setup_full_crl(crl_dir, inter_ca_pem, inter_ca_key_pem,
+                            [revoked_cert_pem])
+            set_crl_settings(
+                self.cluster,
+                policy_per_scope={'clientAuth': 'Require',
+                                  'nodeToNode': 'Disabled'},
+                poll_interval_ms=5000, directory=crl_dir)
+            _wait_crl_policy(node, 'client_auth', 'require')
+            assert_reload_crl(node)
+
+            with client_cert_file(revoked_cert_pem, inter_ca_pem,
+                                  revoked_key_pem) as revoked_path, \
+                 client_cert_file(good_cert_pem, inter_ca_pem,
+                                  good_key_pem) as good_path, \
+                 client_cert_file(nocrl_cert_pem, nocrl_ca_pem,
+                                  nocrl_key_pem) as nocrl_path, \
+                 client_cert_file(untrusted_cert_pem, untrusted_ca_pem,
+                                  untrusted_key_pem) as untrusted_path:
+
+                # An unrelated CA the client can verify us against, so that it
+                # rejects our server cert (used by the negative-origin case).
+                bogus_ca_pem, _ = generate_root_ca()
+                fd, bogus_ca_path = tempfile.mkstemp(suffix='.pem')
+                with os.fdopen(fd, 'w') as f:
+                    f.write(bogus_ca_pem)
+
+                for version in _TLS_VERSIONS:
+                    vname = version.name
+
+                    # --- Audited: we rejected the peer's certificate. ---
+                    # A revoked cert -> certificate_revoked.
+                    self._assert_tls_audited(
+                        node, f'{vname}/revoked-cert', 'revok',
+                        lambda: tls_handshake(node, version, revoked_path))
+
+                    # Undetermined revocation status under policy 'Require'
+                    # (no CRL for the issuing CA) -> bad_certificate.
+                    self._assert_tls_audited(
+                        node, f'{vname}/undetermined-crl', 'bad certificate',
+                        lambda: tls_handshake(node, version, nocrl_path))
+
+                    # A cert from a CA we do not trust -> unknown_ca.
+                    self._assert_tls_audited(
+                        node, f'{vname}/unknown-ca', 'unknown ca',
+                        lambda: tls_handshake(node, version, untrusted_path))
+
+                    # --- Not audited: the alert came FROM the client. ---
+                    # The client verifies us against an unrelated CA and
+                    # rejects our server cert, so on the server side this is a
+                    # received alert.  Note its alert (unknown_ca) IS
+                    # certificate-related, so only the origin check keeps it
+                    # out of the audit log.
+                    self._assert_tls_not_audited(
+                        node, f'{vname}/client-generated-alert',
+                        lambda: _assert_client_rejects_server(
+                            node, version, bogus_ca_path))
+
+                    # --- Not audited: a successful handshake. ---
+                    self._assert_tls_not_audited(
+                        node, f'{vname}/valid-cert',
+                        lambda: _assert_handshake_ok(node, version, good_path))
+
+                # --- Audited: the client presents no certificate at all.
+                # Requires mandatory client cert auth (fail_if_no_peer_cert).
+                # The alert is version-dependent, which is the reason every
+                # scenario here runs on both versions. ---
+                testlib.toggle_client_cert_auth(
+                    node, enabled=True, mandatory=True,
+                    prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                               'prefix': ''}])
+                for version in _TLS_VERSIONS:
+                    self._assert_tls_audited(
+                        node, f'{version.name}/no-client-cert',
+                        _MISSING_CERT_ALERT[version],
+                        lambda: tls_handshake(node, version, None))
+                testlib.toggle_client_cert_auth(
+                    node, enabled=True, mandatory=False,
+                    prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                               'prefix': ''}])
+
+            # --- Not audited: a plain-TCP client on the TLS port.  The server
+            # DOES generate a fatal alert here (unexpected_message), so this is
+            # the case only the certificate check excludes - the origin check
+            # alone would let it through.  No TLS version applies. ---
+            self._assert_tls_not_audited(
+                node, 'plain-tcp-on-tls-port',
+                lambda: _tcp_to_tls_port(node))
+        finally:
+            if client_cert_auth_on:
+                testlib.toggle_client_cert_auth(node, enabled=False)
+            for u in (revoked_user, good_user, nocrl_user):
+                testlib.ensure_deleted(
+                    self.cluster, f'/settings/rbac/users/local/{u}')
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory="", urls=[])
+            shutil.rmtree(crl_dir, ignore_errors=True)
+            if bogus_ca_path is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(bogus_ca_path)
+            if auditing_enabled:
+                testlib.set_auditd_enabled(self.cluster, False)
+
+    def _assert_tls_audited(self, node, desc, reason_substr, drive):
+        """Drive a rejected handshake and assert it produced a TLS
+        auth_failure audit event whose reason contains reason_substr."""
+        off = testlib.audit_log_offset(node)
+        err = drive()
+        assert err is not None, \
+            f'{desc}: expected the server to reject the handshake'
+        evt = testlib.wait_for_audit_event(
+            node, 8264, predicate=_is_tls_handshake_auth_failure,
+            since_offset=off)
+
+        # raw_url placeholder is the discriminator; reason names the alert;
+        # remote/local carry addresses; no real_userid (the event is built with
+        # Req == undefined).
+        testlib.assert_eq(evt.get('raw_url'), '-',
+                          name=f'{desc}: raw_url placeholder')
+        reason = evt.get('reason', '')
+        assert reason_substr in reason.lower(), \
+            f'{desc}: expected {reason_substr!r} in reason, got: {reason!r}'
+        for field in ('remote', 'local'):
+            addr = evt.get(field) or {}
+            assert 'ip' in addr and 'port' in addr, \
+                f'{desc}: {field} missing ip/port in audit event: {evt}'
+        testlib.assert_eq(evt['local']['port'], node.tls_service_port(),
+                          name=f'{desc}: local port is ssl_rest')
+        assert 'real_userid' not in evt, \
+            f'{desc}: tls auth_failure must not carry real_userid: {evt}'
+
+    def _assert_tls_not_audited(self, node, desc, drive):
+        """Drive a connection that must NOT produce a TLS auth_failure event.
+
+        Auditing is proven live by the positive cases, so this is not a
+        vacuous check.
+        """
+        off = testlib.audit_log_offset(node)
+        drive()
+        testlib.assert_no_audit_event(
+            node, 8264, predicate=_is_tls_handshake_auth_failure,
+            since_offset=off, wait=5)
 
     def crl_status_cache_test(self):
         """Verify the CRL verdict cache and its CRL-version invalidation.
@@ -1433,6 +1653,124 @@ def _make_delta_crl_ops_both_in_delta():
 # =============================================================================
 # Client auth helper
 # =============================================================================
+
+
+def _is_tls_handshake_auth_failure(event):
+    """True for an auth_failure (8264) produced by a TLS handshake rejection.
+
+    ns_audit:tls_auth_failure/2 uses raw_url == "-" as a placeholder (there is
+    no HTTP request during a handshake), which distinguishes it from an
+    ordinary application-layer auth_failure whose raw_url is a real path.
+    """
+    return event.get('raw_url') == '-'
+
+
+def _supported_tls_versions():
+    """The TLS versions this interpreter can actually pin.
+
+    ns_ssl_services_setup accepts tlsv1.2 and tlsv1.3, and the audited scenarios
+    are checked on both.  But Python linked against LibreSSL - including the
+    macOS system python3 - reports ssl.HAS_TLSv1_3 False and raises
+    ValueError('Unsupported protocol version 0x304') when TLS 1.3 is requested,
+    so there the TLS 1.3 half cannot run at all.  Warn loudly instead of quietly
+    reducing coverage.
+    """
+    versions = [ssl.TLSVersion.TLSv1_2]
+    if getattr(ssl, 'HAS_TLSv1_3', False):
+        versions.append(ssl.TLSVersion.TLSv1_3)
+    else:
+        print(f'WARNING: this python has no TLS 1.3 support '
+              f'({ssl.OPENSSL_VERSION}); the TLS 1.3 half of '
+              f'tls_handshake_audit_test will NOT be covered')
+    return tuple(versions)
+
+
+_TLS_VERSIONS = _supported_tls_versions()
+
+# A missing client certificate is the one scenario whose alert differs by
+# version: TLS 1.2 reports a generic handshake_failure whose description names
+# the cause, TLS 1.3 has a dedicated certificate_required alert.  Values are
+# substrings expected in the audited reason.
+_MISSING_CERT_ALERT = {
+    ssl.TLSVersion.TLSv1_2: 'no_client_certificate_provided',
+    ssl.TLSVersion.TLSv1_3: 'certificate required',
+}
+
+
+def _tls_context(version):
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.minimum_version = version
+    ctx.maximum_version = version
+    ctx.check_hostname = False
+    return ctx
+
+
+def tls_handshake(node, version, cert_path=None, timeout=15):
+    """Drive one TLS handshake against the node's HTTPS REST port, pinned to a
+    single TLS version.  Optionally present a client certificate.
+
+    Returns None if the server accepted the connection, otherwise the exception
+    its alert produced.
+
+    Uses a raw socket rather than requests: requests/urllib3 cannot pin a TLS
+    version without a custom adapter, and only the handshake matters here.  In
+    TLS 1.3 the client sends its certificate in its second flight, so
+    wrap_socket() returns before the server has validated it and the rejection
+    only surfaces on the first read - hence the send/recv.
+    """
+    ctx = _tls_context(version)
+    ctx.verify_mode = ssl.CERT_NONE
+    if cert_path is not None:
+        ctx.load_cert_chain(certfile=cert_path)
+    try:
+        with socket.create_connection((node.host, node.tls_service_port()),
+                                      timeout=timeout) as sock:
+            with ctx.wrap_socket(sock) as tls:
+                tls.settimeout(timeout)
+                tls.sendall(b'GET /whoami HTTP/1.1\r\nHost: localhost\r\n'
+                            b'Connection: close\r\n\r\n')
+                if tls.recv(1) == b'':
+                    return ssl.SSLError('server closed without responding')
+        return None
+    except (ssl.SSLError, OSError) as e:
+        return e
+
+
+def _assert_handshake_ok(node, version, cert_path):
+    """A handshake that must succeed, pinned to one TLS version."""
+    err = tls_handshake(node, version, cert_path)
+    assert err is None, \
+        f'{version.name}: expected the handshake to succeed, got {err!r}'
+
+
+def _tcp_to_tls_port(node):
+    """Speak plain HTTP at the TLS port: the client never attempts a TLS
+    handshake.  The server still generates a fatal alert (unexpected_message,
+    unsupported record type), so this exercises the certificate check rather
+    than the alert-origin check."""
+    with socket.create_connection((node.host, node.tls_service_port()),
+                                  timeout=10) as sock:
+        sock.sendall(b'GET / HTTP/1.1\r\nHost: localhost\r\n\r\n')
+        with contextlib.suppress(OSError):
+            sock.recv(64)
+
+
+def _assert_client_rejects_server(node, version, ca_path):
+    """The client verifies the server against an unrelated CA and rejects it, so
+    the alert the server sees is one the CLIENT generated."""
+    ctx = _tls_context(version)
+    ctx.load_verify_locations(cafile=ca_path)
+    try:
+        with socket.create_connection((node.host, node.tls_service_port()),
+                                      timeout=15) as sock:
+            with ctx.wrap_socket(sock):
+                pass
+    except ssl.SSLError:
+        return
+    except OSError as e:
+        raise AssertionError(
+            f'expected the client to reject the server cert, got {e!r}')
+    raise AssertionError('expected the client to reject the server cert')
 
 
 def try_client_auth(node, cert_path):

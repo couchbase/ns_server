@@ -7,6 +7,8 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import atexit
+import glob
+import json
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from math import floor
@@ -777,6 +779,121 @@ def metakv_delete_fail(cluster, key, expected_code, **kwargs):
 
 def diag_eval(cluster, code, **kwargs):
     return post_succ(cluster, '/diag/eval', data=code, **kwargs)
+
+
+# =============================================================================
+# Audit log helpers
+#
+# memcached writes audit events as JSON-lines (one JSON object per line, each
+# with an "id" field naming the event code).  The file is named
+# '<uid>-<timestamp>-audit.log' in the audit log directory, which in the test
+# harness is the node's log directory (pylib/cluster_run_lib.py wires
+# path_audit_log == error_logger_mf_dir).  Auditing must be enabled first
+# (POST /settings/audit {"auditdEnabled":...}).
+# =============================================================================
+
+def set_auditd_enabled(cluster, enabled):
+    """Enable or disable audit logging via POST /settings/audit."""
+    value = "true" if enabled else "false"
+    return post_succ(cluster, "/settings/audit",
+                     data={"auditdEnabled": value})
+
+
+def audit_log_path(node):
+    """Path to the current memcached audit log on the given node, or None.
+
+    memcached names the file '<uid>-<timestamp>-audit.log' and rotates it, so
+    return the most-recently-modified match (None if none exists yet).
+    """
+    matches = glob.glob(os.path.join(node.logs_path(), '*audit.log'))
+    if not matches:
+        return None
+    return max(matches, key=os.path.getmtime)
+
+
+def audit_log_offset(node):
+    """Current end-of-file offset of the node's audit log (0 if absent).
+
+    Capture this before an action, then pass it as since_offset to
+    read_audit_events / wait_for_audit_event / assert_no_audit_event so only
+    records produced after this point are considered.
+    """
+    path = audit_log_path(node)
+    if path is None:
+        return 0
+    try:
+        return os.path.getsize(path)
+    except FileNotFoundError:
+        return 0
+
+
+def read_audit_events(node, since_offset=0):
+    """Read audit events appended after since_offset.
+
+    Returns (events, new_offset): events is the list of parsed JSON objects
+    from complete (newline-terminated) lines, new_offset is where to resume.
+    A trailing partial line (a record still being written) is left
+    unconsumed so it is re-read whole on the next call.
+    """
+    path = audit_log_path(node)
+    if path is None:
+        return [], since_offset
+    try:
+        with open(path, 'rb') as f:
+            f.seek(since_offset)
+            data = f.read()
+    except FileNotFoundError:
+        return [], since_offset
+
+    last_nl = data.rfind(b'\n')
+    if last_nl < 0:
+        return [], since_offset
+
+    events = []
+    for line in data[:last_nl + 1].splitlines():
+        line = line.strip()
+        if line:
+            events.append(json.loads(line))
+    return events, since_offset + last_nl + 1
+
+
+def wait_for_audit_event(node, event_id, predicate=None, since_offset=0,
+                         timeout=30):
+    """Poll the audit log for the first event with the given id that also
+    satisfies predicate, and return it.
+
+    Audit writes are asynchronous (and some events are routed via rpc:cast),
+    so this polls until the record appears or timeout elapses.
+    """
+    if predicate is None:
+        predicate = lambda _e: True
+
+    def check():
+        events, _ = read_audit_events(node, since_offset)
+        print(f"audit events: {events}")
+        for e in events:
+            if e.get('id') == event_id and predicate(e):
+                return e
+        return False
+
+    return poll_for_condition(
+        check, sleep_time=0.5, timeout=timeout,
+        msg=f'waiting for audit event id={event_id}')
+
+
+def assert_no_audit_event(node, event_id, predicate=None, since_offset=0,
+                          wait=5):
+    """Assert no audit event with the given id satisfying predicate appears
+    within `wait` seconds after since_offset.  A bounded absence check.
+    """
+    if predicate is None:
+        predicate = lambda _e: True
+    time.sleep(wait)
+    events, _ = read_audit_events(node, since_offset)
+    matches = [e for e in events
+               if e.get('id') == event_id and predicate(e)]
+    assert matches == [], \
+        f'expected no audit event id={event_id}, got: {matches}'
 
 
 def load_data(cluster, bucket, num_items=1000,
