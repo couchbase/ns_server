@@ -73,6 +73,8 @@ handle_post_settings(Req) ->
                       menelaus_util:reply_json(Req, {NewCfg});
                   {error, no_quorum} ->
                       reply_no_quorum();
+                  {error, exceeded_retries} ->
+                      reply_exceeded_retries();
                   {error, R} ->
                       menelaus_util:reply_json(
                         Req,
@@ -574,6 +576,8 @@ handle_post_crl_file(Req) ->
     else
         {error, no_quorum} ->
             reply_no_quorum();
+        {error, exceeded_retries} ->
+            reply_exceeded_retries();
         {error, Reason} ->
             ReasonBin = format_upload_error(Reason),
             menelaus_util:reply_json(Req, {[{error, ReasonBin}]}, 400)
@@ -633,6 +637,8 @@ handle_delete_crl_file(Filename, Req) ->
               {[{error, <<"CRL file not found">>}]}, 404);
         {error, no_quorum} ->
             reply_no_quorum();
+        {error, exceeded_retries} ->
+            reply_exceeded_retries();
         {error, Reason} ->
             menelaus_util:reply_json(
               Req,
@@ -669,6 +675,10 @@ entry_meta_to_json(#{issuer      := Issuer,
 reply_no_quorum() ->
     menelaus_util:web_exception(
       503, menelaus_web_secrets:format_error(no_quorum)).
+
+reply_exceeded_retries() ->
+    menelaus_util:web_exception(
+      503, "Exceeded retries due to conflicting operations, please retry").
 
 assert_supported() ->
     menelaus_util:assert_is_enterprise(),

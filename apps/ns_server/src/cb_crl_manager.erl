@@ -157,7 +157,8 @@ set_config(NewCfg0) ->
                            Merged0#{policy_per_scope => MergedPPS}),
                 {commit, [{set, ?CHRONICLE_KEY, NewCfg}]}
         end,
-    %% On quorum loss chronicle raises a bare exit:timeout.
+    %% On quorum loss chronicle raises a bare exit:timeout, and on too many
+    %% conflicting updates it returns {error, exceeded_retries}.
     try chronicle_kv:transaction(kv, [?CHRONICLE_KEY], Fun, #{}) of
         {ok, _} -> ok;
         {error, Err} -> {error, Err}
@@ -757,7 +758,11 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, State) ->
                     %% anywhere
                     catch do_delete_crl_file(Filename, State),
                     {error, Reason}
-            end
+            end;
+        {error, exceeded_retries} ->
+            ?log_error("CRL ~p: upload failed, chronicle transaction "
+                       "exceeded retries", [Filename]),
+            {error, exceeded_retries}
     catch
         exit:timeout -> {error, no_quorum}
     end.
@@ -820,7 +825,11 @@ do_delete_crl_file(Filename, State) ->
                             ok -> maps:remove(Filename, State#state.uploaded);
                             {error, _} -> State#state.uploaded
                         end,
-                    {ok, State#state{uploaded = NewUploaded}}
+                    {ok, State#state{uploaded = NewUploaded}};
+                {error, exceeded_retries} ->
+                    ?log_error("CRL delete ~p: chronicle transaction "
+                               "exceeded retries", [Filename]),
+                    {error, exceeded_retries}
             catch
                 exit:timeout -> {error, no_quorum}
             end
