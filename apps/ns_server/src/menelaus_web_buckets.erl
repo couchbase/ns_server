@@ -746,9 +746,10 @@ handle_sasl_buckets_streaming(_PoolId, Req) ->
     handle_streaming(F, Req).
 
 build_sasl_bucket_nodes(BucketConfig, LocalAddr) ->
+    AFamily = cb_dist:address_family(),
     {nodes,
      [{[{hostname, menelaus_web_node:build_node_hostname(
-                     ns_config:latest(), N, LocalAddr)},
+                     ns_config:latest(), N, LocalAddr, AFamily)},
         {ports, {[{direct,
                    service_ports:get_port(
                      memcached_port, ns_config:latest(), N)}]}}]} ||

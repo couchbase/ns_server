@@ -491,8 +491,10 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
                                               ClientTStamp, Window),
 
     Config = ns_config:get(),
+    AFamily = cb_dist:address_family(),
     Hostnames =
-        [menelaus_web_node:build_node_hostname(Config, N, LocalAddr) ||
+        [menelaus_web_node:build_node_hostname(Config, N, LocalAddr,
+                                               AFamily) ||
             N <- Nodes],
 
     Timestamps = [TS || {TS, _} <- hd(NodesSamples)],

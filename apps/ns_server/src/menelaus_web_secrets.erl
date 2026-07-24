@@ -444,7 +444,8 @@ format_test_results_to_json(#{status := Status,
             _ -> [{<<"datetime">>, format_datetime(UpdateDateTime)}]
         end,
     BuildHostname = menelaus_web_node:build_node_hostname(
-                      ns_config:latest(), _, misc:localhost()),
+                      ns_config:latest(), _, misc:localhost(),
+                      cb_dist:address_family()),
     Description =
         case Status of
             {error, Reason} ->
@@ -1301,7 +1302,8 @@ format_error({unsafe, Reason}) ->
     "Operation is unsafe. " ++ format_error(Reason);
 format_error({deks_sync_failed, Errors}) ->
     BuildHostname = menelaus_web_node:build_node_hostname(
-                      ns_config:latest(), _, misc:localhost()),
+                      ns_config:latest(), _, misc:localhost(),
+                      cb_dist:address_family()),
     "Failed to synchronize data encryption keys on " ++
     lists:join(", ", [BuildHostname(Node) || {Node, _} <- Errors]);
 format_error(deks_issues) ->
@@ -1338,7 +1340,8 @@ format_error({test_failed_for_some_nodes, Errors}) ->
                                end, Errors),
     [{_, Reason} | _] = SortedErrors,
     BuildHostname = menelaus_web_node:build_node_hostname(
-                      ns_config:latest(), _, misc:localhost()),
+                      ns_config:latest(), _, misc:localhost(),
+                      cb_dist:address_family()),
     "Encryption key test failed on " ++
     lists:join(", ", [BuildHostname(Node) || {Node, _} <- Errors]) ++
     case length(lists:usort([R || {_, R} <- SortedErrors])) > 1 of

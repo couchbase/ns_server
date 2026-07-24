@@ -28,6 +28,7 @@
          build_nodes_info_fun/2,
          build_nodes_info/1,
          build_node_hostname/3,
+         build_node_hostname/4,
          handle_throttle_capacity_get/1,
          handle_bucket_node_list/2,
          handle_bucket_node_info/3,
@@ -387,6 +388,7 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
     NodeStatuses = ns_doctor:get_nodes(),
 
     BucketsAll = ns_bucket:get_buckets(Snapshot),
+    NetAFamily = cb_dist:address_family(),
 
     BucketPlacerInfoBuilder =
         case WithBucket of
@@ -454,7 +456,7 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
                                             BucketsAll)},
                  {otpNode, WantENode},
                  build_node_info(Config, Snapshot, WantENode, InfoNode,
-                                 LocalAddr),
+                                 LocalAddr, NetAFamily),
                  OtpCookie,
                  case Bucket of
                      undefined ->
@@ -620,10 +622,13 @@ build_extra_node_info(Config, Node, InfoNode) ->
      {mcdMemoryAllocated, erlang:trunc(NodesBucketMemoryAllocated)}].
 
 build_node_hostname(Config, Node, LocalAddr) ->
-    build_node_hostname(Config, Node, LocalAddr, []).
+    build_node_hostname(Config, Node, LocalAddr, misc:get_net_family()).
 
-build_node_hostname(Config, Node, LocalAddr, Options) ->
-    H = misc:extract_node_address(Node),
+build_node_hostname(Config, Node, LocalAddr, Afamily) ->
+    build_node_hostname(Config, Node, LocalAddr, Afamily, []).
+
+build_node_hostname(Config, Node, LocalAddr, AFamily, Options) ->
+    H = misc:extract_node_address(Node, AFamily),
     Host = case misc:is_localhost(H) of
                true  -> LocalAddr;
                false -> H
@@ -665,7 +670,8 @@ construct_ext_json(Hostname, Ports) ->
     [{external, {[{hostname, list_to_binary(Hostname)},
                   {ports, {Ports}}]}}].
 
-build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
+build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr,
+                NetAFamily) ->
     Versions = proplists:get_value(version, InfoNode, []),
     Version = proplists:get_value(ns_server, Versions, "unknown"),
     OS = proplists:get_value(system_arch, InfoNode, "unknown"),
@@ -674,7 +680,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
                                                   undefined),
     ConfiguredHostname =
       misc:join_host_port(
-        misc:extract_node_address(WantENode),
+        misc:extract_node_address(WantENode, NetAFamily),
         service_ports:get_port(rest_port, Config, WantENode)),
 
     PortKeys =
@@ -718,7 +724,8 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
     ServerGroup =
         ns_cluster_membership:get_node_server_group(WantENode, Snapshot),
     ProdCompatVersion = cluster_compat_mode:current_prod_compat_version(),
-    RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr)},
+    RV = [{hostname, build_node_hostname(Config, WantENode, LocalAddr,
+                                         NetAFamily)},
           {nodeUUID, NodeUUID},
           {clusterCompatibility,
            cluster_compat_mode:effective_cluster_compat_version()},
@@ -757,9 +764,10 @@ get_hostnames(Req, NodeStatus, Options) when is_atom(NodeStatus) ->
 get_hostnames(Req, Nodes, Options) when is_list(Nodes) ->
     Config = ns_config:get(),
     LocalAddr = local_addr(Req),
+    AFamily = cb_dist:address_family(),
     lists:filtermap(
       fun (N) ->
-          try build_node_hostname(Config, N, LocalAddr, Options) of
+          try build_node_hostname(Config, N, LocalAddr, AFamily, Options) of
               NodeHostname -> {true, {N, NodeHostname}}
           catch
               %% Might happen when the node is CE and we are searching by
@@ -864,6 +872,7 @@ handle_node_statuses(Req) ->
          local_addr = LocalAddr,
          snapshot = Snapshot} = get_context(Req, false, stable),
     BucketsAll = ns_bucket:get_buckets(Snapshot),
+    AFamily = cb_dist:address_family(),
     FreshStatuses = ns_heart:grab_fresh_failover_safeness_infos(
                       ns_bucket:get_bucket_names(Snapshot)),
     NodeStatuses =
@@ -891,7 +900,7 @@ handle_node_statuses(Req) ->
                                 {replication, average_failover_safenesses(
                                                 N, FreshStatuses, BucketsAll)}]}
                       end,
-                  {build_node_hostname(Config, N, LocalAddr), V}
+                  {build_node_hostname(Config, N, LocalAddr, AFamily), V}
           end, ns_node_disco:nodes_wanted(Snapshot)),
     reply_json(Req, {NodeStatuses}, 200).
 

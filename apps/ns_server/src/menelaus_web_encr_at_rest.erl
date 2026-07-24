@@ -843,7 +843,8 @@ get_master_password_warning() ->
 build_master_password_warning(UnsetNodes) ->
     Cfg = ns_config:latest(),
     BuildHostname =
-        menelaus_web_node:build_node_hostname(Cfg, _, misc:localhost()),
+        menelaus_web_node:build_node_hostname(Cfg, _, misc:localhost(),
+                                              cb_dist:address_family()),
     SortedNodes = lists:usort(UnsetNodes),
     NodesStr = iolist_to_binary(
                  lists:join(", ", [BuildHostname(N) || N <- SortedNodes])),

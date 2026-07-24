@@ -240,7 +240,8 @@ jsonify_cert_props(Props) ->
            ({NodesKey, Nodes}) when NodesKey == nodes;
                                     NodesKey == client_cert_nodes ->
                BuildHostname = menelaus_web_node:build_node_hostname(
-                                 ns_config:latest(), _, misc:localhost()),
+                                 ns_config:latest(), _, misc:localhost(),
+                                 cb_dist:address_family()),
                {true, {NodesKey, [BuildHostname(N) || N <- Nodes]}};
            ({_, _}) ->
                false
@@ -540,12 +541,13 @@ handle_get_certificates(CertType, Req)
     when CertType =:= node_cert orelse CertType =:= client_cert ->
     Nodes = ns_node_disco:nodes_wanted(),
     Localhost = misc:localhost(),
+    AFamily = cb_dist:address_family(),
     AllWarnings = ns_server_cert:get_warnings(),
     NodeSpecificCerts =
         lists:filtermap(
           fun (N) ->
               Hostname = menelaus_web_node:build_node_hostname(
-                           ns_config:latest(), N, Localhost),
+                           ns_config:latest(), N, Localhost, AFamily),
               case prepare_cert_info(CertType, N, AllWarnings) of
                   {ok, {JsonObjProplist}} ->
                       {true, {[{node, Hostname} | JsonObjProplist]}};

@@ -119,8 +119,8 @@ submit_full_reset() ->
               gen_event:notify(bucket_info_cache_invalidations, '*')
       end).
 
-maybe_build_ext_hostname(Node) ->
-    H = misc:extract_node_address(Node),
+maybe_build_ext_hostname(Node, AFamily) ->
+    H = misc:extract_node_address(Node, AFamily),
     case misc:is_localhost(H) of
         true  -> [];
         false -> [{hostname, list_to_binary(H)}]
@@ -130,12 +130,12 @@ alternate_addresses_json(Node, Config, Snapshot, WantedPorts) ->
     menelaus_web_node:alternate_addresses_json(Node, Config, Snapshot,
                                                WantedPorts).
 
-build_nodes_ext([] = _Nodes, _Config, _Snapshot, NodesExtAcc) ->
+build_nodes_ext([] = _Nodes, _Config, _Snapshot, _AFamily, NodesExtAcc) ->
     lists:reverse(NodesExtAcc);
-build_nodes_ext([Node | RestNodes], Config, Snapshot, NodesExtAcc) ->
+build_nodes_ext([Node | RestNodes], Config, Snapshot, AFamily, NodesExtAcc) ->
     Services =
         [rest | ns_cluster_membership:node_active_services(Snapshot, Node)],
-    NI1 = maybe_build_ext_hostname(Node),
+    NI1 = maybe_build_ext_hostname(Node, AFamily),
     NI2 = case Node =:= node() of
               true ->
                   [{'thisNode', true} | NI1];
@@ -168,7 +168,8 @@ build_nodes_ext([Node | RestNodes], Config, Snapshot, NodesExtAcc) ->
                    list_to_binary("/" ++ ?APP_TELEMETRY_PATH)}
                  | NI6]}
         end,
-    build_nodes_ext(RestNodes, Config, Snapshot, [NodeInfo | NodesExtAcc]).
+    build_nodes_ext(RestNodes, Config, Snapshot, AFamily,
+                    [NodeInfo | NodesExtAcc]).
 
 do_compute_bucket_info(Bucket, Config) ->
     {Snapshot, Rev} = chronicle_compat:get_snapshot_with_revision(
@@ -185,9 +186,11 @@ do_compute_bucket_info(Bucket, Config) ->
             not_present
     end.
 
-node_bucket_info(Node, Config, Snapshot, Bucket, BucketUUID, BucketConfig) ->
+node_bucket_info(Node, Config, Snapshot, Bucket, BucketUUID, BucketConfig,
+                 AFamily) ->
     HostName = menelaus_web_node:build_node_hostname(Config, Node,
-                                                     ?LOCALHOST_MARKER_STRING),
+                                                     ?LOCALHOST_MARKER_STRING,
+                                                     AFamily),
     Ports = {[{direct, service_ports:get_port(memcached_port, Config, Node)}]},
     WantedPorts = [rest_port, memcached_port],
 
@@ -239,11 +242,15 @@ build_name_and_locator(Id, BucketConfig) ->
      {nodeLocator, ns_bucket:node_locator(BucketConfig)}].
 
 build_vbucket_map(LocalAddr, BucketConfig) ->
+    build_vbucket_map(LocalAddr, BucketConfig, cb_dist:address_family()).
+
+build_vbucket_map(LocalAddr, BucketConfig, AFamily) ->
     case ns_bucket:bucket_type(BucketConfig) of
         memcached ->
             [];
         membase ->
-            do_build_vbucket_map(LocalAddr, BucketConfig, ns_config:latest())
+            do_build_vbucket_map(LocalAddr, BucketConfig, ns_config:latest(),
+                                 AFamily)
     end.
 
 equal_len_chains([]) ->
@@ -252,7 +259,7 @@ equal_len_chains(Map) ->
     MaxChainLen = length(misc:min_by(?cut(length(_1) > length(_2)), Map)),
     [misc:align_list(Chain, MaxChainLen, undefined) || Chain <- Map].
 
-do_build_vbucket_map(LocalAddr, BucketConfig, Config) ->
+do_build_vbucket_map(LocalAddr, BucketConfig, Config, AFamily) ->
     NumReplicas = ns_bucket:num_replicas(BucketConfig),
     EMap = equal_len_chains(proplists:get_value(map, BucketConfig, [])),
     BucketNodes = ns_bucket:get_servers(BucketConfig),
@@ -262,7 +269,7 @@ do_build_vbucket_map(LocalAddr, BucketConfig, Config) ->
                 fun (ENode) ->
                         Port = service_ports:get_port(memcached_port, Config,
                                                       ENode),
-                        H = misc:extract_node_address(ENode),
+                        H = misc:extract_node_address(ENode, AFamily),
                         Host = case misc:is_localhost(H) of
                                    true  -> LocalAddr;
                                    false -> H
@@ -396,18 +403,20 @@ compute_bucket_info_with_config(Id, Config, Snapshot, BucketConfig,
     %% to track changes to node services and set of active nodes.
     Rev = compute_global_rev(Config, ChronicleRev),
     RevEpoch = get_rev_epoch(Snapshot),
+    AFamily = cb_dist:address_family(),
     Json =
         {lists:flatten(
            [{rev, Rev},
             {revEpoch, RevEpoch},
             build_short_bucket_info(Id, BucketConfig, Snapshot),
             build_ddocs(Id, BucketConfig),
-            build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig),
+            build_vbucket_map(?LOCALHOST_MARKER_STRING, BucketConfig, AFamily),
             {nodes,
              [node_bucket_info(Node, Config, Snapshot,
-                               Id, BucketUUID, BucketConfig)
+                               Id, BucketUUID, BucketConfig, AFamily)
               || Node <- Servers]},
-            {nodesExt, build_nodes_ext(AllServers, Config, Snapshot, [])},
+            {nodesExt, build_nodes_ext(AllServers, Config, Snapshot, AFamily,
+                                       [])},
             menelaus_web_buckets:build_hibernation_state(BucketConfig),
             build_cluster_capabilities()])},
     {ok, Rev, RevEpoch, ejson:encode(Json), BucketConfig}.
@@ -517,8 +526,9 @@ do_build_node_services() ->
            chronicle_compat:txn_get_many([counters], _)],
           #{ns_config => Config}),
 
+    AFamily = cb_dist:address_family(),
     NEIs = build_nodes_ext(ns_cluster_membership:active_nodes(Snapshot),
-                           Config, Snapshot, []),
+                           Config, Snapshot, AFamily, []),
     NodesExtHash = integer_to_binary(erlang:phash2(NEIs)),
     Caps = build_cluster_capabilities(),
     Rev = compute_global_rev(Config, ChronicleRev),
