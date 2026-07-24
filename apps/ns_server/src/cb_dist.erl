@@ -280,8 +280,8 @@ keep_secrets() ->
     conf(keep_secrets, get_config()).
 
 get_config() ->
-    try status() of
-        Status -> proplists:get_value(config, Status, [])
+    try gen_server:call(?MODULE, get_config) of
+        Config -> Config
     catch
         exit:{noproc, {gen_server, call, _}} ->
             read_config(config_path(), true)
@@ -407,6 +407,9 @@ handle_call(status, _From, #s{listeners = Listeners,
              {acceptors, Acceptors},
              {connections, Connections},
              {client_pkey_updated, ClientPKeyUpdated}], State};
+
+handle_call(get_config, _From, #s{config = Config} = State) ->
+    {reply, Config, State};
 
 handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
     case store_config(import_props_to_config(Props, Cfg)) of
