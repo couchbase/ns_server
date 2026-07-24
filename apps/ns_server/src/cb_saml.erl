@@ -121,7 +121,8 @@ format_error({validate_assertion, Reason}) ->
                 "assertion replay protection";
             {dupe_check_bad_nodes, Nodes} ->
                 BuildHostname = menelaus_web_node:build_node_hostname(
-                                 ns_config:latest(), _, misc:localhost()),
+                                 ns_config:latest(), _, misc:localhost(),
+                                 cb_dist:address_family()),
                 NodesStr = lists:join(", ", [BuildHostname(N) || N <- Nodes]),
                 io_lib:format("assertion replay protection check failed at "
                               "some nodes (~s), you can retry", [NodesStr] );

@@ -381,6 +381,7 @@ export_secret(#{type := DataType} = Props) ->
                   {format_kmip_key_data(D)}
           end, Props))).
 
+
 format_cb_managed_key_data(Props) ->
     ActiveKeyId = maps:get(active_key_id, Props),
     maps:to_list(
@@ -865,7 +866,8 @@ format_error({test_failed_for_some_nodes, Errors}) ->
                                end, Errors),
     [{_, Reason} | _] = SortedErrors,
     BuildHostname = menelaus_web_node:build_node_hostname(
-                      ns_config:latest(), _, misc:localhost()),
+                      ns_config:latest(), _, misc:localhost(),
+                      cb_dist:address_family()),
     "Encryption key test failed on " ++
     lists:join(", ", [BuildHostname(Node) || {Node, _} <- Errors]) ++
     case length(lists:usort([R || {_, R} <- SortedErrors])) > 1 of
