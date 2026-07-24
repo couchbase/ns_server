@@ -301,8 +301,10 @@ get_crl_files_metadata() ->
 
 -spec get_crl_files_metadata(local | quorum) -> #{binary() => map()}.
 get_crl_files_metadata(RC) ->
-    chronicle_compat:get(?CRL_FILES_KEY, #{default => #{},
-                                           read_consistency => RC}).
+    case chronicle_kv:get(kv, ?CRL_FILES_KEY, #{read_consistency => RC}) of
+        {ok, {Res, _}} -> Res;
+        {error, not_found} -> #{}
+    end.
 
 %% Called via RPC from the uploading node after it has written chronicle.
 %% Syncs chronicle events and triggers reconciliation on this node.
