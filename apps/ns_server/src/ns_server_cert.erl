@@ -632,9 +632,11 @@ get_subject_fields_by_type(Cert, Type) ->
             Vals
     end.
 
--spec get_sub_alt_names_by_type(binary(), term()) -> list() | {error, not_found}.
-get_sub_alt_names_by_type(Cert, Type) ->
-    OtpCert = public_key:pkix_decode_cert(Cert, otp),
+-spec get_sub_alt_names_by_type(binary() | #'OTPCertificate'{}, term()) ->
+          list() | {error, not_found}.
+get_sub_alt_names_by_type(Cert, Type) when is_binary(Cert) ->
+    get_sub_alt_names_by_type(public_key:pkix_decode_cert(Cert, otp), Type);
+get_sub_alt_names_by_type(#'OTPCertificate'{} = OtpCert, Type) ->
     TBSCert = OtpCert#'OTPCertificate'.tbsCertificate,
     TBSExts = TBSCert#'OTPTBSCertificate'.extensions,
     Exts = ssl_certificate:extensions_list(TBSExts),
@@ -752,6 +754,9 @@ generate_crl_for_ca(CAPem, KeyPem) ->
 
 -record(verify_state, {last_subject, root_cert, chain_len}).
 
+-spec get_subject(binary() | #'OTPCertificate'{}) -> string().
+get_subject(Cert) when is_binary(Cert) ->
+    get_subject(public_key:pkix_decode_cert(Cert, otp));
 get_subject(Cert) ->
     TBSCert = Cert#'OTPCertificate'.tbsCertificate,
     format_name(TBSCert#'OTPTBSCertificate'.subject).
@@ -1591,6 +1596,11 @@ get_cert_info(client_cert, Node) ->
 cert_expiration_warning_days() ->
     ns_config:read_key_fast({cert, expiration_warning_days}, 30).
 
+%% Return {ok, "@" ++ Name} when Cert is an internal client certificate, that is
+%% when it carries a SAN rfc822Name of the form <Name>@internal.couchbase.com
+%% (see generate_certs(client_cert, ...)); {error, not_found} otherwise.
+-spec extract_internal_client_cert_user(binary() | #'OTPCertificate'{}) ->
+          {ok, string()} | {error, not_found}.
 extract_internal_client_cert_user(Cert) ->
     case get_sub_alt_names_by_type(Cert, rfc822Name) of
         {error, not_found} ->
