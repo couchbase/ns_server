@@ -33,7 +33,9 @@ class CRLTests(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(edition='Enterprise')
+        # Using 1 node to prevent problems with cluster when internal client
+        # cert is revoked
+        return testlib.ClusterRequirements(edition='Enterprise', num_nodes=1)
 
     def setup(self):
         set_allow_expired_crls(self.cluster, True)
@@ -253,6 +255,13 @@ class CRLTests(testlib.BaseTestSet):
         checked like any other cert and comes out 'good' (its serial is not on
         the revocation list).  This works with NO uploaded / poll-directory
         CRLs at all — purely the generated CRL — which is what memcached needs.
+
+        The policy is enabled for nodeToNode only: internal client certs are
+        node-to-node traffic and are checked under that scope whichever
+        listener they arrive on (see cb_crl:effective_scope/2), so leaving
+        clientAuth Disabled also proves the scope comes from the certificate.
+        The crl_status_checks counter is used to prove the cert really was
+        checked, rather than let through because no policy applied to it.
         """
         node = self.cluster.connected_nodes[0]
 
@@ -266,8 +275,9 @@ class CRLTests(testlib.BaseTestSet):
             # Enable CRL with "Require" policy and NO directory/uploads: the
             # only CRL available is the auto-generated OOTB CRL.
             set_crl_settings(self.cluster,
-                             policy_per_scope={'clientAuth': 'Require',
-                                               'nodeToNode': 'Disabled'})
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Require'})
+            _wait_crl_policy(node, 'node_to_node', 'require')
 
             # The auto-generated OOTB CRL must be present and active, and it
             # must be reported with the 'generated' source.
@@ -285,6 +295,7 @@ class CRLTests(testlib.BaseTestSet):
 
             # Read the OOTB internal client cert from disk and connect.
             with ootb_internal_client_cert_file(node) as cert_path:
+                checks0, _ = _crl_cache_counters(node)
                 r = try_client_auth(node, cert_path)
                 # Should succeed - validated as 'good' against the OOTB CRL.
                 testlib.assert_eq(r.status_code, 200,
@@ -293,6 +304,13 @@ class CRLTests(testlib.BaseTestSet):
                 assert user_id == '@internal', \
                     f'Expected @internal user, got {user_id}'
                 print(f"OOTB internal cert auth succeeded: user={user_id}")
+
+                # The handshake must have run a CRL check under the nodeToNode
+                # policy; without the scope being taken from the cert nothing
+                # would have been checked at all (clientAuth is Disabled).
+                checks1, _ = _crl_cache_counters(node)
+                assert checks1 > checks0, \
+                    f'expected a CRL check (checks {checks0}->{checks1})'
 
         finally:
             testlib.toggle_client_cert_auth(node, enabled=False)
@@ -441,17 +459,28 @@ class CRLTests(testlib.BaseTestSet):
         """Test that custom internal client certs are subject to CRL checks.
 
         A custom (uploaded) internal client cert is NOT signed by the cluster's
-        generated CA, so CRL checks apply. First verify it works when not
-        revoked, then revoke it and verify the connection is rejected.
+        generated CA, so CRL checks apply.  The cert is issued by an
+        intermediate CA, so the whole chain is exercised: the leaf is revoked by
+        the intermediate CA, the intermediate by the root CA.
+
+        The policy is enabled for nodeToNode only: internal client certs are
+        node-to-node traffic and are checked under that scope even though they
+        arrive on a listener that verifies under clientAuth (see
+        cb_crl:effective_scope/2), so leaving clientAuth Disabled also proves
+        the scope is taken from the certificate -- as does the last step, where
+        a revoked intermediate is ignored because nodeToNode is Disabled.
         """
         node = self.cluster.connected_nodes[0]
         crl_dir = tempfile.mkdtemp()
         ca_ids = []
+        pps_n2n = {'clientAuth': 'Disabled', 'nodeToNode': 'Require'}
 
         try:
-            # Generate our own CA for the custom internal client cert
+            # PKI: Root CA -> Intermediate CA -> custom internal client cert.
             root_ca_pem, root_ca_key_pem = generate_root_ca()
-            ca_ids = load_multiple_cas(node, [root_ca_pem])
+            inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Custom Internal Inter CA')
+            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca_pem])
 
             # Enable client cert auth
             testlib.toggle_client_cert_auth(
@@ -461,26 +490,30 @@ class CRLTests(testlib.BaseTestSet):
 
             # Generate a custom internal client cert with the special SAN email
             custom_cert_pem, custom_key_pem = \
-                generate_and_load_internal_client_cert(node, root_ca_pem,
-                                                       root_ca_key_pem,
+                generate_and_load_internal_client_cert(node, inter_ca_pem,
+                                                       inter_ca_key_pem,
                                                        'internal')
 
-            # Create an empty CRL (no revocations yet)
-            crl_filepath = os.path.join(crl_dir, 'crl.pem')
-            generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem, [])
+            # Two CRLs, revoking nothing yet: the leaf's, issued by the
+            # intermediate CA, and the intermediate's, issued by the root CA.
+            leaf_crl = os.path.join(crl_dir, 'leaf_crl.pem')
+            inter_crl = os.path.join(crl_dir, 'inter_crl.pem')
+            generate_crl_to_file(leaf_crl, inter_ca_pem, inter_ca_key_pem, [])
+            generate_crl_to_file(inter_crl, root_ca_pem, root_ca_key_pem, [])
 
             # Enable CRL with "Require" policy
-            set_crl_settings(self.cluster,
-                             policy_per_scope={'clientAuth': 'Require',
-                                               'nodeToNode': 'Disabled'},
+            set_crl_settings(self.cluster, policy_per_scope=pps_n2n,
                              poll_interval_ms=5000,
+                             check_intermediate_certs=True,
                              directory=crl_dir)
+            _wait_crl_policy(node, 'node_to_node', 'require')
 
             assert_crl_status(self.cluster, expected_status='active')
 
             # Step 1: Verify custom internal cert works when NOT revoked
-            with client_cert_file(custom_cert_pem, root_ca_pem,
+            with client_cert_file(custom_cert_pem, inter_ca_pem,
                                   custom_key_pem) as cert_path:
+                checks0, _ = _crl_cache_counters(node)
                 r = try_client_auth(node, cert_path)
                 testlib.assert_eq(r.status_code, 200,
                                   name='custom internal cert before revocation')
@@ -489,8 +522,15 @@ class CRLTests(testlib.BaseTestSet):
                     f'Expected @internal user, got {user_id}'
                 print(f"Custom internal cert auth succeeded: user={user_id}")
 
+                # The chain really was checked, under the nodeToNode policy:
+                # with clientAuth Disabled nothing would have been checked if
+                # the scope were taken from the listener.
+                checks1, _ = _crl_cache_counters(node)
+                assert checks1 > checks0 + 1, \
+                    f'expected a CRL check (checks {checks0}->{checks1})'
+
                 # Step 2: Revoke the custom cert and verify rejection
-                generate_crl_to_file(crl_filepath, root_ca_pem, root_ca_key_pem,
+                generate_crl_to_file(leaf_crl, inter_ca_pem, inter_ca_key_pem,
                                      [custom_cert_pem])
                 assert_reload_crl(node, expected_status='active')
 
@@ -499,6 +539,44 @@ class CRLTests(testlib.BaseTestSet):
                 print("Custom internal cert correctly rejected after "
                       "revocation")
 
+                # Step 3: leaf valid again, revoke the intermediate CA only.
+                # The whole chain is checked, so the connection is still
+                # rejected.
+                generate_crl_to_file(leaf_crl, inter_ca_pem, inter_ca_key_pem,
+                                     [])
+                assert_reload_crl(node, expected_status='active')
+                r = try_client_auth(node, cert_path)
+                testlib.assert_eq(r.status_code, 200,
+                                  name='custom internal cert works again')
+                generate_crl_to_file(inter_crl, root_ca_pem, root_ca_key_pem,
+                                     [inter_ca_pem])
+                assert_reload_crl(node, expected_status='active')
+                assert_cert_rejected(lambda: try_client_auth(node, cert_path))
+                print("Rejected with a revoked intermediate CA")
+
+                # Step 4: with checkIntermediateCerts disabled only the leaf is
+                # checked, and it is not revoked.
+                set_crl_settings(self.cluster, policy_per_scope=pps_n2n,
+                                 check_intermediate_certs=False)
+                r = try_client_auth(node, cert_path)
+                testlib.assert_eq(r.status_code, 200,
+                                  name='allowed without intermediate check')
+                print("Allowed with checkIntermediateCerts=false")
+
+                # Step 5: intermediate checking on again, but the nodeToNode
+                # policy Disabled.  The chain is internal, so clientAuth does
+                # not govern it and the revoked intermediate is not looked at.
+                set_crl_settings(self.cluster,
+                                 policy_per_scope={'clientAuth': 'Require',
+                                                   'nodeToNode': 'Disabled'},
+                                 check_intermediate_certs=True)
+                _wait_crl_policy(node, 'node_to_node', 'disabled')
+                r = try_client_auth(node, cert_path)
+                testlib.assert_eq(r.status_code, 200,
+                                  name='allowed with nodeToNode disabled')
+                print("Allowed with nodeToNode=Disabled: the whole chain "
+                      "follows the leaf's scope")
+
         finally:
             testlib.toggle_client_cert_auth(node, enabled=False)
             for ca_id in ca_ids:
@@ -506,6 +584,7 @@ class CRLTests(testlib.BaseTestSet):
             set_crl_settings(self.cluster,
                              policy_per_scope={'clientAuth': 'Disabled',
                                                'nodeToNode': 'Disabled'},
+                             check_intermediate_certs=False,
                              directory='')
             # Regenerate the default internal client cert
             testlib.post_succ(node, '/controller/regenerateCertificate',

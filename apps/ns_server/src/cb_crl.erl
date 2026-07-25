@@ -99,7 +99,8 @@ verify_chain_on_ns_server(Chain, CRLScope) ->
             verdict_expiration_datetime()}].
 verify_chain(Chain, CRLScope) ->
     %% Change scope to node_to_node if this is an internal cert:
-    case wait_for_crl_policy(CRLScope, 5000) of
+    EffectiveScope = effective_scope(Chain, CRLScope),
+    case wait_for_crl_policy(EffectiveScope, 5000) of
         {ok, disabled} ->
             [{valid, undefined} || _ <- Chain];
         {ok, Policy} ->
@@ -120,6 +121,25 @@ verify_chain(Chain, CRLScope) ->
                        "shortly. This is expected only during startup. "),
             [{crl_unavailable, undefined} || _ <- Chain]
     end.
+
+%% The scope a cert is really governed by. Internal client certs (SAN rfc822Name
+%% <name>@internal.couchbase.com, see ns_server_cert:generate_certs/3) carry the
+%% cluster's own node-to-node traffic, yet they are presented to listeners that
+%% verify under the client_auth scope, so the nodeToNode policy is the one that
+%% must govern them.
+-spec effective_scope([#'OTPCertificate'{} | binary()], crl_scope()) ->
+          crl_scope().
+effective_scope(Chain, client_auth) ->
+    Leaf = lists:last(Chain),
+    try ns_server_cert:extract_internal_client_cert_user(Leaf) of
+        {ok, _User} -> node_to_node;
+        {error, not_found} -> client_auth
+    catch _:_ ->
+            %% Undecodable leaf; check_chain reports it as cert_decode_error.
+            client_auth
+    end;
+effective_scope(_Chain, node_to_node) ->
+    node_to_node.
 
 check_chain([LeafCert], Policy, _CheckIntCerts, Acc) ->
     Res = crl_check_safe(LeafCert, Policy),
