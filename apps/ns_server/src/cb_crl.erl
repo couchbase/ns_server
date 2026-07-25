@@ -12,14 +12,21 @@
 -include("ns_common.hrl").
 -include_lib("public_key/include/public_key.hrl").
 
--export([verify_fun/1, verify/4, verify_local_with_expiry/4, crl_check_safe/2,
+-export([verify_fun/1, verify/4, verify_chain/2, crl_check_safe/2,
          crl_check/1]).
 
 -type pkix_crls_validate_verdict() :: valid | {bad_cert, Reason :: term()}.
+-type verdict_expiration_datetime() :: calendar:datetime() | undefined.
+
+%% Note that the verify_fun_verdict type does not include
+%% {fail, cert_decode_error} because verify_fun is always called with
+%% already decoded certs
 -type verify_fun_verdict(State) :: {valid, State} |
                                    {fail, {bad_cert, term()} | internal_error |
                                           crl_unavailable} |
                                    {unknown, State}.
+
+-record(verify_state, {certs = [] :: [#'OTPCertificate'{}]}).
 
 -export_type([pkix_crls_validate_verdict/0]).
 
@@ -31,71 +38,78 @@ verify_fun(CRLScope) ->
         verify(Cert, Event, CRLScope, State)
     end.
 
-%% verify_fun entry point.  Called by the SSL layer for every certificate event
-%% during the TLS handshake.
+%% verify_fun implementation.  Called by the SSL layer for every certificate
+%% event during the TLS handshake.
 %%
+%% The SSL layer validates the chain root -> leaf, so the certs are collected in
+%% the verify_fun state and the whole chain is checked at the valid_peer event,
+%% where the scope it belongs to is known.  Failing every bad_cert event is what
+%% makes that safe: the routes that skip valid_peer (unknown_ca, invalid_issuer,
+%% selfsigned_peer, max_path_length_reached) all arrive as bad_cert first.
+-spec verify(OtpCert  :: #'OTPCertificate'{},
+             Event    :: term(),
+             CRLScope :: crl_scope(),
+             State) -> verify_fun_verdict(State) when State :: #verify_state{} |
+                                                               undefined.
+verify(OtpCert, valid, _CRLScope, State) ->
+    {valid, add_cert(OtpCert, State)};
+verify(OtpCert, valid_peer, CRLScope, State0) ->
+    #verify_state{certs = ChainReversed} = add_cert(OtpCert, State0),
+    %% Chain: Leaf cert is the last element
+    Chain = lists:reverse(ChainReversed),
+    Results = verify_chain_on_ns_server(Chain, CRLScope),
+    case [R || {R, _Expiry} <- Results, R =/= valid] of
+        [] -> {valid, undefined};
+        [Reason | _] -> {fail, Reason}
+    end;
+verify(_OtpCert, {bad_cert, _} = Reason, _CRLScope, _State) ->
+    %% Non-CRL cert failure (expired, bad signature, etc.):
+    %% respect the SSL layer's verdict.
+    {fail, Reason};
+verify(_OtpCert, {extension, _}, _CRLScope, State) ->
+    {unknown, State}.
+
 %% The cb_crl_cache ETS table and ns_server_cert state live only on the
 %% ns_server node, but this callback runs on whichever node terminates the TLS
 %% connection — including the ns_couchdb node (capi SSL service).  So when
-%% invoked on the couchdb node, run the whole check on ns_server via RPC;
-%% everything in verify_local/4 (and below) can then assume it is running on the
-%% ns_server node.
--spec verify(OtpCert  :: #'OTPCertificate'{},
-                 Event    :: term(),
-                 CRLScope :: crl_scope(),
-                 State) -> verify_fun_verdict(State) when State :: term().
-verify(OtpCert, Event, CRLScope, State) ->
+%% invoked there, check the chain on ns_server via RPC; verify_chain/2
+%% (and below) can then assume it is running on the ns_server node.
+verify_chain_on_ns_server(Chain, CRLScope) ->
     case ns_node_disco:couchdb_node() == node() of
         true ->
-            case rpc:call(ns_node_disco:ns_server_node(), ?MODULE, verify,
-                          [OtpCert, Event, CRLScope, State]) of
-                {badrpc, _} -> {fail, crl_unavailable}; %% fail closed
-                Result      -> Result
+            case rpc:call(ns_node_disco:ns_server_node(), ?MODULE, verify_chain,
+                          [Chain, CRLScope]) of
+                {badrpc, _} -> %% fail closed
+                    [{crl_unavailable, undefined} || _ <- Chain];
+                Results ->
+                    Results
             end;
         false ->
-            verify_local(OtpCert, Event, CRLScope, State)
+            verify_chain(Chain, CRLScope)
     end.
 
-%% verify_fun implementation.  Runs on the ns_server node (directly, or via the
-%% RPC in verify/4).
-%%
-%% CRL checking is performed for valid_peer (the leaf cert) and,
-%% when check_intermediate_certs is enabled in the CRL config, also
-%% for valid events (intermediate CA certs).  The same per-scope
-%% policy applies to both.
--spec verify_local(OtpCert  :: #'OTPCertificate'{},
-                   Event    :: term(),
-                   CRLScope :: crl_scope(),
-                   State) -> verify_fun_verdict(State) when State :: term().
-verify_local(OtpCert, Event, CRLScope, State) ->
-    {Result, _Expiry} = verify_local_with_expiry(OtpCert, Event, CRLScope,
-                                                 State),
-    Result.
-
-%% Like verify_local/4 but also returns the expiry of the computed status.
-%% Used by the /_cbauth/crlsValidate diagnostic endpoint so callers
-%% know how long to cache the result.
--spec verify_local_with_expiry(OtpCert  :: #'OTPCertificate'{},
-                               Event    :: term(),
-                               CRLScope :: crl_scope(),
-                               State) ->
-          {verify_fun_verdict(State), calendar:datetime() | undefined}
-            when State :: term().
-verify_local_with_expiry(OtpCert, valid_peer, CRLScope, State) ->
+%% Check a certificate chain, which must be ordered root -> leaf, under the CRL
+%% policy of the scope the chain belongs to.
+%% Returns one result per certificate, in the same order; each is the verdict
+%% plus the expiry of the computed status, telling the caller how long it may
+%% be cached.
+-spec verify_chain([#'OTPCertificate'{} | binary(), ...], crl_scope()) ->
+          [{pkix_crls_validate_verdict() | internal_error | crl_unavailable |
+            cert_decode_error,
+            verdict_expiration_datetime()}].
+verify_chain(Chain, CRLScope) ->
+    %% Change scope to node_to_node if this is an internal cert:
     case wait_for_crl_policy(CRLScope, 5000) of
         {ok, disabled} ->
-            {{valid, State}, undefined};
+            [{valid, undefined} || _ <- Chain];
         {ok, Policy} ->
-            %% OOTB (cluster-generated) certs are checked the same way as any
-            %% other cert: the cluster publishes an empty CRL issued by the OOTB
-            %% CA (see ns_server_cert / cb_crl_manager generated CRLs), so their
-            %% serial is simply not on a revocation list -> good.
-            case crl_check_safe(OtpCert, Policy) of
-                {valid, NextUpdate} -> {{valid, State}, NextUpdate};
-                {{bad_cert, _} = Reason, NextUpdate} ->
-                    {{fail, Reason}, NextUpdate};
-                {internal_error = Reason, NextUpdate} ->
-                    {{fail, Reason}, NextUpdate}
+            case wait_for_check_intermediate_certs(Chain, 5000) of
+                {ok, CheckCACerts} ->
+                    check_chain(Chain, Policy, CheckCACerts, []);
+                timeout ->
+                    ?log_debug("Rejecting: check_intermediate_certs flag not "
+                               "yet available; expected only during startup."),
+                    [{crl_unavailable, undefined} || _ <- Chain]
             end;
         timeout ->
             %% This can happen during startup when cb_crl_manager has
@@ -104,40 +118,36 @@ verify_local_with_expiry(OtpCert, valid_peer, CRLScope, State) ->
             ?log_debug("Rejecting the distribution connection as the CRL "
                        "policy is not available yet; the peer should retry "
                        "shortly. This is expected only during startup. "),
-            {{fail, crl_unavailable}, undefined}
-    end;
-verify_local_with_expiry(_OtpCert, {bad_cert, _} = Reason, _CRLScope, _State) ->
-    %% Non-CRL cert failure (expired, bad signature, etc.):
-    %% respect the SSL layer's verdict.
-    {{fail, Reason}, undefined};
-verify_local_with_expiry(_OtpCert, {extension, _}, _CRLScope, State) ->
-    {{unknown, State}, undefined};
-verify_local_with_expiry(OtpCert, valid, CRLScope, State) ->
-    case wait_for_check_intermediate_certs(5000) of
-        {ok, false} ->
-            {{valid, State}, undefined};
-        {ok, true} ->
-            case public_key:pkix_is_self_signed(OtpCert) of
-                true ->
-                    %% Root certs can't be revoked by definition
-                    {{valid, State}, undefined};
-                false ->
-                    %% The CRL check is pretty much the same as for the leaf
-                    %% cert, so just call verify/4 recursively with valid_peer
-                    verify_local_with_expiry(OtpCert, valid_peer, CRLScope,
-                                             State)
-            end;
-        timeout ->
-            ?log_debug("Rejecting: check_intermediate_certs flag not yet "
-                       "available; expected only during startup."),
-            {{fail, crl_unavailable}, undefined}
+            [{crl_unavailable, undefined} || _ <- Chain]
     end.
+
+check_chain([LeafCert], Policy, _CheckIntCerts, Acc) ->
+    Res = crl_check_safe(LeafCert, Policy),
+    lists:reverse([Res | Acc]);
+check_chain([_IntCert | Rest], Policy, false = CheckIntCerts, Acc) ->
+    check_chain(Rest, Policy, CheckIntCerts, [{valid, undefined} | Acc]);
+check_chain([IntCert | Rest], Policy, true = CheckIntCerts, Acc) ->
+    Res = try public_key:pkix_is_self_signed(IntCert) of
+              true -> {valid, undefined};
+              false -> crl_check_safe(IntCert, Policy)
+          catch
+              _:_ -> {cert_decode_error, undefined}
+          end,
+    check_chain(Rest, Policy, CheckIntCerts, [Res | Acc]).
+
+add_cert(OtpCert, #verify_state{certs = Certs} = State) ->
+    State#verify_state{certs = [OtpCert | Certs]};
+add_cert(OtpCert, _UserState) ->
+    #verify_state{certs = [OtpCert]}.
 
 wait_for_crl_policy(Scope, Remaining) ->
     wait_for_value(fun () -> cb_crl_cache:get_policy(Scope) end, Remaining).
 
-wait_for_check_intermediate_certs(Remaining) ->
-    wait_for_value(fun cb_crl_cache:get_check_intermediate_certs/0, Remaining).
+%% A chain without CA certs doesn't care about the flag.
+wait_for_check_intermediate_certs([_Leaf], _Timeout) ->
+    {ok, false};
+wait_for_check_intermediate_certs(_Chain, Timeout) ->
+    wait_for_value(fun cb_crl_cache:get_check_intermediate_certs/0, Timeout).
 
 %% Poll GetFun/0 every 100 ms until it returns a value other than 'unknown',
 %% or until Remaining milliseconds have elapsed.
@@ -160,20 +170,30 @@ wait_for_value(GetFun, Remaining) ->
 %% cached verdict serves all scopes.  Returns the verify_fun result together
 %% with the source nextUpdate (used for the diagnostic `expiration` field and
 %% cache freshness).
--spec crl_check_safe(#'OTPCertificate'{}, permissive | require) ->
-          {pkix_crls_validate_verdict() | internal_error,
-           calendar:datetime() | undefined}.
-crl_check_safe(OtpCert, Policy) when Policy == permissive; Policy == require ->
+-spec crl_check_safe(#'OTPCertificate'{} | binary(), permissive | require) ->
+          {pkix_crls_validate_verdict() | internal_error | cert_decode_error,
+           verdict_expiration_datetime()}.
+crl_check_safe(Cert, Policy) when Policy == permissive; Policy == require ->
     try
-        crl_check(OtpCert, Policy)
+        crl_check(Cert, Policy)
     catch
         C:E:ST ->
             ?log_error("CRL check exception ~p:~p~n~p", [C, E, ST]),
             {internal_error, undefined}
     end.
 
--spec crl_check(#'OTPCertificate'{}, permissive | require) ->
-          {pkix_crls_validate_verdict(), calendar:datetime() | undefined}.
+-spec crl_check(#'OTPCertificate'{} | binary(), permissive | require) ->
+          {pkix_crls_validate_verdict() | cert_decode_error,
+           verdict_expiration_datetime()}.
+crl_check(DerCert, Policy) when is_binary(DerCert) ->
+    try public_key:pkix_decode_cert(DerCert, otp) of
+        OtpCert -> crl_check(OtpCert, Policy)
+    catch
+        C:E:ST ->
+            ?log_error("(CRL) cert decode failed: ~p:~p~nStacktrace: ~p",
+                       [C, E, ST]),
+            {cert_decode_error, undefined}
+    end;
 crl_check(OtpCert, Policy) when Policy == permissive; Policy == require ->
     try
         {CacheStatus, {RawVerdict, NextUpdate}} =

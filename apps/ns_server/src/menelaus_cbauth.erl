@@ -398,6 +398,9 @@ build_node_info(N, User, Config, Snapshot) ->
 -define(EXTRACT_USER_ENDPOINT, "/_cbauth/extractUserFromCert").
 -define(CRLS_VALIDATE_ENDPOINT, "/_cbauth/crlsValidate").
 
+%% Reported in place of the subject of a cert we could not decode.
+-define(UNKNOWN_SUBJECT, <<"(failed to decode cert)">>).
+
 versions() ->
     [internal, ?VERSION_1].
 
@@ -644,17 +647,8 @@ handle_crls_validate_post(Req) ->
               DerCerts = proplists:get_value(certs, Params),
               ScopeStr = proplists:get_value(scope, Params),
               Scope = crl_scope_from_string(ScopeStr),
-              Statuses =
-                  case DerCerts of
-                      [] ->
-                          [];
-                      [Leaf | Rest] ->
-                          [verify_cert_crl(Leaf, Scope, valid_peer) |
-                           [verify_cert_crl(D, Scope, valid)
-                            || D <- Rest]]
-                  end,
               menelaus_util:reply_json(
-                Req, {[{statuses, Statuses}]})
+                Req, {[{statuses, verify_cert_crl_chain(DerCerts, Scope)}]})
       end,
       Req, json,
       [validator:required(certs, _),
@@ -666,7 +660,8 @@ handle_crls_validate_post(Req) ->
                  end
          end, _),
        validator:validate(
-          fun (L) ->
+          fun ([]) -> {error, "certs list is empty"};
+              (L) ->
               case length(L) > 100 of
                   true -> {error, "too many certificates in chain"};
                   false -> ok
@@ -677,49 +672,77 @@ handle_crls_validate_post(Req) ->
        validator:one_of(scope, ["clientAuth", "nodeToNode"], _),
        validator:unsupported(_)]).
 
-verify_cert_crl(Der, Scope, Event) ->
-    try public_key:pkix_decode_cert(Der, otp) of
-        OtpCert ->
-            Subject = list_to_binary(
-                        ns_server_cert:get_subject(OtpCert)),
-            {CRLResult, Expiry} =
-                cb_crl:verify_local_with_expiry(OtpCert, Event, Scope, []),
-            ExpiryStr = format_expiry(Expiry),
-            case CRLResult of
-                {valid, _} ->
-                    {[{status, <<"valid">>},
-                      {subject, Subject},
-                      {expiration, ExpiryStr}]};
-                {fail, {bad_cert, {revoked, Reason}}} ->
-                    {[{status, <<"revoked">>},
-                      {subject, Subject},
-                      {details, format_crl_details(Reason)},
-                      {expiration, ExpiryStr}]};
-                {fail, {bad_cert,
-                        {revocation_status_undetermined, Info}}} ->
-                    {[{status, <<"undetermined">>},
-                      {subject, Subject},
-                      {details, format_crl_details(Info)},
-                      {expiration, ExpiryStr}]};
-                {fail, {bad_cert, Reason}} ->
-                    {[{status, <<"failed">>},
-                      {subject, Subject},
-                      {details, format_crl_details(Reason)},
-                      {expiration, ExpiryStr}]};
-                {fail, internal_error} ->
-                    {[{status, <<"failed">>},
-                      {subject, Subject},
-                      {details, <<"internal error">>},
-                      {expiration, ExpiryStr}]}
-            end
+format_crl_status(cert_decode_error, _DerCert, _Expiry) ->
+    %% There is no real subject to report for a cert we could not decode.
+    failed_status(?UNKNOWN_SUBJECT, <<"cert decode error">>);
+format_crl_status(Verdict, DerCert, Expiry) ->
+    Subject = cert_subject(DerCert),
+    ExpiryStr = format_expiry(Expiry),
+    case Verdict of
+        valid ->
+            {[{status, <<"valid">>},
+              {subject, Subject},
+              {expiration, ExpiryStr}]};
+        {bad_cert, {revoked, Reason}} ->
+            {[{status, <<"revoked">>},
+              {subject, Subject},
+              {details, format_crl_details(Reason)},
+              {expiration, ExpiryStr}]};
+        {bad_cert, {revocation_status_undetermined, Info}} ->
+            {[{status, <<"undetermined">>},
+              {subject, Subject},
+              {details, format_crl_details(Info)},
+              {expiration, ExpiryStr}]};
+        {bad_cert, Reason} ->
+            {[{status, <<"failed">>},
+              {subject, Subject},
+              {details, format_crl_details(Reason)},
+              {expiration, ExpiryStr}]};
+        Reason ->
+            %% internal_error or crl_unavailable
+            {[{status, <<"failed">>},
+              {subject, Subject},
+              {details, format_crl_details(Reason)},
+              {expiration, ExpiryStr}]}
+    end.
+
+%% The subject is diagnostic only, so failing to determine it must not fail the
+%% request.  The certs are taken straight off the wire and only checked for
+%% valid base64, so they can contain anything, and ns_server_cert:get_subject/1
+%% decodes the DER unguarded.  Note that cb_crl does not always decode the cert
+%% (e.g. when the policy is disabled, or for intermediates when they are not
+%% checked), so its verdict does not tell us whether the cert is decodable.
+%% The subject may also hold codepoints above 255 (a utf8String attribute
+%% value), which rules out list_to_binary/1.
+cert_subject(DerCert) ->
+    try unicode:characters_to_binary(ns_server_cert:get_subject(DerCert)) of
+        Subject when is_binary(Subject) ->
+            Subject;
+        Other ->
+            %% {error, _, _} or {incomplete, _, _}
+            ?log_error("(CRL) crlsValidate bad cert subject: ~p", [Other]),
+            ?UNKNOWN_SUBJECT
     catch
         C:E:ST ->
-            ?log_error("cbauth crl status check crashed: ~p:~p~nStacktrace: ~p",
-                       [C, E, ST]),
-            {[{status, <<"failed">>},
-              {details, <<"cert decode error">>},
-              {expiration, null}]}
+            ?log_error("(CRL) crlsValidate cert decode failed: ~p:~p~n"
+                       "Stacktrace: ~p", [C, E, ST]),
+            ?UNKNOWN_SUBJECT
     end.
+
+%% Check a certificate chain and return one status per certificate, in the order
+%% the certificates were given, which is leaf first (the order a TLS peer sends
+%% them in).  cb_crl wants the chain the other way round.
+verify_cert_crl_chain(DerCerts, Scope) ->
+    Results = cb_crl:verify_chain(lists:reverse(DerCerts), Scope),
+    ResultsWithCerts = lists:zip(DerCerts, lists:reverse(Results)),
+    [format_crl_status(Verdict, DerCert, Expiry) ||
+        {DerCert, {Verdict, Expiry}} <- ResultsWithCerts].
+
+failed_status(Subject, Details) ->
+    {[{status, <<"failed">>},
+      {subject, Subject},
+      {details, Details},
+      {expiration, null}]}.
 
 format_crl_details(Term) ->
     iolist_to_binary(io_lib:format("~p", [Term])).
@@ -1051,41 +1074,178 @@ cbauth_test_() ->
        fun cbauth_notify_multiple_versions_t/0}
      | cbauth_notify_tests()]}.
 
-%% verify_cert_crl/3 maps each cb_crl:verify_local_with_expiry/4 verdict to a
-%% JSON status.  Mock the cert decode and the CRL check so we can drive every
-%% verdict shape, and confirm none of them crashes the handler -- in particular
-%% {fail, internal_error}, which is neither a {bad_cert, _} nor 'valid'.
+%% verify_cert_crl_chain/2 maps each cb_crl:verify_chain/2 verdict to a JSON
+%% status.  Mock the CRL check so we can drive every verdict shape, and confirm
+%% none of them crashes the handler -- in particular internal_error, which is
+%% neither a {bad_cert, _} nor 'valid'.
 verify_cert_crl_test() ->
-    meck:new(public_key, [passthrough, unstick]),
     meck:new(ns_server_cert, [passthrough]),
     meck:new(cb_crl, [passthrough]),
     try
-        meck:expect(public_key, pkix_decode_cert,
-                    fun (_Der, otp) -> fake_otp_cert end),
         meck:expect(ns_server_cert, get_subject,
-                    fun (fake_otp_cert) -> "CN=test" end),
+                    fun (<<"der">>) -> "CN=test" end),
         Status =
             fun (Verdict) ->
-                    meck:expect(cb_crl, verify_local_with_expiry,
-                                fun (_, _, _, _) -> {Verdict, undefined} end),
-                    {Props} = verify_cert_crl(<<"der">>, client_auth,
-                                              valid_peer),
+                    meck:expect(cb_crl, verify_chain,
+                                fun (_, _) -> [{Verdict, undefined}] end),
+                    [{Props}] = verify_cert_crl_chain([<<"der">>], client_auth),
                     proplists:get_value(status, Props)
             end,
-        %% The verdict the fix targets: must degrade to "failed", not crash.
-        ?assertEqual(<<"failed">>, Status({fail, internal_error})),
-        %% Existing paths remain unaffected.
-        ?assertEqual(<<"valid">>, Status({valid, []})),
+        ?assertEqual(<<"failed">>, Status(internal_error)),
+        ?assertEqual(<<"failed">>, Status(crl_unavailable)),
+        ?assertEqual(<<"valid">>, Status(valid)),
         ?assertEqual(<<"revoked">>,
-                     Status({fail, {bad_cert, {revoked, key_compromise}}})),
+                     Status({bad_cert, {revoked, key_compromise}})),
         ?assertEqual(<<"undetermined">>,
-                     Status({fail, {bad_cert,
-                                    {revocation_status_undetermined, no_crl}}})),
-        ?assertEqual(<<"failed">>,
-                     Status({fail, {bad_cert, crl_policy_not_available_yet}}))
+                     Status({bad_cert,
+                             {revocation_status_undetermined, no_crl}})),
+        ?assertEqual(<<"failed">>, Status({bad_cert, unexpected_reason}))
     after
         meck:unload(cb_crl),
-        meck:unload(ns_server_cert),
-        meck:unload(public_key)
+        meck:unload(ns_server_cert)
+    end.
+
+%% cb_crl gets the chain root -> leaf and returns a result per cert; the statuses
+%% come back in the order the certs were given, that is leaf first.  A cert cb_crl
+%% could not decode gets the placeholder subject.
+verify_cert_crl_chain_test() ->
+    meck:new(ns_server_cert, [passthrough]),
+    meck:new(cb_crl, [passthrough]),
+    try
+        meck:expect(ns_server_cert, get_subject,
+                    fun (Der) -> "CN=" ++ binary_to_list(Der) end),
+        meck:expect(
+          cb_crl, verify_chain,
+          fun ([<<"root">>, <<"inter">>, <<"leaf">>], client_auth) ->
+                  [{cert_decode_error, undefined},
+                   {{bad_cert, {revocation_status_undetermined, no_crl}},
+                    undefined},
+                   {{bad_cert, {revoked, key_compromise}}, undefined}]
+          end),
+        Statuses = verify_cert_crl_chain(
+                     [<<"leaf">>, <<"inter">>, <<"root">>], client_auth),
+        ?assertEqual([{<<"revoked">>, <<"CN=leaf">>},
+                      {<<"undetermined">>, <<"CN=inter">>},
+                      {<<"failed">>, ?UNKNOWN_SUBJECT}],
+                     [{proplists:get_value(status, P),
+                       proplists:get_value(subject, P)} || {P} <- Statuses])
+    after
+        meck:unload(cb_crl),
+        meck:unload(ns_server_cert)
+    end.
+
+-define(TEST_CERT_PEM,
+        <<"-----BEGIN CERTIFICATE-----\n"
+          "MIIDDDCCAfSgAwIBAgIIGDcduZ0c+xAwDQYJKoZIhvcNAQELBQAwJDEiMCAGA1UE"
+          "AxMZQ291Y2hiYXNlIFNlcnZlciAzZjRiMmJiMDAeFw0xMzAxMDEwMDAwMDBaFw00"
+          "OTEyMzEyMzU5NTlaMCQxIjAgBgNVBAMTGUNvdWNoYmFzZSBTZXJ2ZXIgM2Y0YjJi"
+          "YjAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC/ak/CV/3FP43gYQ8W"
+          "pOrOwLZxbiPNGHijv1yF8ltTq7htwIFBx+XCwuXhvtWTJOoPa7GbOutjHKrTRquW"
+          "tNNZEKQTVp2PPyMIACI+Cbm0RjmbTHq5XzET19pDn35lsDaG5qbMWfoK9OIYm1Gm"
+          "yDc6iT+MHXP77FPpJFxuwCOZ6Flm+xySPoLU4vckaZehs7naxiCFufszJ+IHi/Ve"
+          "14h4vHH+OncYmC3xnTLCuZZr0KyL0QWFs2N2x6YJmcR8j8KVOYHi9Tcz3VPfpSdF"
+          "ZKZdps6IxIR5escAnMVDtgpMu4+bna7jDk39PCdjmH945Ai9Gxz2/a7s/otkoHhd"
+          "XdVPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0G"
+          "A1UdDgQWBBQzIE8JmPTzf7FwwAXKEop/E06OvTANBgkqhkiG9w0BAQsFAAOCAQEA"
+          "c07hyzFbOvuTfCfgW4bc/FUj5NLwG5s7svpiMI9U+8pNSFOOPv8CtkJ5BjchQrxs"
+          "8lj7/Q4jtSDxanKuuslTPH4h+FGNB7zOjunZzyQmfRu7xQE2jEe7Cc68HxUVJbRC"
+          "wDNAgAmwxuWmQPDTD7oe1kQf1YTz1St6EZZEG8pFVnLRhoZbTZTwMlyPPMSpK/gd"
+          "+Meo4LRV7EPIorzJ+ZuAnJ0GtdvxINqd2aBP7WWD7vO4ow6RwLadlem8yw29cMKq"
+          "c6E5qMePI8bM32uTzDwjVmy7RMmP+P0o5n5Xy27vQBsqMXVp1qO+HP9akWbukiQ0"
+          "6Cc+kL8oh9vQqmlfZ48mcQ==\n"
+          "-----END CERTIFICATE-----">>).
+
+%% The certs come from the service as base64 only, so the DER can be anything.
+%% cb_crl does not always decode it -- with the policy disabled, or for
+%% intermediates that are not checked, it returns 'valid' without looking at the
+%% cert at all -- so getting the subject must not be able to crash the handler.
+%% The verdict is reported as cb_crl gave it; only the subject is replaced.
+%% This test drives the real ns_server_cert:get_subject/1, unlike the tests
+%% above.
+verify_cert_crl_undecodable_cert_test() ->
+    {ok, GoodDer} = ns_server_cert:decode_single_certificate(?TEST_CERT_PEM),
+    meck:new(cb_crl, [passthrough]),
+    try
+        Props =
+            fun (Der, Verdict) ->
+                    meck:expect(cb_crl, verify_chain,
+                                fun (_, _) -> [{Verdict, undefined}] end),
+                    [{P}] = verify_cert_crl_chain([Der], client_auth),
+                    {proplists:get_value(status, P),
+                     proplists:get_value(subject, P),
+                     proplists:get_value(details, P)}
+            end,
+
+        %% A real cert still gets its subject reported.
+        ?assertEqual({<<"valid">>, <<"CN=Couchbase Server 3f4b2bb0">>,
+                      undefined},
+                     Props(GoodDer, valid)),
+
+        %% Garbage keeps whatever verdict cb_crl returned, including the
+        %% verdicts it returns without decoding the cert at all, and gets the
+        %% placeholder subject.
+        Garbage = <<"not a cert">>,
+        Truncated = binary:part(GoodDer, 0, byte_size(GoodDer) div 2),
+        ?assertEqual({<<"valid">>, ?UNKNOWN_SUBJECT, undefined},
+                     Props(Garbage, valid)),
+        ?assertEqual({<<"failed">>, ?UNKNOWN_SUBJECT,
+                      <<"crl_unavailable">>},
+                     Props(Garbage, crl_unavailable)),
+        ?assertEqual({<<"revoked">>, ?UNKNOWN_SUBJECT,
+                      <<"key_compromise">>},
+                     Props(Garbage, {bad_cert, {revoked, key_compromise}})),
+        %% A truncated but almost valid cert must not crash either.
+        ?assertEqual({<<"valid">>, ?UNKNOWN_SUBJECT, undefined},
+                     Props(Truncated, valid)),
+        %% cert_decode_error still short-circuits to a failed status.
+        ?assertEqual({<<"failed">>, ?UNKNOWN_SUBJECT,
+                      <<"cert decode error">>},
+                     Props(Garbage, cert_decode_error))
+    after
+        meck:unload(cb_crl)
+    end.
+
+%% Self-signed cert whose subject attributes are utf8Strings holding Cyrillic
+%% and Greek text:
+%%   CN=тест сервер, OU=Тестовый отдел, O=Ημερολόγιο
+-define(UTF8_SUBJECT_PEM,
+        <<"-----BEGIN CERTIFICATE-----\n"
+          "MIIDrTCCApWgAwIBAgIUMUaJx1dmVgo5X6v0amjniCrmgk8wDQYJKoZIhvcNAQEL"
+          "BQAwZTEeMBwGA1UEAwwV0YLQtdGB0YIg0YHQtdGA0LLQtdGAMSQwIgYDVQQLDBvQ"
+          "otC10YHRgtC+0LLRi9C5INC+0YLQtNC10LsxHTAbBgNVBAoMFM6XzrzOtc+Bzr/O"
+          "u8+MzrPOuc6/MCAXDTI2MDcyODE4MTExNVoYDzIxMjYwNzA0MTgxMTE1WjBlMR4w"
+          "HAYDVQQDDBXRgtC10YHRgiDRgdC10YDQstC10YAxJDAiBgNVBAsMG9Ci0LXRgdGC"
+          "0L7QstGL0Lkg0L7RgtC00LXQuzEdMBsGA1UECgwUzpfOvM61z4HOv867z4zOs865"
+          "zr8wggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC/MlxHzNRTX85g/Edc"
+          "7zWZ9hWzYbBhmPDawNKymIb8ORiLqq3N2fT0ZMOliLzTbNZZFVgsq7+VdKFAuNzH"
+          "LC6pPScylt2jOrS8df0upkJU4kEFyKv0FJnTtVUWkWxJM56YfNFoFcS4W1BR5bC4"
+          "18kyONeFDNGAeZWbw6wlDYmHj77VQg/mJ200Rb8IxuEwjlzUdheBidw/lf4+HUFR"
+          "hnlmU4i5ccZQjSJwTueh1y7dLewVc6SWeg+dGdLF3Ghdus4JeYE6nWxoJ8Cc+oWU"
+          "UpvDvXEKDRoIA/6QM6hSYo7yA8FELyG4KzNsHVVueUgc6/srmSDHbcew8K5h2aMu"
+          "nXFNAgMBAAGjUzBRMB0GA1UdDgQWBBS/i9N1U7nK9x3a2jZ2b1/7/akZszAfBgNV"
+          "HSMEGDAWgBS/i9N1U7nK9x3a2jZ2b1/7/akZszAPBgNVHRMBAf8EBTADAQH/MA0G"
+          "CSqGSIb3DQEBCwUAA4IBAQC8nYdbBf6eGNcNxFooTWuHB61lZFsHwezaAR3k1KGT"
+          "HJvmK4HgyNuKp6NyUsML6bhEd3WMwspi1HkI0lUEMPsAghc0Z3WOFRx4bNjs3ggX"
+          "oFC5UNXoxwyKBwuEDA+D3yrAwzfUBSWBHaQcTJBeiiqPiOf/XmanqRYgGzgk5nB0"
+          "zAAUNf2BbG2W6WgEUWZT+0b6rZl4erJa/vP9XxEjPB1OoVS4HNnmghbdyxk4MeH3"
+          "3JVcmNuC0AmMgVvJLSHV6gNLIdhoVq3aiMi5vUsE7ws7gK4EWi7sxHTzQ5X4d/S0"
+          "W6IGzlHF76cPpwT4pQ1D6EcfrxUJMxfYZA+bIuMPdIzF\n"
+          "-----END CERTIFICATE-----">>).
+
+%% A subject may hold codepoints above 255 (a utf8String attribute value), which
+%% list_to_binary/1 would reject.
+verify_cert_crl_unicode_subject_test() ->
+    {ok, Der} = ns_server_cert:decode_single_certificate(?UTF8_SUBJECT_PEM),
+    meck:new(cb_crl, [passthrough]),
+    try
+        meck:expect(cb_crl, verify_chain,
+                    fun (_, _) -> [{valid, undefined}] end),
+        [{Props}] = verify_cert_crl_chain([Der], client_auth),
+        ?assertEqual(<<"valid">>, proplists:get_value(status, Props)),
+        ?assertEqual(<<"CN=тест сервер, OU=Тестовый отдел, "
+                       "O=Ημερολόγιο"/utf8>>,
+                     proplists:get_value(subject, Props))
+    after
+        meck:unload(cb_crl)
     end.
 -endif.
