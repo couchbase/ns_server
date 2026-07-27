@@ -1285,6 +1285,146 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             key_name='Hashi Key',
             expected_key_type='hashikms')
 
+    def hashi_secret_mount_path_test(self):
+        # mountPath is optional and defaults to /transit
+        default_json = hashi_test_secret(name='Hashi Default Mount')
+        assert 'mountPath' not in default_json['data'], \
+               'mountPath is expected to be unset here'
+        default_id = create_secret(self.random_node(), default_json)
+        default_secret = get_secret(self.random_node(), default_id)
+        assert default_secret['data']['mountPath'] == '/transit', \
+               f'unexpected mount path: {default_secret["data"]["mountPath"]}'
+
+        # The transit engine can be mounted anywhere, so any non empty mount
+        # path is accepted
+        mount_path = '/team1/transit'
+        secret_json = hashi_test_secret(name='Hashi Custom Mount',
+                                        mount_path=mount_path)
+        secret_id = create_secret(self.random_node(), secret_json)
+        secret = get_secret(self.random_node(), secret_id)
+        assert secret['data']['mountPath'] == mount_path, \
+               f'unexpected mount path: {secret["data"]["mountPath"]}'
+
+        # An empty mount path is rejected
+        bad_json = hashi_test_secret(name='Hashi Bad Mount', mount_path='')
+        errors = create_secret(self.random_node(), bad_json,
+                               expected_code=400)
+        assert errors['data']['mountPath'] == 'Value must not be empty', \
+               f'unexpected error: {errors}'
+
+        # Vault writes mount paths relative to the vault root ("transit/"), so
+        # every spelling of a mount path is accepted and normalized to the same
+        # stored form. That is what keeps comparing mountPath verbatim on
+        # update from rejecting an unchanged mount path.
+        for i, (sent, expected) in enumerate([('transit', '/transit'),
+                                              ('transit/', '/transit'),
+                                              ('/transit/', '/transit'),
+                                              ('team1/transit',
+                                               '/team1/transit'),
+                                              ('/team1//transit',
+                                               '/team1/transit')]):
+            spelling_json = hashi_test_secret(name=f'Hashi Mount Spelling {i}',
+                                              mount_path=sent)
+            spelling_id = create_secret(self.random_node(), spelling_json)
+            stored = get_secret(self.random_node(),
+                                spelling_id)['data']['mountPath']
+            assert stored == expected, \
+                   f'unexpected mount path for {sent}: {stored}'
+            delete_secret(self.random_node(), spelling_id)
+
+        # A path that names no transit engine is rejected rather than silently
+        # falling back to the default mount path, and relative segments would
+        # let the request escape the mount path
+        no_mount_path = ('must name the path the transit engine is mounted '
+                         'at, for example "transit"')
+        no_relative = 'must not contain "." or ".." path segments'
+        for bad_mount_path, expected_error in [('/', no_mount_path),
+                                               ('//', no_mount_path),
+                                               ('/transit/../sys',
+                                                no_relative),
+                                               ('/./transit', no_relative)]:
+            bad_json = hashi_test_secret(name='Hashi Bad Mount',
+                                         mount_path=bad_mount_path)
+            errors = create_secret(self.random_node(), bad_json,
+                                   expected_code=400)
+            assert errors['data']['mountPath'] == expected_error, \
+                   f'unexpected error for {bad_mount_path}: {errors}'
+
+        # The key name must be a single path segment, otherwise it could send
+        # the request outside the configured transit mount path
+        no_slash = 'must not contain "/"'
+        no_relative = 'must not be "." or ".."'
+        for bad_key_name, expected_error in [('keys/master', no_slash),
+                                             ('../../sys/step-down', no_slash),
+                                             ('/master', no_slash),
+                                             ('master/', no_slash),
+                                             ('.', no_relative),
+                                             ('..', no_relative)]:
+            bad_json = hashi_test_secret(name='Hashi Bad Key')
+            bad_json['data']['keyName'] = bad_key_name
+            errors = create_secret(self.random_node(), bad_json,
+                                   expected_code=400)
+            assert errors['data']['keyName'] == expected_error, \
+                   f'unexpected error for {bad_key_name}: {errors}'
+
+        # mountPath can be omitted in an update request, in which case it
+        # keeps its current value instead of falling back to the default
+        update_json = hashi_test_secret(name='Hashi Custom Mount Renamed')
+        assert 'mountPath' not in update_json['data'], \
+               'mountPath is expected to be unset here'
+        update_secret(self.random_node(), secret_id, update_json)
+        secret = get_secret(self.random_node(), secret_id)
+        assert secret['name'] == 'Hashi Custom Mount Renamed', \
+               f'unexpected name: {secret["name"]}'
+        assert secret['data']['mountPath'] == mount_path, \
+               f'unexpected mount path: {secret["data"]["mountPath"]}'
+
+        # Sending the same mountPath is allowed as well
+        update_json = hashi_test_secret(name='Hashi Custom Mount',
+                                        mount_path=mount_path)
+        update_secret(self.random_node(), secret_id, update_json)
+        secret = get_secret(self.random_node(), secret_id)
+        assert secret['data']['mountPath'] == mount_path, \
+               f'unexpected mount path: {secret["data"]["mountPath"]}'
+
+        # Sending another spelling of the same mount path is allowed too,
+        # because it normalizes to the stored value
+        update_json = hashi_test_secret(name='Hashi Custom Mount',
+                                        mount_path='team1/transit/')
+        update_secret(self.random_node(), secret_id, update_json)
+        secret = get_secret(self.random_node(), secret_id)
+        assert secret['data']['mountPath'] == mount_path, \
+               f'unexpected mount path: {secret["data"]["mountPath"]}'
+
+        # ... but changing it is not, because keys created in one transit
+        # engine can't be used from another one
+        update_json = hashi_test_secret(name='Hashi Custom Mount',
+                                        mount_path='/team2/transit')
+        errors = update_secret(self.random_node(), secret_id, update_json,
+                               expected_code=400)
+        assert errors['data']['mountPath'] == "The field can't be changed", \
+               f'unexpected error: {errors}'
+
+        # Same for keyName and vaultURL
+        update_json = hashi_test_secret(name='Hashi Custom Mount',
+                                        mount_path=mount_path)
+        update_json['data']['keyName'] = 'another-fake-test-key'
+        errors = update_secret(self.random_node(), secret_id, update_json,
+                               expected_code=400)
+        assert errors['data']['keyName'] == "The field can't be changed", \
+               f'unexpected error: {errors}'
+
+        update_json = hashi_test_secret(name='Hashi Custom Mount',
+                                        mount_path=mount_path,
+                                        vault_url='https://localhost:8200')
+        errors = update_secret(self.random_node(), secret_id, update_json,
+                               expected_code=400)
+        assert errors['data']['vaultURL'] == "The field can't be changed", \
+               f'unexpected error: {errors}'
+
+        delete_secret(self.random_node(), secret_id)
+        delete_secret(self.random_node(), default_id)
+
     def basic_kmip_secret_test(self):
         testKmipSecret = kmip_secret('Test KMIP Key', 1,
                                      is_test_secret=True)
@@ -3303,32 +3443,42 @@ def azure_test_secret(name=None, usage=None, key_url=None):
             'usage': usage,
             'data': data}
 
-def hashi_test_secret(name = None, usage=None, key_url=None):
+def hashi_test_secret(name=None, usage=None, vault_url=None,
+                      mount_path=None):
+    if usage is None:
+        usage = ['bucket-encryption',
+                 'KEK-encryption',
+                 'config-encryption',
+                 'log-encryption',
+                 'audit-encryption']
+
     if name is None:
         name = f'Test secret {testlib.random_str(5)}'
 
-    return {
-        'name': name,
-        'type': 'hashikms-key',
-        'usage': [
-            'KEK-encryption',
-            'bucket-encryption',
-            'config-encryption',
-            'log-encryption',
-            'audit-encryption'
-        ],
-        'data':
-        {
-            'caSelection': 'skipServerCertVerification',
-            'reqTimeoutMs': 5000,
-            'encryptWith': 'nodeSecretManager',
-            'encryptWithKeyId': -1,
-            'keyPath': '/fake/test/path',
-            'certPath': '/fake/test/path',
-            'keyPassphrase': 'makeitso',
-            'keyURL': 'TEST_HASHI_KEY_URL'
-        }
+    data = {
+        'caSelection': 'skipServerCertVerification',
+        'reqTimeoutMs': 5000,
+        'encryptWith': 'nodeSecretManager',
+        'encryptWithKeyId': -1,
+        'keyPath': '/fake/test/path',
+        'certPath': '/fake/test/path',
+        'keyPassphrase': 'makeitso',
+        'vaultURL': 'TEST_HASHI_KEY_URL',
+        'keyName': 'fake-test-key'
     }
+
+    if vault_url is not None:
+        data['vaultURL'] = vault_url
+
+    # Note: when mount_path is not set, mountPath is not sent at all, so the
+    # server side default applies
+    if mount_path is not None:
+        data['mountPath'] = mount_path
+
+    return {'name': name,
+            'type': 'hashikms-key',
+            'usage': usage,
+            'data': data}
 
 
 def write_good_aws_creds_file(node):

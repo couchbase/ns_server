@@ -352,6 +352,9 @@ keys_remap() ->
       can_be_cached => canBeCached,
       key_arn => keyARN,
       key_url => keyURL,
+      vault_url => vaultURL,
+      mount_path => mountPath,
+      key_name => keyName,
       credentials_chain => credentialsChain,
       encryption_algorithm => encryptionAlgorithm,
       credentials_file => credentialsFile,
@@ -600,7 +603,9 @@ format_azure_key_data(Props) ->
 format_hashi_key_data(Props) ->
     maps:to_list(
       maps:map(
-        fun (key_url, U) -> iolist_to_binary(U);
+        fun (vault_url, U) -> iolist_to_binary(U);
+            (mount_path, P) -> iolist_to_binary(P);
+            (key_name, N) -> iolist_to_binary(N);
             (req_timeout_ms, R) -> R;
             (key_path, F) -> iolist_to_binary(F);
             (cert_path, F) -> iolist_to_binary(F);
@@ -921,9 +926,24 @@ azurekms_key_validators(CurSecretProps) ->
     end.
 
 hashikms_key_validators(CurSecretProps, Snapshot) ->
-    [validator:string(keyURL, _),
-     validator:validate(fun validate_hashi_key/1, keyURL, _),
-     validator:required(keyURL, _) ,
+    %% mountPath is a static field, but has a default. The default must be
+    %% the currently configured mount path when the secret already exists.
+    %% Otherwise omitting mountPath in an update request would look like an
+    %% attempt to change it to ?HASHI_DEFAULT_MOUNT_PATH.
+    DefaultMountPath =
+        case CurSecretProps of
+            #{data := #{mount_path := CurMountPath}} -> CurMountPath;
+            #{} -> ?HASHI_DEFAULT_MOUNT_PATH
+        end,
+    [validator:string(vaultURL, _),
+     validator:validate(fun validate_hashi_vault_url/1, vaultURL, _),
+     validator:required(vaultURL, _),
+     validator:non_empty_string(mountPath, _),
+     validator:validate(fun validate_hashi_mount_path/1, mountPath, _),
+     validator:default(mountPath, DefaultMountPath, _),
+     validator:non_empty_string(keyName, _),
+     validator:validate(fun validate_hashi_key_name/1, keyName, _),
+     validator:required(keyName, _),
      validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
      validator:default(reqTimeoutMs, 30000, _),
      validator:string(keyPath, _),
@@ -952,8 +972,12 @@ hashikms_key_validators(CurSecretProps, Snapshot) ->
      validator:integer(encryptWithKeyId, -1, max_uint64, _),
      validate_encrypt_secret_id(encryptWithKeyId, CurSecretProps, _)] ++
      case CurSecretProps of
-         #{data := #{key_url := KeyUrl}} ->
-             [enforce_static_field_validator(keyURL, KeyUrl, _)];
+         #{data := #{vault_url := VaultUrl,
+                     mount_path := MountPath,
+                     key_name := KeyName}} ->
+             [enforce_static_field_validator(vaultURL, VaultUrl, _),
+              enforce_static_field_validator(mountPath, MountPath, _),
+              enforce_static_field_validator(keyName, KeyName, _)];
          #{} when map_size(CurSecretProps) == 0 ->
              [validator:required(keyPassphrase, _)]
      end.
@@ -1019,9 +1043,9 @@ mandatory_rotation_fields(State) ->
             State
     end.
 
-validate_hashi_key("TEST_HASHI_KEY_URL")  ->
+validate_hashi_vault_url("TEST_HASHI_KEY_URL")  ->
     ok;
-validate_hashi_key(KeyUrlStr) ->
+validate_hashi_vault_url(VaultUrlStr) ->
     Scheme =
         fun (Url) when Url =:= <<"https">>; Url =:= <<"http">> ->
                 valid;
@@ -1031,8 +1055,8 @@ validate_hashi_key(KeyUrlStr) ->
 
     ParseUrlFn =
         fun() ->
-            case misc:parse_url(KeyUrlStr, [{scheme_validation_fun, Scheme},
-                                            {return, string}]) of
+            case misc:parse_url(VaultUrlStr, [{scheme_validation_fun, Scheme},
+                                              {return, string}]) of
                 {ok, _} = Result ->
                     Result;
                 {error, E} ->
@@ -1047,11 +1071,12 @@ validate_hashi_key(KeyUrlStr) ->
                 ok
         end,
 
-    ValidateKeyPath =
-        fun(<<"/", Rest/binary>>) when byte_size(Rest) > 0 ->
-                ok;
+    ValidateNoPath =
+        fun (P) when P =:= ""; P =:= "/" ->
+                {value, string:trim(VaultUrlStr, trailing, "/")};
             (_) ->
-                {error, "path must have /<keyName>"}
+                {error, "must not contain a path (the transit mount path and "
+                        "key name are configured separately)"}
         end,
 
     maybe
@@ -1059,7 +1084,43 @@ validate_hashi_key(KeyUrlStr) ->
 
         ok ?= ValidateHost(Host),
 
-        ok ?= ValidateKeyPath(list_to_binary(Path))
+        ValidateNoPath(Path)
+    end.
+
+%% The transit engine can be mounted anywhere in the vault server, so any path
+%% is accepted. Vault itself writes mount paths relative to the vault root
+%% ("transit/", "team1/transit/"), so those spellings have to be accepted too,
+%% but only one of them can be stored: mountPath is a static field that is
+%% compared as is on update, so keeping both "/transit" and "transit" would
+%% make an update that only changes the spelling look like an attempt to move
+%% the key to a different transit engine. Every spelling is therefore
+%% normalized to the same absolute, slash separated form.
+validate_hashi_mount_path(MountPath) ->
+    Segments = [S || S <- string:split(MountPath, "/", all), S =/= ""],
+    IsRelative = fun (S) -> S =:= "." orelse S =:= ".." end,
+    case Segments of
+        [] ->
+            {error, "must name the path the transit engine is mounted at, "
+                    "for example \"transit\""};
+        _ ->
+            case lists:any(IsRelative, Segments) of
+                false ->
+                    {value, "/" ++ string:join(Segments, "/")};
+                true ->
+                    {error, "must not contain \".\" or \"..\" path segments"}
+            end
+    end.
+
+%% The key name is joined into the vault request path, so it must be a
+%% single path segment. Otherwise a name like "../../sys/step-down" would
+%% resolve to a path outside the configured transit mount point. Any other
+%% name is accepted: whether the key exists is up to the vault server.
+validate_hashi_key_name(KeyName) when KeyName =:= "."; KeyName =:= ".." ->
+    {error, "must not be \".\" or \"..\""};
+validate_hashi_key_name(KeyName) ->
+    case string:find(KeyName, "/") of
+        nomatch -> ok;
+        _ -> {error, "must not contain \"/\""}
     end.
 
 validate_azure_key("TEST_AZURE_KEY_URL") ->
@@ -1666,28 +1727,98 @@ validate_azure_key_test() ->
         meck:unload(ns_config)
     end.
 
-validate_hashi_key_test() ->
+validate_hashi_vault_url_test() ->
     {error, Error0} =
-        validate_hashi_key("invalid://bla.me.com/keys/testKey"),
+        validate_hashi_vault_url("invalid://bla.me.com/keys/testKey"),
     ?assertEqual("failed to parse url: \"must be http or https url only\"",
         lists:flatten(Error0)),
 
     {error, Error1} =
-        validate_hashi_key("https:///keys/testKey"),
+        validate_hashi_vault_url("https:///keys/testKey"),
     ?assertEqual("a host must be specified in the URL",
                  lists:flatten(Error1)),
 
     {error, Error2} =
-        validate_hashi_key("https://dome.domain"),
-    ?assertEqual("path must have /<keyName>",
+        validate_hashi_vault_url("https://dome.domain/key"),
+    ?assertEqual("must not contain a path (the transit mount path and "
+                 "key name are configured separately)",
         lists:flatten(Error2)),
 
     {error, Error3} =
-        validate_hashi_key("https://dome.domain/"),
-    ?assertEqual("path must have /<keyName>",
+        validate_hashi_vault_url("https://dome.domain/v1/transit/encrypt/key"),
+    ?assertEqual("must not contain a path (the transit mount path and "
+                 "key name are configured separately)",
         lists:flatten(Error3)),
 
-    ok = validate_hashi_key("https://dome.domain/key").
+    %% The trailing slash is dropped, so that comparing vaultURL verbatim on
+    %% update can't reject an unchanged vault server
+    ?assertEqual({value, "https://dome.domain"},
+                 validate_hashi_vault_url("https://dome.domain")),
+    ?assertEqual({value, "https://dome.domain"},
+                 validate_hashi_vault_url("https://dome.domain/")),
+    ?assertEqual({value, "https://dome.domain:8200"},
+                 validate_hashi_vault_url("https://dome.domain:8200")),
+    ?assertEqual({value, "https://dome.domain:8200"},
+                 validate_hashi_vault_url("https://dome.domain:8200/")),
+
+    ?assertEqual(ok, validate_hashi_vault_url("TEST_HASHI_KEY_URL")).
+
+validate_hashi_mount_path_test() ->
+    NoMountPath = "must name the path the transit engine is mounted at, "
+                  "for example \"transit\"",
+    NoRelative = "must not contain \".\" or \"..\" path segments",
+
+    %% The default and any nested mount point are accepted
+    ?assertEqual({value, ?HASHI_DEFAULT_MOUNT_PATH},
+                 validate_hashi_mount_path(?HASHI_DEFAULT_MOUNT_PATH)),
+    ?assertEqual({value, "/transit"}, validate_hashi_mount_path("/transit")),
+    ?assertEqual({value, "/team1/transit"},
+                 validate_hashi_mount_path("/team1/transit")),
+    ?assertEqual({value, "/a/b/c/d"}, validate_hashi_mount_path("/a/b/c/d")),
+
+    %% Vault writes mount paths relative to the vault root, so every spelling
+    %% of a mount point is accepted and normalized to the same stored form.
+    %% That is what keeps comparing mountPath verbatim on update from
+    %% rejecting an unchanged mount point.
+    ?assertEqual({value, "/transit"}, validate_hashi_mount_path("transit")),
+    ?assertEqual({value, "/transit"}, validate_hashi_mount_path("transit/")),
+    ?assertEqual({value, "/transit"}, validate_hashi_mount_path("/transit/")),
+    ?assertEqual({value, "/team1/transit"},
+                 validate_hashi_mount_path("team1/transit")),
+    ?assertEqual({value, "/team1/transit"},
+                 validate_hashi_mount_path("/team1//transit")),
+
+    %% A path that names no transit engine is rejected rather than silently
+    %% falling back to the default mount point
+    ?assertEqual({error, NoMountPath}, validate_hashi_mount_path("")),
+    ?assertEqual({error, NoMountPath}, validate_hashi_mount_path("/")),
+    ?assertEqual({error, NoMountPath}, validate_hashi_mount_path("//")),
+
+    %% Relative segments would let the request escape the mount point
+    ?assertEqual({error, NoRelative},
+                 validate_hashi_mount_path("/transit/../sys")),
+    ?assertEqual({error, NoRelative}, validate_hashi_mount_path("/./transit")).
+
+validate_hashi_key_name_test() ->
+    NoSlash = "must not contain \"/\"",
+    NoRelative = "must not be \".\" or \"..\"",
+
+    %% The key name is otherwise opaque, the vault server rejects it if the key
+    %% doesn't exist
+    ?assertEqual(ok, validate_hashi_key_name("couchbase-master-key")),
+    ?assertEqual(ok, validate_hashi_key_name("key.with.dots")),
+    ?assertEqual(ok, validate_hashi_key_name("a..b")),
+    ?assertEqual(ok, validate_hashi_key_name("...")),
+
+    %% A key name spanning more than one path segment could send the request
+    %% outside the configured transit mount point
+    ?assertEqual({error, NoSlash}, validate_hashi_key_name("keys/master")),
+    ?assertEqual({error, NoSlash},
+                 validate_hashi_key_name("../../sys/step-down")),
+    ?assertEqual({error, NoSlash}, validate_hashi_key_name("/master")),
+    ?assertEqual({error, NoSlash}, validate_hashi_key_name("master/")),
+    ?assertEqual({error, NoRelative}, validate_hashi_key_name(".")),
+    ?assertEqual({error, NoRelative}, validate_hashi_key_name("..")).
 
 %% The check runs inside a chronicle transaction and must not call another
 %% process that reads chronicle, or they deadlock (MB-71799). Nothing runs in

@@ -36,7 +36,9 @@
 
 -export_type([secret_props/0]).
 
--type secret_props() :: #{key_url := string(),
+-type secret_props() :: #{vault_url := string(),
+                          mount_path := string(),
+                          key_name := string(),
                           req_timeout_ms := integer(),
                           key_path := string(),
                           cert_path := string(),
@@ -224,8 +226,9 @@ ensure_hashi_kek_on_disk(#{key_passphrase := Pass,
         end,
     case DecryptRes of
         {ok, PassData} ->
-            Common = maps:with([key_url, req_timeout_ms, key_path,
-                                cert_path, ca_selection], Props),
+            Common = maps:with([vault_url, mount_path, key_name,
+                                req_timeout_ms, key_path, cert_path,
+                                ca_selection], Props),
             Res = lists:map(
                     fun (#{id := Id, creation_time := CreationTime}) ->
                         Params = Common#{key_passphrase => PassData},

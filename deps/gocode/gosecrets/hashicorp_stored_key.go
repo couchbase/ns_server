@@ -21,7 +21,9 @@ import (
 
 type hashiStoredKey struct {
 	baseStoredKey
-	KeyURL              string `json:"keyURL"`
+	VaultURL            string `json:"vaultURL"`
+	MountPath           string `json:"mountPath"`
+	KeyName             string `json:"keyName"`
 	ReqTimeoutMs        int    `json:"reqTimeoutMs"`
 	CaSelection         string `json:"caSelection"`
 	CbCaPath            string `json:"CbCaPath"`
@@ -37,7 +39,9 @@ type hashiStoredKey struct {
 
 func newHashiKey(name, kind, creationTime string, data []byte) (*hashiStoredKey, error) {
 	type hashiKeyTmp struct {
-		KeyURL            string `json:"keyURL"`
+		VaultURL          string `json:"vaultURL"`
+		MountPath         string `json:"mountPath"`
+		KeyName           string `json:"keyName"`
 		ReqTimeoutMs      int    `json:"reqTimeoutMs"`
 		KeyPath           string `json:"keyPath"`
 		CertPath          string `json:"certPath"`
@@ -54,7 +58,9 @@ func newHashiKey(name, kind, creationTime string, data []byte) (*hashiStoredKey,
 
 	rawKeyInfo := &hashiStoredKey{
 		baseStoredKey:       baseStoredKey{Name: name, Kind: kind, CreationTime: creationTime},
-		KeyURL:              decoded.KeyURL,
+		VaultURL:            decoded.VaultURL,
+		MountPath:           decoded.MountPath,
+		KeyName:             decoded.KeyName,
 		ReqTimeoutMs:        decoded.ReqTimeoutMs,
 		CaSelection:         decoded.CaSelection,
 		CbCaPath:            decoded.CbCaPath,
@@ -101,7 +107,9 @@ func (k *hashiStoredKey) ad() []byte {
 		string(hashikmKey) +
 			k.Name +
 			k.Kind +
-			k.KeyURL +
+			k.VaultURL +
+			k.MountPath +
+			k.KeyName +
 			strconv.Itoa(k.ReqTimeoutMs) +
 			k.KeyPath +
 			k.CertPath +
@@ -149,7 +157,7 @@ func (k *hashiStoredKey) decryptMe(validateKeysProof bool, state *StoredKeysStat
 }
 
 func (k *hashiStoredKey) checkHashiTestKey() (bool, error) {
-	if k.KeyURL == "TEST_HASHI_KEY_URL" {
+	if k.VaultURL == "TEST_HASHI_KEY_URL" {
 		return true, nil
 	}
 	return false, nil
@@ -161,7 +169,9 @@ func getHashiClientCfg(k *hashiStoredKey) (*hashicorputils.OperationArgs, error)
 	}
 
 	return &hashicorputils.OperationArgs{
-		KeyURL:              k.KeyURL,
+		VaultURL:            k.VaultURL,
+		MountPath:           k.MountPath,
+		KeyName:             k.KeyName,
 		TimeoutDuration:     time.Duration(k.ReqTimeoutMs) * time.Millisecond,
 		KeyPath:             k.KeyPath,
 		CertPath:            k.CertPath,

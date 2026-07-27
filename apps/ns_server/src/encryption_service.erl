@@ -224,13 +224,17 @@ store_hashi_key(Id, Params, KekIdToEncrypt, CreationDT, TestOnly) ->
         ejson:encode(format_hashi_key_params(Params, KekIdToEncrypt)),
         TestOnly).
 
-format_hashi_key_params(#{key_url := KeyURL,
+format_hashi_key_params(#{vault_url := VaultURL,
+                          mount_path := MountPath,
+                          key_name := KeyName,
                           req_timeout_ms := ReqTimeoutMs,
                           key_path := KeyPath,
                           cert_path := CertPath,
                           key_passphrase := PassData,
                           ca_selection := CaSel}, KekIdToEncrypt) ->
-    {[{keyURL, iolist_to_binary(KeyURL)},
+    {[{vaultURL, iolist_to_binary(VaultURL)},
+      {mountPath, iolist_to_binary(MountPath)},
+      {keyName, iolist_to_binary(KeyName)},
       {reqTimeoutMs, ReqTimeoutMs},
       {keyPath, iolist_to_binary(KeyPath)},
       {certPath, iolist_to_binary(CertPath)},
