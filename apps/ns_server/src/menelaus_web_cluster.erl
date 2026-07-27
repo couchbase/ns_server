@@ -1171,6 +1171,15 @@ failover_audit_and_reply(RV, Req, Nodes, Type) ->
             reply_text(Req, Message, Code)
     end.
 
+%% This function returns information about who initiated the operation.
+%% The info is sanitized in case it leaks in a crash or is logged. This
+%% is fine as the info is only useful to folks triaging an issue.
+get_initiator(Req) ->
+    InitiatedBy = ns_audit:prepare_log_body(Req, [{node, node()}]),
+    %% The sessionid and user fields shouldn't be logged as-is, so obscure/tag
+    %% them the same way ns_audit does before logging.
+    ns_config_log:tag_user_data(ns_audit:obscure_sessionid(InitiatedBy)).
+
 %% When the 1st Param is true the failover is done asynchronously;
 %% when false, the failover is done synchronously.
 
@@ -1196,13 +1205,11 @@ do_handle_start_hard_failover(Req, FailoverBody) ->
                             %% We will always use the new orchestrator API
                             %% post-7.9 such that we can eventually remove
                             %% the old non-map API.
-                            InitiatedBy =
-                                ns_audit:prepare_log_body(
-                                  Req, [{node, node()}]),
                             failover_audit_and_reply(
                               FailoverBody(Nodes,
                                            Opts#{allow_unsafe => AllowUnsafe,
-                                                 initiated_by => InitiatedBy}),
+                                                 initiated_by =>
+                                                 get_initiator(Req)}),
                               Req, Nodes, hard)
                     end
             end;
@@ -1227,10 +1234,7 @@ handle_start_graceful_failover(Req) ->
                             %% We will always use the new orchestrator
                             %% API post-7.9 such that we can
                             %% eventually remove the old non-map API.
-                            InitiatedBy =
-                                ns_audit:prepare_log_body(
-                                  Req, [{node, node()}]),
-                            Opts1 = Opts#{initiated_by => InitiatedBy},
+                            Opts1 = Opts#{initiated_by => get_initiator(Req)},
                             failover_audit_and_reply(
                               ns_orchestrator:start_graceful_failover(Nodes,
                                                                       Opts1),
@@ -1404,8 +1408,7 @@ do_handle_rebalance(Req, Params) ->
       services := Services,
       desired_services_nodes := DesiredSevicesTopology,
       plan_uuid := PlanUUID} = Params,
-    InitiatedBy = ns_audit:prepare_log_body(Req, [{node, node()}]),
-    Params1 = Params#{initiated_by => InitiatedBy},
+    Params1 = Params#{initiated_by => get_initiator(Req)},
     ?log_info("Starting rebalance with params ~p", [Params]),
     case rebalance:start(Params1) of
         in_progress ->

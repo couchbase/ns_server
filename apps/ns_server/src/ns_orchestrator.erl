@@ -1127,14 +1127,8 @@ idle({start_graceful_failover, Nodes, Opts, Id, RetryChk}, From, _State) ->
                                 [InitiatedBy])
             end,
             Type = graceful_failover,
-            InitiatedByAttrs =
-                case InitiatedBy of
-                    undefined -> [];
-                    _ -> [{initiated_by, {InitiatedBy}}]
-                end,
             event_log:add_log(graceful_failover_initiated,
-                              [{nodes_info, {NodesInfo}},
-                               {operation_id, Id}] ++ InitiatedByAttrs),
+                              [{nodes_info, {NodesInfo}}, {operation_id, Id}]),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
 
@@ -1233,16 +1227,10 @@ idle({start_rebalance, Params = #{keep_nodes := KeepNodes,
                         [{set_services_topology,
                           {maps:to_list(DesiredServicesNodes)}}]
                 end,
-            InitiatedByAttrs =
-                case InitiatedBy of
-                    undefined -> [];
-                    _ -> [{initiated_by, {InitiatedBy}}]
-                end,
             event_log:add_log(rebalance_initiated,
                               [{operation_id, RebalanceId},
                                {nodes_info, {NodesInfo}},
-                               {services, Services}] ++ TopologyParams
-                              ++ InitiatedByAttrs),
+                               {services, Services}] ++ TopologyParams),
             ns_cluster:counter_inc(Type, start),
             set_rebalance_status(Type, running, Pid),
             ReturnValue =
@@ -2112,7 +2100,8 @@ retry_rebalance(_, #rebalancing_state{type = graceful_failover,
                                       to_failover = Nodes,
                                       retry_check = Chk,
                                       rebalance_id = Id,
-                                      opts = Opts}) ->
+                                      opts = OptsIn}) ->
+    Opts = maps:remove(initiated_by, OptsIn),
     auto_rebalance:retry_rebalance(graceful_failover,
                                    [{nodes, Nodes}, {opts, Opts}],
                                    Id, Chk);
@@ -2622,15 +2611,10 @@ handle_start_failover(Nodes, From, Wait, FailoverType, Options) ->
                                        {[{Node, JSONFun(Reason)} ||
                                          {Node, Reason} <- FailoverReasons]}}]
                              end,
-            InitiatedByAttrs =
-                case InitiatedBy of
-                    undefined -> [];
-                    _ -> [{initiated_by, {InitiatedBy}}]
-                end,
             event_log:add_log(Event, [{operation_id, Id},
                                       {nodes_info, {NodesInfo}},
                                       {allow_unsafe, AllowUnsafe}] ++
-                                      FOReasonsJSON ++ InitiatedByAttrs),
+                                      FOReasonsJSON),
 
             Type = failover,
             ns_cluster:counter_inc(Type, start),

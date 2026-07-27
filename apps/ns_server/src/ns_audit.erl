@@ -111,7 +111,8 @@
          set_external_catalog_manifest/2,
          create_external_collection/5,
          modify_external_collection/5,
-         drop_external_collection/5
+         drop_external_collection/5,
+         obscure_sessionid/1
         ]).
 
 -export([start_link/0, stats/0]).
