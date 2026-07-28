@@ -93,3 +93,4 @@ Available test sets include: `BasicBucketTestSet`, `MultiNodeBucketTestSet`, `Cr
 - For all Erlang, Python, and Go files, max line length is strictly 80 characters. Use the full 80 columns; do not wrap lines shorter than 80 characters just to make them narrow. This limit does **not** apply to Markdown files in `doc/`; use standard Markdown conventions (e.g. sentence-per-line) there
 - Trailing spaces and tabs are not allowed in any Erlang, Python, or Go files
 - Keep changes minimal: only modify code that is directly related to the task. Do not reformat, restyle, or rewrite existing code unless it is necessary for the change or there is a strong reason (e.g. fixing a bug, resolving a conflict with the new code). Avoid cosmetic-only diffs.
+- Comments must be concise and short. Do not comment trivial code that speaks for itself. A comment should explain *why* the code is written this way (the reason, constraint, or non-obvious consequence), not restate *how* it works
