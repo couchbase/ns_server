@@ -1,4 +1,4 @@
-import { s as services, d as isDefined, p as pick, f as forEach, e as extend, V as ViewService, R as ResolveContext, t as trace, aG as isInjectable, aD as isArray, A as tail, m as Resolvable, l as isString, i as isFunction, u as unnestR, aC as isObject, aL as kebobString, I as createProxyFunctions, aw as val, K as removeFrom, bs as BaseUrlRule, h as identity, ae as applyPairs, U as UIRouter, H as noop, j as uniqR, c as inArray, a as parse, b as filter } from './interface-c1256a29.js';
+import { s as services, n as isDefined, l as pick, m as forEach, e as extend, V as ViewService, R as ResolveContext, t as trace, aG as isInjectable, aD as isArray, z as tail, v as Resolvable, r as isString, i as isFunction, u as unnestR, aC as isObject, aL as kebobString, I as createProxyFunctions, aw as val, K as removeFrom, bs as BaseUrlRule, o as identity, U as UIRouter, ae as applyPairs, H as noop, q as uniqR, a as inArray, p as parse, f as filter } from './interface-3ea87977.js';
 import { n as ng_from_import } from './index-729b989c.js';
 
 /** @publicapi @module ng1 */ /** */
@@ -757,7 +757,7 @@ var mod_util = ng.module('ui.router.util', ['ui.router.init']);
 var mod_rtr = ng.module('ui.router.router', ['ui.router.util']);
 var mod_state = ng.module('ui.router.state', ['ui.router.router', 'ui.router.util', 'ui.router.angular1']);
 var mod_main = ng.module('ui.router', ['ui.router.init', 'ui.router.state', 'ui.router.angular1']);
-var mod_cmpt = ng.module('ui.router.compat', ['ui.router']); // tslint:disable-line
+ng.module('ui.router.compat', ['ui.router']); // tslint:disable-line
 var router = null;
 $uiRouterProvider.$inject = ['$locationProvider'];
 /** This angular 1 provider instantiates a Router and exposes its services via the angular injector */

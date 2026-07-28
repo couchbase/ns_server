@@ -4269,4 +4269,4 @@ angular.module('ngAnimate', [], function initAngularHelpers() {
 
 var angularAnimate = 'ngAnimate';
 
-export default angularAnimate;
+export { angularAnimate as default };

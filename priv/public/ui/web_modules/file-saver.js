@@ -6,4 +6,4 @@ var FileSaver_min = createCommonjsModule(function (module, exports) {
 
 });
 
-export default FileSaver_min;
+export { FileSaver_min as default };

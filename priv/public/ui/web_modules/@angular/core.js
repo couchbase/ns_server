@@ -1,7 +1,7 @@
-import { b as __extends, g as __spread, e as __values, d as __read, f as __assign, _ as __decorate, c as __param, a as __metadata } from '../common/tslib.es6-c4a4947b.js';
-import { S as Subscription, a as Subject, O as Observable } from '../common/mergeMap-64c6f393.js';
-import { m as merge$1 } from '../common/merge-183efbc7.js';
-import { s as share } from '../common/share-d41e3509.js';
+import { b as __extends, g as __spread, f as __values, _ as __decorate, c as __param, a as __metadata, d as __assign, e as __read } from '../common/tslib.es6-89c1b43d.js';
+import { S as Subscription, a as Subject, O as Observable } from '../common/mergeMap-7bf40e31.js';
+import { m as merge$1 } from '../common/merge-d4bf573a.js';
+import { s as share } from '../common/share-31ba6087.js';
 
 /**
  * @license Angular v8.2.14
@@ -10542,10 +10542,6 @@ var ChangeDetectorRef = /** @class */ (function () {
 }());
 var SWITCH_CHANGE_DETECTOR_REF_FACTORY__POST_R3__ = injectChangeDetectorRef;
 var SWITCH_CHANGE_DETECTOR_REF_FACTORY__PRE_R3__ = function () {
-    var args = [];
-    for (var _i = 0; _i < arguments.length; _i++) {
-        args[_i] = arguments[_i];
-    }
 };
 var SWITCH_CHANGE_DETECTOR_REF_FACTORY = SWITCH_CHANGE_DETECTOR_REF_FACTORY__PRE_R3__;
 
@@ -17955,10 +17951,6 @@ var ComponentFactoryBoundToModule = /** @class */ (function (_super) {
  * found in the LICENSE file at https://angular.io/license
  */
 function noop() {
-    var args = [];
-    for (var _i = 0; _i < arguments.length; _i++) {
-        args[_i] = arguments[_i];
-    }
     // Do nothing.
 }
 
@@ -17992,7 +17984,7 @@ var ElementRef = /** @class */ (function () {
      * @internal
      * @nocollapse
      */
-    ElementRef.__NG_ELEMENT_ID__ = function () { return SWITCH_ELEMENT_REF_FACTORY(ElementRef); };
+    ElementRef.__NG_ELEMENT_ID__ = function () { return SWITCH_ELEMENT_REF_FACTORY(); };
     return ElementRef;
 }());
 var SWITCH_ELEMENT_REF_FACTORY__POST_R3__ = injectElementRef;
@@ -18038,7 +18030,7 @@ var Renderer = /** @class */ (function () {
     }
     return Renderer;
 }());
-var Renderer2Interceptor = new InjectionToken('Renderer2Interceptor');
+new InjectionToken('Renderer2Interceptor');
 /**
  * Injectable service that provides a low-level interface for modifying the UI.
  *
@@ -19273,7 +19265,7 @@ var TemplateRef = /** @class */ (function () {
      * @internal
      * @nocollapse
      */
-    TemplateRef.__NG_ELEMENT_ID__ = function () { return SWITCH_TEMPLATE_REF_FACTORY(TemplateRef, ElementRef); };
+    TemplateRef.__NG_ELEMENT_ID__ = function () { return SWITCH_TEMPLATE_REF_FACTORY(); };
     return TemplateRef;
 }());
 var SWITCH_TEMPLATE_REF_FACTORY__POST_R3__ = injectTemplateRef;
@@ -19309,7 +19301,7 @@ var ViewContainerRef = /** @class */ (function () {
      * @internal
      * @nocollapse
      */
-    ViewContainerRef.__NG_ELEMENT_ID__ = function () { return SWITCH_VIEW_CONTAINER_REF_FACTORY(ViewContainerRef, ElementRef); };
+    ViewContainerRef.__NG_ELEMENT_ID__ = function () { return SWITCH_VIEW_CONTAINER_REF_FACTORY(); };
     return ViewContainerRef;
 }());
 var SWITCH_VIEW_CONTAINER_REF_FACTORY__POST_R3__ = injectViewContainerRef;
@@ -21281,7 +21273,7 @@ var ComponentFactory$1 = /** @class */ (function (_super) {
     };
     return ComponentFactory;
 }(ComponentFactory));
-var componentFactoryResolver = new ComponentFactoryResolver$1();
+new ComponentFactoryResolver$1();
 /**
  * Represents an instance of a Component created via a {@link ComponentFactory}.
  *
@@ -25024,7 +25016,7 @@ function compilePipe(type, meta) {
 var ɵ0$f = function (dir) {
     if (dir === void 0) { dir = {}; }
     return dir;
-}, ɵ1$4 = function (type, meta) { return SWITCH_COMPILE_DIRECTIVE(type, meta); };
+}, ɵ1$4 = function (type, meta) { return SWITCH_COMPILE_DIRECTIVE(); };
 /**
  * Type of the Directive metadata.
  *
@@ -25034,7 +25026,7 @@ var Directive = makeDecorator('Directive', ɵ0$f, undefined, undefined, ɵ1$4);
 var ɵ2$1 = function (c) {
     if (c === void 0) { c = {}; }
     return (__assign({ changeDetection: ChangeDetectionStrategy.Default }, c));
-}, ɵ3$1 = function (type, meta) { return SWITCH_COMPILE_COMPONENT(type, meta); };
+}, ɵ3$1 = function (type, meta) { return SWITCH_COMPILE_COMPONENT(); };
 /**
  * Component decorator and metadata.
  *
@@ -25042,7 +25034,7 @@ var ɵ2$1 = function (c) {
  * @publicApi
  */
 var Component = makeDecorator('Component', ɵ2$1, Directive, undefined, ɵ3$1);
-var ɵ4 = function (p) { return (__assign({ pure: true }, p)); }, ɵ5 = function (type, meta) { return SWITCH_COMPILE_PIPE(type, meta); };
+var ɵ4 = function (p) { return (__assign({ pure: true }, p)); }, ɵ5 = function (type, meta) { return SWITCH_COMPILE_PIPE(); };
 /**
  * @Annotation
  * @publicApi
@@ -26955,7 +26947,7 @@ var SystemJsNgModuleLoader = /** @class */ (function () {
         this._config = config || DEFAULT_CONFIG;
     }
     SystemJsNgModuleLoader.prototype.load = function (path) {
-        var legacyOfflineMode =  this._compiler instanceof Compiler;
+        var legacyOfflineMode = this._compiler instanceof Compiler;
         return legacyOfflineMode ? this.loadFactory(path) : this.loadAndCompile(path);
     };
     SystemJsNgModuleLoader.prototype.loadAndCompile = function (path) {

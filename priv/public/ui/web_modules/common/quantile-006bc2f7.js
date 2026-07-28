@@ -37,6 +37,7 @@ function ascendingComparator(f) {
 var ascendingBisect = bisector(ascending);
 var bisectRight = ascendingBisect.right;
 var bisectLeft = ascendingBisect.left;
+var bisect = bisectRight;
 
 function sequence(start, stop, step) {
   start = +start, stop = +stop, step = (n = arguments.length) < 2 ? (stop = start, start = 0, 1) : n < 3 ? 1 : +step;
@@ -235,4 +236,4 @@ function quantileSorted(values, p, valueof = number) {
   return value0 + (value1 - value0) * (i - i0);
 }
 
-export { ascending as a, bisectRight as b, bisectRight as c, bisectLeft as d, bisector as e, max as f, quantileSorted as g, quickselect as h, ticks as i, tickIncrement as j, min as m, quantile as q, sequence as s, tickStep as t };
+export { ascending as a, bisect as b, bisectRight as c, bisectLeft as d, bisector as e, max as f, quantileSorted as g, quickselect as h, ticks as i, tickIncrement as j, min as m, quantile as q, sequence as s, tickStep as t };

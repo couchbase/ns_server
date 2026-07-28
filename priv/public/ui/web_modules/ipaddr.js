@@ -988,7 +988,7 @@ var ipaddr = createCommonjsModule(function (module) {
     };
 
     // Export for both the CommonJS and browser-like environment
-    if ( module.exports) {
+    if (module.exports) {
         module.exports = ipaddr;
 
     } else {
@@ -998,4 +998,4 @@ var ipaddr = createCommonjsModule(function (module) {
 }(commonjsGlobal));
 });
 
-export default ipaddr;
+export { ipaddr as default };

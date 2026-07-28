@@ -1,5 +1,5 @@
-import { t as tickStep, s as sequence, b as bisect, q as quantile, a as ascending, m as min } from './common/quantile-0d207231.js';
-export { a as ascending, b as bisect, d as bisectLeft, c as bisectRight, e as bisector, f as max, m as min, q as quantile, g as quantileSorted, h as quickselect, s as range, j as tickIncrement, t as tickStep, i as ticks } from './common/quantile-0d207231.js';
+import { t as tickStep, s as sequence, b as bisect, q as quantile, a as ascending, m as min } from './common/quantile-006bc2f7.js';
+export { a as ascending, b as bisect, d as bisectLeft, c as bisectRight, e as bisector, f as max, m as min, q as quantile, g as quantileSorted, h as quickselect, s as range, j as tickIncrement, t as tickStep, i as ticks } from './common/quantile-006bc2f7.js';
 
 function count(values, valueof) {
   let count = 0;
@@ -20,7 +20,7 @@ function count(values, valueof) {
   return count;
 }
 
-function length(array) {
+function length$1(array) {
   return array.length | 0;
 }
 
@@ -39,7 +39,7 @@ function reducer(reduce) {
 function cross(...values) {
   const reduce = typeof values[values.length - 1] === "function" && reducer(values.pop());
   values = values.map(arrayify);
-  const lengths = values.map(length);
+  const lengths = values.map(length$1);
   const j = values.length - 1;
   const index = new Array(j + 1).fill(0);
   const product = [];
@@ -487,7 +487,7 @@ function sum(values, valueof) {
 
 function transpose(matrix) {
   if (!(n = matrix.length)) return [];
-  for (var i = -1, m = min(matrix, length$1), transpose = new Array(m); ++i < m;) {
+  for (var i = -1, m = min(matrix, length), transpose = new Array(m); ++i < m;) {
     for (var j = -1, n, row = transpose[i] = new Array(n); ++j < n;) {
       row[j] = matrix[j][i];
     }
@@ -495,7 +495,7 @@ function transpose(matrix) {
   return transpose;
 }
 
-function length$1(d) {
+function length(d) {
   return d.length;
 }
 

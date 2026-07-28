@@ -7334,4 +7334,4 @@ angular.module('ui.bootstrap.typeahead').run(function() {!angular.$$csp().noInli
 
 var angularUiBootstrap = 'ui.bootstrap';
 
-export default angularUiBootstrap;
+export { angularUiBootstrap as default };

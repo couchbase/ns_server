@@ -829,4 +829,4 @@ function ngMessageDirectiveFactory(isDefault) {
 
 var angularMessages = 'ngMessages';
 
-export default angularMessages;
+export { angularMessages as default };

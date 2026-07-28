@@ -386,10 +386,10 @@ exports.fn = function(value) {
     return type === '[object Function]';
 };
 });
-var is_1 = is.node;
-var is_2 = is.nodeList;
-var is_3 = is.string;
-var is_4 = is.fn;
+is.node;
+is.nodeList;
+is.string;
+is.fn;
 
 var DOCUMENT_NODE_TYPE = 9;
 
@@ -776,4 +776,4 @@ var clipboard = createCommonjsModule(function (module, exports) {
 
 var clipboard$1 = unwrapExports(clipboard);
 
-export default clipboard$1;
+export { clipboard$1 as default };

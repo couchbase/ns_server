@@ -26,7 +26,7 @@ function cubehelixConvert(o) {
   return new Cubehelix(h < 0 ? h + 360 : h, s, l, o.opacity);
 }
 
-function cubehelix(h, s, l, opacity) {
+function cubehelix$2(h, s, l, opacity) {
   return arguments.length === 1 ? cubehelixConvert(h) : new Cubehelix(h, s, l, opacity == null ? 1 : opacity);
 }
 
@@ -37,7 +37,7 @@ function Cubehelix(h, s, l, opacity) {
   this.opacity = +opacity;
 }
 
-define(Cubehelix, cubehelix, extend(Color, {
+define(Cubehelix, cubehelix$2, extend(Color, {
   brighter: function(k) {
     k = k == null ? brighter : Math.pow(brighter, k);
     return new Cubehelix(this.h, this.s, this.l * k, this.opacity);
@@ -61,12 +61,12 @@ define(Cubehelix, cubehelix, extend(Color, {
   }
 }));
 
-function cubehelix$1(hue) {
+function cubehelix(hue) {
   return (function cubehelixGamma(y) {
     y = +y;
 
-    function cubehelix$1(start, end) {
-      var h = hue((start = cubehelix(start)).h, (end = cubehelix(end)).h),
+    function cubehelix(start, end) {
+      var h = hue((start = cubehelix$2(start)).h, (end = cubehelix$2(end)).h),
           s = nogamma(start.s, end.s),
           l = nogamma(start.l, end.l),
           opacity = nogamma(start.opacity, end.opacity);
@@ -79,13 +79,13 @@ function cubehelix$1(hue) {
       };
     }
 
-    cubehelix$1.gamma = cubehelixGamma;
+    cubehelix.gamma = cubehelixGamma;
 
-    return cubehelix$1;
+    return cubehelix;
   })(1);
 }
 
-var cubehelix$2 = cubehelix$1(hue);
-var cubehelixLong = cubehelix$1(nogamma);
+var cubehelix$1 = cubehelix(hue);
+var cubehelixLong = cubehelix(nogamma);
 
-export { cubehelixLong as a, cubehelix as b, cubehelix$2 as c, deg2rad as d, rad2deg as r };
+export { cubehelixLong as a, cubehelix$2 as b, cubehelix$1 as c, deg2rad as d, rad2deg as r };

@@ -778,7 +778,7 @@ var ocLazyLoad = createCommonjsModule(function (module, exports) {
     };
 
     // CommonJS package manager support:
-    if ( module.exports === exports) {
+    if (module.exports === exports) {
         module.exports = 'oc.lazyLoad';
     }
 })(angular, window);
@@ -1349,4 +1349,4 @@ if (!Array.prototype.indexOf) {
 }
 });
 
-export default ocLazyLoad;
+export { ocLazyLoad as default };

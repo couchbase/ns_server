@@ -84,6 +84,8 @@ var day = newInterval(function(date) {
 }, function(date) {
   return date.getDate() - 1;
 });
+
+var timeDay = day;
 var days = day.range;
 
 function weekday(i) {
@@ -134,6 +136,8 @@ year.every = function(k) {
     date.setFullYear(date.getFullYear() + step * k);
   });
 };
+
+var timeYear = year;
 var years = year.range;
 
 var utcDay = newInterval(function(date) {
@@ -145,6 +149,8 @@ var utcDay = newInterval(function(date) {
 }, function(date) {
   return date.getUTCDate() - 1;
 });
+
+var utcDay$1 = utcDay;
 var utcDays = utcDay.range;
 
 function utcWeekday(i) {
@@ -195,6 +201,8 @@ utcYear.every = function(k) {
     date.setUTCFullYear(date.getUTCFullYear() + step * k);
   });
 };
+
+var utcYear$1 = utcYear;
 var utcYears = utcYear.range;
 
-export { years as A, utcDays as B, utcSundays as C, utcMondays as D, utcTuesday as E, utcTuesdays as F, utcWednesday as G, utcWednesdays as H, utcThursdays as I, utcFriday as J, utcFridays as K, utcSaturday as L, utcSaturdays as M, utcYears as N, year as a, utcSunday as b, utcYear as c, utcMonday as d, utcThursday as e, thursday as f, durationSecond as g, durationMinute as h, durationHour as i, days as j, sundays as k, mondays as l, monday as m, newInterval as n, tuesday as o, tuesdays as p, wednesdays as q, thursdays as r, sunday as s, day as t, utcDay as u, friday as v, wednesday as w, fridays as x, saturday as y, saturdays as z };
+export { years as A, utcDays as B, utcSundays as C, utcMondays as D, utcTuesday as E, utcTuesdays as F, utcWednesday as G, utcWednesdays as H, utcThursdays as I, utcFriday as J, utcFridays as K, utcSaturday as L, utcSaturdays as M, utcYears as N, timeYear as a, utcSunday as b, utcYear$1 as c, thursday as d, utcThursday as e, utcMonday as f, durationSecond as g, durationMinute as h, durationHour as i, days as j, sundays as k, mondays as l, monday as m, newInterval as n, tuesday as o, tuesdays as p, wednesdays as q, thursdays as r, sunday as s, timeDay as t, utcDay$1 as u, friday as v, wednesday as w, fridays as x, saturday as y, saturdays as z };

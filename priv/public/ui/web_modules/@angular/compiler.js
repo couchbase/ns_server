@@ -1,4 +1,4 @@
-import { b as __extends, e as __values, g as __spread, f as __assign, d as __read } from '../common/tslib.es6-c4a4947b.js';
+import { b as __extends, f as __values, g as __spread, d as __assign, e as __read } from '../common/tslib.es6-89c1b43d.js';
 
 /**
  * @license Angular v8.2.14
@@ -1008,10 +1008,10 @@ var MapType = /** @class */ (function (_super) {
 var DYNAMIC_TYPE = new BuiltinType(BuiltinTypeName.Dynamic);
 var INFERRED_TYPE = new BuiltinType(BuiltinTypeName.Inferred);
 var BOOL_TYPE = new BuiltinType(BuiltinTypeName.Bool);
-var INT_TYPE = new BuiltinType(BuiltinTypeName.Int);
+new BuiltinType(BuiltinTypeName.Int);
 var NUMBER_TYPE = new BuiltinType(BuiltinTypeName.Number);
 var STRING_TYPE = new BuiltinType(BuiltinTypeName.String);
-var FUNCTION_TYPE = new BuiltinType(BuiltinTypeName.Function);
+new BuiltinType(BuiltinTypeName.Function);
 var NONE_TYPE = new BuiltinType(BuiltinTypeName.None);
 ///// Expressions
 var BinaryOperator;
@@ -1601,10 +1601,10 @@ var CommaExpr = /** @class */ (function (_super) {
     };
     return CommaExpr;
 }(Expression));
-var THIS_EXPR = new ReadVarExpr(BuiltinVar.This, null, null);
-var SUPER_EXPR = new ReadVarExpr(BuiltinVar.Super, null, null);
-var CATCH_ERROR_VAR = new ReadVarExpr(BuiltinVar.CatchError, null, null);
-var CATCH_STACK_VAR = new ReadVarExpr(BuiltinVar.CatchStack, null, null);
+new ReadVarExpr(BuiltinVar.This, null, null);
+new ReadVarExpr(BuiltinVar.Super, null, null);
+new ReadVarExpr(BuiltinVar.CatchError, null, null);
+new ReadVarExpr(BuiltinVar.CatchStack, null, null);
 var NULL_EXPR = new LiteralExpr(null, null, null);
 var TYPED_NULL_EXPR = new LiteralExpr(null, INFERRED_TYPE, null);
 //// Statements
@@ -5372,7 +5372,7 @@ function dependenciesFromGlobalMetadata(type, outputCtx, reflector) {
     // Use the `CompileReflector` to look up references to some well-known Angular types. These will
     // be compared with the token to statically determine whether the token has significance to
     // Angular, and set the correct `R3ResolvedDependencyType` as a result.
-    var injectorRef = reflector.resolveExternalReference(Identifiers.Injector);
+    reflector.resolveExternalReference(Identifiers.Injector);
     // Iterate through the type's DI dependencies and produce `R3DependencyMetadata` for each of them.
     var deps = [];
     try {
@@ -9694,7 +9694,7 @@ var _Tokenizer = /** @class */ (function () {
     };
     _Tokenizer.prototype._consumeRawTextWithTagClose = function (prefix, tagName, decodeEntities) {
         var _this = this;
-        var textToken = this._consumeRawText(decodeEntities, function () {
+        this._consumeRawText(decodeEntities, function () {
             if (!_this._attemptCharCode($LT))
                 return false;
             if (!_this._attemptCharCode($SLASH))
@@ -17719,7 +17719,7 @@ function compileComponentFromMetadata(meta, constantPool, bindingParser) {
     }
     // On the type side, remove newlines from the selector as it will need to fit into a TypeScript
     // string literal, which must be on one line.
-    var selectorForType = (meta.selector || '').replace(/\n/g, '');
+    (meta.selector || '').replace(/\n/g, '');
     var expression = importExpr(Identifiers$1.defineComponent).callFn([definitionMap.toLiteralMap()]);
     var type = createTypeForDef(meta, Identifiers$1.ComponentDefWithMeta);
     return { expression: expression, type: type, statements: statements };
@@ -23208,7 +23208,7 @@ var ViewBuilder$1 = /** @class */ (function () {
         }
     };
     ViewBuilder.prototype._addProviderNode = function (data) {
-        var nodeIndex = this.nodes.length;
+        this.nodes.length;
         // providerDef(
         //   flags: NodeFlags, matchedQueries: [string, QueryValueType][], token:any,
         //   value: any, deps: ([DepFlags, any] | any)[]): NodeDef;
@@ -24357,7 +24357,7 @@ function serializeSummaries(srcFileName, forJitCtx, summaryResolver, symbolResol
     symbols.forEach(function (resolvedSymbol) { return toJsonSerializer.addSummary({ symbol: resolvedSymbol.symbol, metadata: resolvedSymbol.metadata }); });
     // Add type summaries.
     types.forEach(function (_a) {
-        var summary = _a.summary, metadata = _a.metadata;
+        var summary = _a.summary; _a.metadata;
         toJsonSerializer.addSummary({ symbol: summary.type.reference, metadata: undefined, type: summary });
     });
     var _a = toJsonSerializer.serialize(createExternalSymbolReexports), json = _a.json, exportAs = _a.exportAs;
@@ -25185,7 +25185,7 @@ var AotCompiler = /** @class */ (function () {
                 }
             });
             // compile components
-            var compViewVars = _this._compileComponent(outputCtx, compMeta, ngModule, ngModule.transitiveModule.directives, componentStylesheet, fileSuffix);
+            _this._compileComponent(outputCtx, compMeta, ngModule, ngModule.transitiveModule.directives, componentStylesheet, fileSuffix);
             _this._compileComponentFactory(outputCtx, compMeta, ngModule, fileSuffix);
         });
         if (outputCtx.statements.length > 0 || this._options.allowEmptyCodegenFiles) {
@@ -26395,7 +26395,7 @@ var StaticReflector = /** @class */ (function () {
         }
     };
     StaticReflector.prototype.error = function (_a, reportingContext) {
-        var message = _a.message, summary = _a.summary, advise = _a.advise, position = _a.position, context = _a.context, value = _a.value, symbol = _a.symbol, chain = _a.chain;
+        var message = _a.message, summary = _a.summary, advise = _a.advise, position = _a.position, context = _a.context; _a.value; var symbol = _a.symbol, chain = _a.chain;
         this.reportError(metadataError(message, summary, advise, position, symbol, context, chain), reportingContext);
     };
     return StaticReflector;
@@ -27341,7 +27341,7 @@ var JitCompiler = /** @class */ (function () {
             externalStylesheetsByModuleUrl.set(stylesheetMeta.moduleUrl, compiledStylesheet);
         });
         this._resolveStylesCompileResult(componentStylesheet, externalStylesheetsByModuleUrl);
-        var pipes = template.ngModule.transitiveModule.pipes.map(function (pipe) { return _this._metadataResolver.getPipeSummary(pipe.reference); });
+        template.ngModule.transitiveModule.pipes.map(function (pipe) { return _this._metadataResolver.getPipeSummary(pipe.reference); });
         var _a = this._parseTemplate(compMeta, template.ngModule, template.directives), parsedTemplate = _a.template, usedPipes = _a.pipes;
         var compileResult = this._viewCompiler.compileComponent(outputContext, compMeta, parsedTemplate, variable(componentStylesheet.stylesVar), usedPipes);
         var evalResult = this._interpretOrJit(templateJitUrl(template.ngModule.type, template.compMeta), outputContext.statements);

@@ -874,13 +874,13 @@ function _has(prop, obj) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-var toString = Object.prototype.toString;
+var toString$1 = Object.prototype.toString;
 
 var _isArguments =
 /*#__PURE__*/
 function () {
-  return toString.call(arguments) === '[object Arguments]' ? function _isArguments(x) {
-    return toString.call(x) === '[object Arguments]';
+  return toString$1.call(arguments) === '[object Arguments]' ? function _isArguments(x) {
+    return toString$1.call(x) === '[object Arguments]';
   } : function _isArguments(x) {
     return _has('callee', x);
   };
@@ -3425,7 +3425,7 @@ function _toString(x, seen) {
  *      R.toString(new Date('2001-02-03T04:05:06Z')); //=> 'new Date("2001-02-03T04:05:06.000Z")'
  */
 
-var toString$1 =
+var toString =
 /*#__PURE__*/
 _curry1(function toString(val) {
   return _toString(val, []);
@@ -3468,7 +3468,7 @@ _curry2(function concat(a, b) {
       return a.concat(b);
     }
 
-    throw new TypeError(toString$1(b) + ' is not an array');
+    throw new TypeError(toString(b) + ' is not an array');
   }
 
   if (_isString(a)) {
@@ -3476,7 +3476,7 @@ _curry2(function concat(a, b) {
       return a + b;
     }
 
-    throw new TypeError(toString$1(b) + ' is not a string');
+    throw new TypeError(toString(b) + ' is not a string');
   }
 
   if (a != null && _isFunction(a['fantasy-land/concat'])) {
@@ -3487,7 +3487,7 @@ _curry2(function concat(a, b) {
     return a.concat(b);
   }
 
-  throw new TypeError(toString$1(a) + ' does not have a method named "concat" or "fantasy-land/concat"');
+  throw new TypeError(toString(a) + ' does not have a method named "concat" or "fantasy-land/concat"');
 });
 
 /**
@@ -4609,7 +4609,7 @@ _dispatchable(['take'], _xtake, function take(n, xs) {
   return slice(0, n < 0 ? Infinity : n, xs);
 }));
 
-function dropLast(n, xs) {
+function dropLast$1(n, xs) {
   return take(n < xs.length ? xs.length - n : 0, xs);
 }
 
@@ -4682,13 +4682,13 @@ _curry2(function _xdropLast(n, xf) {
  *      R.dropLast(3, 'ramda');               //=> 'ra'
  */
 
-var dropLast$1 =
+var dropLast =
 /*#__PURE__*/
 _curry2(
 /*#__PURE__*/
-_dispatchable([], _xdropLast, dropLast));
+_dispatchable([], _xdropLast, dropLast$1));
 
-function dropLastWhile(pred, xs) {
+function dropLastWhile$1(pred, xs) {
   var idx = xs.length - 1;
 
   while (idx >= 0 && pred(xs[idx])) {
@@ -4766,11 +4766,11 @@ _curry2(function _xdropLastWhile(fn, xf) {
  *      R.dropLastWhile(x => x !== 'd' , 'Ramda'); //=> 'Ramd'
  */
 
-var dropLastWhile$1 =
+var dropLastWhile =
 /*#__PURE__*/
 _curry2(
 /*#__PURE__*/
-_dispatchable([], _xdropLastWhile, dropLastWhile));
+_dispatchable([], _xdropLastWhile, dropLastWhile$1));
 
 var XDropRepeatsWith =
 /*#__PURE__*/
@@ -6756,7 +6756,7 @@ _curry2(function invoker(arity, method) {
       return target[method].apply(target, Array.prototype.slice.call(arguments, 0, arity));
     }
 
-    throw new TypeError(toString$1(target) + ' does not have a method named "' + method + '"');
+    throw new TypeError(toString(target) + ' does not have a method named "' + method + '"');
   });
 });
 
@@ -10138,7 +10138,7 @@ var test =
 /*#__PURE__*/
 _curry2(function test(pattern, str) {
   if (!_isRegExp(pattern)) {
-    throw new TypeError('‘test’ requires a value of type RegExp as its first argument; received ' + toString$1(pattern));
+    throw new TypeError('‘test’ requires a value of type RegExp as its first argument; received ' + toString(pattern));
   }
 
   return _cloneRegExp(pattern).test(str);
@@ -11381,4 +11381,4 @@ _curry1(function thunkify(fn) {
   });
 });
 
-export { F, T, __, add, addIndex, adjust, all, allPass, always, and, andThen, any, anyPass, ap, aperture, append, apply, applySpec, applyTo, ascend, assoc, assocPath, binary, bind, both, call, chain, clamp, clone, collectBy, comparator, complement, compose, composeWith, concat, cond, construct, constructN, converge, count, countBy, curry, curryN, dec, defaultTo, descend, difference, differenceWith, dissoc, dissocPath, divide, drop, dropLast$1 as dropLast, dropLastWhile$1 as dropLastWhile, dropRepeats, dropRepeatsWith, dropWhile, either, empty, endsWith, eqBy, eqProps, equals, evolve, filter, find, findIndex, findLast, findLastIndex, flatten, flip, forEach, forEachObjIndexed, fromPairs, groupBy, groupWith, gt, gte, has, hasIn, hasPath, head, identical, identity, ifElse, inc, includes, indexBy, indexOf, init, innerJoin, insert, insertAll, intersection, intersperse, into, invert, invertObj, invoker, is, isEmpty, isNil, join, juxt, keys, keysIn, last, lastIndexOf, length, lens, lensIndex, lensPath, lensProp, lift, liftN, lt, lte, map, mapAccum, mapAccumRight, mapObjIndexed, match, mathMod, max, maxBy, mean, median, memoizeWith, mergeAll, mergeDeepLeft, mergeDeepRight, mergeDeepWith, mergeDeepWithKey, mergeLeft, mergeRight, mergeWith, mergeWithKey, min, minBy, modify, modifyPath, modulo, move, multiply, nAry, negate, none, not, nth, nthArg, o, objOf, of, omit, on, once, or, otherwise, over, pair, partial, partialObject, partialRight, partition, path, pathEq, pathOr, pathSatisfies, paths, pick, pickAll, pickBy, pipe, pipeWith, pluck, prepend, product, project, promap, prop, propEq, propIs, propOr, propSatisfies, props, range, reduce, reduceBy, reduceRight, reduceWhile, reduced, reject, remove, repeat, replace, reverse, scan, sequence, set, slice, sort, sortBy, sortWith, split, splitAt, splitEvery, splitWhen, splitWhenever, startsWith, subtract, sum, symmetricDifference, symmetricDifferenceWith, tail, take, takeLast, takeLastWhile, takeWhile, tap, test, thunkify, times, toLower, toPairs, toPairsIn, toString$1 as toString, toUpper, transduce, transpose, traverse, trim, tryCatch, type, unapply, unary, uncurryN, unfold, union, unionWith, uniq, uniqBy, uniqWith, unless, unnest, until, unwind, update, useWith, values, valuesIn, view, when, where, whereAny, whereEq, without, xor, xprod, zip, zipObj, zipWith };
+export { F, T, __, add, addIndex, adjust, all, allPass, always, and, andThen, any, anyPass, ap, aperture, append, apply, applySpec, applyTo, ascend, assoc, assocPath, binary, bind, both, call, chain, clamp, clone, collectBy, comparator, complement, compose, composeWith, concat, cond, construct, constructN, converge, count, countBy, curry, curryN, dec, defaultTo, descend, difference, differenceWith, dissoc, dissocPath, divide, drop, dropLast, dropLastWhile, dropRepeats, dropRepeatsWith, dropWhile, either, empty, endsWith, eqBy, eqProps, equals, evolve, filter, find, findIndex, findLast, findLastIndex, flatten, flip, forEach, forEachObjIndexed, fromPairs, groupBy, groupWith, gt, gte, has, hasIn, hasPath, head, identical, identity, ifElse, inc, includes, indexBy, indexOf, init, innerJoin, insert, insertAll, intersection, intersperse, into, invert, invertObj, invoker, is, isEmpty, isNil, join, juxt, keys, keysIn, last, lastIndexOf, length, lens, lensIndex, lensPath, lensProp, lift, liftN, lt, lte, map, mapAccum, mapAccumRight, mapObjIndexed, match, mathMod, max, maxBy, mean, median, memoizeWith, mergeAll, mergeDeepLeft, mergeDeepRight, mergeDeepWith, mergeDeepWithKey, mergeLeft, mergeRight, mergeWith, mergeWithKey, min, minBy, modify, modifyPath, modulo, move, multiply, nAry, negate, none, not, nth, nthArg, o, objOf, of, omit, on, once, or, otherwise, over, pair, partial, partialObject, partialRight, partition, path, pathEq, pathOr, pathSatisfies, paths, pick, pickAll, pickBy, pipe, pipeWith, pluck, prepend, product, project, promap, prop, propEq, propIs, propOr, propSatisfies, props, range, reduce, reduceBy, reduceRight, reduceWhile, reduced, reject, remove, repeat, replace, reverse, scan, sequence, set, slice, sort, sortBy, sortWith, split, splitAt, splitEvery, splitWhen, splitWhenever, startsWith, subtract, sum, symmetricDifference, symmetricDifferenceWith, tail, take, takeLast, takeLastWhile, takeWhile, tap, test, thunkify, times, toLower, toPairs, toPairsIn, toString, toUpper, transduce, transpose, traverse, trim, tryCatch, type, unapply, unary, uncurryN, unfold, union, unionWith, uniq, uniqBy, uniqWith, unless, unnest, until, unwind, update, useWith, values, valuesIn, view, when, where, whereAny, whereEq, without, xor, xprod, zip, zipObj, zipWith };

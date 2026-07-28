@@ -1,4 +1,4 @@
-function defaultSeparation(a, b) {
+function defaultSeparation$1(a, b) {
   return a.parent === b.parent ? 1 : 2;
 }
 
@@ -31,7 +31,7 @@ function leafRight(node) {
 }
 
 function cluster() {
-  var separation = defaultSeparation,
+  var separation = defaultSeparation$1,
       dx = 1,
       dy = 1,
       nodeSize = false;
@@ -221,7 +221,7 @@ function node_links() {
 }
 
 function hierarchy(data, children) {
-  var root = new Node(data),
+  var root = new Node$1(data),
       valued = +data.value && (root.value = data.value),
       node,
       nodes = [root],
@@ -237,7 +237,7 @@ function hierarchy(data, children) {
     if ((childs = children(node.data)) && (n = childs.length)) {
       node.children = new Array(n);
       for (i = n - 1; i >= 0; --i) {
-        nodes.push(child = node.children[i] = new Node(childs[i]));
+        nodes.push(child = node.children[i] = new Node$1(childs[i]));
         child.parent = node;
         child.depth = node.depth + 1;
       }
@@ -265,15 +265,15 @@ function computeHeight(node) {
   while ((node = node.parent) && (node.height < ++height));
 }
 
-function Node(data) {
+function Node$1(data) {
   this.data = data;
   this.depth =
   this.height = 0;
   this.parent = null;
 }
 
-Node.prototype = hierarchy.prototype = {
-  constructor: Node,
+Node$1.prototype = hierarchy.prototype = {
+  constructor: Node$1,
   count: node_count,
   each: node_each,
   eachAfter: node_eachAfter,
@@ -460,7 +460,7 @@ function score(node) {
   return dx * dx + dy * dy;
 }
 
-function Node$1(circle) {
+function Node(circle) {
   this._ = circle;
   this.next = null;
   this.previous = null;
@@ -483,14 +483,14 @@ function packEnclose(circles) {
   place(b, a, c = circles[2]);
 
   // Initialize the front-chain using the first three circles a, b and c.
-  a = new Node$1(a), b = new Node$1(b), c = new Node$1(c);
+  a = new Node(a), b = new Node(b), c = new Node(c);
   a.next = c.previous = b;
   b.next = a.previous = c;
   c.next = b.previous = a;
 
   // Attempt to place each remaining circle…
   pack: for (i = 3; i < n; ++i) {
-    place(a._, b._, c = circles[i]), c = new Node$1(c);
+    place(a._, b._, c = circles[i]), c = new Node(c);
 
     // Find the closest intersecting circle on the front-chain, if any.
     // “Closeness” is determined by linear distance along the front-chain.
@@ -562,7 +562,7 @@ function defaultRadius(d) {
   return Math.sqrt(d.value);
 }
 
-function index() {
+function index$1() {
   var radius = null,
       dx = 1,
       dy = 1,
@@ -733,7 +733,7 @@ function stratify() {
         nodeByKey = {};
 
     for (i = 0; i < n; ++i) {
-      d = data[i], node = nodes[i] = new Node(d);
+      d = data[i], node = nodes[i] = new Node$1(d);
       if ((nodeId = id(d, i, data)) != null && (nodeId += "")) {
         nodeKey = keyPrefix + (node.id = nodeId);
         nodeByKey[nodeKey] = nodeKey in nodeByKey ? ambiguous : node;
@@ -775,7 +775,7 @@ function stratify() {
   return stratify;
 }
 
-function defaultSeparation$1(a, b) {
+function defaultSeparation(a, b) {
   return a.parent === b.parent ? 1 : 2;
 }
 
@@ -846,7 +846,7 @@ function TreeNode(node, i) {
   this.i = i; // number
 }
 
-TreeNode.prototype = Object.create(Node.prototype);
+TreeNode.prototype = Object.create(Node$1.prototype);
 
 function treeRoot(root) {
   var tree = new TreeNode(root, 0),
@@ -873,7 +873,7 @@ function treeRoot(root) {
 
 // Node-link tree diagram using the Reingold-Tilford "tidy" algorithm
 function tree() {
-  var separation = defaultSeparation$1,
+  var separation = defaultSeparation,
       dx = 1,
       dy = 1,
       nodeSize = null;
@@ -1088,7 +1088,7 @@ var squarify = (function custom(ratio) {
   return squarify;
 })(phi);
 
-function index$1() {
+function index() {
   var tile = squarify,
       round = false,
       dx = 1,
@@ -1262,4 +1262,4 @@ var resquarify = (function custom(ratio) {
   return resquarify;
 })(phi);
 
-export { cluster, hierarchy, index as pack, enclose as packEnclose, siblings as packSiblings, partition, stratify, tree, index$1 as treemap, binary as treemapBinary, treemapDice, resquarify as treemapResquarify, treemapSlice, sliceDice as treemapSliceDice, squarify as treemapSquarify };
+export { cluster, hierarchy, index$1 as pack, enclose as packEnclose, siblings as packSiblings, partition, stratify, tree, index as treemap, binary as treemapBinary, treemapDice, resquarify as treemapResquarify, treemapSlice, sliceDice as treemapSliceDice, squarify as treemapSquarify };

@@ -3186,8 +3186,8 @@ function MultiDragPlugin() {
     hideClone: function hideClone(_ref5) {
       var _this = this;
 
-      var sortable = _ref5.sortable,
-          cloneNowHidden = _ref5.cloneNowHidden,
+      _ref5.sortable;
+          var cloneNowHidden = _ref5.cloneNowHidden,
           cancel = _ref5.cancel;
       if (!this.isMultiDrag) return;
       multiDragClones.forEach(function (clone) {
@@ -3202,7 +3202,7 @@ function MultiDragPlugin() {
       cancel();
     },
     dragStartGlobal: function dragStartGlobal(_ref6) {
-      var sortable = _ref6.sortable;
+      _ref6.sortable;
 
       if (!this.isMultiDrag && multiDragSortable) {
         multiDragSortable.multiDrag._deselectMultiDrag();
@@ -3695,5 +3695,4 @@ function removeMultiDragElements() {
 Sortable.mount(new AutoScrollPlugin());
 Sortable.mount(Remove, Revert);
 
-export default Sortable;
-export { MultiDragPlugin as MultiDrag, Sortable, SwapPlugin as Swap };
+export { MultiDragPlugin as MultiDrag, Sortable, SwapPlugin as Swap, Sortable as default };

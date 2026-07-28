@@ -5,7 +5,7 @@
  *
  * @module common_hof
  */ /** */
-var __spreadArrays = (undefined && undefined.__spreadArrays) || function () {
+var __spreadArrays$1 = (undefined && undefined.__spreadArrays) || function () {
     for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
     for (var r = Array(s), k = 0, i = 0; i < il; i++)
         for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
@@ -59,7 +59,7 @@ function curry(fn) {
             return fn.apply(this, arguments);
         }
         var args = Array.prototype.slice.call(arguments);
-        return curried.bind.apply(curried, __spreadArrays([this], args));
+        return curried.bind.apply(curried, __spreadArrays$1([this], args));
     };
 }
 /**
@@ -85,10 +85,6 @@ function compose() {
  * then, piped is: h(g(f(x)))
  */
 function pipe() {
-    var funcs = [];
-    for (var _i = 0; _i < arguments.length; _i++) {
-        funcs[_i] = arguments[_i];
-    }
     return compose.apply(null, [].slice.call(arguments).reverse());
 }
 /**
@@ -272,7 +268,7 @@ var services = {
     $injector: undefined,
 };
 
-var __spreadArrays$1 = (undefined && undefined.__spreadArrays) || function () {
+var __spreadArrays = (undefined && undefined.__spreadArrays) || function () {
     for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
     for (var r = Array(s), k = 0, i = 0; i < il; i++)
         for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
@@ -406,7 +402,7 @@ function defaults(opts) {
     for (var _i = 1; _i < arguments.length; _i++) {
         defaultsList[_i - 1] = arguments[_i];
     }
-    var defaultVals = extend.apply(void 0, __spreadArrays$1([{}], defaultsList.reverse()));
+    var defaultVals = extend.apply(void 0, __spreadArrays([{}], defaultsList.reverse()));
     return extend(defaultVals, pick(opts || {}, Object.keys(defaultVals)));
 }
 /** Reduce function that merges each element of the list into a single object, using extend */
@@ -2658,7 +2654,7 @@ var UIInjectorImpl = /** @class */ (function () {
 }());
 
 /** @publicapi @module state */ /** */
-var parseUrl = function (url) {
+var parseUrl$1 = function (url) {
     if (!isString(url))
         return false;
     var root = url.charAt(0) === '^';
@@ -2689,7 +2685,7 @@ var getUrlBuilder = function ($urlMatcherFactoryProvider, root) {
             stateDec = newStateDec;
         }
         var parent = stateObject.parent;
-        var parsed = parseUrl(stateDec.url);
+        var parsed = parseUrl$1(stateDec.url);
         var url = !parsed ? stateDec.url : $urlMatcherFactoryProvider.compile(parsed.val, { state: stateDec });
         if (!url)
             return null;
@@ -8041,7 +8037,7 @@ var getParams = function (queryString) {
         .map(splitEqual)
         .reduce(keyValsToObjectR, {});
 };
-function parseUrl$1(url) {
+function parseUrl(url) {
     var orEmptyString = function (x) { return x || ''; };
     var _a = splitHash(url).map(orEmptyString), beforehash = _a[0], hash = _a[1];
     var _b = splitQuery(beforehash).map(orEmptyString), path = _b[0], search = _b[1];
@@ -8081,9 +8077,9 @@ var BaseLocationServices = /** @class */ (function () {
         this.fireAfterUpdate = fireAfterUpdate;
         this._listeners = [];
         this._listener = function (evt) { return _this._listeners.forEach(function (cb) { return cb(evt); }); };
-        this.hash = function () { return parseUrl$1(_this._get()).hash; };
-        this.path = function () { return parseUrl$1(_this._get()).path; };
-        this.search = function () { return getParams(parseUrl$1(_this._get()).search); };
+        this.hash = function () { return parseUrl(_this._get()).hash; };
+        this.path = function () { return parseUrl(_this._get()).path; };
+        this.search = function () { return getParams(parseUrl(_this._get()).search); };
         this._location = root.location;
         this._history = root.history;
     }
@@ -8108,7 +8104,7 @@ var BaseLocationServices = /** @class */ (function () {
     return BaseLocationServices;
 }());
 
-var __extends = (undefined && undefined.__extends) || (function () {
+var __extends$2 = (undefined && undefined.__extends) || (function () {
     var extendStatics = function (d, b) {
         extendStatics = Object.setPrototypeOf ||
             ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
@@ -8123,7 +8119,7 @@ var __extends = (undefined && undefined.__extends) || (function () {
 })();
 /** A `LocationServices` that uses the browser hash "#" to get/set the current location */
 var HashLocationService = /** @class */ (function (_super) {
-    __extends(HashLocationService, _super);
+    __extends$2(HashLocationService, _super);
     function HashLocationService(router) {
         var _this = _super.call(this, router, false) || this;
         root.addEventListener('hashchange', _this._listener, false);
@@ -8170,7 +8166,7 @@ var MemoryLocationService = /** @class */ (function (_super) {
     return MemoryLocationService;
 }(BaseLocationServices));
 
-var __extends$2 = (undefined && undefined.__extends) || (function () {
+var __extends = (undefined && undefined.__extends) || (function () {
     var extendStatics = function (d, b) {
         extendStatics = Object.setPrototypeOf ||
             ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
@@ -8189,7 +8185,7 @@ var __extends$2 = (undefined && undefined.__extends) || (function () {
  * Uses `history.pushState` and `history.replaceState`
  */
 var PushStateLocationService = /** @class */ (function (_super) {
-    __extends$2(PushStateLocationService, _super);
+    __extends(PushStateLocationService, _super);
     function PushStateLocationService(router) {
         var _this = _super.call(this, router, true) || this;
         _this._config = router.urlService.config;
@@ -8337,4 +8333,4 @@ var UIRouterPluginBase = /** @class */ (function () {
     return UIRouterPluginBase;
 }());
 
-export { pluck as $, tail as A, BaseLocationServices as B, Param as C, root as D, fromJson as E, toJson as F, equals as G, noop as H, createProxyFunctions as I, inherit as J, removeFrom as K, _removeFrom as L, pushTo as M, NATIVE_INJECTOR_TOKEN as N, _pushTo as O, PathUtils as P, deregAll as Q, ResolveContext as R, StateRegistry as S, TransitionService as T, UIRouter as U, ViewService as V, defaults as W, mergeR as X, ancestors as Y, omit as Z, _inArray as _, parse as a, ParamTypes as a$, find as a0, mapObj as a1, map as a2, values as a3, allTrueR as a4, flattenR as a5, pushR as a6, unnest as a7, flatten as a8, assertPredicate as a9, isNull as aA, isNullOrUndefined as aB, isObject as aC, isArray as aD, isDate as aE, isRegExp as aF, isInjectable as aG, isPromise as aH, Queue as aI, maxLength as aJ, padString as aK, kebobString as aL, functionToString as aM, fnToString as aN, stringify as aO, beforeAfterSubstr as aP, hostRegex as aQ, stripLastPathElement as aR, splitHash as aS, splitQuery as aT, splitEqual as aU, trimHashVal as aV, splitOnDelim as aW, joinNeighborsR as aX, Category as aY, Trace as aZ, DefType as a_, assertMap as aa, assertFn as ab, pairs as ac, arrayTuples as ad, applyPairs as ae, copy as af, _extend as ag, silenceUncaughtInPromise as ah, silentRejection as ai, makeStub as aj, Glob as ak, curry as al, compose as am, pipe as an, prop as ao, propEq as ap, not as aq, and as ar, or as as, all as at, any as au, eq as av, val as aw, invoke as ax, pattern as ay, isUndefined as az, filter as b, StateParams as b0, ParamType as b1, PathNode as b2, resolvePolicies as b3, defaultResolvePolicy as b4, resolvablesBuilder as b5, StateBuilder as b6, StateObject as b7, StateMatcher as b8, StateQueueManager as b9, getParams as bA, buildUrl as bB, locationPluginFactory as bC, hashLocationPlugin as bD, pushStateLocationPlugin as bE, memoryLocationPlugin as bF, UIRouterPluginBase as bG, TargetState as ba, TransitionHookPhase as bb, TransitionHookScope as bc, HookBuilder as bd, matchState as be, RegisteredHook as bf, makeEvent as bg, RejectType as bh, Rejection as bi, Transition as bj, TransitionHook as bk, TransitionEventType as bl, defaultTransOpts as bm, UrlRules as bn, UrlConfig as bo, UrlMatcher as bp, ParamFactory as bq, UrlRuleFactory as br, BaseUrlRule as bs, $q as bt, $injector as bu, HashLocationService as bv, MemoryLocationService as bw, PushStateLocationService as bx, MemoryLocationConfig as by, keyValsToObjectR as bz, inArray as c, isDefined as d, extend as e, forEach as f, isNumber as g, identity as h, isFunction as i, uniqR as j, anyTrueR as k, isString as l, Resolvable as m, parseUrl$1 as n, servicesPlugin as o, pick as p, StateService as q, UrlMatcherFactory as r, services as s, trace as t, unnestR as u, UrlRouter as v, UrlService as w, UIRouterGlobals as x, is as y, BrowserLocationConfig as z };
+export { pluck as $, Param as A, BaseLocationServices as B, anyTrueR as C, root as D, fromJson as E, toJson as F, equals as G, noop as H, createProxyFunctions as I, inherit as J, removeFrom as K, _removeFrom as L, pushTo as M, NATIVE_INJECTOR_TOKEN as N, _pushTo as O, PathUtils as P, deregAll as Q, ResolveContext as R, StateRegistry as S, TransitionService as T, UIRouter as U, ViewService as V, defaults as W, mergeR as X, ancestors as Y, omit as Z, _inArray as _, inArray as a, ParamTypes as a$, find as a0, mapObj as a1, map as a2, values as a3, allTrueR as a4, flattenR as a5, pushR as a6, unnest as a7, flatten as a8, assertPredicate as a9, isNull as aA, isNullOrUndefined as aB, isObject as aC, isArray as aD, isDate as aE, isRegExp as aF, isInjectable as aG, isPromise as aH, Queue as aI, maxLength as aJ, padString as aK, kebobString as aL, functionToString as aM, fnToString as aN, stringify as aO, beforeAfterSubstr as aP, hostRegex as aQ, stripLastPathElement as aR, splitHash as aS, splitQuery as aT, splitEqual as aU, trimHashVal as aV, splitOnDelim as aW, joinNeighborsR as aX, Category as aY, Trace as aZ, DefType as a_, assertMap as aa, assertFn as ab, pairs as ac, arrayTuples as ad, applyPairs as ae, copy as af, _extend as ag, silenceUncaughtInPromise as ah, silentRejection as ai, makeStub as aj, Glob as ak, curry as al, compose as am, pipe as an, prop as ao, propEq as ap, not as aq, and as ar, or as as, all as at, any as au, eq as av, val as aw, invoke as ax, pattern as ay, isUndefined as az, isNumber as b, StateParams as b0, ParamType as b1, PathNode as b2, resolvePolicies as b3, defaultResolvePolicy as b4, resolvablesBuilder as b5, StateBuilder as b6, StateObject as b7, StateMatcher as b8, StateQueueManager as b9, getParams as bA, buildUrl as bB, locationPluginFactory as bC, hashLocationPlugin as bD, pushStateLocationPlugin as bE, memoryLocationPlugin as bF, UIRouterPluginBase as bG, TargetState as ba, TransitionHookPhase as bb, TransitionHookScope as bc, HookBuilder as bd, matchState as be, RegisteredHook as bf, makeEvent as bg, RejectType as bh, Rejection as bi, Transition as bj, TransitionHook as bk, TransitionEventType as bl, defaultTransOpts as bm, UrlRules as bn, UrlConfig as bo, UrlMatcher as bp, ParamFactory as bq, UrlRuleFactory as br, BaseUrlRule as bs, $q as bt, $injector as bu, HashLocationService as bv, MemoryLocationService as bw, PushStateLocationService as bx, MemoryLocationConfig as by, keyValsToObjectR as bz, parseUrl as c, StateService as d, extend as e, filter as f, UrlMatcherFactory as g, UrlRouter as h, isFunction as i, UrlService as j, UIRouterGlobals as k, pick as l, forEach as m, isDefined as n, identity as o, parse as p, uniqR as q, isString as r, services as s, trace as t, unnestR as u, Resolvable as v, is as w, BrowserLocationConfig as x, servicesPlugin as y, tail as z };

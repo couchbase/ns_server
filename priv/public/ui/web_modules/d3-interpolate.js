@@ -1,12 +1,12 @@
+export { i as interpolate, a as interpolateArray, d as interpolateDate, n as interpolateNumberArray, o as interpolateObject } from './common/value-2cd045dd.js';
 import { R as Rgb, r as rgbConvert, d as define, e as extend, C as Color, h as hue$1, b as hsl$2, n as nogamma } from './common/rgb-50db7803.js';
 export { f as interpolateBasis, g as interpolateBasisClosed, i as interpolateRgb, j as interpolateRgbBasis, k as interpolateRgbBasisClosed } from './common/rgb-50db7803.js';
-import { r as rad2deg, d as deg2rad } from './common/cubehelix-b37f4760.js';
-export { c as interpolateCubehelix, a as interpolateCubehelixLong } from './common/cubehelix-b37f4760.js';
-export { i as interpolate, a as interpolateArray, d as interpolateDate, n as interpolateNumberArray, o as interpolateObject } from './common/value-2cd045dd.js';
 export { i as interpolateNumber, a as interpolateString } from './common/string-cfd0b55d.js';
 export { i as interpolateRound, p as piecewise } from './common/piecewise-ef887050.js';
 export { a as interpolateTransformCss, i as interpolateTransformSvg } from './common/index-f3df269c.js';
 export { i as interpolateZoom } from './common/zoom-74300348.js';
+import { d as deg2rad, r as rad2deg } from './common/cubehelix-96fc4318.js';
+export { c as interpolateCubehelix, a as interpolateCubehelixLong } from './common/cubehelix-96fc4318.js';
 
 // https://observablehq.com/@mbostock/lab-and-rgb
 var K = 18,
@@ -33,7 +33,7 @@ function labConvert(o) {
   return new Lab(116 * y - 16, 500 * (x - y), 200 * (y - z), o.opacity);
 }
 
-function lab(l, a, b, opacity) {
+function lab$1(l, a, b, opacity) {
   return arguments.length === 1 ? labConvert(l) : new Lab(l, a, b, opacity == null ? 1 : opacity);
 }
 
@@ -44,7 +44,7 @@ function Lab(l, a, b, opacity) {
   this.opacity = +opacity;
 }
 
-define(Lab, lab, extend(Color, {
+define(Lab, lab$1, extend(Color, {
   brighter: function(k) {
     return new Lab(this.l + K * (k == null ? 1 : k), this.a, this.b, this.opacity);
   },
@@ -91,7 +91,7 @@ function hclConvert(o) {
   return new Hcl(h < 0 ? h + 360 : h, Math.sqrt(o.a * o.a + o.b * o.b), o.l, o.opacity);
 }
 
-function hcl(h, c, l, opacity) {
+function hcl$2(h, c, l, opacity) {
   return arguments.length === 1 ? hclConvert(h) : new Hcl(h, c, l, opacity == null ? 1 : opacity);
 }
 
@@ -108,7 +108,7 @@ function hcl2lab(o) {
   return new Lab(o.l, Math.cos(h) * o.c, Math.sin(h) * o.c, o.opacity);
 }
 
-define(Hcl, hcl, extend(Color, {
+define(Hcl, hcl$2, extend(Color, {
   brighter: function(k) {
     return new Hcl(this.h, this.c, this.l + K * (k == null ? 1 : k), this.opacity);
   },
@@ -154,8 +154,8 @@ function hsl(hue) {
 var hsl$1 = hsl(hue$1);
 var hslLong = hsl(nogamma);
 
-function lab$1(start, end) {
-  var l = nogamma((start = lab(start)).l, (end = lab(end)).l),
+function lab(start, end) {
+  var l = nogamma((start = lab$1(start)).l, (end = lab$1(end)).l),
       a = nogamma(start.a, end.a),
       b = nogamma(start.b, end.b),
       opacity = nogamma(start.opacity, end.opacity);
@@ -168,9 +168,9 @@ function lab$1(start, end) {
   };
 }
 
-function hcl$1(hue) {
+function hcl(hue) {
   return function(start, end) {
-    var h = hue((start = hcl(start)).h, (end = hcl(end)).h),
+    var h = hue((start = hcl$2(start)).h, (end = hcl$2(end)).h),
         c = nogamma(start.c, end.c),
         l = nogamma(start.l, end.l),
         opacity = nogamma(start.opacity, end.opacity);
@@ -184,8 +184,8 @@ function hcl$1(hue) {
   }
 }
 
-var hcl$2 = hcl$1(hue$1);
-var hclLong = hcl$1(nogamma);
+var hcl$1 = hcl(hue$1);
+var hclLong = hcl(nogamma);
 
 function quantize(interpolator, n) {
   var samples = new Array(n);
@@ -193,4 +193,4 @@ function quantize(interpolator, n) {
   return samples;
 }
 
-export { discrete as interpolateDiscrete, hcl$2 as interpolateHcl, hclLong as interpolateHclLong, hsl$1 as interpolateHsl, hslLong as interpolateHslLong, hue as interpolateHue, lab$1 as interpolateLab, quantize };
+export { discrete as interpolateDiscrete, hcl$1 as interpolateHcl, hclLong as interpolateHclLong, hsl$1 as interpolateHsl, hslLong as interpolateHslLong, hue as interpolateHue, lab as interpolateLab, quantize };

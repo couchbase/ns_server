@@ -1,12 +1,12 @@
-import { b as __extends, d as __read, _ as __decorate, f as __assign, a as __metadata, g as __spread, c as __param } from '../common/tslib.es6-c4a4947b.js';
-import '../common/mergeMap-64c6f393.js';
-import '../common/merge-183efbc7.js';
-import '../common/share-d41e3509.js';
-import { Version, NgZone, Injector, Compiler, resolveForwardRef, NgModule, isDevMode, Directive, Inject, ElementRef, EventEmitter, Testability, ComponentFactoryResolver, ChangeDetectorRef, TestabilityRegistry, ApplicationRef, SimpleChange } from './core.js';
-import './common.js';
-import './compiler.js';
-import './platform-browser.js';
+import { Version, NgZone, Injector, Compiler, resolveForwardRef, NgModule, isDevMode, Testability, Directive, Inject, ElementRef, EventEmitter, ComponentFactoryResolver, ChangeDetectorRef, TestabilityRegistry, ApplicationRef, SimpleChange } from './core.js';
+import { b as __extends, e as __read, _ as __decorate, d as __assign, a as __metadata, g as __spread, c as __param } from '../common/tslib.es6-89c1b43d.js';
 import { platformBrowserDynamic } from './platform-browser-dynamic.js';
+import '../common/mergeMap-7bf40e31.js';
+import '../common/merge-d4bf573a.js';
+import '../common/share-31ba6087.js';
+import './compiler.js';
+import './common.js';
+import './platform-browser.js';
 
 /**
  * @license Angular v8.2.14
@@ -1781,7 +1781,6 @@ var UpgradeAdapter = /** @class */ (function () {
         var delayApplyExps = [];
         var original$applyFn;
         var rootScopePrototype;
-        var rootScope;
         var upgradeAdapter = this;
         var ng1Module = this.ng1Module = module_(this.idPrefix, modules);
         var platformRef = platformBrowserDynamic();
@@ -1808,7 +1807,7 @@ var UpgradeAdapter = /** @class */ (function () {
                         else {
                             throw new Error('Failed to find \'$apply\' on \'$rootScope\'!');
                         }
-                        return rootScope = rootScopeDelegate;
+                        return rootScopeDelegate;
                     }
                 ]);
                 if (ng1Injector.has($$TESTABILITY)) {

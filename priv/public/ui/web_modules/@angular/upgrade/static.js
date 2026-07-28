@@ -1,10 +1,10 @@
-import { b as __extends, _ as __decorate, a as __metadata, d as __read, g as __spread } from '../../common/tslib.es6-c4a4947b.js';
-import '../../common/mergeMap-64c6f393.js';
-import '../../common/merge-183efbc7.js';
-import '../../common/share-d41e3509.js';
-import { Version, ɵlooseIdentical as looseIdentical, EventEmitter, isDevMode, NgModule, Testability, Injector, NgZone, ɵNOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR as NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR, ComponentFactoryResolver, ChangeDetectorRef, TestabilityRegistry, ApplicationRef, SimpleChange } from '../core.js';
-import '../common.js';
+import { b as __extends, _ as __decorate, a as __metadata, g as __spread, e as __read } from '../../common/tslib.es6-89c1b43d.js';
+import { Version, NgModule, ɵlooseIdentical as looseIdentical, EventEmitter, Testability, isDevMode, Injector, NgZone, ɵNOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR as NOT_FOUND_CHECK_ONLY_ELEMENT_INJECTOR, ComponentFactoryResolver, ChangeDetectorRef, TestabilityRegistry, ApplicationRef, SimpleChange } from '../core.js';
 import { platformBrowser } from '../platform-browser.js';
+import '../../common/mergeMap-7bf40e31.js';
+import '../../common/merge-d4bf573a.js';
+import '../../common/share-31ba6087.js';
+import '../common.js';
 
 /**
  * @license Angular v8.2.14
@@ -1722,7 +1722,7 @@ var UpgradeModule = /** @class */ (function () {
         if (modules === void 0) { modules = []; }
         var INIT_MODULE_NAME = UPGRADE_MODULE_NAME + '.init';
         // Create an ng1 module to bootstrap
-        var initModule = module_(INIT_MODULE_NAME, [])
+        module_(INIT_MODULE_NAME, [])
             .constant(UPGRADE_APP_TYPE_KEY, 2 /* Static */)
             .value(INJECTOR_KEY, this.injector)
             .factory(LAZY_MODULE_REF, [INJECTOR_KEY, function (injector) { return ({ injector: injector }); }])

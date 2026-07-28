@@ -1841,4 +1841,4 @@
 
 var angularUiTree = 'ui.tree';
 
-export default angularUiTree;
+export { angularUiTree as default };

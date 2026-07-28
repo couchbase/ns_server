@@ -1,4 +1,4 @@
-import { n as newInterval, g as durationSecond, h as durationMinute, i as durationHour } from './utcYear-c83ede8f.js';
+import { n as newInterval, g as durationSecond, h as durationMinute, i as durationHour } from './utcYear-1e11091a.js';
 
 var millisecond = newInterval(function() {
   // noop
@@ -21,6 +21,8 @@ millisecond.every = function(k) {
     return (end - start) / k;
   });
 };
+
+var utcMillisecond = millisecond;
 var milliseconds = millisecond.range;
 
 var second = newInterval(function(date) {
@@ -32,6 +34,8 @@ var second = newInterval(function(date) {
 }, function(date) {
   return date.getUTCSeconds();
 });
+
+var utcSecond = second;
 var seconds = second.range;
 
 var minute = newInterval(function(date) {
@@ -43,6 +47,8 @@ var minute = newInterval(function(date) {
 }, function(date) {
   return date.getMinutes();
 });
+
+var timeMinute = minute;
 var minutes = minute.range;
 
 var hour = newInterval(function(date) {
@@ -54,6 +60,8 @@ var hour = newInterval(function(date) {
 }, function(date) {
   return date.getHours();
 });
+
+var timeHour = hour;
 var hours = hour.range;
 
 var month = newInterval(function(date) {
@@ -66,6 +74,8 @@ var month = newInterval(function(date) {
 }, function(date) {
   return date.getMonth();
 });
+
+var timeMonth = month;
 var months = month.range;
 
 var utcMinute = newInterval(function(date) {
@@ -77,6 +87,8 @@ var utcMinute = newInterval(function(date) {
 }, function(date) {
   return date.getUTCMinutes();
 });
+
+var utcMinute$1 = utcMinute;
 var utcMinutes = utcMinute.range;
 
 var utcHour = newInterval(function(date) {
@@ -88,6 +100,8 @@ var utcHour = newInterval(function(date) {
 }, function(date) {
   return date.getUTCHours();
 });
+
+var utcHour$1 = utcHour;
 var utcHours = utcHour.range;
 
 var utcMonth = newInterval(function(date) {
@@ -100,6 +114,8 @@ var utcMonth = newInterval(function(date) {
 }, function(date) {
   return date.getUTCMonth();
 });
+
+var utcMonth$1 = utcMonth;
 var utcMonths = utcMonth.range;
 
-export { second as a, hour as b, month as c, utcMinute as d, utcHour as e, utcMonth as f, minutes as g, hours as h, months as i, utcMinutes as j, utcHours as k, utcMonths as l, milliseconds as m, seconds as s, minute as t, millisecond as u };
+export { utcSecond as a, timeHour as b, timeMonth as c, utcMinute$1 as d, utcHour$1 as e, utcMonth$1 as f, minutes as g, hours as h, months as i, utcMinutes as j, utcHours as k, utcMonths as l, milliseconds as m, seconds as s, timeMinute as t, utcMillisecond as u };

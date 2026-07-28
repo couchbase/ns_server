@@ -913,4 +913,4 @@ angular.module('ngSanitize').filter('linky', ['$sanitize', function($sanitize) {
 
 var angularSanitize = 'ngSanitize';
 
-export default angularSanitize;
+export { angularSanitize as default };
