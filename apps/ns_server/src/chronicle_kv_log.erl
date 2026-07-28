@@ -21,6 +21,10 @@
 -include("cb_cluster_secrets.hrl").
 -include("jwt.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% Values above this many pending messages are dropped instead of logged.
 %% Low because this counts messages, not bytes, and one value can be huge: a
 %% 10k collection manifest is over 4MB (MB-72708).
@@ -116,6 +120,8 @@ sanitize(?JWT_SIGNING_KEYS_KEY, _V) ->
     masked();
 sanitize({credentials, _}, V) ->
     menelaus_web_credentials:sanitize_chronicle_cfg(V);
+sanitize({leaf, _}, {?METAKV2_SENSITIVE, _V}) ->
+    masked();
 sanitize(_, V) ->
     V.
 
@@ -144,6 +150,8 @@ sanitize_log(Name, Command) ->
     case Name of
         kv ->
             chronicle_kv:sanitize_command(fun sanitize/2, Command);
+        metakv ->
+            chronicle_kv:sanitize_command(fun sanitize/2, Command);
         _ ->
             Command
     end.
@@ -161,3 +169,49 @@ prepare_value(K, VFun, Values) ->
         _ ->
             {sanitize(K, V), Values}
     end.
+
+-ifdef(TEST).
+
+%% The metakv2 sensitive tag has to be masked wherever a chronicle value can
+%% reach a log or a dump. Both cbcollect_info chronicle tasks route through
+%% sanitize_snapshot/2 and sanitize_log/2, which reach sanitize/2 below.
+metakv2_sensitive_test() ->
+    Key = {leaf, [<<"key">>, <<"bucket">>, <<"backup">>]},
+    Secret = <<"an encryption key">>,
+
+    ?assertEqual(masked(), sanitize(Key, {?METAKV2_SENSITIVE, Secret})),
+
+    %% leaves that were not created sensitive keep logging their value, and
+    %% directory entries are untouched
+    ?assertEqual(Secret, sanitize(Key, Secret)),
+    ?assertEqual([{leaf, <<"key">>}],
+                 sanitize({dir, [<<"bucket">>, <<"backup">>]},
+                          [{leaf, <<"key">>}])).
+
+%% The metakv rsm is dumped by cbcollect_info alongside the kv one, so it has
+%% to be routed through the sanitizer too. Metakv2 writes reach the log as a
+%% transaction, which is the shape asserted here.
+sanitize_log_covers_metakv_test() ->
+    Key = {leaf, [<<"key">>, <<"bucket">>, <<"backup">>]},
+    Secret = <<"an encryption key">>,
+    Command = {transaction, [], [{set, Key, {?METAKV2_SENSITIVE, Secret}}]},
+    Masked = {transaction, [], [{set, Key, masked()}]},
+
+    ?assertEqual(Masked, sanitize_log(metakv, Command)),
+
+    %% an rsm that is not dumped is left alone
+    ?assertEqual(Command, sanitize_log(some_other_rsm, Command)).
+
+%% The snapshot task reaches the same sanitizer by rsm module rather than by
+%% name, and metakv is a chronicle_kv rsm.
+sanitize_snapshot_covers_metakv_test() ->
+    Key = {leaf, [<<"key">>, <<"bucket">>, <<"backup">>]},
+    Secret = <<"an encryption key">>,
+    Rev = {<<"history">>, 1},
+
+    ?assertEqual(#{Key => {masked(), Rev}},
+                 sanitize_snapshot(chronicle_kv,
+                                   #{Key => {{?METAKV2_SENSITIVE, Secret},
+                                             Rev}})).
+
+-endif.

@@ -57,6 +57,14 @@ def fetch_leaves(resp, content, leaves):
             v = assert_json_key(resp, "value", value)
             leaves[key] = v
 
+def fetch_sensitivity(resp, content, leaves):
+    for key, value in content.items():
+        if key.endswith("/"):
+            if "value" in value.keys():
+                fetch_sensitivity(resp, value["value"], leaves)
+        else:
+            leaves[key] = value.get("sensitive", False)
+
 def extract_snapshot(resp):
     (val, rev) = assert_val_rev(resp)
     return {k: extract_val_rev(resp, v)[0] for (k, v) in val.items()}
@@ -101,6 +109,14 @@ def assert_exists(resp):
     json = decode_json(resp)
     assert_json_key(resp, "revision", json)
     assert_json_value(resp, "message", "Exists", json)
+
+def assert_sensitive_mismatch(resp, expected_path):
+    testlib.assert_http_code(400, resp)
+    json = decode_json(resp)
+    assert_json_value(resp, "message",
+                      "The sensitive flag of an existing key cannot be "
+                      "changed", json)
+    assert_json_value(resp, "path", expected_path, json)
 
 def assert_top_level_leaf(resp, keys):
     testlib.assert_http_code(400, resp)
@@ -159,7 +175,7 @@ class Metakv2Tests(testlib.BaseTestSet):
                                params=params)
 
     def metakv2_put(self, key, create=False, rev=None, recursive=False,
-                    value=""):
+                    value="", sensitive=None):
         params = {}
         if create:
             params['create']='true'
@@ -167,6 +183,8 @@ class Metakv2Tests(testlib.BaseTestSet):
             params['recursive']='true'
         if rev is not None:
             params['rev']=rev
+        if sensitive is not None:
+            params['sensitive']='true' if sensitive else 'false'
 
         return testlib.request('PUT', self.cluster, METAKV2_ENDPOINT + key,
                                data=value, params=params)
@@ -468,3 +486,207 @@ class Metakv2Tests(testlib.BaseTestSet):
         resp = self.metakv2_delete("/root/subdir/", recursive=True)
         assert_deleted(resp)
         self.assert_dir_content("/root/", {k3: "v3"})
+
+    def sensitive_flag_test(self):
+        secret = "/root/subdir/secret"
+        plain = "/root/subdir/plain"
+
+        resp = self.metakv2_put(secret, value="s1", create=True,
+                                recursive=True, sensitive=True)
+        assert_created(resp)
+
+        resp = self.metakv2_put(plain, value="p1", create=True,
+                                recursive=True, sensitive=False)
+        assert_created(resp)
+
+        # the value is still readable, only its logging is affected. A caller
+        # that names a key knows what it put there, so no read of a named key
+        # reports sensitivity, on this path or on getSnapshot.
+        resp = self.metakv2_get(secret)
+        json = decode_json(resp)
+        assert_json_value(resp, "value", "s1", json)
+        testlib.assert_not_in("sensitive", json)
+
+        resp = self.metakv2_get(plain)
+        json = decode_json(resp)
+        assert_json_value(resp, "value", "p1", json)
+        testlib.assert_not_in("sensitive", json)
+
+        testlib.assert_eq(self.dir_sensitivity("/root/"),
+                          {secret: True, plain: False}, "sensitivity")
+
+        # an update that does not mention the flag carries it forward
+        resp = self.metakv2_put(secret, value="s2")
+        assert_updated(resp)
+        resp = self.metakv2_get(secret)
+        json = decode_json(resp)
+        assert_json_value(resp, "value", "s2", json)
+        testlib.assert_eq(self.dir_sensitivity("/root/")[secret], True,
+                          "sensitivity")
+
+        # restating the flag it already has is accepted
+        resp = self.metakv2_put(secret, value="s3", sensitive=True)
+        assert_updated(resp)
+
+        # recreating the leaf is the only way to change it
+        resp = self.metakv2_delete(secret)
+        assert_deleted(resp)
+        resp = self.metakv2_put(secret, value="s4", create=True)
+        assert_created(resp)
+        testlib.assert_eq(self.dir_sensitivity("/root/")[secret], False,
+                          "sensitivity")
+
+    def dir_sensitivity(self, path):
+        resp = self.metakv2_get(path, recursive=True)
+        (root, rev) = assert_val_rev(resp)
+        leaves = {}
+        fetch_sensitivity(resp, assert_json_key(resp, path, root)["value"],
+                          leaves)
+        return leaves
+
+    def sensitive_flag_cannot_be_changed_test(self):
+        secret = "/root/subdir/secret"
+        plain = "/root/subdir/plain"
+
+        resp = self.metakv2_put(secret, value="s1", create=True,
+                                recursive=True, sensitive=True)
+        assert_created(resp)
+        resp = self.metakv2_put(plain, value="p1", create=True,
+                                recursive=True)
+        assert_created(resp)
+
+        # Asking to protect a key that is not protected is the dangerous
+        # direction: dropping it silently would leave the caller believing
+        # the value was safe while it kept being recorded in the clear.
+        resp = self.metakv2_put(plain, value="p2", sensitive=True)
+        assert_sensitive_mismatch(resp, plain)
+        resp = self.metakv2_get(plain)
+        assert_value(resp, "p1")
+
+        # the other direction is refused too
+        resp = self.metakv2_put(secret, value="s2", sensitive=False)
+        assert_sensitive_mismatch(resp, secret)
+
+        # a value that happens to be unchanged must not let the refusal slip
+        # through as Not Changed
+        resp = self.metakv2_put(plain, value="p1", sensitive=True)
+        assert_sensitive_mismatch(resp, plain)
+
+        # one bad entry aborts the whole setMultiple transaction
+        resp = self.metakv2_set_multiple({secret: {"value": "s9"},
+                                          plain: {"value": "p9",
+                                                  "sensitive": True}})
+        assert_sensitive_mismatch(resp, plain)
+        resp = self.metakv2_get(secret)
+        assert_value(resp, "s1")
+        resp = self.metakv2_get(plain)
+        assert_value(resp, "p1")
+
+    def sensitive_set_multiple_test(self):
+        secret = "/root/subdir/secret"
+        plain = "/root/subdir/plain"
+
+        resp = self.metakv2_set_multiple(
+            {secret: {"value": "s1", "create": True, "sensitive": True},
+             plain: {"value": "p1", "create": True}},
+            recursive=True)
+        assert_updated(resp)
+
+        # getSnapshot names its keys, so it does not report the flag either
+        resp = self.metakv2_get_snapshot([secret, plain])
+        (val, rev) = assert_val_rev(resp)
+        testlib.assert_not_in("sensitive", val[secret])
+        testlib.assert_not_in("sensitive", val[plain])
+
+        # the directory listing is the one read path that reports it, since
+        # it hands back keys the caller did not name
+        resp = self.metakv2_get("/root/", recursive=True)
+        (root, rev) = assert_val_rev(resp)
+        leaves = {}
+        fetch_leaves(resp, assert_json_key(resp, "/root/", root)["value"],
+                     leaves)
+        testlib.assert_eq(leaves, {secret: "s1", plain: "p1"}, "content", resp)
+        testlib.assert_eq(self.dir_sensitivity("/root/"),
+                          {secret: True, plain: False}, "sensitivity")
+
+    def opaque_value_round_trip_test(self):
+        # A value goes out in the body of a PUT and comes back inside JSON,
+        # so a client that stores anything other than plain text has to
+        # encode it. The cbauth metakv2 client base64 encodes for that
+        # reason, which only works if the store hands the bytes back exactly
+        # as they were given. Base64 output contains "+", "/" and "=", and
+        # the last two are also path and query syntax, so they are the
+        # characters most likely to be mangled on the way through.
+        key = "/root/subdir/encoded"
+        value = "AP/+QQCA+w==/ab+cd=="
+
+        resp = self.metakv2_put(key, value=value, create=True,
+                                recursive=True)
+        assert_created(resp)
+
+        resp = self.metakv2_get(key)
+        assert_value(resp, value)
+
+        # the same has to hold through the bulk paths a client may use
+        resp = self.metakv2_get_snapshot([key])
+        testlib.assert_eq(extract_snapshot(resp), {key: value}, "snapshot",
+                          resp)
+
+    def sensitive_values_are_not_dumped_test(self):
+        # A distinctive value is used for each leaf so that it can be looked
+        # for verbatim in the dumps.
+        secret = "/root/subdir/secret"
+        plain = "/root/subdir/plain"
+        secret_value = "metakv2SensitiveMustNotBeDumped"
+        plain_value = "metakv2PlainIsExpectedInTheDump"
+
+        resp = self.metakv2_put(plain, value=plain_value, create=True,
+                                recursive=True)
+        assert_created(resp)
+        resp = self.metakv2_put(secret, value=secret_value, create=True,
+                                recursive=True, sensitive=True)
+        assert_created(resp)
+
+        # The diag output embeds a dump of the ets tables, and is what ends up
+        # in diag.log in a cbcollect_info. The metakv rsm table is skipped
+        # there in its entirety, the same way the kv one is, so neither value
+        # is expected. The section marker is checked first, otherwise a diag
+        # that carried no ets tables at all would pass this silently.
+        resp = testlib.get_succ(self.cluster, "/diag")
+        testlib.assert_in("per_node_ets_tables", resp.text)
+        assert secret_value not in resp.text, \
+            "sensitive value was found verbatim in the diag output"
+        assert plain_value not in resp.text, \
+            "the metakv rsm table is expected to be skipped as a whole in " \
+            "the diag output"
+
+        # cbcollect_info dumps the chronicle snapshots into couchbase.log and
+        # the chronicle logs into chronicle_logs.log, in both cases by handing
+        # chronicle_dump a chronicle_kv_log callback. Note that the metakv rsm
+        # is not covered by chronicle_kv_log's own logging, which only follows
+        # the kv rsm, so these two callbacks are the whole of it.
+        #
+        # Both are exercised below against the values actually stored on this
+        # node. The plain value is a positive control: the expected outcome is
+        # that the sensitive value is masked while the plain one survives, so
+        # a sanitizer that dropped everything would not pass either.
+        resp = testlib.diag_eval(
+            self.cluster,
+            "Print = fun (T) ->"
+            "  iolist_to_binary(io_lib:format(\"~p\", [T])) end,"
+            "Has = fun (Printed, Needle) ->"
+            "  binary:match(Printed, Needle) =/= nomatch end,"
+            "{ok, {Snapshot, _}} = chronicle_kv:get_full_snapshot(metakv),"
+            "SnapOut = Print(chronicle_kv_log:sanitize_snapshot("
+            "  chronicle_kv, Snapshot)),"
+            "Updates = [{set, K, V} || {K, {V, _}} <- maps:to_list(Snapshot)],"
+            "LogOut = Print(chronicle_kv_log:sanitize_log("
+            "  metakv, {transaction, [], Updates})),"
+            "Secret = <<\"" + secret_value + "\">>,"
+            "Plain = <<\"" + plain_value + "\">>,"
+            "{{Has(SnapOut, Secret), Has(SnapOut, Plain)},"
+            " {Has(LogOut, Secret), Has(LogOut, Plain)}}.")
+        testlib.assert_eq(
+            resp.text.strip(), "{{false,true},{false,true}}",
+            "{secret found, plain found} for the snapshot and the log dump",
+            resp)

@@ -322,6 +322,8 @@ get_ets_table_sanitizer(_, Info) ->
             skip;
         kv ->
             skip;
+        metakv ->
+            skip;
         _ ->
             {ok, ns_config_log:sanitize(_, true)}
     end.

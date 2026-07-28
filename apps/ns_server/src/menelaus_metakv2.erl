@@ -82,12 +82,19 @@ massage_directory_content({Key, {Subkeys, Rev}}) when is_list(Subkeys) ->
     {encode_path(Key, dir),
      {[{revision, encode_revision(Rev)},
        {value, {[massage_directory_content(S) || S <- Subkeys]}}]}};
-massage_directory_content({Key, {Value, Rev}}) ->
+massage_directory_content({Key, {dir, Rev}}) ->
+    {encode_path(Key, dir), {[{revision, encode_revision(Rev)}]}};
+massage_directory_content({Key, {Value, Rev, Sensitive}}) ->
     {encode_path(Key, leaf),
      {[{revision, encode_revision(Rev)},
-       {value, Value}]}};
-massage_directory_content({Key, {dir, [], Rev}}) ->
-    {encode_path(Key, dir), {[{revision, encode_revision(Rev)}]}}.
+       {value, Value}] ++ sensitive_field(Sensitive)}}.
+
+%% The field is emitted only for sensitive leaves, so that the reply for
+%% every key that existed before this flag was introduced is unchanged.
+sensitive_field(true) ->
+    [{sensitive, true}];
+sensitive_field(false) ->
+    [].
 
 not_found_reply(Path, Type) ->
     encode_reply_info("Not Found", Path, undefined, Type).
@@ -135,6 +142,16 @@ reply_set_result(Req, Type, Start, {error, {not_changed, Path, Rev}}) ->
 reply_set_result(Req, Type, Start, {error, {exists, Path, Rev}}) ->
     reply_mutation(
       Req, Start, encode_reply_info("Exists", Path, Rev, Type), 200);
+reply_set_result(Req, Type, Start, {error, {sensitive_unsupported, Path}}) ->
+    reply_mutation(
+      Req, Start,
+      encode_reply_info("Sensitive keys are not supported until the cluster "
+                        "is fully upgraded", Path, undefined, Type), 400);
+reply_set_result(Req, Type, Start, {error, {sensitive_mismatch, Path}}) ->
+    reply_mutation(
+      Req, Start,
+      encode_reply_info("The sensitive flag of an existing key cannot be "
+                        "changed", Path, undefined, Type), 400);
 reply_set_result(Req, Type, Start, {error, {cas, Path, Rev}}) ->
     reply_mutation(
       Req, Start, encode_reply_info("Conflict", Path, Rev, Type), 409);
@@ -261,6 +278,23 @@ validate_revision(Name, State) ->
             end
     end, Name, State).
 
+%% A sensitive leaf is stored in a form that only a fully upgraded cluster
+%% knows how to read back.
+sensitive_validators() ->
+    [validator:boolean(sensitive, _),
+     validator:validate(
+       fun (true) ->
+               case cluster_compat_mode:is_cluster_totoro() of
+                   true ->
+                       ok;
+                   false ->
+                       {error, "Sensitive keys are not supported until the "
+                        "cluster is fully upgraded"}
+               end;
+           (false) ->
+               ok
+       end, sensitive, _)].
+
 handle_put(Path, Req) ->
     IsDirectory = is_directory(Path),
     validator:handle(
@@ -280,10 +314,13 @@ handle_put(Path, Req) ->
                               false ->
                                   proplists:get_value(rev, Params)
                           end,
+                      %% undefined when not stated, which leaves the
+                      %% sensitivity of an existing key alone
+                      Sensitive = proplists:get_value(sensitive, Params),
                       reply_set_result(Req, leaf, Start,
                                        chronicle_metakv:set(
                                          Key, mochiweb_request:recv_body(Req),
-                                         Rev, Recursive))
+                                         Rev, Recursive, Sensitive))
               end
       end, Req, qs,
       [validator:boolean(recursive, _)] ++
@@ -300,7 +337,7 @@ handle_put(Path, Req) ->
                               " specified"};
                          (false, _) ->
                              ok
-                     end, create, rev, _)]
+                     end, create, rev, _)] ++ sensitive_validators()
           end ++
           [validator:unsupported(_)]).
 
@@ -323,7 +360,8 @@ handle_post_set_multiple(Req, Recursive) ->
                                       false ->
                                           proplists:get_value(revision, Props)
                                   end,
-                            {Key, {Value, Rev}}
+                            Sensitive = proplists:get_value(sensitive, Props),
+                            {Key, {Value, Rev, Sensitive}}
                     end, List),
               reply_set_result(Req, leaf, Start,
                                chronicle_metakv:set_multiple(KVR, Recursive))
@@ -336,8 +374,9 @@ handle_post_set_multiple(Req, Recursive) ->
        validator:convert(value, fun list_to_binary/1, _),
        validator:string(revision, _),
        validate_revision(revision, _),
-       validator:boolean(create, _),
-       validator:unsupported(_)]).
+       validator:boolean(create, _)] ++
+          sensitive_validators() ++
+          [validator:unsupported(_)]).
 
 reply_delete_result(Req, {ok, Rev}, _Path, Start, _Type) ->
     reply_mutation(

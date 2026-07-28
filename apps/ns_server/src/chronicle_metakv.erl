@@ -29,6 +29,18 @@
 %% Revisions of the previously fetched keys might be passed into set and
 %% set_multiple API's which guarantees that the API won't succeed if the
 %% revisions of the keys have changed since the keys were fetched.
+%%
+%% A leaf may be marked sensitive at creation time, in which case its value is
+%% stored wrapped as {?METAKV2_SENSITIVE, Value} and is masked by
+%% chronicle_kv_log:sanitize/2 before it can reach a log or a diagnostic dump.
+%% The wrapping is an implementation detail of this module: every read path
+%% strips the tag, so callers always see the bare value along with a boolean
+%% telling them whether the leaf is sensitive.
+%%
+%% Sensitivity is fixed when the leaf is created. An update that does not
+%% mention the flag carries the old sensitivity forward. An update that asks
+%% for the opposite of what is stored is refused, so that a caller cannot be
+%% left believing it has protected a value when it has not.
 
 -module(chronicle_metakv).
 
@@ -43,7 +55,7 @@
          get/1,
          get_snapshot/1,
          get_dir/3,
-         set/4,
+         set/5,
          set_multiple/2,
          mkdir/2,
          delete/1,
@@ -54,7 +66,11 @@
 -type key() :: list().
 -type value() :: any().
 -type revision() :: chronicle:revision() | new | undefined.
+-type sensitive() :: boolean().
+%% undefined means the caller did not state it, so it is carried forward
+-type sensitive_req() :: sensitive() | undefined.
 -type kvr() :: {key(), {value(), revision()}}.
+-type kvr_req() :: {key(), {value(), revision(), sensitive_req()}}.
 
 -type get_result() :: {ok, {value(), revision()}} | {error, not_found}.
 
@@ -71,12 +87,16 @@
                       {error,
                        {not_changed, key(), revision()} |
                        {top_level_leaf, key()} |
+                       {sensitive_mismatch, key()} |
+                       {sensitive_unsupported, key()} |
                        {cas, key(), revision}}.
 
 -type set_multiple_result() :: base_mutation_result() |
                                {error,
                                 not_changed |
                                 {top_level_leaf, key()} |
+                                {sensitive_mismatch, key()} |
+                                {sensitive_unsupported, key()} |
                                 {cas, key(), revision()} |
                                 duplicate_keys}.
 
@@ -89,10 +109,57 @@ upgrade_to_79(_, _, _) ->
             ok
     end.
 
+add_sensitive(true, Value) ->
+    {?METAKV2_SENSITIVE, Value};
+add_sensitive(_, Value) ->
+    Value.
+
+strip_sensitive({?METAKV2_SENSITIVE, Value}) ->
+    {true, Value};
+strip_sensitive(Value) ->
+    {false, Value}.
+
+%% Clients may not check for cluster compat mode before requesting the
+%% sensitive flag, and cannot do so without racing an upgrade. In a mixed mode
+%% cluster a node that predates the flag has no step that strips it, so it
+%% hands the raw {?METAKV2_SENSITIVE, Value} tuple to the JSON encoder and the
+%% read fails rather than returning the value. The sensitive flag must not be
+%% written until all nodes are aware of how to handle it.
+check_sensitive_supported(KVR) ->
+    case [Key || {Key, {_, _, true}} <- KVR] of
+        [] ->
+            ok;
+        [Key | _] ->
+            case cluster_compat_mode:is_cluster_totoro() of
+                true ->
+                    ok;
+                false ->
+                    {error, {sensitive_unsupported, Key}}
+            end
+    end.
+
+%% The sensitivity of an existing leaf cannot be changed, so a caller that
+%% asks for the opposite of what is stored is told rather than ignored.
+check_sensitive(_Key, _Stored, undefined) ->
+    ok;
+check_sensitive(Key, Stored, Sensitive) ->
+    case strip_sensitive(Stored) of
+        {Sensitive, _} ->
+            ok;
+        _ ->
+            {error, {sensitive_mismatch, Key}}
+    end.
+
 %% fetches the value and revision of the leaf
 -spec get(key()) -> get_result().
 get(Key) ->
-    chronicle_kv:get(metakv, {leaf, Key}).
+    case chronicle_kv:get(metakv, {leaf, Key}) of
+        {ok, {Stored, Rev}} ->
+            {_Sensitive, Value} = strip_sensitive(Stored),
+            {ok, {Value, Rev}};
+        {error, not_found} ->
+            {error, not_found}
+    end.
 
 %% fetches consistent snapshot of multiple keys
 -spec get_snapshot([key()]) -> {ok, {[kvr()], revision()}}.
@@ -100,11 +167,19 @@ get_snapshot(Keys) ->
     chronicle_kv:ro_txn(metakv, fetch_leaves(_, Keys)).
 
 fetch_leaves(Txn, Keys) ->
+    fetch_leaves(Txn, Keys, fun (_Sensitive, Value, Rev) -> {Value, Rev} end).
+
+fetch_dir_leaves(Txn, Keys) ->
+    fetch_leaves(Txn, Keys,
+                 fun (Sensitive, Value, Rev) -> {Value, Rev, Sensitive} end).
+
+fetch_leaves(Txn, Keys, Format) ->
     lists:filtermap(
       fun (Key) ->
               case chronicle_kv:txn_get({leaf, Key}, Txn) of
-                  {ok, {_, _} = VR} ->
-                      {true, {Key, VR}};
+                  {ok, {Stored, Rev}} ->
+                      {Sensitive, Value} = strip_sensitive(Stored),
+                      {true, {Key, Format(Sensitive, Value, Rev)}};
                   {error, not_found} ->
                       false
               end
@@ -130,7 +205,7 @@ fetch_dir(Txn, Dir, Recursive, Depth) ->
     case chronicle_kv:txn_get({dir, Dir}, Txn) of
         {ok, {Subkeys, Rev}} ->
             Leaves = [[Leaf | Dir] || {leaf, Leaf} <- Subkeys],
-            LeavesValues = fetch_leaves(Txn, Leaves),
+            LeavesValues = fetch_dir_leaves(Txn, Leaves),
             DirsValues =
                 case Recursive of
                     true ->
@@ -148,7 +223,7 @@ fetch_dir(Txn, Dir, Recursive, Depth) ->
                                           case chronicle_kv:txn_get({dir, Key},
                                                                     Txn) of
                                               {ok, {_, R}} ->
-                                                  {true, {Key, {dir, [], R}}};
+                                                  {true, {Key, {dir, R}}};
                                               {error, not_found} ->
                                                   false
                                           end
@@ -213,44 +288,68 @@ process_result(CreateOrUpdate, {ok, Snapshot}) ->
     end.
 
 %% sets the value of the key. checks revision if it is provided
--spec set(key(), value(), revision(), boolean()) -> set_result().
-set([_] = Key, _Value, _Rev, _Recursive) ->
+-spec set(key(), value(), revision(), boolean(), sensitive_req()) ->
+          set_result().
+set([_] = Key, _Value, _Rev, _Recursive, _Sensitive) ->
     {error, {top_level_leaf, Key}};
-set(Key, Value, Rev, Recursive) ->
+set(Key, Value, Rev, Recursive, Sensitive) ->
+    KVR = [{Key, {Value, Rev, Sensitive}}],
+    case check_sensitive_supported(KVR) of
+        {error, _} = Error ->
+            Error;
+        ok ->
+            set_checked(KVR, Recursive)
+    end.
+
+set_checked([{Key, {Value, Rev, Sensitive}}] = KVR, Recursive) ->
     chronicle_kv:txn(
       metakv,
       fun (Txn) ->
               case txn_get({leaf, Key}, Txn, #{}, Rev) of
-                  {{ok, {V, R}}, _} when V =:= Value ->
-                      {abort, {error, {not_changed, Key, R}}};
-                  {Res, Snapshot} ->
-                      UpdateOrCreate = case Res of
-                                           {ok, _} ->
-                                               update;
-                                           _ ->
-                                               create
-                                       end,
+                  {{ok, {Stored, R}}, Snapshot} ->
+                      case check_sensitive(Key, Stored, Sensitive) of
+                          {error, _} = Error ->
+                              {abort, Error};
+                          ok ->
+                              case strip_sensitive(Stored) of
+                                  {_, Value} ->
+                                      {abort,
+                                       {error, {not_changed, Key, R}}};
+                                  _ ->
+                                      process_result(
+                                        update,
+                                        set_multiple(Txn, KVR, Snapshot,
+                                                     Recursive))
+                              end
+                      end;
+                  {_Res, Snapshot} ->
                       process_result(
-                        UpdateOrCreate, set_multiple(Txn, [{Key, {Value, Rev}}],
-                                                     Snapshot, Recursive))
+                        create, set_multiple(Txn, KVR, Snapshot, Recursive))
               end
       end).
 
 %% sets multiple keys in a single transaction. checks revisions if they
 %% are provided
--spec set_multiple([kvr()], boolean()) -> set_multiple_result().
+-spec set_multiple([kvr_req()], boolean()) -> set_multiple_result().
 set_multiple(KVR, Recursive) ->
     case validate_kvr(KVR) of
         ok ->
-            chronicle_kv:txn(
-              metakv,
-              fun (Txn) ->
-                      process_result(update,
-                                     set_multiple(Txn, KVR, #{}, Recursive))
-              end);
+            case check_sensitive_supported(KVR) of
+                {error, _} = Error ->
+                    Error;
+                ok ->
+                    set_multiple_checked(KVR, Recursive)
+            end;
         Error ->
             {error, Error}
     end.
+
+set_multiple_checked(KVR, Recursive) ->
+    chronicle_kv:txn(
+      metakv,
+      fun (Txn) ->
+              process_result(update, set_multiple(Txn, KVR, #{}, Recursive))
+      end).
 
 validate_kvr(KVR) ->
     Keys = [K || {K, _} <- KVR],
@@ -268,21 +367,35 @@ validate_kvr(KVR) ->
 
 set_multiple(_, [], Snapshot, _) ->
     {ok, Snapshot};
-set_multiple(Txn, [{Key, {Value, Rev}} | KVR], Snapshot, Recursive) ->
+set_multiple(Txn, [{Key, {Value, Rev, Sensitive}} | KVR], Snapshot,
+             Recursive) ->
     case txn_get({leaf, Key}, Txn, Snapshot, Rev) of
-        {{ok, {Value, _}}, Snapshot1} ->
-            set_multiple(Txn, KVR, Snapshot1, Recursive);
+        {{ok, {Stored, _}}, Snapshot1} ->
+            case check_sensitive(Key, Stored, Sensitive) of
+                {error, Reason} ->
+                    {abort, Reason};
+                ok ->
+                    %% sensitivity of an existing leaf is carried forward
+                    case strip_sensitive(Stored) of
+                        {_, Value} ->
+                            set_multiple(Txn, KVR, Snapshot1, Recursive);
+                        {WasSensitive, _} ->
+                            NewStored = add_sensitive(WasSensitive, Value),
+                            set_multiple(
+                              Txn, KVR,
+                              txn_set({leaf, Key}, NewStored, Snapshot1),
+                              Recursive)
+                    end
+            end;
         {{error, not_found}, Snapshot1}
           when Rev =:= new orelse Rev =:= undefined ->
-            case add_key(Txn, {leaf, Key}, Value, Snapshot1, Recursive) of
+            NewStored = add_sensitive(Sensitive, Value),
+            case add_key(Txn, {leaf, Key}, NewStored, Snapshot1, Recursive) of
                 {abort, _} = Abort ->
                     Abort;
                 {ok, Snapshot2} ->
                     set_multiple(Txn, KVR, Snapshot2, Recursive)
             end;
-        {{ok, _}, Snapshot1} ->
-            set_multiple(Txn, KVR, txn_set({leaf, Key}, Value, Snapshot1),
-                         Recursive);
         {{error, not_found}, _} ->
             {abort, {not_found, Key}};
         {{error, {cas, R}}, _} ->
@@ -440,7 +553,9 @@ sync_quorum(Timeout) ->
 -ifdef(TEST).
 
 setup() ->
-    fake_chronicle_kv:setup().
+    fake_chronicle_kv:setup(),
+    %% the sensitive flag is refused below this
+    fake_chronicle_kv:setup_cluster_compat_version(?VERSION_TOTORO).
 
 teardown(_) ->
     fake_chronicle_kv:teardown().
@@ -464,10 +579,15 @@ get_dir_content(Dir, Recursive, Depth) ->
 
 dir_content_to_map({_Key, {Subkeys, _Rev}}, Map) when is_list(Subkeys) ->
     lists:foldl(dir_content_to_map(_, _), Map, Subkeys);
-dir_content_to_map({Key, {Value, _Rev}}, Map) ->
-    maps:put(Key, Value, Map);
-dir_content_to_map({Key, {dir, [], _Rev}}, Map) ->
-    maps:put(Key, dir, Map).
+dir_content_to_map({Key, {dir, _Rev}}, Map) ->
+    maps:put(Key, dir, Map);
+dir_content_to_map({Key, {Value, _Rev, _Sensitive}}, Map) ->
+    maps:put(Key, Value, Map).
+
+dir_sensitivity(Dir) ->
+    {ok, {{_Dir, {Entries, _}}, _}} = get_dir(Dir, false),
+    lists:sort([{Key, Sensitive} ||
+                   {Key, {_Value, _Rev, Sensitive}} <- Entries]).
 
 snapshot_to_map({ok, {Snapshot, _}}) ->
     maps:from_list([{K, V} || {K, {V, _R}} <- Snapshot]).
@@ -493,19 +613,34 @@ check_integrity() ->
           ({{leaf, Key}, {_Value, {_, Seqno}}}) ->
               ?assert(Seqno =< SnSeqno),
               check_parent(leaf, Key, Snapshot);
+          ({cluster_compat_version, _}) ->
+              %% fake_chronicle_kv keeps one snapshot for every rsm, so the
+              %% version the tests set turns up in this one as well
+              ok;
           (_) ->
               ?assert(false)
       end, maps:to_list(Snapshot)).
 
 test_set(Key, Val, Rev, Recursive) ->
-    Ret = set(Key, Val, Rev, Recursive),
+    test_set(Key, Val, Rev, Recursive, undefined).
+
+test_set(Key, Val, Rev, Recursive, Sensitive) ->
+    Ret = set(Key, Val, Rev, Recursive, Sensitive),
     check_integrity(),
     Ret.
 
 test_set_multiple(List, Recursive) ->
+    test_set_multiple_sensitive([{K, {V, R, undefined}} ||
+                                    {K, {V, R}} <- List], Recursive).
+
+test_set_multiple_sensitive(List, Recursive) ->
     Ret = set_multiple(List, Recursive),
     check_integrity(),
     Ret.
+
+stored_value(Key) ->
+    {ok, {Stored, _}} = chronicle_kv:get(metakv, {leaf, Key}),
+    Stored.
 
 test_mkdir(Dir, Recursive) ->
     Ret = mkdir(Dir, Recursive),
@@ -590,14 +725,16 @@ basic_test_() ->
                ?assertMatch({ok, _, create},
                             test_set([key2, subkey1, root], v2, undefined,
                                      true)),
-               ?assertMatch({ok, {v1, _}}, ?MODULE:get([key1, subkey1, root])),
+               ?assertMatch({ok, {v1, _}},
+                            ?MODULE:get([key1, subkey1, root])),
                ?assertEqual(#{[key1, subkey1, root] => v1,
                               [key2, subkey1, root] => v2},
                             get_dir_content([root])),
                ?assertMatch({ok, _, create},
                             test_set([key3, subkey1, root], v3,
                                      new, false)),
-               ?assertMatch({ok, {v2, _}}, ?MODULE:get([key2, subkey1, root])),
+               ?assertMatch({ok, {v2, _}},
+                            ?MODULE:get([key2, subkey1, root])),
                ?assertEqual(
                   #{[key1, subkey1, root] => v1,
                     [key2, subkey1, root] => v2,
@@ -810,6 +947,154 @@ basic_test_() ->
                             test_set([key1, subkey1, root], v0, new, true)),
                ?assertMatch({ok, _}, test_delete_dir([root], true)),
                ?assertEqual({error, not_found}, get_dir([root], false))
+       end},
+      {"sensitive leaves are stored tagged and read back bare",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Plain = [key2, subkey1, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true, true)),
+               ?assertMatch({ok, _, create},
+                            test_set(Plain, v1, new, true, false)),
+
+               ?assertEqual({?METAKV2_SENSITIVE, v1}, stored_value(Key)),
+               ?assertEqual(v1, stored_value(Plain)),
+
+               %% the tag is stripped on every read path, and none of them
+               %% but the directory listing reports sensitivity at all
+               ?assertMatch({ok, {v1, _}}, ?MODULE:get(Key)),
+               ?assertMatch({ok, {v1, _}}, ?MODULE:get(Plain)),
+               ?assertEqual(#{Key => v1, Plain => v1},
+                            snapshot_to_map(get_snapshot([Key, Plain]))),
+               ?assertEqual(#{Key => v1, Plain => v1},
+                            get_dir_content([root])),
+               ?assertEqual([{Key, true}, {Plain, false}],
+                            dir_sensitivity([subkey1, root]))
+       end},
+      {"an update that does not state the flag carries it forward",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Plain = [key2, subkey1, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true, true)),
+               ?assertMatch({ok, _, create},
+                            test_set(Plain, v1, new, true, false)),
+
+               ?assertMatch({ok, _, update},
+                            test_set(Key, v2, undefined, false, undefined)),
+               ?assertEqual({?METAKV2_SENSITIVE, v2}, stored_value(Key)),
+               ?assertEqual([{Key, true}, {Plain, false}],
+                            dir_sensitivity([subkey1, root])),
+
+               ?assertMatch({ok, _, update},
+                            test_set(Plain, v2, undefined, false, undefined)),
+               ?assertEqual(v2, stored_value(Plain)),
+
+               ?assertMatch({ok, _, update},
+                            test_set_multiple_sensitive(
+                              [{Key, {v3, undefined, undefined}},
+                               {Plain, {v3, undefined, undefined}}], false)),
+               ?assertEqual({?METAKV2_SENSITIVE, v3}, stored_value(Key)),
+               ?assertEqual(v3, stored_value(Plain)),
+
+               %% restating the flag it already has is accepted
+               ?assertMatch({ok, _, update},
+                            test_set(Key, v4, undefined, false, true)),
+               ?assertEqual({?METAKV2_SENSITIVE, v4}, stored_value(Key)),
+               ?assertMatch({ok, _, update},
+                            test_set(Plain, v4, undefined, false, false)),
+               ?assertEqual(v4, stored_value(Plain))
+       end},
+      {"an update that asks to change the flag is refused",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Plain = [key2, subkey1, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true, true)),
+               ?assertMatch({ok, _, create},
+                            test_set(Plain, v1, new, true, false)),
+
+               %% asking to protect a key that is not protected is the
+               %% dangerous direction, since dropping it silently would leave
+               %% the caller thinking the value was safe
+               ?assertEqual({error, {sensitive_mismatch, Plain}},
+                            test_set(Plain, v2, undefined, false, true)),
+               ?assertEqual(v1, stored_value(Plain)),
+
+               %% and the other direction is refused too
+               ?assertEqual({error, {sensitive_mismatch, Key}},
+                            test_set(Key, v2, undefined, false, false)),
+               ?assertEqual({?METAKV2_SENSITIVE, v1}, stored_value(Key)),
+
+               %% a value that happens to be unchanged must not let the
+               %% refusal slip through as not_changed
+               ?assertEqual({error, {sensitive_mismatch, Plain}},
+                            test_set(Plain, v1, undefined, false, true)),
+               ?assertEqual({error, {sensitive_mismatch, Key}},
+                            test_set(Key, v1, undefined, false, false)),
+
+               %% one bad entry aborts the whole transaction
+               ?assertEqual({error, {sensitive_mismatch, Plain}},
+                            test_set_multiple_sensitive(
+                              [{Key, {v9, undefined, undefined}},
+                               {Plain, {v9, undefined, true}}], false)),
+               ?assertEqual({?METAKV2_SENSITIVE, v1}, stored_value(Key)),
+               ?assertEqual(v1, stored_value(Plain)),
+
+               %% and the same when the entry's value is unchanged
+               ?assertEqual({error, {sensitive_mismatch, Plain}},
+                            test_set_multiple_sensitive(
+                              [{Plain, {v1, undefined, true}}], false)),
+
+               %% recreating the key is the only way to change it
+               ?assertMatch({ok, _}, test_delete(Plain)),
+               ?assertMatch({ok, _, create},
+                            test_set(Plain, v2, new, false, true)),
+               ?assertEqual({?METAKV2_SENSITIVE, v2}, stored_value(Plain))
+       end},
+      {"not changed is detected through the tag",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Ret = test_set(Key, v1, new, true, true),
+               ?assertMatch({ok, _, create}, Ret),
+               {ok, Rev, _} = Ret,
+
+               %% the stored value is wrapped, so comparing it against the
+               %% incoming bare value has to strip the tag first
+               ?assertEqual({error, {not_changed, Key, Rev}},
+                            test_set(Key, v1, undefined, false, true)),
+               ?assertEqual({error, {not_changed, Key, Rev}},
+                            test_set(Key, v1, undefined, false, undefined)),
+               ?assertEqual({error, not_changed},
+                            test_set_multiple_sensitive(
+                              [{Key, {v1, undefined, undefined}}], false))
+       end},
+      {"a sensitive leaf is refused until the cluster is upgraded",
+       fun () ->
+               Key = [key1, subkey1, root],
+               fake_chronicle_kv:setup_cluster_compat_version(?VERSION_80),
+
+               ?assertEqual({error, {sensitive_unsupported, Key}},
+                            test_set(Key, v1, new, true, true)),
+               ?assertEqual({error, not_found}, ?MODULE:get(Key)),
+               ?assertEqual({error, {sensitive_unsupported, Key}},
+                            test_set_multiple_sensitive(
+                              [{Key, {v1, new, true}}], true)),
+               ?assertEqual({error, not_found}, ?MODULE:get(Key)),
+
+               %% a write that does not ask for the flag is unaffected, and so
+               %% is one that asks for the flag to be off, since neither
+               %% stores anything an older node cannot read
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true, false)),
+               ?assertEqual(v1, stored_value(Key)),
+
+               %% and the flag is taken once the cluster is upgraded
+               fake_chronicle_kv:setup_cluster_compat_version(?VERSION_TOTORO),
+               Key2 = [key2, subkey1, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key2, v1, new, true, true)),
+               ?assertEqual({?METAKV2_SENSITIVE, v1}, stored_value(Key2))
        end}]}.
 
 -endif.
