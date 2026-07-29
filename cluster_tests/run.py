@@ -41,6 +41,7 @@ import cluster_run_lib
 from testlib import UnmetRequirementsError, TestError
 from testlib.cluster import InconsistentClusterError, StartClusterError
 from testlib import test_tag_decorator
+from testlib import diff_coverage
 from testlib.util import Service, strings_to_services
 
 from testsets import \
@@ -188,6 +189,30 @@ Usage: {{program_name}}
         html - HTML reports only
         txt  - Text reports only (per-module .txt files)
         all  - Both HTML and text reports
+    [--diff-coverage[=<base>]]
+        Collect code coverage for the modules you changed and report which of
+        the changed lines the tests actually executed. Implies code coverage
+        collection, so the same rebuild is required. The working tree is
+        always one side of the comparison, because that is what was compiled
+        and ran; the base gives the other side:
+        (none)|uncommitted - HEAD, i.e. everything not committed yet
+        unstaged           - the index, i.e. everything not staged yet
+        <git-rev>          - that revision, e.g. --diff-coverage=HEAD^ for
+                             the last commit plus anything done since it
+        A...B              - the commit A and B share, i.e. where B forked
+                             off A. --diff-coverage=origin/main...HEAD is
+                             everything this branch did, without what
+                             origin/main did in the meantime
+        A report therefore always describes the code that actually ran, and
+        always includes your uncommitted changes. A commit range A..B is not
+        a base and is rejected: it leaves out the working tree.
+        Only lines the Erlang line coverage can measure are counted, which
+        excludes comments, specs, attributes, clause heads and guards. The
+        report says how many of the changed lines were measurable.
+        Not supported with --cluster | -c.
+    [--diff-coverage-hide-uncovered]
+        Do not print the annotated diff of the changed lines that were not
+        covered. The same detail is always written to the report file.
     [--exclude-services <service>[,<service>...]]
         Skip all testsets whose requirements include any of the listed services.
         Services are specified by value: index, n1ql, fts, backup,
@@ -298,6 +323,48 @@ def verify_native_coverage_support():
         error_exit(f"Failed to execute coverage support check: {e}")
 
 
+def setup_diff_coverage(mode, use_existing_server):
+    """Derive the code coverage module list from git and enable collection."""
+    if use_existing_server:
+        bad_args_exit("--diff-coverage is not supported with --cluster|-c "
+                      "(pre-existing cluster)")
+
+    try:
+        diff_info = diff_coverage.collect(mode,
+                                          code_coverage_excluded_modules)
+    except diff_coverage.DiffCoverageError as e:
+        error_exit(str(e))
+
+    if not diff_info.changed:
+        # A change with nothing to measure is not a reason to skip the tests.
+        print(f"--diff-coverage={mode} found no changed Erlang modules under "
+              f"apps/*/src, running without coverage\n  {diff_info.command}")
+        if diff_info.skipped:
+            print("Skipped:\n" + diff_coverage.format_skipped(diff_info))
+        return diff_info
+
+    modules = diff_info.modules()
+    testlib.config['diff_coverage_modules'] = modules
+    testlib.config['code_coverage_modules'] = sorted(
+        set(testlib.config.get('code_coverage_modules', [])) | set(modules))
+    verify_native_coverage_support()
+
+    print(f"Diff coverage enabled: {diff_info.description}")
+    print(f"Changed modules ({len(modules)}): {', '.join(modules)}")
+    if diff_info.untracked:
+        # An unrelated untracked file counts as untested code, so name the
+        # ones that got in.
+        print("Untracked files, counted in full: "
+              f"{', '.join(diff_info.untracked)}")
+    if diff_info.skipped:
+        testlib.maybe_print("Skipped:\n" +
+                            diff_coverage.format_skipped(diff_info))
+    if diff_info.warnings:
+        print(diff_coverage.format_warnings(diff_info,
+                                            colors=testlib.config['colors']))
+    return diff_info
+
+
 def generate_coverage_report():
     """Generate coverage report by running the Erlang escript."""
 
@@ -344,8 +411,16 @@ def generate_coverage_report():
         # --report-dir <dir> --format <html|txt|all> --import-dirs <dir1> ...
         cmd = [escript_path, coverage_script_path,
                "--report-dir", report_dir,
-               "--format", coverage_format,
-               "--import-dirs"] + cov_data_dirs
+               "--format", coverage_format]
+        # Per-line data goes to a file rather than stdout: a wide diff can
+        # cover a hundred modules of several hundred lines each.
+        diff_modules = testlib.config.get('diff_coverage_modules')
+        line_detail_file = None
+        if diff_modules:
+            line_detail_file = os.path.join(report_dir, "line_coverage.json")
+            cmd += ["--line-detail-modules", ",".join(diff_modules),
+                    "--line-detail-file", line_detail_file]
+        cmd += ["--import-dirs"] + cov_data_dirs
         ScriptTimeout = 1200
         result = subprocess.run(
             cmd,
@@ -369,6 +444,13 @@ def generate_coverage_report():
             raise RuntimeError(
                 f"Failed to parse coverage output: {e}\n"
                 f"Raw output: {result.stdout}")
+
+        if line_detail_file is not None and os.path.exists(line_detail_file):
+            with open(line_detail_file) as f:
+                raw_line_coverage = json.load(f)
+            coverage_data['line_coverage'] = \
+                {module: dict(pairs)
+                 for module, pairs in raw_line_coverage.items()}
 
         needed_modules = set(testlib.config.get('code_coverage_modules', []))
         covered_modules = set(coverage_data.get('module_coverage', {}).keys())
@@ -447,8 +529,14 @@ def main():
     # we use assert statements in tests, so make sure they are not disabled
     if not __debug__:
         raise RuntimeError("Assert statements are disabled")
+    # getopt has no optional-argument form for long options. Registering
+    # --diff-coverage as taking an argument would make a bare --diff-coverage
+    # silently swallow the next argv element, so give it its default here.
+    argv = [f'--diff-coverage={diff_coverage.DEFAULT_MODE}'
+            if arg == '--diff-coverage' else arg for arg in sys.argv[1:]]
+
     try:
-        optlist, args = getopt.gnu_getopt(sys.argv[1:], "hkovc:u:p:n:t:s:l",
+        optlist, args = getopt.gnu_getopt(argv, "hkovc:u:p:n:t:s:l",
                                           ["help", "keep-tmp-dirs", "cluster=",
                                            "user=", "password=", "num-nodes=",
                                            "tests=", 'with-tags=', "list",
@@ -471,6 +559,8 @@ def main():
                                            'no-wrap',
                                            'code-coverage-modules=',
                                            'coverage-output-format=',
+                                           'diff-coverage=',
+                                           'diff-coverage-hide-uncovered',
                                            'exclude-services='])
     except getopt.GetoptError as err:
         bad_args_exit(str(err))
@@ -496,6 +586,10 @@ def main():
     stop_after_first_error = False
     collect_logs = False
     log_collection_regex = log_collection_default_regex
+    diff_coverage_mode = None
+    diff_coverage_hide_uncovered = False
+    diff_info = None
+    diff_result = None
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -599,6 +693,14 @@ def main():
                               f"Must be one of {', '.join(valid_formats)}")
             testlib.config['coverage_output_format'] = a
             testlib.maybe_print(f"Coverage report output format: {a}")
+        elif o == '--diff-coverage':
+            # Only record the mode here. Everything else happens after the
+            # option loop, so that the check against --cluster and the union
+            # with --code-coverage-modules do not depend on the order the
+            # options were given in.
+            diff_coverage_mode = a
+        elif o == '--diff-coverage-hide-uncovered':
+            diff_coverage_hide_uncovered = True
         elif o in ('--list', '-l'):
             list_all_tests()
             exit(0)
@@ -627,6 +729,14 @@ def main():
                 if not isinstance(tag, test_tag_decorator.Tag):
                     error_exit(f"'{tag}' is not a valid tag. Use "
                                f"--ignore-unknown-tags to ignore unknown tags.")
+
+    if diff_coverage_mode is None:
+        if diff_coverage_hide_uncovered:
+            bad_args_exit("--diff-coverage-hide-uncovered requires "
+                          "--diff-coverage")
+    else:
+        diff_info = setup_diff_coverage(diff_coverage_mode,
+                                        use_existing_server)
 
     override_print()
 
@@ -795,6 +905,13 @@ def main():
                 errors[ename] = []
             errors[ename].append(err)
 
+    if coverage_data is not None and diff_info is not None \
+            and diff_info.changed:
+        diff_result = diff_coverage.compute(
+            diff_info, coverage_data.get('line_coverage', {}))
+        diff_coverage.write_report(coverage_report_dir, diff_info,
+                                   diff_result)
+
     restore_print()
 
     ns_in_sec = 1000000000
@@ -845,6 +962,23 @@ def main():
         print("Full coverage report is available at "
               f"{coverage_data['full_report_dir']}")
 
+    if diff_result is not None:
+        print(diff_coverage.format_summary(diff_result))
+        if diff_info.warnings:
+            print(diff_coverage.format_warnings(
+                      diff_info, colors=testlib.config['colors']))
+        diff_report_path = os.path.join(coverage_data['full_report_dir'],
+                                        'diff_coverage.txt')
+        print(f"Diff coverage report:     {diff_report_path}")
+        if not diff_coverage_hide_uncovered:
+            uncovered = diff_coverage.format_uncovered(
+                            diff_info, diff_result,
+                            colors=testlib.config['colors'])
+            if uncovered:
+                print("\nChanged lines not covered by the tests, '!' marks "
+                      "an uncovered line:\n")
+                print(uncovered)
+
     print(f"\nSeed: {seed}\n")
 
     for name in errors:
@@ -863,12 +997,13 @@ def main():
         error_exit("Tests finished with errors")
     elif len(not_ran) > 0:
         warning_exit("Some tests were skipped")
-    elif not (testlib.config['keep_tmp_dirs'] or
-              check_for_core_files() or
-              cluster.is_existing_cluster()):
-        # Delete directories as we don't need to keep around data from
-        # successful tests
-        remove_temp_cluster_directories()
+    else:
+        if not (testlib.config['keep_tmp_dirs'] or
+                check_for_core_files() or
+                cluster.is_existing_cluster()):
+            # Delete directories as we don't need to keep around data from
+            # successful tests
+            remove_temp_cluster_directories()
 
 
 # If there are core files, the tests may have passed but something went wrong in

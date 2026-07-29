@@ -24,12 +24,21 @@ cli() ->
               help => "Output format: html, txt, or all (default: html)"},
             #{name => import_dirs, long => "-import-dirs", required => true,
               nargs => nonempty_list,
-              help => "Coverage data directories to import"}
+              help => "Coverage data directories to import"},
+            #{name => line_detail_modules, long => "-line-detail-modules",
+              default => "",
+              help => "Comma-separated list of modules to additionally "
+                      "report per-line coverage for"},
+            #{name => line_detail_file, long => "-line-detail-file",
+              default => "",
+              help => "File to write the per-line coverage JSON to"}
         ],
         handler => fun run/1
     }.
 
-run(#{report_dir := ReportDir, format := Format, import_dirs := CoverageDirs}) ->
+run(#{report_dir := ReportDir, format := Format, import_dirs := CoverageDirs,
+      line_detail_modules := LineDetailModules,
+      line_detail_file := LineDetailFile}) ->
     StartTime = erlang:monotonic_time(millisecond),
     ok = filelib:ensure_path(ReportDir ++ "/"),
     init_log(ReportDir),
@@ -86,6 +95,9 @@ run(#{report_dir := ReportDir, format := Format, import_dirs := CoverageDirs}) -
     log("Computing coverage summary..."),
     SummaryMap0 = compute_coverage_summary(ImportedModules),
 
+    SummaryMap1 = maybe_write_line_detail(LineDetailModules, LineDetailFile,
+                                          ImportedModules, SummaryMap0),
+
     %% Stop cover
     catch cover:stop(),
 
@@ -94,7 +106,7 @@ run(#{report_dir := ReportDir, format := Format, import_dirs := CoverageDirs}) -
     ElapsedMs = EndTime - StartTime,
     ElapsedSec = ElapsedMs / 1000,
     NumCoverdataFiles = length(CoverdataFiles),
-    SummaryMap = SummaryMap0#{elapsed_time_sec => ElapsedSec,
+    SummaryMap = SummaryMap1#{elapsed_time_sec => ElapsedSec,
                               coverdata_files_imported => NumCoverdataFiles},
 
     log("Total time: ~.2f seconds", [ElapsedSec]),
@@ -206,6 +218,46 @@ compute_coverage_summary(Modules) ->
         total_lines => TotalLines,
         module_coverage => ModuleCoverage
     }.
+
+%% Per-line coverage for a specific list of modules. Used by cluster_tests
+%% --diff-coverage to work out which of the changed lines were executed.
+maybe_write_line_detail("", _File, _Imported, SummaryMap) ->
+    SummaryMap;
+maybe_write_line_detail(_Modules, "", _Imported, SummaryMap) ->
+    log("No --line-detail-file given, skipping per-line coverage"),
+    SummaryMap;
+maybe_write_line_detail(ModulesStr, File, Imported, SummaryMap) ->
+    Requested = [list_to_atom(M) || M <- string:lexemes(ModulesStr, ",")],
+    %% The module list comes from git, so it may well name modules that have
+    %% no coverage data at all. cover:analyse/3 reports those as
+    %% not_cover_compiled, so filter them out rather than failing the report.
+    {Known, Unknown} =
+        lists:partition(fun (M) -> lists:member(M, Imported) end, Requested),
+    case Unknown of
+        [] -> ok;
+        _ -> log("No coverage data for: ~p", [Unknown])
+    end,
+    Detail = line_detail(Known),
+    log("Writing per-line coverage for ~p module(s) to ~s",
+        [maps:size(Detail), File]),
+    ok = filelib:ensure_dir(File),
+    ok = file:write_file(File, json:encode(Detail)),
+    SummaryMap#{line_coverage_file => list_to_binary(File)}.
+
+line_detail([]) ->
+    #{};
+line_detail(Modules) ->
+    %% 'calls' rather than 'coverage' gives the actual hit count, and still
+    %% includes the never executed lines with a count of 0.
+    {result, OkRes, FailRes} = cover:analyse(Modules, calls, line),
+    case FailRes of
+        [] -> ok;
+        _ -> log("Failed to analyse per-line coverage: ~p", [FailRes])
+    end,
+    lists:foldl(
+      fun ({{Module, Line}, Calls}, Acc) ->
+              Acc#{Module => [[Line, Calls] | maps:get(Module, Acc, [])]}
+      end, #{}, lists:reverse(OkRes)).
 
 panic(Format, Args) ->
     Msg = io_lib:format(Format, Args),

@@ -71,6 +71,19 @@ cd cluster_tests
 
 Available test sets include: `BasicBucketTestSet`, `MultiNodeBucketTestSet`, `CrudTests`, `CollectionTests`, `UsersTestSet`, `AuthnTests`, `StatsTests`, and many more. Run `./run.py --list` to see the full list.
 
+### Cluster Test Code Coverage
+
+Coverage is off by default; it requires a rebuild with
+`CB_CODE_COVERAGE_ENABLED` set (`rebar.config.script`):
+```bash
+CB_CODE_COVERAGE_ENABLED=true make
+CB_CODE_COVERAGE_ENABLED=true ninja -C ../build
+cd cluster_tests
+./run.py --tests <TESTSET_NAME> --code-coverage-modules=cb_crl,cb_crl_cache
+```
+The report lands in `cluster_tests/.coverage/`. Add `--diff-coverage` to report
+only the lines you changed; `./run.py --help` explains the remaining options.
+
 ## Project Structure
 
 - `apps/` - Erlang applications
