@@ -33,7 +33,8 @@
          delete_crl_file/1,
          get_crl_files_metadata/0,
          sync_uploaded_files/0,
-         read_uploaded_crl_file/1]).
+         read_uploaded_crl_file/1,
+         get_crl_number/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,

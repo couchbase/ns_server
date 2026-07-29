@@ -560,6 +560,9 @@ class CRLTests(testlib.BaseTestSet):
           * every cert in a supplied chain is validated, not just the leaf;
           * a self-signed root is reported valid without a CRL lookup;
           * Permissive vs Require differ for an undetermined (no-CRL) cert;
+          * an undetermined verdict caused by an expired CRL says so
+            (expired_crls) instead of looking like a cert with no usable CRL
+            (MB-73069);
           * cluster mode (no certs) checks the cluster's own certs (both
             client and node certs) and the OOTB certs come out all-allowed.
         """
@@ -625,12 +628,53 @@ class CRLTests(testlib.BaseTestSet):
             r = crl_test_validate(self.cluster,
                                   policy='Require', certs=[nocrl_b64])
             testlib.assert_eq(r['results'][0]['status'], 'undetermined')
+            # MB-73069: no usable CRL keeps OTP's no_relevant_crls, and the
+            # expired-CRL annotation is attached unconditionally - empty here,
+            # naming the CRL in the expired case below.
+            details = r['results'][0]['details']
+            assert 'no_relevant_crls' in details, \
+                f'expected no_relevant_crls, got {details}'
+            # ~p wraps the term across lines once it grows, so compare against
+            # a whitespace-free copy.
+            packed = ''.join(details.split())
+            assert '{crls_considered,[]}' in packed, \
+                f'expected an empty crls_considered annotation, got {details}'
+            assert '{expired_crls,[]}' in packed, \
+                f'expected an empty expired_crls annotation, got {details}'
 
             r = crl_test_validate(self.cluster,
                                   policy='Permissive', certs=[nocrl_b64])
             testlib.assert_eq(r['results'][0]['status'], 'valid')
-            print("No-CRL cert: undetermined under Require, valid under "
-                  "Permissive")
+            print("No-CRL cert: undetermined (no_relevant_crls, nothing "
+                  "expired) under Require, valid under Permissive")
+
+            # --- MB-73069: a cert whose only CRL has expired reports the
+            # expiry, not the same bare "no relevant CRLs" as the case above.
+            # A distinct CA (and hence a distinct cert) is used so the
+            # cb_crl_status_cache entry from the no-CRL case cannot be
+            # reused. ---
+            expired_ca_pem, expired_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test ExpiredCRL CA')
+            ca_ids += load_multiple_cas(node, [expired_ca_pem])
+            expired_crl_cert_pem, _ = generate_client_cert_cn(
+                expired_ca_pem, expired_ca_key_pem, 'expired-crl-user')
+
+            generate_crl_to_file(
+                os.path.join(crl_dir, 'validate_expired_crl.pem'),
+                expired_ca_pem, expired_ca_key_pem, [], expired=True)
+            reload_crl(node)
+
+            r = crl_test_validate(
+                self.cluster, policy='Require',
+                certs=[cert_pem_to_b64_der(expired_crl_cert_pem)])
+            testlib.assert_eq(r['results'][0]['status'], 'undetermined')
+            details = r['results'][0]['details']
+            assert 'expired_crls' in details, \
+                f'expected expired_crls, got {details}'
+            assert 'Test ExpiredCRL CA' in details, \
+                f'expected the CRL issuer to be named, got {details}'
+            print("Expired-CRL cert: undetermined (expired_crls) under "
+                  f"Require: {details}")
 
             # --- Every cert in a supplied chain is validated, not just the
             # leaf.  A single PEM entry carrying multiple certs must yield one
