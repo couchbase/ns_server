@@ -466,10 +466,10 @@ apply_policy({bad_cert, {revoked, Reason}}, Policy, OtpCert) ->
 apply_policy({bad_cert, {revocation_status_undetermined, Details}},
              permissive = Policy, OtpCert) ->
     SubjectStr = ns_server_cert:get_subject(OtpCert),
-    ?log_debug("(CRL) Certificate status undetermined \"~s\" "
-               "(policy=~p, treat as valid): ~s",
-               [ns_config_log:tag_user_name(SubjectStr), Policy,
-                format_undetermined_details(Details)]),
+    ?log_warning("(CRL) Certificate status undetermined \"~s\" "
+                 "(policy=~p, treat as valid): ~s",
+                 [ns_config_log:tag_user_name(SubjectStr), Policy,
+                  format_undetermined_details(Details)]),
     valid;
 apply_policy({bad_cert, {revocation_status_undetermined, Details}},
              Policy, OtpCert) ->
