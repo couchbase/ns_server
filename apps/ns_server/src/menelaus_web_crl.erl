@@ -560,6 +560,7 @@ handle_post_crl_file(Req) ->
                   true -> ok;
                   false -> {error, not_multipart}
                end,
+        ok ?= validate_content_length(Req),
         Fields = mochiweb_multipart:parse_form(Req),
         %% Keep only file fields (content-type is a tuple);
         %% ignore plain text fields.
@@ -587,6 +588,23 @@ is_multipart_ct(undefined) -> false;
 is_multipart_ct(CT) ->
     lists:prefix("multipart/form-data", string:to_lower(CT)).
 
+%% mochiweb_multipart:parse_form/1 doesn't support chunked transfer encoding:
+%% it feeds the Content-Length header to list_to_integer/1 unconditionally and
+%% crashes with badarg if it is missing or malformed.  Check it up front so
+%% that we reply with an error instead.
+validate_content_length(Req) ->
+    case mochiweb_request:get_combined_header_value("content-length", Req) of
+        undefined ->
+            {error, no_content_length};
+        Value ->
+            try list_to_integer(Value) of
+                N when N >= 0 -> ok;
+                _ -> {error, invalid_content_length}
+            catch
+                error:badarg -> {error, invalid_content_length}
+            end
+    end.
+
 validate_upload_filename(Filename) ->
     case Filename =/= [] andalso length(Filename) =< 255 andalso
          lists:all(fun safe_filename_char/1, Filename) andalso
@@ -603,6 +621,11 @@ safe_filename_char(C) ->
 
 format_upload_error(not_multipart) ->
     <<"Content-Type must be multipart/form-data">>;
+format_upload_error(no_content_length) ->
+    <<"Content-Length header is required; chunked transfer encoding is not"
+      " supported">>;
+format_upload_error(invalid_content_length) ->
+    <<"Invalid Content-Length header">>;
 format_upload_error(no_file) ->
     <<"No file found in multipart form data">>;
 format_upload_error(too_many_files) ->

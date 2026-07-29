@@ -3225,6 +3225,32 @@ class CRLBadCRLTests(testlib.BaseTestSet):
             assert 'Failed to decode CRL: Invalid CRL' in error, \
                 f'Unexpected error: {error!r}'
 
+    def upload_chunked_encoding_test(self):
+        """A chunked upload (no Content-Length) returns HTTP 400.
+
+        mochiweb_multipart cannot parse a body without a Content-Length, so we
+        have to reject the request before handing it over.
+        """
+        node = self.cluster.connected_nodes[0]
+
+        def chunked_body():
+            yield (b'--testbnd\r\n'
+                   b'Content-Disposition: form-data; name="crl";'
+                   b' filename="chunked.pem"\r\n\r\n')
+            yield MALFORMED_PEM
+            yield b'\r\n--testbnd--\r\n'
+
+        # Passing a generator as data makes requests use chunked encoding.
+        r = testlib.post_fail(node, '/settings/crl/files',
+                              data=chunked_body(),
+                              headers={'Content-Type':
+                                       'multipart/form-data; boundary=testbnd'},
+                              expected_code=400)
+        error = r.json().get('error', '')
+        print(f'upload_chunked error: {error}')
+        assert 'content-length' in error.lower(), \
+            f'Expected Content-Length error, got: {error!r}'
+
     def upload_untrusted_issuer_test(self):
         """CRL signed by an untrusted CA returns HTTP 400."""
         node = self.cluster.connected_nodes[0]
