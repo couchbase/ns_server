@@ -2025,12 +2025,15 @@ install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS, TrustedCAs,
     end.
 
 %% Try PEM first; public_key:pem_decode/1 returns [] for non-PEM input so
-%% calling it on a DER binary is safe.
+%% calling it on a DER binary is safe.  It does raise, however, if the input
+%% has a PEM header but a malformed body (base64:mime_decode/1 is called
+%% unguarded on it), and the input here is user supplied, so catch that and
+%% treat it as an invalid CRL rather than falling back to DER.
 -spec decode_crl(binary()) ->
           {ok, [{public_key:issuer_name(), #'CertificateList'{}, binary()}]} |
           {error, term()}.
 decode_crl(Binary) ->
-    case public_key:pem_decode(Binary) of
+    try public_key:pem_decode(Binary) of
         [_ | _] = Entries ->
             HandleEntry =
                 fun ({'CertificateList', Der, not_encrypted}) ->
@@ -2060,6 +2063,8 @@ decode_crl(Binary) ->
                 {ok, Issuer, Decoded} -> {ok, [{Issuer, Decoded, Binary}]};
                 {error, _} = Err      -> Err
             end
+    catch
+        _:Err -> {error, {invalid_crl, Err}}
     end.
 
 %% Decode a single DER-encoded CRL and return its raw (non-normalized) issuer

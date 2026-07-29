@@ -31,6 +31,15 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 
+# A PEM header with a body that is not valid base64.  This has to be
+# distinguished from headerless garbage: public_key:pem_decode/1 only looks at
+# the body once it has found a BEGIN line, so only this input reaches (and used
+# to crash in) base64:mime_decode/1.  Headerless garbage is treated as DER.
+MALFORMED_PEM = (b'-----BEGIN X509 CRL-----\n'
+                 b'not valid base64 !!!\n'
+                 b'-----END X509 CRL-----\n')
+
+
 class CRLTests(testlib.BaseTestSet):
 
     @staticmethod
@@ -3204,14 +3213,17 @@ class CRLBadCRLTests(testlib.BaseTestSet):
     def upload_garbage_content_test(self):
         """Uploading non-CRL bytes returns HTTP 400 with decode error."""
         node = self.cluster.connected_nodes[0]
+        # Headerless garbage: decoded as DER.
         garbage = b'\x00\xFF' * 32 + b'not a crl'
-        files = {'crl': ('bad.pem', garbage, 'application/x-pem-file')}
-        r = testlib.post_fail(node, '/settings/crl/files', files=files,
-                              expected_code=400)
-        error = r.json().get('error', '')
-        print(f'upload_garbage_content error: {error}')
-        assert 'Failed to decode CRL: Invalid CRL' in error, \
-            f'Unexpected error: {error!r}'
+        # A PEM header with a malformed body: decoded as PEM.
+        for content in [garbage, MALFORMED_PEM]:
+            files = {'crl': ('bad.pem', content, 'application/x-pem-file')}
+            r = testlib.post_fail(node, '/settings/crl/files', files=files,
+                                  expected_code=400)
+            error = r.json().get('error', '')
+            print(f'upload_garbage_content error: {error}')
+            assert 'Failed to decode CRL: Invalid CRL' in error, \
+                f'Unexpected error: {error!r}'
 
     def upload_untrusted_issuer_test(self):
         """CRL signed by an untrusted CA returns HTTP 400."""
@@ -3330,6 +3342,17 @@ class CRLBadCRLTests(testlib.BaseTestSet):
                                        expected_error_num=1,
                                        expected_error='Failed to decode file')
 
+            # Same for a PEM header with a malformed body, which goes down a
+            # different decoding path.
+            with open(crl_path, 'wb') as f:
+                f.write(MALFORMED_PEM)
+            result = reload_crl(node)
+            assert_crl_file_load_error(result, 'bad.pem',
+                                       expected_cache_status='notLoaded',
+                                       expected_reload_result='failed',
+                                       expected_error_num=1,
+                                       expected_error='Failed to decode file')
+
             # Replace with a valid CRL → recovery to active.
             generate_crl_to_file(crl_path, ca_pem, ca_key_pem, [])
             result = reload_crl(node)
@@ -3441,6 +3464,18 @@ class CRLBadCRLTests(testlib.BaseTestSet):
                                       'nodeToNode': 'Disabled'},
                     urls=[srv.url],
                     url_poll_interval_ms=1000)
+
+                result = reload_crl(node)
+                assert_crl_file_load_error(
+                    result, srv.url,
+                    expected_cache_status='notLoaded',
+                    expected_reload_result='failed',
+                    expected_error_num=1,
+                    expected_error='Failed to decode file. Reason: Invalid CRL')
+
+                # Same for a PEM header with a malformed body, which goes down
+                # a different decoding path.
+                srv.set_content(MALFORMED_PEM)
 
                 result = reload_crl(node)
                 assert_crl_file_load_error(
