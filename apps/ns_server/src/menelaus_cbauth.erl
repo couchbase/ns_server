@@ -691,7 +691,7 @@ format_crl_status(Verdict, DerCert, Expiry) ->
         {bad_cert, {revocation_status_undetermined, Info}} ->
             {[{status, <<"undetermined">>},
               {subject, Subject},
-              {details, format_crl_details(Info)},
+              {details, format_undetermined_details(Info)},
               {expiration, ExpiryStr}]};
         {bad_cert, Reason} ->
             {[{status, <<"failed">>},
@@ -746,6 +746,9 @@ failed_status(Subject, Details) ->
 
 format_crl_details(Term) ->
     iolist_to_binary(io_lib:format("~p", [Term])).
+
+format_undetermined_details(Info) ->
+    iolist_to_binary(cb_crl:format_undetermined_details(Info)).
 
 format_expiry(undefined) ->
     null;

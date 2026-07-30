@@ -455,7 +455,12 @@ crl_result_to_props(valid) ->
 crl_result_to_props({bad_cert, {revoked, Reason}}) ->
     {false, [{status, <<"revoked">>}, {details, format_crl_term(Reason)}]};
 crl_result_to_props({bad_cert, {revocation_status_undetermined, Info}}) ->
-    {false, [{status, <<"undetermined">>}, {details, format_crl_term(Info)}]};
+    %% Not format_crl_term/1: an undetermined verdict's details can carry whole
+    %% decoded CRLs (see cb_crl:format_undetermined_details/1), and this is the
+    %% same text the log line gets.
+    {false, [{status, <<"undetermined">>},
+             {details,
+              iolist_to_binary(cb_crl:format_undetermined_details(Info))}]};
 crl_result_to_props({bad_cert, Reason}) ->
     {false, [{status, <<"failed">>}, {details, format_crl_term(Reason)}]};
 crl_result_to_props(Reason) ->

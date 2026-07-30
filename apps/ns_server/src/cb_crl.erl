@@ -17,7 +17,7 @@
 -endif.
 
 -export([verify_fun/1, verify/4, verify_chain/2, crl_check_safe/2,
-         crl_check/1]).
+         crl_check/1, format_undetermined_details/1]).
 
 -type pkix_crls_validate_verdict() :: valid | {bad_cert, Reason :: term()}.
 -type verdict_expiration_datetime() :: calendar:datetime() | undefined.

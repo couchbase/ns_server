@@ -628,25 +628,18 @@ class CRLTests(testlib.BaseTestSet):
             r = crl_test_validate(self.cluster,
                                   policy='Require', certs=[nocrl_b64])
             testlib.assert_eq(r['results'][0]['status'], 'undetermined')
-            # MB-73069: no usable CRL keeps OTP's no_relevant_crls, and the
-            # expired-CRL annotation is attached unconditionally - empty here,
-            # naming the CRL in the expired case below.
+            # The details are rendered by cb_crl:format_undetermined_details/1,
+            # the same text the log line gets - not a dump of the raw term.
+            # MB-73069: a cert with no usable CRL says exactly that, and names
+            # no expired CRL (the expired case below does).
             details = r['results'][0]['details']
-            assert 'no_relevant_crls' in details, \
-                f'expected no_relevant_crls, got {details}'
-            # ~p wraps the term across lines once it grows, so compare against
-            # a whitespace-free copy.
-            packed = ''.join(details.split())
-            assert '{crls_considered,[]}' in packed, \
-                f'expected an empty crls_considered annotation, got {details}'
-            assert '{expired_crls,[]}' in packed, \
-                f'expected an empty expired_crls annotation, got {details}'
+            testlib.assert_eq(details, 'no usable CRL for this certificate')
 
             r = crl_test_validate(self.cluster,
                                   policy='Permissive', certs=[nocrl_b64])
             testlib.assert_eq(r['results'][0]['status'], 'valid')
-            print("No-CRL cert: undetermined (no_relevant_crls, nothing "
-                  "expired) under Require, valid under Permissive")
+            print("No-CRL cert: undetermined (no usable CRL, nothing expired) "
+                  "under Require, valid under Permissive")
 
             # --- MB-73069: a cert whose only CRL has expired reports the
             # expiry, not the same bare "no relevant CRLs" as the case above.
@@ -669,11 +662,11 @@ class CRLTests(testlib.BaseTestSet):
                 certs=[cert_pem_to_b64_der(expired_crl_cert_pem)])
             testlib.assert_eq(r['results'][0]['status'], 'undetermined')
             details = r['results'][0]['details']
-            assert 'expired_crls' in details, \
-                f'expected expired_crls, got {details}'
+            assert 'expired CRLs' in details, \
+                f'expected the expired CRLs to be called out, got {details}'
             assert 'Test ExpiredCRL CA' in details, \
                 f'expected the CRL issuer to be named, got {details}'
-            print("Expired-CRL cert: undetermined (expired_crls) under "
+            print("Expired-CRL cert: undetermined (expired CRL named) under "
                   f"Require: {details}")
 
             # --- Every cert in a supplied chain is validated, not just the
@@ -821,12 +814,13 @@ class CRLTests(testlib.BaseTestSet):
             # one are still named - which is the whole point: without that this
             # verdict would carry no clue at all.
             details = r['results'][0]['details']
-            assert 'expired_crls' in details, \
-                f'expected expired_crls, got {details}'
-            assert 'crls_considered' in details, \
-                f'expected crls_considered, got {details}'
-            assert 'Test Reasons CA' in details, \
-                f'expected the expired CRL issuer to be named, got {details}'
+            for expected in ["no CRL established this certificate's status",
+                             'expired CRLs',
+                             'CRLs considered',
+                             # issuer and CRL number, e.g. "CN=Reasons CA" #4
+                             '"CN=Test Reasons CA" #']:
+                assert expected in details, \
+                    f'expected {expected!r} in the details, got: {details}'
             print("One half expired: status undetermined, details name the "
                   f"CRLs used and the expired one: {details}")
 
