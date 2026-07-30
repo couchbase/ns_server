@@ -61,7 +61,8 @@
          reload/0,
          get_key_ids_in_use/0]).
 
--export([compute_global_rev/1]).
+-export([compute_global_rev_pre_totoro/1,
+         compute_global_rev/1]).
 
 -export([save_config_sync/3, do_not_save_config/2]).
 
@@ -693,20 +694,48 @@ attach_vclock(Value, Node) ->
 %% have to adapt users of this function to use some other way to track
 %% "revision" of config they see. (Or not, if other config has some
 %% "natural" way to track revision of data, e.g. ZAB's/RAFT's txn ids
-%% or equivalent multi-paxos thing)
-compute_global_rev(?NS_CONFIG_LATEST_MARKER) ->
+%% or equivalent multi-paxos thing).
+%%
+%% Pre-Totoro version considers the deleted keys when calculating the rev.
+compute_global_rev_pre_totoro(?NS_CONFIG_LATEST_MARKER) ->
     compute_global_rev(ns_config:get());
-compute_global_rev(Config) ->
+compute_global_rev_pre_totoro(Config) ->
     KVList = config_dynamic(Config),
     lists:foldl(
       fun ({{local_changes_count, _}, Value}, Acc) ->
               %% local_changes_count never gets deleted, so it should be safe
               %% to ignore the purge timestamp
+              %%
+              %% N.B. this is no longer correct - we delete the keys on node
+              %% ejection/compat upgrade to Totoro. See also
+              %% `compute_global_rev/1` below.
               {_, VC} = extract_vclock(Value),
               Acc + vclock:count_changes(VC);
           (_, Acc) ->
               Acc
       end, 0, KVList).
+
+%% Post-Totoro version of this function skips deleted keys when calculating the
+%% rev. This lets us delete them when we eject a node from a cluster without
+%% the rev going backwards (as we can roll up the ejected node's vclock counters
+%% into the orchestrators to prevent the rev from going backwards). This stops
+%% us from growing the config for every node that has ever been in the cluster.
+compute_global_rev(?NS_CONFIG_LATEST_MARKER) ->
+    compute_global_rev(ns_config:get());
+compute_global_rev(Config) ->
+    KVList = config_dynamic(Config),
+    lists:foldl(
+        fun ({{local_changes_count, _}, Value}, Acc) ->
+                case strip_metadata(Value) of
+                    ?DELETED_MARKER ->
+                        Acc;
+                    _ ->
+                        {_, VC} = extract_vclock(Value),
+                        Acc + vclock:count_changes(VC)
+                end;
+            (_, Acc) ->
+                Acc
+        end, 0, KVList).
 
 %% gen_server callbacks
 
@@ -1514,7 +1543,9 @@ all_test_() ->
              unmock_tombstone_agent()
      end,
      [{spawn, [{"test_update_config", fun test_update_config/0},
-               {"test_set_kvlist", fun test_set_kvlist/0}]},
+               {"test_set_kvlist", fun test_set_kvlist/0},
+               {"test_compute_global_rev_deleted_keys",
+                fun test_compute_global_rev_deleted_keys/0}]},
       {spawn,
        {foreach, fun setup_with_saver/0, fun teardown_with_saver/1,
         [{"test_with_saver_stop", fun test_with_saver_stop/0},
@@ -1831,6 +1862,52 @@ test_local_changes_count() ->
     {value, [], {0, VC}} = search_with_vclock(ns_config:get(),
                                               {local_changes_count, testuuid}),
     ?assertEqual(1, vclock:count_changes(VC)),
+
+    ok.
+
+%% Covers how the two global-rev computations treat DELETED (tombstoned)
+%% local_changes_count keys: the pre-Totoro version counts them (its historical
+%% behaviour), while compute_global_rev/1 skips them - which is what lets us
+%% delete stale counters on ejection/compat upgrade without the rev going
+%% backwards.
+test_compute_global_rev_deleted_keys() ->
+    U1 = <<"uuid1">>,
+    U2 = <<"uuid2">>,
+
+    %% A live counter with vclock count 1.
+    Live = attach_vclock([], U1),
+    ?assertEqual([], strip_metadata(Live)),
+    {_, LiveVC} = extract_vclock(Live),
+    ?assertEqual(1, vclock:count_changes(LiveVC)),
+
+    %% A deleted counter with vclock count 2, built exactly as
+    %% ns_config:delete/1 would (increment_vclock/3 over ?DELETED_MARKER).
+    Deleted = increment_vclock(?DELETED_MARKER, attach_vclock([], U2), U2),
+    ?assertEqual(?DELETED_MARKER, strip_metadata(Deleted)),
+    {_, DeletedVC} = extract_vclock(Deleted),
+    ?assertEqual(2, vclock:count_changes(DeletedVC)),
+
+    Cfg = fun (KVList) -> #config{dynamic = [KVList]} end,
+    LiveKV = {{local_changes_count, U1}, Live},
+    DeletedKV = {{local_changes_count, U2}, Deleted},
+
+    %% No deleted keys present: both versions agree.
+    ?assertEqual(1, compute_global_rev_pre_totoro(Cfg([LiveKV]))),
+    ?assertEqual(1, compute_global_rev(Cfg([LiveKV]))),
+
+    %% Only a deleted key: pre-Totoro counts it (2), the current version
+    %% skips it (0).
+    ?assertEqual(2, compute_global_rev_pre_totoro(Cfg([DeletedKV]))),
+    ?assertEqual(0, compute_global_rev(Cfg([DeletedKV]))),
+
+    %% Mixed: pre-Totoro counts both (1 + 2), the current version counts only
+    %% the live key (1).
+    ?assertEqual(3, compute_global_rev_pre_totoro(Cfg([LiveKV, DeletedKV]))),
+    ?assertEqual(1, compute_global_rev(Cfg([LiveKV, DeletedKV]))),
+
+    %% Empty config: both are 0.
+    ?assertEqual(0, compute_global_rev_pre_totoro(Cfg([]))),
+    ?assertEqual(0, compute_global_rev(Cfg([]))),
 
     ok.
 

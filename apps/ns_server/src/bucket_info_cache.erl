@@ -382,9 +382,18 @@ build_bucket_capabilities(BucketConfig) ->
 %% This doesn't handle chronicle quorum failovers, but we may
 %% deal with it later.
 compute_global_rev(Config, {_, ChronicleRev}) ->
-    ns_config:compute_global_rev(Config) + ChronicleRev;
+    compute_global_rev(Config, ChronicleRev);
 compute_global_rev(Config, no_rev) ->
-    ns_config:compute_global_rev(Config).
+    compute_global_rev(Config, 0);
+compute_global_rev(Config, ChronicleRev) when is_integer(ChronicleRev) ->
+    ConfigRev =
+        case cluster_compat_mode:is_cluster_totoro() of
+            false ->
+                ns_config:compute_global_rev_pre_totoro(Config);
+            true ->
+                ns_config:compute_global_rev(Config)
+        end,
+    ConfigRev + ChronicleRev.
 
 get_rev_epoch(Snapshot) ->
     ns_cluster:counter(Snapshot, quorum_failover_success, 0) + 1.
