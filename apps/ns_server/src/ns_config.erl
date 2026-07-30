@@ -59,7 +59,8 @@
          search_node_with_default/3,
          search_node_with_default/4,
          reload/0,
-         get_key_ids_in_use/0]).
+         get_key_ids_in_use/0,
+         config_upgrade_to_totoro/1]).
 
 -export([compute_global_rev_pre_totoro/1,
          compute_global_rev/1]).
@@ -758,7 +759,11 @@ upgrade_vclock(V, OldV, UUID) when is_list(OldV) ->
             %% we solve this by attaching vclock to new value;
             attach_vclock(V, UUID);
         _ ->
-            increment_vclock(V, OldV, UUID)
+            %% Base the clock and purge timestamp on the value being replaced,
+            %% so the upgraded value descends from it however the upgrader
+            %% stamped it and is not reverted by a node that still holds the old
+            %% value
+            increment_vclock(V, merge_vclocks(OldV, V), UUID)
     end;
 upgrade_vclock(V, _, UUID) ->
     attach_vclock(V, UUID).
@@ -1519,6 +1524,99 @@ sync_announcements() ->
 latest() ->
     ?NS_CONFIG_LATEST_MARKER.
 
+config_upgrade_to_totoro(Config) ->
+    %% We need to roll up all of the vclocks of
+    %% `{local_changes_count, <node uuid>}` keys from nodes that are no longer
+    %% in the cluster into the vclock of the orchestrator (this node) and delete
+    %% them. Prior to Totoro we kept these keys forever, and it was observed
+    %% that in some clusters we were retaining tens of thousands of keys. In
+    %% Totoro (and newer versions) we will perform this action when we remove
+    %% the node from the cluster to ensure that the number of these keys does
+    %% not grow out of control.
+    UuidMap = get_node_uuid_map(Config),
+    Wanted = ns_node_disco:nodes_wanted(),
+    ValidUuids =
+        [dict:fetch(N, UuidMap) || N <- Wanted, dict:is_key(N, UuidMap)],
+
+    %% Sanity check - we should have a uuid key for all nodes in nodes_wanted.
+    %% If we ever fail then a retry should eventually work when ns_config pulls
+    %% the latest key
+    true = length(ValidUuids) =:= length(Wanted),
+
+    MyUuid = uuid(Config),
+    {{MyKey, MyVal}, StaleCount, Deletes} =
+        process_config_to_delete_stale_local_changes_counters(Config, MyUuid,
+                                                              ValidUuids),
+
+    case StaleCount of
+        0 ->
+            Deletes;
+        _ ->
+            {P, VC} = extract_vclock(MyVal),
+            NewVClock = build_vclock(P,
+                                     bump_node_count(MyUuid, VC, StaleCount)),
+
+            [{set, MyKey, [NewVClock | strip_metadata(MyVal)]} | Deletes]
+    end.
+
+%% This function:
+%% a) Notes the Key/Value of this nodes local_changes_count
+%% b) Sums the local_changes_count vclock counters for all nodes that are no
+%%    longer in the cluster
+%% c) Generates an upgrade delete event for every  local_changes_count key that
+%%    is no longer in the cluster
+%%
+%% This function is a little bit overloaded for the sake of efficiency - we are
+%% purging stale local_changes_count keys because we've observed that some
+%% clusters could grow to have tens of thousands of them. This bloated the
+%% config and due to the linear time searching of config snapshots could slow
+%% down any readers. As such, we iterate over this in one pass rather than 2
+%% or 3.
+-spec process_config_to_delete_stale_local_changes_counters(
+        term(), uuid(), [uuid()]) ->
+          {{term(), term()} | [], non_neg_integer(), [{delete, term()}]}.
+process_config_to_delete_stale_local_changes_counters(Config, MyUuid,
+                                                      ValidUuids) ->
+    lists:foldl(
+      fun ({{local_changes_count, U} = K, RawVal},
+           {MyVal, Counter, Deletes} = Acc) ->
+              case lists:member(U, ValidUuids) of
+                  true when U =:= MyUuid ->
+                      {{K, RawVal}, Counter, Deletes};
+                  true ->
+                      %% Still a member of the cluster
+                      Acc;
+                  false ->
+                      case strip_metadata(RawVal) of
+                          ?DELETED_MARKER ->
+                              %% We've already run an upgrade and deleted these
+                              %% keys - don't count them again... probably
+                              %% shouldn't happen.
+                              Acc;
+                          _ ->
+                              {_, VC} = extract_vclock(RawVal),
+                              {MyVal,
+                               Counter + vclock:count_changes(VC),
+                               [{delete, K} | Deletes]}
+                      end
+              end;
+          (_, Acc) ->
+              Acc
+      end, {[], 0, []}, get_kv_list_with_config(Config)).
+
+%% We can't merge vclocks here, we'd track a value for every node that had ever
+%% been ejected in the cluster in it which would bloat space. Given that the
+%% only key that we are writing is our own local_changes_count (that only we
+%% should change) we'll just bump the counter in our vclock by that amount
+%% instead.
+-spec bump_node_count(term(), vclock(), non_neg_integer()) -> vclock().
+bump_node_count(Node, VClock, N) ->
+    TS = tombstone_agent:vclock_ts(),
+    Ctr = case lists:keyfind(Node, 1, VClock) of
+              {Node, {C, _}} -> C;
+              false -> 0
+          end,
+    lists:sort(lists:keystore(Node, 1, VClock, {Node, {Ctr + N, TS}})).
 
 -ifdef(TEST).
 mock_tombstone_agent() ->
@@ -1545,7 +1643,11 @@ all_test_() ->
      [{spawn, [{"test_update_config", fun test_update_config/0},
                {"test_set_kvlist", fun test_set_kvlist/0},
                {"test_compute_global_rev_deleted_keys",
-                fun test_compute_global_rev_deleted_keys/0}]},
+                fun test_compute_global_rev_deleted_keys/0},
+               {"test_upgrade_config_vclock_descends",
+                fun test_upgrade_config_vclock_descends/0},
+               {"test_upgrade_config_delete_not_resurrected",
+                fun test_upgrade_config_delete_not_resurrected/0}]},
       {spawn,
        {foreach, fun setup_with_saver/0, fun teardown_with_saver/1,
         [{"test_with_saver_stop", fun test_with_saver_stop/0},
@@ -1553,7 +1655,11 @@ all_test_() ->
          {"test_with_saver_set_and_stop", fun test_with_saver_set_and_stop/0},
          {"test_clear_with_concurrent_save",
           fun test_clear_with_concurrent_save/0},
-         {"test_local_changes_count", fun test_local_changes_count/0}]}},
+         {"test_local_changes_count", fun test_local_changes_count/0},
+         {"test_upgrade_config_explicitly",
+          fun test_upgrade_config_explicitly/0},
+         {"test_config_upgrade_to_totoro",
+          fun test_config_upgrade_to_totoro/0}]}},
 
       {spawn, ?_test(test_upgrade_config_with_many_upgrades())},
       {spawn, ?_test(test_upgrade_config_vclocks())},
@@ -1864,6 +1970,204 @@ test_local_changes_count() ->
     ?assertEqual(1, vclock:count_changes(VC)),
 
     ok.
+
+%% End-to-end coverage of config_upgrade_to_totoro/1 driven through
+%% upgrade_config_explicitly/1: seed local_changes_count counters for two
+%% departed nodes, upgrade, and verify that:
+%%   a) the departed counters are removed,
+%%   b) their counts are rolled into this node's counter so the exposed rev
+%%      does not go backwards, and
+%%   c) this node's vclock stays a single component - the stale counts are
+%%      summed into our own counter rather than merged in as extra components,
+%%      so the vclock size is bounded by the live-node count regardless of how
+%%      many nodes have ever departed.
+test_config_upgrade_to_totoro() ->
+    true = erlang:register(save_config_target, self()),
+    Ack = fun () -> receive {saving, R, _C, P} -> P ! {R, ok} end end,
+
+    Stale1 = <<"stale-uuid-1">>,
+    Stale2 = <<"stale-uuid-2">>,
+
+    %% Make this node's uuid (testuuid) discoverable via {node, _, uuid} and (by
+    %% mocking nodes_wanted below) the only wanted node, so the seeded uuids
+    %% look like departed nodes.
+    set_initial({node, node(), uuid}, testuuid),
+    Ack(),
+
+    %% Seed local_changes_count keys for two departed nodes with non-trivial
+    %% counts under their OWN uuids (so the vclocks genuinely add when merged,
+    %% and dwarf the couple of incidental bumps the upgrade itself makes).
+    Stale1V = [{'_vclock', [{Stale1, {50, 0}}]}],
+    Stale2V = [{'_vclock', [{Stale2, {70, 0}}]}],
+    set_initial({local_changes_count, Stale1}, Stale1V),
+    Ack(),
+    set_initial({local_changes_count, Stale2}, Stale2V),
+    Ack(),
+
+    meck:new(ns_node_disco, [passthrough]),
+    try
+        meck:expect(ns_node_disco, nodes_wanted, fun () -> [node()] end),
+
+        ?assertMatch({value, _, _},
+                     search_with_vclock(ns_config:get(),
+                                        {local_changes_count, Stale1})),
+        RevBefore = compute_global_rev(ns_config:get()),
+
+        ?assertEqual(ok,
+                     upgrade_config_explicitly(config_upgrade_to_totoro(_))),
+        Ack(),
+
+        RevAfter = compute_global_rev(ns_config:get()),
+
+        %% The departed counters are removed...
+        ?assertEqual(false,
+                     search(ns_config:get(), {local_changes_count, Stale1})),
+        ?assertEqual(false,
+                     search(ns_config:get(), {local_changes_count, Stale2})),
+
+        %% ...and their counts rolled into this node's counter, so the rev must
+        %% not go backwards.
+        ?assert(RevAfter >= RevBefore),
+
+        %% ...by summing into our own counter, NOT by merging the departed
+        %% nodes' vclock components in. This node's vclock must stay a single
+        %% component (itself) - if we had merged, it would carry a component per
+        %% departed node (3 here: testuuid + Stale1 + Stale2).
+        {value, _, {_P, MyVC}} =
+            search_with_vclock(ns_config:get(),
+                               {local_changes_count, testuuid}),
+        ?assertEqual(1, length(MyVC)),
+        ?assertMatch([{testuuid, _}], MyVC)
+    after
+        meck:unload(ns_node_disco)
+    end,
+
+    ok.
+
+%% Basic coverage of upgrade_config_explicitly/1: an upgrader that sets one key
+%% and deletes another should have both changes reflected in the config after
+%% the upgrade. do_upgrade_config re-invokes the upgrader until it returns no
+%% changes, so it must stop once its change has been applied - here, once the
+%% new key exists.
+test_upgrade_config_explicitly() ->
+    true = erlang:register(save_config_target, self()),
+
+    %% Sanity (initial config from setup_with_saver): the key we delete (a) is
+    %% present, and the key we set (new_key) is absent.
+    ?assertMatch({value, _}, search(a)),
+    ?assertEqual(false, search(new_key)),
+
+    Upgrader =
+        fun (Config) ->
+                case search(Config, new_key) of
+                    false ->
+                        [{set, new_key, <<"hello">>}, {delete, a}];
+                    _ ->
+                        []
+                end
+        end,
+    ok = upgrade_config_explicitly(Upgrader),
+
+    %% The upgrade persists the change; ack the save as the registered target.
+    receive
+        {saving, Ref, _C, Pid} ->
+            Pid ! {Ref, ok}
+    end,
+    fail_on_incoming_message(),
+
+    %% The set key now holds the new value; the deleted key is gone.
+    ?assertEqual({value, <<"hello">>}, search(new_key)),
+    ?assertEqual(false, search(a)),
+
+    ok.
+
+%% Whatever vclock the upgrader stamps on the value it returns, upgrade_vclock/3
+%% must descend from the one in the config, or a node still holding the old
+%% value reverts the upgrade on replication
+test_upgrade_config_vclock_descends() ->
+    UUID = <<"local">>,
+    OldClock = [{UUID, {10, 0}}],
+    WithVClock = fun (V, Clock) -> [{?METADATA_VCLOCK, Clock} | V] end,
+
+    Upgrade = fun (V) ->
+                      fun (Cfg) ->
+                              case search(Cfg, k) of
+                                  {value, [{setting, new}]} -> [];
+                                  _ -> [{set, k, V}]
+                              end
+                      end
+              end,
+
+    Run = fun (Cfg, V) ->
+                  U = Upgrade(V),
+                  {value, Stored} =
+                      search_raw(do_upgrade_config(Cfg, U(Cfg), U), k),
+                  ?assertEqual([{setting, new}], strip_metadata(Stored)),
+                  Stored
+          end,
+
+    OldV = WithVClock([{setting, old}], OldClock),
+    Config = #config{dynamic = [[{k, OldV}]], uuid = UUID},
+
+    %% The three shapes an upgrader can hand back: the value carrying the clock
+    %% already in the config, carrying one 8 changes behind it as it would if
+    %% built from a stale copy, and carrying no clock at all
+    Returned = [WithVClock([{setting, new}], OldClock),
+                WithVClock([{setting, new}], [{UUID, {2, 0}}]),
+                [{setting, new}]],
+
+    lists:foreach(
+      fun (V) ->
+              Stored = Run(Config, V),
+
+              %% All three continue the config's clock rather than the returned
+              %% one, so each strictly descends from the value it replaced
+              ?assertEqual({0, [{UUID, {11, 0}}]}, extract_vclock(Stored)),
+              {_, Clock} = extract_vclock(Stored),
+              ?assert(vclock:descends(Clock, OldClock)),
+              ?assertEqual(false, vclock:descends(OldClock, Clock)),
+
+              %% ...and so wins against the old value replicated back in
+              ?assertEqual({k, Stored}, merge_values({k, OldV}, {k, Stored}))
+      end, Returned),
+
+    %% The purge timestamp has to come from the value being replaced too, as
+    %% merge_values/2 compares vclocks only where the two purge timestamps match
+    PurgedV = [{?METADATA_VCLOCK, 5, OldClock} | [{setting, old}]],
+    PurgedCfg = #config{dynamic = [[{k, PurgedV}]], uuid = UUID},
+    PurgedStored = Run(PurgedCfg, [{setting, new}]),
+    ?assertEqual({5, [{UUID, {11, 0}}]}, extract_vclock(PurgedStored)),
+    ?assertEqual({k, PurgedStored},
+                 merge_values({k, PurgedV}, {k, PurgedStored})).
+
+%% A delete from an upgrader reaches upgrade_vclock/3 as ?DELETED_MARKER, which
+%% carries no clock of its own, so the tombstone has to descend from the value
+%% it buries or the key comes back on replication
+test_upgrade_config_delete_not_resurrected() ->
+    UUID = <<"local">>,
+    OldClock = [{UUID, {10, 0}}],
+
+    OldV = [{?METADATA_VCLOCK, OldClock}, {setting, old}],
+    Config = #config{dynamic = [[{k, OldV}]], uuid = UUID},
+
+    U = fun (Cfg) ->
+                case search(Cfg, k) of
+                    false -> [];
+                    _ -> [{delete, k}]
+                end
+        end,
+    {value, Tombstone} = search_raw(do_upgrade_config(Config, U(Config), U), k),
+    ?assertEqual(?DELETED_MARKER, strip_metadata(Tombstone)),
+
+    %% The tombstone continues the clock of the value it deletes
+    ?assertEqual({0, [{UUID, {11, 0}}]}, extract_vclock(Tombstone)),
+    {_, Clock} = extract_vclock(Tombstone),
+    ?assert(vclock:descends(Clock, OldClock)),
+    ?assertEqual(false, vclock:descends(OldClock, Clock)),
+
+    %% ...so the live value replicated back in loses and the key stays deleted
+    {k, Merged} = merge_values({k, OldV}, {k, Tombstone}),
+    ?assertEqual(?DELETED_MARKER, strip_metadata(Merged)).
 
 %% Covers how the two global-rev computations treat DELETED (tombstoned)
 %% local_changes_count keys: the pre-Totoro version counts them (its historical

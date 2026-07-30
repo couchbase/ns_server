@@ -100,6 +100,8 @@ upgrade(?VERSION_79, Config) ->
          ns_bucket:config_upgrade_to_80(Config)};
 
 upgrade(?VERSION_80, Config) ->
-    {?VERSION_TOTORO, menelaus_alert:config_upgrade_to_totoro(Config) ++
-        menelaus_web_activity:config_upgrade_to_totoro(Config) ++
-        index_settings_manager:config_upgrade_to_totoro(Config)}.
+    {?VERSION_TOTORO,
+     ns_config:config_upgrade_to_totoro(Config) ++
+         menelaus_alert:config_upgrade_to_totoro(Config) ++
+         menelaus_web_activity:config_upgrade_to_totoro(Config) ++
+         index_settings_manager:config_upgrade_to_totoro(Config)}.
