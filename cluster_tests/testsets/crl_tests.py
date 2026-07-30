@@ -728,6 +728,128 @@ class CRLTests(testlib.BaseTestSet):
                 delete_crl_file(node, f['filename'])
             shutil.rmtree(crl_dir, ignore_errors=True)
 
+    def reason_partitioned_crl_test(self):
+        """Two reason-scoped CRLs; one expires and the status goes undetermined.
+
+        A CA may split its revocation information across several CRLs, each
+        scoped to a subset of revocation reasons through the onlySomeReasons
+        field of its IssuingDistributionPoint (RFC 5280 6.3.3).  A certificate's
+        status is determined only once the CRLs consulted cover *every* reason,
+        so two complementary CRLs are needed here and neither is sufficient
+        alone.
+
+        The interesting part is what happens when one of the two expires:
+        pubkey_crl:fresh_crl/3 discards a stale CRL before it contributes
+        anything to the reasons mask, so the coverage becomes partial again and
+        the certificate reverts to undetermined - even though the other CRL is
+        still loaded, fresh and active.  Under Require that rejects every cert
+        under the CA; under Permissive it silently fails open.
+
+        Both CRLs are pushed through the upload API (POST /settings/crl/files).
+        """
+        node = self.cluster.connected_nodes[0]
+        crl_a_name = 'reasons_a.pem'
+        crl_b_name = 'reasons_b.pem'
+        ca_ids = []
+
+        try:
+            # A CA with a subject of its own: one sharing the root's CN would
+            # match the root's CRLs by issuer name (see
+            # diagnostics_validate_test) and resolve without the CRLs below.
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            reasons_ca_pem, reasons_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Reasons CA')
+            ca_ids = load_multiple_cas(node, [root_ca_pem, reasons_ca_pem])
+
+            # Never revoked in either CRL - what is under test is coverage of
+            # the reasons space, not revocation itself.
+            cert_pem, _ = generate_client_cert_cn(
+                reasons_ca_pem, reasons_ca_key_pem, 'reasons-user')
+            cert_b64 = cert_pem_to_b64_der(cert_pem)
+
+            # The scopes stay Disabled: the diagnostics endpoint takes its
+            # policy from the request, not from the configuration.  No poll
+            # directory is needed - the CRLs are pushed through the upload API,
+            # which loads them synchronously.
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'})
+
+            # Two CRLs from the same CA, each covering half of the reasons.
+            this_update = _initial_this_update()
+            upload_crl_file(node, crl_a_name,
+                            generate_crl(reasons_ca_pem, reasons_ca_key_pem, [],
+                                         this_update=this_update,
+                                         only_some_reasons=_REASONS_HALF_A))
+            upload_crl_file(node, crl_b_name,
+                            generate_crl(reasons_ca_pem, reasons_ca_key_pem, [],
+                                         this_update=this_update,
+                                         only_some_reasons=_REASONS_HALF_B))
+            _assert_crl_file_status(self.cluster, crl_a_name, 'active')
+            _assert_crl_file_status(self.cluster, crl_b_name, 'active')
+
+            # --- Both halves fresh: the two reason masks combine into full
+            # coverage, the cert is in neither list, so the status is
+            # determined. ---
+            r = crl_test_validate(self.cluster, policy='Require',
+                                  certs=[cert_b64])
+            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            print("Two reason-scoped CRLs together cover all revocation "
+                  "reasons: cert valid under Require")
+
+            # --- Re-issue one half expired, uploaded over the same filename.
+            # Its reasons drop out of the mask entirely, so coverage is partial
+            # again.  The upload also bumps the CRL version, which invalidates
+            # the verdict cached above for this very certificate.  (An expired
+            # CRL is only accepted because CRLTests.setup allows them; see
+            # CRLBadCRLTests.upload_expired_crl_test for the default.) ---
+            upload_crl_file(
+                node, crl_b_name,
+                generate_crl(reasons_ca_pem, reasons_ca_key_pem, [],
+                             expired=True,
+                             this_update=_next_this_update(this_update),
+                             only_some_reasons=_REASONS_HALF_B))
+            _assert_crl_file_status(self.cluster, crl_b_name, 'expired')
+
+            r = crl_test_validate(self.cluster, policy='Require',
+                                  certs=[cert_b64])
+            testlib.assert_eq(r['results'][0]['status'], 'undetermined')
+            # An incomplete reasons mask rejects no CRL, so OTP itself reports
+            # no reason at all (a bare empty list, not even no_relevant_crls).
+            # cb_crl:refine_undetermined/3 annotates every undetermined verdict
+            # regardless, so the CRLs the check was made from and the expired
+            # one are still named - which is the whole point: without that this
+            # verdict would carry no clue at all.
+            details = r['results'][0]['details']
+            assert 'expired_crls' in details, \
+                f'expected expired_crls, got {details}'
+            assert 'crls_considered' in details, \
+                f'expected crls_considered, got {details}'
+            assert 'Test Reasons CA' in details, \
+                f'expected the expired CRL issuer to be named, got {details}'
+            print("One half expired: status undetermined, details name the "
+                  f"CRLs used and the expired one: {details}")
+
+            # What makes this distinct from the no-CRL and all-CRLs-expired
+            # cases: the surviving half is still loaded and usable, and the
+            # status is undetermined anyway.
+            _assert_crl_file_status(self.cluster, crl_a_name, 'active')
+
+            # --- Permissive fails open on it (same verdict, other policy). ---
+            r = crl_test_validate(self.cluster, policy='Permissive',
+                                  certs=[cert_b64])
+            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            print("One half expired: Permissive treats the undetermined cert "
+                  "as valid")
+        finally:
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'})
+            for f in get_crl_files(node):
+                delete_crl_file(node, f['filename'])
+
     def custom_internal_client_cert_crl_test(self):
         """Test that custom internal client certs are subject to CRL checks.
 
@@ -1965,6 +2087,25 @@ def assert_crl_status(cluster, expected_status='active'):
     _assert_crl_files(all_files, expected_status)
 
 
+def _assert_crl_file_status(cluster, filename, expected_status):
+    """Assert that the named CRL file is in the expected state on every node.
+
+    Unlike assert_crl_status, which only requires *some* file to match, this
+    pins down one file - use it when the point is that a specific CRL is
+    (still) usable.
+    """
+    status = get_crl_status(cluster)
+    for hostname, node_files in status.items():
+        if not isinstance(node_files, list):
+            continue
+        matching = [f for f in node_files
+                    if os.path.basename(f.get('filename', '')) == filename]
+        assert len(matching) == 1, \
+            f'Expected exactly one {filename} on {hostname}, got: {node_files}'
+        testlib.assert_eq(matching[0].get('cacheStatus'), expected_status,
+                          f'cacheStatus of {filename} on {hostname}')
+
+
 def assert_reload_crl(node, expected_status='active'):
     """Reload CRL and assert that at least one file has the expected status.
 
@@ -2107,6 +2248,22 @@ def generate_client_cert_cn(ca_cert_pem, ca_key_pem, cn):
 _crl_number = 0
 
 
+# Two disjoint halves of the revocation reasons a CRL can be scoped to via the
+# onlySomeReasons field of its IssuingDistributionPoint (RFC 5280 6.3.3).
+# Together they are "all reasons" as far as CRL coverage goes: RFC 5280's
+# ReasonFlags BIT STRING has no bit for 'unspecified' (and OTP's
+# pubkey_crl:is_all_reasons/2 tolerates its absence for that reason), and
+# neither 'unspecified' nor 'removeFromCRL' is a legal onlySomeReasons value.
+_REASONS_HALF_A = frozenset({x509.ReasonFlags.key_compromise,
+                             x509.ReasonFlags.ca_compromise,
+                             x509.ReasonFlags.affiliation_changed,
+                             x509.ReasonFlags.superseded})
+_REASONS_HALF_B = frozenset({x509.ReasonFlags.cessation_of_operation,
+                             x509.ReasonFlags.certificate_hold,
+                             x509.ReasonFlags.privilege_withdrawn,
+                             x509.ReasonFlags.aa_compromise})
+
+
 def generate_crl_to_file(filepath, *args, **kwargs):
     """Generate a CRL and write it to the given filepath."""
     crl_pem = generate_crl(*args, **kwargs)
@@ -2115,7 +2272,7 @@ def generate_crl_to_file(filepath, *args, **kwargs):
 
 
 def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
-                 this_update=None):
+                 this_update=None, only_some_reasons=None):
     """Return a PEM-encoded CRL signed by the given CA.
 
     If expired=True, generates a CRL with nextUpdate in the past (expired).
@@ -2124,13 +2281,14 @@ def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
     """
     pem, _ = generate_crl_with_number(ca_cert_pem, ca_key_pem,
                                        revoked_cert_pems, expired=expired,
-                                       this_update=this_update)
+                                       this_update=this_update,
+                                       only_some_reasons=only_some_reasons)
     return pem
 
 
 def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
                              expired=False, freshest_crl_uri=None,
-                             this_update=None):
+                             this_update=None, only_some_reasons=None):
     """Return (pem, crl_number) for a CRL signed by the given CA.
 
     revoked_cert_pems is a list of PEM strings whose serial numbers will be
@@ -2140,6 +2298,11 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
 
     If freshest_crl_uri is provided, a FreshestCRL extension is added
     pointing to the delta CRL location (required when using delta CRLs).
+
+    If only_some_reasons is provided (a frozenset of x509.ReasonFlags), the
+    IssuingDistributionPoint scopes the CRL to those revocation reasons only,
+    so it covers a certificate's status only in part (RFC 5280 6.3.3); see
+    _REASONS_HALF_A / _REASONS_HALF_B.  The default (None) covers all reasons.
     """
     global _crl_number
     _crl_number += 1
@@ -2164,7 +2327,7 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
         relative_name=None,
         only_contains_user_certs=False,
         only_contains_ca_certs=False,
-        only_some_reasons=None,
+        only_some_reasons=only_some_reasons,
         indirect_crl=False,
         only_contains_attribute_certs=False
     )
