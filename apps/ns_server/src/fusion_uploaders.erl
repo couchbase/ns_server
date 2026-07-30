@@ -826,9 +826,7 @@ process_vbucket_stats(Node, BucketName, VB, VBStats, DesiredTerm, Acc) ->
                 end,
             functools:chain(
               Acc1,
-              [add_stat_value_from(sync_session_total_bytes, VBStats, _),
-               add_stat_value_from(sync_session_completed_bytes, VBStats, _),
-               add_stat_value_from(snapshot_pending_bytes, VBStats, _)]);
+              [add_stat_value_from(snapshot_pending_bytes, VBStats, _)]);
         Other ->
             case DesiredTerm of
                 undefined ->
