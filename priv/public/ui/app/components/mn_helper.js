@@ -78,7 +78,7 @@ function mnHelperFactory($window, $state, $location, $timeout, $q, $http, mnPend
     };
   }
   function checkboxesToList(object) {
-    return _.chain(object).pick(angular.identity).keys().value();
+    return _.chain(object).pickBy(angular.identity).keys().value();
   }
   function listToCheckboxes(list) {
     return _.zipObject(list, _.fill(new Array(list.length), true, 0, list.length));
