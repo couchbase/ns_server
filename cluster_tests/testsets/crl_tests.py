@@ -11,6 +11,7 @@ import base64
 import contextlib
 import datetime
 import http.server
+import json
 import os
 import shutil
 import socket
@@ -404,6 +405,169 @@ class CRLTests(testlib.BaseTestSet):
                                                'nodeToNode': 'Disabled'},
                              directory="", urls=[])
             shutil.rmtree(crl_dir, ignore_errors=True)
+
+    def session_resumption_revoked_test_gen(self):
+        """One resumption test per TLS version this python can pin.
+
+        Generated rather than hardcoded because a python built against
+        LibreSSL cannot request TLS 1.3 at all (see _supported_tls_versions),
+        and a TLS 1.3 test that quietly does nothing there is worse than no
+        test: two tests where 1.3 is available, one where it is not.
+        """
+        tests = {}
+        for version in _TLS_VERSIONS:
+            tests[f'session_resumption_revoked({version.name})'] = \
+                lambda s, v=version: s._run_resumption_revocation_check(v)
+        return tests
+
+    def _check_certless_resumption(self, node, version):
+        """A client that presents no certificate must keep its resumption.
+
+        Such a session carries no identity to revoke, so the CRL check has
+        nothing to say about it - cb_crl:reuse_tls12_session_fun/1 is still
+        consulted, with PeerCert 'undefined', and must allow the reuse.  This is
+        the common case (any password-authenticated client), so breaking it
+        would cost every such client a full handshake per connection.
+        """
+        ctx = _tls_context(version)
+        ctx.verify_mode = ssl.CERT_NONE
+        info, err = _tls_whoami(node, ctx)
+        assert err is None, \
+            f'{version.name}: handshake without a client cert failed: {err!r}'
+        again, err = _tls_whoami(node, ctx, session=info['session'])
+        assert err is None, \
+            f'{version.name}: reconnect without a client cert failed: {err!r}'
+        # TLS 1.2 resumes on the session id; TLS 1.3 has no ticket to resume
+        # with, so it just makes a new session.
+        testlib.assert_eq(again['reused'],
+                          version == ssl.TLSVersion.TLSv1_2,
+                          name=f'{version.name} certless reconnect resumed')
+
+    def _run_resumption_revocation_check(self, version):
+        """A client cert revoked after a TLS session was saved must not get
+        back in by offering that session again.
+
+        The CRL check lives in a verify_fun, and a verify_fun only runs while
+        the peer certificate is being validated, i.e. during a full handshake.
+        A resumed handshake sends no certificate at all - the server takes the
+        peer cert from the session it resumes - so a connection resumed after
+        the certificate was revoked would be authenticated as its user with no
+        CRL check anywhere in the path.
+
+        The listener is left at its default settings, so whether the reconnect
+        is really resumed depends on the version: TLS 1.2 resumes on a session
+        id and the reconnect is abbreviated (asserted, so the check below cannot
+        pass vacuously), while TLS 1.3 needs a session ticket and ns_server
+        issues none, so it silently falls back to a full handshake.  Either way
+        the reconnect must succeed while the cert is good and fail once it is
+        revoked - which also makes the 1.3 case a tripwire for anyone enabling
+        session tickets.
+
+        A certless client is checked too, see _check_certless_resumption.
+        """
+        node = self.cluster.connected_nodes[0]
+        user = testlib.random_str(8)
+        password = testlib.random_str(8)
+        ca_ids = []
+        try:
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='CRL Resumption Test CA')
+            client_cert_pem, client_key_pem = generate_client_cert_cn(
+                inter_ca_pem, inter_ca_key_pem, user)
+
+            testlib.put_succ(self.cluster,
+                             f'/settings/rbac/users/local/{user}',
+                             data={'roles': 'ro_admin', 'password': password})
+
+            testlib.toggle_client_cert_auth(
+                node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+
+            ca_ids = load_multiple_cas(node, [root_ca_pem, inter_ca_pem])
+
+            setup_crl, update_crl = _make_upload_crl_ops(node)
+            with client_cert_file(client_cert_pem, inter_ca_pem,
+                                  client_key_pem) as cert_path:
+                # A CRL that revokes nothing: the cert is good to start with,
+                # while CRL checking is already live under 'Require'.
+                crl_state = setup_crl(None, inter_ca_pem, inter_ca_key_pem, [])
+                set_crl_settings(
+                    self.cluster,
+                    policy_per_scope={'clientAuth': 'Require',
+                                      'nodeToNode': 'Disabled'})
+                _wait_crl_policy(node, 'client_auth', 'require')
+                assert_crl_status(self.cluster)
+
+                ctx = _client_cert_ctx(version, cert_path)
+                saved = _wait_client_cert_session(node, ctx, version, user)
+
+                # Only TLS 1.2 can actually resume here (see the docstring), and
+                # an abbreviated handshake is the case that would skip the CRL
+                # check - so asserting it is what keeps the revoked check below
+                # from passing vacuously.
+                resumable = version == ssl.TLSVersion.TLSv1_2
+
+                def reconnect(expect_reused, label):
+                    info, err = _tls_whoami(node, ctx, session=saved['session'])
+                    assert err is None, \
+                        f'{version.name}: {label} reconnect failed: {err!r}'
+                    testlib.assert_eq(info['status'], 200,
+                                      name=f'{version.name} {label} status')
+                    testlib.assert_eq(json.loads(info['body'])['id'], user,
+                                      name=f'{version.name} {label} user')
+                    testlib.assert_eq(info['reused'], expect_reused,
+                                      name=f'{version.name} {label} resumed')
+
+                # Control: while the cert is good the session gets in, as the
+                # certificate's user.
+                reconnect(resumable, 'control')
+
+                self._check_certless_resumption(node, version)
+
+                # Checking intermediate certs rules resumption out entirely:
+                # only the leaf is in the session, so the chain it was validated
+                # with cannot be re-checked.  The connection still succeeds - as
+                # a full handshake - which needs a CRL for the intermediate CA,
+                # hence the one published by the root here.
+                setup_crl(None, root_ca_pem, root_ca_key_pem, [])
+                set_crl_settings(self.cluster, check_intermediate_certs=True)
+                _wait_check_intermediate_certs(node, True)
+                reconnect(False, 'checkIntermediateCerts')
+
+                set_crl_settings(self.cluster, check_intermediate_certs=False)
+                _wait_check_intermediate_certs(node, False)
+                reconnect(resumable, 'after checkIntermediateCerts')
+
+                # Revoke the cert.
+                update_crl(None, inter_ca_pem, inter_ca_key_pem,
+                           [client_cert_pem], crl_state)
+                # A fresh handshake is rejected now, so the CRL is in effect...
+                assert_cert_rejected(lambda: try_client_auth(node, cert_path))
+
+                # ...and so is offering the session saved before the revocation.
+                info, err = _tls_whoami(node, ctx, session=saved['session'])
+                assert err is not None, \
+                    (f'{version.name}: the server accepted a connection made '
+                     f'with a revoked certificate (reused={info["reused"]}, '
+                     f'status={info["status"]}, body={info["body"]!r})')
+                assert _REVOKED_ALERT in str(err), \
+                    (f'{version.name}: expected the connection to be refused '
+                     f'because the certificate is revoked, got {err!r}')
+        finally:
+            testlib.toggle_client_cert_auth(node, enabled=False)
+            testlib.ensure_deleted(
+                self.cluster, f'/settings/rbac/users/local/{user}')
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory="", urls=[],
+                             check_intermediate_certs=False)
+            for f in get_crl_files(node):
+                delete_crl_file(node, f['filename'])
 
     def client_cert_upload_crl_test(self):
         """Test CRL revocation using the REST file upload API."""
@@ -1837,12 +2001,12 @@ def _is_tls_handshake_auth_failure(event):
 def _supported_tls_versions():
     """The TLS versions this interpreter can actually pin.
 
-    ns_ssl_services_setup accepts tlsv1.2 and tlsv1.3, and the audited scenarios
-    are checked on both.  But Python linked against LibreSSL - including the
-    macOS system python3 - reports ssl.HAS_TLSv1_3 False and raises
-    ValueError('Unsupported protocol version 0x304') when TLS 1.3 is requested,
-    so there the TLS 1.3 half cannot run at all.  Warn loudly instead of quietly
-    reducing coverage.
+    ns_ssl_services_setup accepts tlsv1.2 and tlsv1.3, and the version-specific
+    scenarios are checked on both.  But Python linked against LibreSSL -
+    including the macOS system python3 - reports ssl.HAS_TLSv1_3 False and
+    raises ValueError('Unsupported protocol version 0x304') when TLS 1.3 is
+    requested, so there the TLS 1.3 half cannot run at all.  Warn loudly
+    instead of quietly reducing coverage.
     """
     versions = [ssl.TLSVersion.TLSv1_2]
     if getattr(ssl, 'HAS_TLSv1_3', False):
@@ -1850,7 +2014,8 @@ def _supported_tls_versions():
     else:
         print(f'WARNING: this python has no TLS 1.3 support '
               f'({ssl.OPENSSL_VERSION}); the TLS 1.3 half of '
-              f'tls_handshake_audit_test will NOT be covered')
+              f'tls_handshake_audit_test will NOT be covered, and '
+              f'session_resumption_revoked(TLSv1_3) will NOT be generated')
     return tuple(versions)
 
 
@@ -1940,6 +2105,117 @@ def _assert_client_rejects_server(node, version, ca_path):
         raise AssertionError(
             f'expected the client to reject the server cert, got {e!r}')
     raise AssertionError('expected the client to reject the server cert')
+
+
+def _client_cert_ctx(version, cert_path):
+    """A client context pinned to one TLS version, presenting cert_path.
+
+    One context is shared by every connection of a resumption test on purpose:
+    ssl.SSLSocket rejects a session that was established under a different
+    SSLContext.
+    """
+    ctx = _tls_context(version)
+    ctx.verify_mode = ssl.CERT_NONE
+    ctx.load_cert_chain(certfile=cert_path)
+    return ctx
+
+
+def _read_http_reply(sock):
+    """Read one HTTP reply (status line, headers, Content-Length body).
+
+    Returns (status, body) or None if the peer sent nothing.  Deliberately not
+    'Connection: close' + read-to-EOF: the caller has to read
+    ssl.SSLSocket.session while the connection is still up.
+    """
+    data = b''
+    while b'\r\n\r\n' not in data:
+        chunk = sock.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+    if not data:
+        return None
+    head, _, body = data.partition(b'\r\n\r\n')
+    lines = head.split(b'\r\n')
+    status = int(lines[0].split()[1])
+    length = 0
+    for line in lines[1:]:
+        name, _, value = line.partition(b':')
+        if name.strip().lower() == b'content-length':
+            length = int(value.strip())
+    while len(body) < length:
+        chunk = sock.recv(length - len(body))
+        if not chunk:
+            break
+        body += chunk
+    return status, body.decode()
+
+
+def _tls_whoami(node, ctx, session=None, timeout=15):
+    """GET /whoami over one TLS connection, optionally resuming a session.
+
+    Returns (info, err).  On success err is None and info is
+    {'status', 'body', 'session', 'reused'}, where 'session' is the session the
+    connection ended up with (usable to resume later) and 'reused' says whether
+    this connection was itself resumed.  If the server refuses the connection,
+    info is None and err is the exception it produced.
+
+    The reply is always read before the session is taken: in TLS 1.3 the ticket
+    arrives in the server's post-handshake flight, so it is not there yet when
+    wrap_socket() returns - which is also why a rejection can only surface on
+    the first read (same reason as in tls_handshake()).
+    """
+    try:
+        with socket.create_connection((node.host, node.tls_service_port()),
+                                      timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, session=session) as tls:
+                tls.settimeout(timeout)
+                tls.sendall(b'GET /whoami HTTP/1.1\r\nHost: localhost\r\n\r\n')
+                reply = _read_http_reply(tls)
+                if reply is None:
+                    return None, ssl.SSLError(
+                        'server closed without responding')
+                status, body = reply
+                return {'status': status, 'body': body,
+                        'session': tls.session,
+                        'reused': tls.session_reused}, None
+    except (ssl.SSLError, OSError) as e:
+        return None, e
+
+
+def _is_resumable_session(version, session):
+    """Whether the server handed us what it takes to resume: a session id on
+    TLS 1.2, a session ticket on TLS 1.3."""
+    if session is None:
+        return False
+    if version == ssl.TLSVersion.TLSv1_3:
+        return session.has_ticket
+    return bool(session.id)
+
+
+def _wait_client_cert_session(node, ctx, version, expected_user, timeout_s=60):
+    """Authenticate with the client cert and return the connection info,
+    including the session the connection ended up with.
+
+    Polled because the client-cert-auth change that precedes this restarts the
+    HTTPS listener asynchronously, so the first attempts can hit a listener that
+    is going away.
+    """
+    def check():
+        info, err = _tls_whoami(node, ctx)
+        if err is not None:
+            print(f'  waiting for the HTTPS listener: {err!r}')
+            return False
+        if info['status'] != 200:
+            print(f'  waiting for client cert auth: {info["status"]}')
+            return False
+        testlib.assert_eq(json.loads(info['body'])['id'], expected_user,
+                          name=f'{version.name} /whoami user')
+        return info
+
+    return testlib.poll_for_condition(
+        check, sleep_time=1, timeout=timeout_s,
+        msg=f'{version.name} client cert session for {expected_user}')
 
 
 def try_client_auth(node, cert_path):
@@ -3170,6 +3446,21 @@ def _wait_crl_policy(node, scope, expected_policy, timeout_s=15):
     testlib.poll_for_condition(
         check, sleep_time=0.2, timeout=timeout_s,
         msg=f'{scope} policy={expected_policy} on {node}')
+
+
+def _wait_check_intermediate_certs(node, expected, timeout_s=15):
+    """Poll until cb_crl_cache reports the expected checkIntermediateCerts.
+
+    Same reason as _wait_crl_policy: the setting reaches ETS asynchronously.
+    """
+    def check():
+        r = testlib.diag_eval(
+            node, 'cb_crl_cache:get_check_intermediate_certs().')
+        return r.text.strip() == ('true' if expected else 'false')
+
+    testlib.poll_for_condition(
+        check, sleep_time=0.2, timeout=timeout_s,
+        msg=f'check_intermediate_certs={expected} on {node}')
 
 
 def _wait_n2n_reconnected(nodes, expect_connected=True, timeout_s=30):
