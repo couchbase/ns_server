@@ -17,7 +17,8 @@
 -endif.
 
 -export([verify_fun/1, verify/4, verify_chain/2, crl_check_safe/2,
-         crl_check/1, format_undetermined_details/1]).
+         crl_check/1, format_undetermined_details/1,
+         reuse_tls12_session_fun/1, tls12_resumption_allowed/2]).
 
 -type pkix_crls_validate_verdict() :: valid | {bad_cert, Reason :: term()}.
 -type verdict_expiration_datetime() :: calendar:datetime() | undefined.
@@ -123,6 +124,112 @@ verify_chain_on_ns_server(Chain, CRLScope) ->
             verify_chain(Chain, CRLScope)
     end.
 
+%% Value for the server-side reuse_session option (TLS 1.2 and below), which OTP
+%% consults on every resumption attempt (ssl_session:is_resumable/4).
+%%
+%% verify_fun/1 only runs during a full handshake, and a resumed handshake sends
+%% no certificate at all - the server takes the peer identity from the session -
+%% so without this a client that saved a session while its certificate was good
+%% would keep connecting as that certificate's user after a CRL revoking it is
+%% loaded.  OTP has no way to flush its server session cache, so refusing the
+%% reuse is the only hook.
+%%
+%% Returning false produces no alert: OTP does a full handshake on the same
+%% connection instead, and verify_fun/1 rejects the certificate there.  So every
+%% doubt can be answered with false.
+%%
+%% TLS 1.3 resumption is ticket-based and has no such hook; it is unreachable
+%% because ns_server never sets session_tickets (OTP default: disabled).
+-spec reuse_tls12_session_fun(CRLScope :: crl_scope()) ->
+          fun((SuggestedSessionId :: binary(),
+               PeerCert :: public_key:der_encoded() | undefined,
+               Compression :: byte(),
+               CipherSuite :: term()) -> boolean()).
+reuse_tls12_session_fun(CRLScope) ->
+    fun (_SuggestedSessionId, undefined, _Compression, _CipherSuite) ->
+            % No client certificate in the session, so no identity to revoke.
+            true;
+        (_SuggestedSessionId, PeerCert, _Compression, _CipherSuite) ->
+            try
+                tls12_resumption_allowed_on_ns_server(PeerCert, CRLScope)
+            catch
+                C:E:ST ->
+                    ?log_error("(CRL) Session resumption check "
+                               "exception ~p:~p~nStacktrace: ~p", [C, E, ST]),
+                    false
+            end
+    end.
+
+%% Same hop as verify_chain_on_ns_server/2, for the same reason.
+tls12_resumption_allowed_on_ns_server(PeerCert, CRLScope) ->
+    case ns_node_disco:couchdb_node() == node() of
+        true ->
+            case rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
+                          tls12_resumption_allowed, [PeerCert, CRLScope]) of
+                {badrpc, Reason} -> %% fail closed
+                    ?log_debug("(CRL) Refusing TLS session resumption: the "
+                               "check on the ns_server node failed: ~p",
+                               [Reason]),
+                    false;
+                Allowed ->
+                    Allowed
+            end;
+        false ->
+            tls12_resumption_allowed(PeerCert, CRLScope)
+    end.
+
+%% Only the session's leaf cert is available (OTP does not keep the chain),
+%% hence the outright refusal when intermediate certs are checked.
+%% Unlike verify_chain/2 nothing here waits for the policy: the full handshake
+%% that a refusal forces does the waiting itself.
+-spec tls12_resumption_allowed(public_key:der_encoded(), crl_scope()) ->
+          boolean().
+tls12_resumption_allowed(PeerCert, CRLScope) when is_binary(PeerCert) ->
+    try public_key:pkix_decode_cert(PeerCert, otp) of
+        OtpCert ->
+            Scope = effective_scope(OtpCert, CRLScope),
+            %% Clause order matters: a disabled policy wins over the
+            %% intermediate certs flag.
+            case {cb_crl_cache:get_policy(Scope),
+                  cb_crl_cache:get_check_intermediate_certs()} of
+                {disabled, _} ->
+                    true;
+                {unknown, _} ->
+                    refuse_tls12_resumption(OtpCert, Scope, policy_unavailable);
+                {_Policy, true} ->
+                    refuse_tls12_resumption(OtpCert, Scope,
+                                            check_intermediate_certs);
+                {_Policy, unknown} ->
+                    refuse_tls12_resumption(OtpCert, Scope,
+                                            check_intermediate_certs_unknown);
+                {Policy, false} ->
+                    case crl_check_safe(OtpCert, Policy) of
+                        {valid, _Expiry} ->
+                            true;
+                        {Reason, _Expiry} ->
+                            refuse_tls12_resumption(OtpCert, Scope, Reason)
+                    end
+            end
+    catch
+        _:_ ->
+            ?log_warning("(CRL) Refusing TLS session resumption: the session's "
+                         "peer certificate does not decode"),
+            false
+    end.
+
+-spec refuse_tls12_resumption(#'OTPCertificate'{}, crl_scope(), term()) ->
+          false.
+refuse_tls12_resumption(_OtpCert, _Scope, check_intermediate_certs) ->
+    %% Not logged: it would repeat for every resumption attempt of every client
+    %% that presents a certificate.
+    false;
+refuse_tls12_resumption(OtpCert, Scope, Reason) ->
+    SubjectStr = ns_server_cert:get_subject(OtpCert),
+    ?log_debug("(CRL) Refusing to resume the TLS session of \"~s\" (scope=~p): "
+               "~p. A full handshake will follow.",
+               [ns_config_log:tag_user_name(SubjectStr), Scope, Reason]),
+    false.
+
 %% Check a certificate chain, which must be ordered root -> leaf, under the CRL
 %% policy of the scope the chain belongs to.
 %% Returns one result per certificate, in the same order; each is the verdict
@@ -134,7 +241,7 @@ verify_chain_on_ns_server(Chain, CRLScope) ->
             verdict_expiration_datetime()}].
 verify_chain(Chain, CRLScope) ->
     %% Change scope to node_to_node if this is an internal cert:
-    EffectiveScope = effective_scope(Chain, CRLScope),
+    EffectiveScope = effective_scope(lists:last(Chain), CRLScope),
     case wait_for_crl_policy(EffectiveScope, 5000) of
         {ok, disabled} ->
             [{valid, undefined} || _ <- Chain];
@@ -162,10 +269,9 @@ verify_chain(Chain, CRLScope) ->
 %% cluster's own node-to-node traffic, yet they are presented to listeners that
 %% verify under the client_auth scope, so the nodeToNode policy is the one that
 %% must govern them.
--spec effective_scope([#'OTPCertificate'{} | binary()], crl_scope()) ->
+-spec effective_scope(#'OTPCertificate'{} | binary(), crl_scope()) ->
           crl_scope().
-effective_scope(Chain, client_auth) ->
-    Leaf = lists:last(Chain),
+effective_scope(Leaf, client_auth) ->
     try ns_server_cert:extract_internal_client_cert_user(Leaf) of
         {ok, _User} -> node_to_node;
         {error, not_found} -> client_auth
@@ -173,7 +279,7 @@ effective_scope(Chain, client_auth) ->
             %% Undecodable leaf; check_chain reports it as cert_decode_error.
             client_auth
     end;
-effective_scope(_Chain, node_to_node) ->
+effective_scope(_Leaf, node_to_node) ->
     node_to_node.
 
 check_chain([LeafCert], Policy, _CheckIntCerts, Acc) ->
@@ -1008,5 +1114,10 @@ describe_crl_test() ->
                  describe_crl(#'CertificateList'{tbsCertList = garbage})),
     ?assertEqual(unknown_crl, describe_crl(garbage)),
     ?assertEqual(unknown_crl, describe_crl({<<"der">>, garbage})).
+
+%% Every doubt is answered with false, because refusing only forces a full
+%% handshake.
+tls12_resumption_fails_closed_test() ->
+    ?assertNot(tls12_resumption_allowed(<<"not a certificate">>, client_auth)).
 
 -endif.

@@ -584,6 +584,7 @@ ssl_server_opts() ->
     RawTLSOptions =
         ssl_auth_options(CertAuth) ++
         server_verify_fun_opt(CertAuth) ++
+        server_reuse_session_opt(CertAuth) ++
             [{keyfile, pkey_file_path(node_cert)},
              {certfile, chain_file_path(node_cert)},
              {versions, Versions},
@@ -637,6 +638,21 @@ server_verify_fun_opt(disable) ->
     [];
 server_verify_fun_opt(_CertAuth) ->
     [{verify_fun, {cb_crl:verify_fun(client_auth), undefined}}].
+
+%% The verify_fun above runs only during a full handshake, so a TLS 1.2 client
+%% that saved a session while its certificate was good could otherwise keep
+%% resuming it, as its user, after the certificate is revoked.  Gated on client
+%% cert auth like verify_fun: with 'disable' no cached session can carry a
+%% client certificate.
+%%
+%% reuse_sessions stays at OTP's default (true): the fun re-reads the CRL policy
+%% per call, while a static option would be stuck with the policy in effect when
+%% the listener started (a CRL config change restarts nothing).
+-spec server_reuse_session_opt(CertAuth :: atom()) -> list().
+server_reuse_session_opt(disable) ->
+    [];
+server_reuse_session_opt(_CertAuth) ->
+    [{reuse_session, cb_crl:reuse_tls12_session_fun(client_auth)}].
 
 tls_client_opts(Config, PresetOpts) ->
     RawTLSOptions =
@@ -1612,6 +1628,17 @@ filter_versions_by_ciphers_test() ->
     ?assertEqual(['tlsv1.2'],
                  filter_versions_by_ciphers(['tlsv1.2'], [TLS13Cipher])).
 
+%% ssl.erl rejects reuse_session on a TLS-1.3-only listener, which would stop
+%% the listener from starting, so cleanup_options/1 has to drop it there.
+cleanup_options_reuse_session_test() ->
+    Fun = fun (_, _, _, _) -> true end,
+    ?assertEqual([{versions, ['tlsv1.3']}],
+                 cleanup_options([{versions, ['tlsv1.3']},
+                                  {reuse_session, Fun}])),
+    ?assertEqual([{versions, ['tlsv1.2', 'tlsv1.3']}, {reuse_session, Fun}],
+                 cleanup_options([{versions, ['tlsv1.2', 'tlsv1.3']},
+                                  {reuse_session, Fun}])).
+
 %% Unit coverage for the branches a real handshake can't easily produce, plus
 %% documentation of the current wording.  The regression guard against OTP
 %% changing the wording is alert_origin_real_handshake_test_/0 below.
@@ -1778,14 +1805,124 @@ assert_client_generated(Version, #{server_config := SConf},
     ?assertNot(should_audit(ServerReason, alert_origin(ServerReason),
                             {{10,0,0,1}, 1234}, {{10,0,0,2}, 18091})).
 
+%% Regression guard for the behaviour server_reuse_session_opt/1 relies on: OTP
+%% must consult the reuse_session fun on every TLS 1.2 resumption attempt, and a
+%% false answer must turn into a full handshake on the same connection - the
+%% only place verify_fun runs.  Stand-ins for cb_crl's reuse_tls12_session_fun/1
+%% and verify_fun/1 keep CRL infrastructure out of it.
+reuse_session_forces_full_handshake_test_() ->
+    {timeout, 60, fun reuse_session_forces_full_handshake/0}.
+
+reuse_session_forces_full_handshake() ->
+    {ok, _} = application:ensure_all_started(ssl),
+    #{server_config := SConf, client_config := CConf} = handshake_test_certs(),
+    ClientCert = proplists:get_value(cert, CConf),
+    Tab = ets:new(reuse_session_test, [public]),
+    ets:insert(Tab, [{revoked, false}, {verify_fun_calls, 0},
+                     {reuse_fun_calls, 0}]),
+    Calls = fun (Key) -> ets:lookup_element(Tab, Key, 2) end,
+    IsRevoked = fun () -> ets:lookup_element(Tab, revoked, 2) end,
+    %% Same shape as cb_crl:verify/4: applied at valid_peer, which is what
+    %% makes OTP send a certificate_revoked alert.
+    VerifyFun = fun (_, valid, S) -> {valid, S};
+                    (_, {extension, _}, S) -> {unknown, S};
+                    (_, {bad_cert, _} = R, _) -> {fail, R};
+                    (_, valid_peer, S) ->
+                        ets:update_counter(Tab, verify_fun_calls, 1),
+                        case IsRevoked() of
+                            true ->
+                                {fail, {bad_cert, {revoked, keyCompromise}}};
+                            false ->
+                                {valid, S}
+                        end
+                end,
+    %% Same shape as cb_crl:reuse_tls12_session_fun/1, recording the peer cert
+    %% it was handed - cb_crl decodes that argument as a DER certificate.
+    ReuseFun = fun (_Id, PeerCert, _Compression, _CipherSuite) ->
+                       ets:update_counter(Tab, reuse_fun_calls, 1),
+                       ets:insert(Tab, {peer_cert, PeerCert}),
+                       not IsRevoked()
+               end,
+    Base = [{ip, {127, 0, 0, 1}}, {active, false}, {versions, ['tlsv1.2']}],
+    ServerOpts = [{reuseaddr, true}, {verify, verify_peer},
+                  {fail_if_no_peer_cert, true},
+                  {verify_fun, {VerifyFun, undefined}},
+                  {reuse_session, ReuseFun} | SConf],
+    {ok, LSock} = ssl:listen(0, Base ++ ServerOpts),
+    try
+        {ok, {_, Port}} = ssl:sockname(LSock),
+        {ok, Id, Data} = handshake_and_save_session(LSock, Port, Base, CConf),
+        %% The certificate was validated, and no session was offered.
+        ?assertEqual({1, 0}, {Calls(verify_fun_calls), Calls(reuse_fun_calls)}),
+
+        %% Control: the session really is resumed, and the abbreviated
+        %% handshake does not re-run verify_fun - the bypass being closed here.
+        %% Without this the check below could pass vacuously.
+        accept_in_background(LSock),
+        {ok, Sock} = connect_reusing(Port, Base, CConf, {Id, Data}),
+        ?assertEqual(ok, receive {server, R} -> R after 30000 -> timeout end),
+        ?assertEqual({ok, [{session_id, Id}]},
+                     ssl:connection_information(Sock, [session_id])),
+        ?assertEqual({1, 1}, {Calls(verify_fun_calls), Calls(reuse_fun_calls)}),
+        ok = ssl:close(Sock),
+        %% The fun decides on the client's leaf certificate, in DER.
+        ?assertEqual(ClientCert, ets:lookup_element(Tab, peer_cert, 2)),
+
+        %% Refused: a full handshake must follow (verify_fun runs again) and
+        %% its rejection must reach the client as an alert.
+        ets:insert(Tab, {revoked, true}),
+        accept_in_background(LSock),
+        ?assertMatch({error, {tls_alert, {certificate_revoked, _}}},
+                     connect_reusing(Port, Base, CConf, {Id, Data})),
+        ServerReason = receive {server, R2} -> R2 after 30000 -> timeout end,
+        ?assert(is_cert_alert(ServerReason)),
+        ?assertEqual({2, 2}, {Calls(verify_fun_calls), Calls(reuse_fun_calls)})
+    after
+        catch ssl:close(LSock)
+    end.
+
+%% Unlike do_handshake/3 the listen socket is kept open: OTP's server session
+%% cache lives per listen socket, so every connection here needs one listener.
+handshake_and_save_session(LSock, Port, Base, CConf) ->
+    accept_in_background(LSock),
+    {ok, Sock} = ssl:connect({127, 0, 0, 1}, Port,
+                             Base ++ [{verify, verify_none},
+                                      {reuse_sessions, false} | CConf], 30000),
+    ok = receive {server, R} -> R after 30000 -> timeout end,
+    {ok, [{session_id, Id}, {session_data, Data}]} =
+        ssl:connection_information(Sock, [session_id, session_data]),
+    ok = ssl:close(Sock),
+    {ok, Id, Data}.
+
+%% A session id alone only resumes a session the client itself saved, hence the
+%% session data (ssl_session:do_client_select_session/5).
+connect_reusing(Port, Base, CConf, Session) ->
+    ssl:connect({127, 0, 0, 1}, Port,
+                Base ++ [{verify, verify_none},
+                         {reuse_session, Session} | CConf], 30000).
+
+%% The server side must run while the client drives its own, and the client end
+%% stays in the test process so the session can be read off it.
+accept_in_background(LSock) ->
+    Parent = self(),
+    spawn_link(fun () ->
+                       {ok, TSock} = ssl:transport_accept(LSock, 30000),
+                       Reason = ssl_reason(ssl:handshake(TSock, 30000)),
+                       Parent ! {server, Reason}
+               end).
+
 handshake_test_certs() ->
+    %% sha256 rather than pkix_test_data's sha1 default: a client will not use
+    %% a sha1-signed certificate under the default signature_algs_cert, so with
+    %% that default it silently presents no certificate at all.
+    CertSpec = [{key, {rsa, 2048, 65537}}, {digest, sha256}],
     public_key:pkix_test_data(
-      #{server_chain => #{root => [{key, {rsa, 2048, 65537}}],
+      #{server_chain => #{root => CertSpec,
                           intermediates => [],
-                          peer => [{key, {rsa, 2048, 65537}}]},
-        client_chain => #{root => [{key, {rsa, 2048, 65537}}],
+                          peer => CertSpec},
+        client_chain => #{root => CertSpec,
                           intermediates => [],
-                          peer => [{key, {rsa, 2048, 65537}}]}}).
+                          peer => CertSpec}}).
 
 %% Run one loopback handshake pinned to Version and return the reason terms
 %% (as the acceptor's handler would see them) for both ends.
