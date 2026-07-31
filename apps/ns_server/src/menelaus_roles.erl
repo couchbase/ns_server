@@ -894,7 +894,7 @@ default_roles_totoro() ->
        {desc, <<"Can report application telemetry through the SDK.">>}],
       [{[app_telemetry], [write]}]},
      {<<"eventing_manage_functions">>, ?RBAC_SCOPE_PARAMS,
-      [{name, <<"Manage Scope Functions">>},
+      [{name, <<"Manage Scope Eventing Functions">>},
        {folder, eventing},
        {desc, <<"Can manage eventing functions for a given scope">>}],
       [{[{collection, [bucket_name, scope_name, any]}, eventing, function],
