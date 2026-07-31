@@ -402,10 +402,10 @@ crl_check(OtpCert) ->
     TrustedDerCAs = ns_server_cert:trusted_CAs(der),
     IssuerFun = make_issuer_fun(TrustedDerCAs),
     %% update_crl exists so that a stale CRL can be re-fetched; we do not
-    %% re-fetch (the callback returns the CRL unchanged, which is what makes
-    %% pubkey_crl:fresh_crl/3 discard it, exactly as the default callback
-    %% would), but OTP calls it only for a CRL it has already judged stale, so
-    %% it doubles as the notification of that discard.
+    %% re-fetch (returning the CRL unchanged is what makes
+    %% pubkey_crl:fresh_crl/3 discard it, exactly as the default callback does)
+    %% and use it only because it is the one place that discard is observable.
+    %% Being called is not proof of expiry - record_stale_crl/1 checks that.
     Opts = [{issuer_fun, {IssuerFun, undefined}},
             {undetermined_details, true},
             {update_crl, fun (_DP, CRL) ->
@@ -482,15 +482,42 @@ refine_undetermined(Verdict, _StaleCRLs, _Considered) ->
 %%% Stale CRL tracking
 %%%===================================================================
 
+%% Record a CRL the update_crl callback was handed, if it is in fact expired.
+%% update_crl means "fetch the latest version of this CRL"; that OTP asks only
+%% for expired ones is pubkey_crl:fresh_crl/3's doing, not a contract, so check
+%% rather than infer.  Should a later OTP call it for another reason, we report
+%% nothing instead of sending an operator off to re-issue a good CRL.
+%%
 %% A set, because the same CRL reaches the callback once per distribution point
-%% it is attached to.  A CRL we cannot describe is still recorded, as
-%% unknown_crl: that an expired CRL was discarded is worth reporting even
-%% unnamed.
+%% it is attached to.
 -spec record_stale_crl(term()) -> ok.
 record_stale_crl(CRL) ->
-    erlang:put(?STALE_CRLS_KEY,
-               sets:add_element(describe_crl(CRL), get_stale_crls())),
+    case crl_expired(CRL) of
+        true ->
+            erlang:put(?STALE_CRLS_KEY,
+                       sets:add_element(describe_crl(CRL), get_stale_crls()));
+        false ->
+            ok
+    end,
     ok.
+
+%% Has the CRL's validity window closed?  The same test fresh_crl/3 makes, on
+%% the same shapes describe_crl/1 accepts.  A CRL with no nextUpdate never
+%% expires, and one whose time we cannot read is not one we can call expired;
+%% both answer false, which only ever costs a line of diagnostic.
+-spec crl_expired(term()) -> boolean().
+crl_expired({_Der, CRL}) ->
+    crl_expired(CRL);
+crl_expired(#'CertificateList'{} = CRL) ->
+    case crl_next_update_secs(CRL) of
+        undefined ->
+            false;
+        Secs ->
+            Secs =< calendar:datetime_to_gregorian_seconds(
+                      calendar:universal_time())
+    end;
+crl_expired(_Other) ->
+    false.
 
 -spec get_stale_crls() -> sets:set(crl_desc()).
 get_stale_crls() ->
@@ -683,20 +710,30 @@ compute_expiry(DPsAndCRLs) ->
     NowSecs = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
     NextUpdateSecs =
         lists:filtermap(
-          fun ({_, {_, #'CertificateList'{tbsCertList = TBS}}}) ->
-                  case TBS#'TBSCertList'.nextUpdate of
-                      asn1_NOVALUE ->
-                          false;
-                      Raw ->
-                          case pubkey_cert:time_str_2_gregorian_sec(Raw) of
-                              Secs when Secs > NowSecs -> {true, Secs};
-                              _                        -> false
-                          end
+          fun ({_, {_, CRL}}) ->
+                  case crl_next_update_secs(CRL) of
+                      Secs when is_integer(Secs), Secs > NowSecs -> {true, Secs};
+                      _                                          -> false
                   end
           end, DPsAndCRLs),
     case NextUpdateSecs of
         [] -> undefined;
         _  -> calendar:gregorian_seconds_to_datetime(lists:min(NextUpdateSecs))
+    end.
+
+%% A CRL's nextUpdate in gregorian seconds, or undefined for a CRL that carries
+%% none.  An unreadable time reads as undefined too: both callers only decide
+%% what to report, which is no reason to abort the whole CRL check.
+-spec crl_next_update_secs(#'CertificateList'{}) ->
+          non_neg_integer() | undefined.
+crl_next_update_secs(#'CertificateList'{tbsCertList = TBS}) ->
+    case TBS#'TBSCertList'.nextUpdate of
+        asn1_NOVALUE ->
+            undefined;
+        Raw ->
+            try pubkey_cert:time_str_2_gregorian_sec(Raw)
+            catch _:_ -> undefined
+            end
     end.
 
 %% Build the [{DistributionPoint, {DerCRL, OtpCRL}}] list required by
@@ -892,6 +929,9 @@ undetermined(Details) ->
 %% CRLNumber may be an integer, asn1_NOVALUE for a CRL with no cRLNumber
 %% extension, or a raw binary to stand in for an undecodable one.
 fake_crl(CN, CRLNumber) ->
+    fake_crl(CN, CRLNumber, asn1_NOVALUE).
+
+fake_crl(CN, CRLNumber, NextUpdate) ->
     CNAttr = #'AttributeTypeAndValue'{type = ?'id-at-commonName',
                                       value = {printableString, CN}},
     Exts = case CRLNumber of
@@ -908,8 +948,20 @@ fake_crl(CN, CRLNumber) ->
                                      public_key:der_encode('CRLNumber', N)}]
            end,
     TBS = #'TBSCertList'{issuer = {rdnSequence, [[CNAttr]]},
-                         crlExtensions = Exts},
+                         crlExtensions = Exts,
+                         nextUpdate = NextUpdate},
     #'CertificateList'{tbsCertList = TBS}.
+
+%% A nextUpdate the given number of seconds away from now; negative for a CRL
+%% that has already expired.
+fake_next_update(OffsetSecs) ->
+    {{Y, M, D}, {H, Min, S}} =
+        calendar:gregorian_seconds_to_datetime(
+          calendar:datetime_to_gregorian_seconds(calendar:universal_time()) +
+              OffsetSecs),
+    {generalTime,
+     lists:flatten(io_lib:format("~4..0b~2..0b~2..0b~2..0b~2..0b~2..0bZ",
+                                 [Y, M, D, H, Min, S]))}.
 
 %% A {DP, {Der, CRL}} entry as build_dps_and_crls/1 produces them.
 fake_dp_and_crl(CRL) ->
@@ -991,36 +1043,52 @@ describe_crls_test() ->
 %% cleaned up even when the wrapped computation throws.
 stale_crl_tracking_test() ->
     Recorded = fun (Fun) -> lists:sort(sets:to_list(Fun())) end,
+    Record = fun (CRLs) ->
+                     Recorded(
+                       fun () ->
+                           ?WITH_STALE_CRL_TRACKING(
+                              begin
+                                  [record_stale_crl(C) || C <- CRLs],
+                                  get_stale_crls()
+                              end)
+                       end)
+             end,
     ?assertEqual([], sets:to_list(get_stale_crls())),
-    CRL1 = fake_crl("ca1", 1),
-    CRL2 = fake_crl("ca2", 2),
+    Expired = fun (CN, N) -> fake_crl(CN, N, fake_next_update(-3600)) end,
+    CRL1 = Expired("ca1", 1),
+    CRL2 = Expired("ca2", 2),
+    %% The same CRL arrives once per distribution point.
     ?assertEqual([{<<"CN=ca1">>, 1}, {<<"CN=ca2">>, 2}],
-                 Recorded(
-                   fun () ->
-                       ?WITH_STALE_CRL_TRACKING(
-                          begin
-                              record_stale_crl(CRL1),
-                              record_stale_crl(CRL2),
-                              %% The same CRL arrives once per distribution
-                              %% point.
-                              record_stale_crl(CRL1),
-                              get_stale_crls()
-                          end)
-                   end)),
-    %% An undescribable CRL is still reported, once.
-    ?assertEqual([unknown_crl],
-                 Recorded(
-                   fun () ->
-                       ?WITH_STALE_CRL_TRACKING(
-                          begin
-                              record_stale_crl(garbage),
-                              record_stale_crl(garbage),
-                              get_stale_crls()
-                          end)
-                   end)),
+                 Record([CRL1, CRL2, CRL1])),
+    %% The callback is handed the {Der, CRL} pair, not the bare CRL.
+    ?assertEqual([{<<"CN=ca1">>, 1}], Record([{<<"der">>, CRL1}])),
     ?assertEqual([], sets:to_list(get_stale_crls())),
     ?assertError(oops, ?WITH_STALE_CRL_TRACKING(error(oops))),
     ?assertEqual([], sets:to_list(get_stale_crls())).
+
+%% Only a CRL that is verifiably expired is recorded: the callback having fired
+%% is not itself proof, since update_crl only asks for a newer version.
+stale_crl_tracking_only_expired_test() ->
+    Record = fun (CRL) ->
+                     sets:to_list(
+                       ?WITH_STALE_CRL_TRACKING(
+                          begin
+                              record_stale_crl(CRL),
+                              get_stale_crls()
+                          end))
+             end,
+    ?assertEqual([{<<"CN=ca">>, 1}],
+                 Record(fake_crl("ca", 1, fake_next_update(-1)))),
+    %% Not expired: the callback fired for some other reason, so there is
+    %% nothing to report.
+    ?assertEqual([], Record(fake_crl("ca", 1, fake_next_update(3600)))),
+    %% A CRL with no nextUpdate never expires.
+    ?assertEqual([], Record(fake_crl("ca", 1))),
+    %% Neither an unreadable nextUpdate nor a term that is not a CRL at all can
+    %% be shown to be expired.
+    ?assertEqual([], Record(fake_crl("ca", 1, {generalTime, "not a time"}))),
+    ?assertEqual([], Record(garbage)),
+    ?assertEqual([], Record({<<"der">>, garbage})).
 
 format_undetermined_details_test() ->
     Fmt = fun (Reason, Expired, Considered) ->
