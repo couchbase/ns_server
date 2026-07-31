@@ -60,7 +60,8 @@
          search_node_with_default/4,
          reload/0,
          get_key_ids_in_use/0,
-         config_upgrade_to_totoro/1]).
+         config_upgrade_to_totoro/1,
+         remove_nodes_config_keys/3]).
 
 -export([compute_global_rev_pre_totoro/1,
          compute_global_rev/1]).
@@ -1545,19 +1546,22 @@ config_upgrade_to_totoro(Config) ->
 
     MyUuid = uuid(Config),
     {{MyKey, MyVal}, StaleCount, Deletes} =
-        process_config_to_delete_stale_local_changes_counters(Config, MyUuid,
-                                                              ValidUuids),
+        process_config_to_delete_stale_local_changes_counters(
+          get_kv_list_with_config(Config), MyUuid, ValidUuids),
 
     case StaleCount of
         0 ->
             Deletes;
         _ ->
-            {P, VC} = extract_vclock(MyVal),
-            NewVClock = build_vclock(P,
-                                     bump_node_count(MyUuid, VC, StaleCount)),
-
-            [{set, MyKey, [NewVClock | strip_metadata(MyVal)]} | Deletes]
+            NewVal = bump_vclock_by_counter(MyVal, MyUuid, StaleCount),
+            [{set, MyKey, NewVal} | Deletes]
     end.
+
+bump_vclock_by_counter(Val, Uuid, StaleCount) ->
+    {P, VC} = ns_config:extract_vclock(Val),
+    NewVClock = build_vclock(P, bump_node_count(Uuid, VC, StaleCount)),
+    [NewVClock | strip_metadata(Val)].
+
 
 %% This function:
 %% a) Notes the Key/Value of this nodes local_changes_count
@@ -1573,9 +1577,9 @@ config_upgrade_to_totoro(Config) ->
 %% down any readers. As such, we iterate over this in one pass rather than 2
 %% or 3.
 -spec process_config_to_delete_stale_local_changes_counters(
-        term(), uuid(), [uuid()]) ->
+        [{term(), term()}], uuid(), [uuid()]) ->
           {{term(), term()} | [], non_neg_integer(), [{delete, term()}]}.
-process_config_to_delete_stale_local_changes_counters(Config, MyUuid,
+process_config_to_delete_stale_local_changes_counters(KVList, MyUuid,
                                                       ValidUuids) ->
     lists:foldl(
       fun ({{local_changes_count, U} = K, RawVal},
@@ -1602,7 +1606,7 @@ process_config_to_delete_stale_local_changes_counters(Config, MyUuid,
               end;
           (_, Acc) ->
               Acc
-      end, {[], 0, []}, get_kv_list_with_config(Config)).
+      end, {[], 0, []}, KVList).
 
 %% We can't merge vclocks here, we'd track a value for every node that had ever
 %% been ejected in the cluster in it which would bloat space. Given that the
@@ -1617,6 +1621,64 @@ bump_node_count(Node, VClock, N) ->
               false -> 0
           end,
     lists:sort(lists:keystore(Node, 1, VClock, {Node, {Ctr + N, TS}})).
+
+%% Remove RemoteNodes from ns_config in a SINGLE transaction:
+%%   a) delete every stale {local_changes_count, Uuid} (Uuid not in ValidUuids),
+%%   b) delete their {node, N, _} keys,
+%%   c) fold the summed count of those stale counters into this node's own
+%%      counter (MyUuid) so compute_global_rev does not go backwards.
+%%
+%% Doing (b) and (c) in one update_with_changes transaction is what makes the
+%% rev safe: process_config_to_delete_stale_local_changes_counters/3 and the
+%% subsequent do_update_rec/7 both fold the SAME config snapshot (the KVList
+%% handed to us by update_with_changes), so the count we compensate is exactly
+%% the count we delete - no read-vs-delete skew. Computing the sum from a
+%% separate ns_config:get() snapshot and deleting in a later transaction would
+%% let the departed counter's replicated value drift between the two reads and
+%% drop the rev.
+-spec remove_nodes_config_keys([node()], [uuid()], uuid()) -> ok.
+remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
+    {ok, _} =
+        update_with_changes(
+          fun (KVList, UUID) ->
+                  {{MyKey, MyVal}, StaleCount, Deletes} =
+                      process_config_to_delete_stale_local_changes_counters(
+                        KVList, MyUuid, ValidUuids),
+                  StaleKeys = [K || {delete, K} <- Deletes],
+                  MyNewVal =
+                      case StaleCount of
+                          0 -> undefined;
+                          _ -> bump_vclock_by_counter(MyVal, MyUuid, StaleCount)
+                      end,
+                  do_update_rec(
+                    fun (Key, _StrippedVal, _VClock, Acc) ->
+                            {node_removal_action(Key, RemoteNodes, StaleKeys,
+                                                 MyKey, MyNewVal),
+                             Acc}
+                    end, unused, KVList, UUID, [], [], [])
+          end),
+    ok.
+
+%% Per-key decision for remove_nodes_config_keys/3. StaleKeys and MyKey/MyNewVal
+%% are precomputed from the same snapshot this runs over, so the set of counters
+%% deleted here matches the sum already folded into MyNewVal exactly.
+node_removal_action({node, Node, _}, RemoteNodes, _StaleKeys, _MyKey, _MyNewVal)
+  when Node =/= node() ->
+    case lists:member(Node, RemoteNodes) of
+        true -> delete;
+        false -> skip
+    end;
+node_removal_action(Key, _RemoteNodes, StaleKeys, MyKey, MyNewVal) ->
+    case lists:member(Key, StaleKeys) of
+        true ->
+            delete;
+        false when Key =:= MyKey andalso MyNewVal =/= undefined ->
+            %% set_initial lets us write with a specific vclock, which we must
+            %% do to bump our counter by that of the nodes being removed.
+            {set_initial, {MyKey, MyNewVal}};
+        false ->
+            skip
+    end.
 
 -ifdef(TEST).
 mock_tombstone_agent() ->

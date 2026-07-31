@@ -466,35 +466,54 @@ remove_nodes(RemoteNodes, Transaction) ->
             %% merges from these nodes will be made.
 
             %% We should be able to read our own nodes_wanted write.
-            case cluster_compat_mode:is_cluster_totoro() of
+            IsTotoro = cluster_compat_mode:is_cluster_totoro(),
+            case IsTotoro of
                 false ->
+                    update_ns_config_for_node_removal_pre_totoro(RemoteNodes);
+                true ->
                     %% chronicle_compat:push_and_sync_events/1 was added for
                     %% Totoro, this doesn't work before
-                    ok;
-                true ->
                     NodesWanted = nodes_wanted(),
                     ok = chronicle_compat:push_and_sync_events(NodesWanted),
-                    ok = ns_config_rep:pull_remotes(NodesWanted)
-            end,
+                    ok = ns_config_rep:pull_remotes(NodesWanted),
 
-            ok = ns_config:update(
-                   fun ({{node, Node, _}, _}) ->
-                           case lists:member(Node, RemoteNodes) andalso
-                               Node =/= node() of
-                               true ->
-                                   delete;
-                               false ->
-                                   skip
-                           end;
-                       (_Other) ->
-                           skip
-                   end);
+                    update_ns_config_for_node_removal(RemoteNodes)
+            end;
         {error, _} = Error ->
             Error;
         _ ->
             ok
     end,
     RV.
+
+update_ns_config_for_node_removal_pre_totoro(RemoteNodes) ->
+    ok = ns_config:update(
+           fun ({{node, Node, _}, _}) ->
+                   case lists:member(Node, RemoteNodes) andalso
+                       Node =/= node() of
+                       true ->
+                           delete;
+                       false ->
+                           skip
+                   end;
+               (_Other) ->
+                   skip
+           end).
+
+update_ns_config_for_node_removal(RemoteNodes) ->
+    Config = ns_config:get(),
+    UuidMap = ns_config:get_node_uuid_map(Config),
+    UuidsToDelete =
+        [dict:fetch(N, UuidMap) || N <- RemoteNodes, dict:is_key(N, UuidMap)],
+    ValidUuids = [V || {_Node, V} <- dict:to_list(UuidMap)] -- UuidsToDelete,
+    MyUuid = ns_config:uuid(Config),
+
+    %% Delete the departed nodes' {node, N, _} keys, delete their stale
+    %% local_changes_count counters, and fold the summed stale count into this
+    %% node's own counter - all in a SINGLE ns_config transaction, so the sum
+    %% and the deletes see the same snapshot and compute_global_rev cannot go
+    %% backwards. See ns_config:remove_nodes_config_keys/3.
+    ok = ns_config:remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid).
 
 remove_nodes_from_server_groups(NodesToRemove, Groups) ->
     [lists:keystore(nodes, 1, G,
