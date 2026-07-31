@@ -138,8 +138,8 @@ verify_chain_on_ns_server(Chain, CRLScope) ->
 %% connection instead, and verify_fun/1 rejects the certificate there.  So every
 %% doubt can be answered with false.
 %%
-%% TLS 1.3 resumption is ticket-based and has no such hook; it is unreachable
-%% because ns_server never sets session_tickets (OTP default: disabled).
+%% TLS 1.3 resumption is ticket-based and has no such hook, which is why
+%% ns_ssl_services_setup disables session_tickets outright.
 -spec reuse_tls12_session_fun(CRLScope :: crl_scope()) ->
           fun((SuggestedSessionId :: binary(),
                PeerCert :: public_key:der_encoded() | undefined,

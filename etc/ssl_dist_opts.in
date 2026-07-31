@@ -2,7 +2,10 @@
           {keyfile, "@CONFIG_PREFIX@/certs/pkey.pem"},
           {cacertfile, "@CONFIG_PREFIX@/certs/ca.pem"},
           {depth, 10},
+          %% Both explicit: a resumed handshake skips verify_fun, so the peer
+          %% cert would go unchecked (no CRL check).
           {reuse_sessions,false},
+          {session_tickets,disabled},
           {versions, ['tlsv1.3', 'tlsv1.2']},
           {eccs, [sect571r1,sect571k1,secp521r1,brainpoolP512r1,sect409k1,
                   sect409r1,brainpoolP384r1,secp384r1,sect283k1,sect283r1,
@@ -35,5 +38,6 @@
           {verify, verify_peer},
           {depth, 10},
           {reuse_sessions,false},
+          {session_tickets,disabled},
           {verify_fun, {fun cb_dist:verify_server_cert/3, undefined}},
           {versions, ['tlsv1.3', 'tlsv1.2']}]}].

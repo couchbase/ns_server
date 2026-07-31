@@ -594,6 +594,11 @@ ssl_server_opts() ->
              {honor_cipher_order, Order},
              {secure_renegotiate, true},
              {client_renegotiation, ClientReneg},
+             %% Explicit rather than left to the OTP default: a resumed TLS 1.3
+             %% handshake would skip the CRL check (see
+             %% server_reuse_session_opt/1) and there is no ticket equivalent of
+             %% the reuse_session hook, so no ticket may ever be issued.
+             {session_tickets, disabled},
              {password, PassphraseFun}],
     merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions).
 
@@ -685,7 +690,10 @@ tls_peer_verification_client_opts() ->
     [{cacertfile, ca_file_path()},
      {verify, verify_peer},
      {depth, ?ALLOWED_CERT_CHAIN_LENGTH},
+     %% Both explicit, and for the same reason: resuming a session skips the
+     %% verify_fun below, so the server cert would go unchecked.
      {reuse_sessions, false},
+     {session_tickets, disabled},
      {verify_fun, {cb_crl:verify_fun(node_to_node), undefined}}].
 
 tls_no_peer_verification_client_opts() ->
