@@ -1000,8 +1000,8 @@ idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
     Reply =
         case BucketType of
             memcached ->
-                {incorrect_parameters,
-                 "memcached buckets are no longer supported"};
+                {error, {incorrect_parameters,
+                 "memcached buckets are no longer supported"}};
             membase ->
                 create_membase_bucket(BucketName, BucketConfig, undefined)
         end,
