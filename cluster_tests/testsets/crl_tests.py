@@ -2572,6 +2572,15 @@ _REASONS_HALF_B = frozenset({x509.ReasonFlags.cessation_of_operation,
                              x509.ReasonFlags.aa_compromise})
 
 
+def _unrecognized_extension(oid):
+    """An extension with an OID no X.509 implementation knows about.
+
+    The value is a DER NULL - the content is irrelevant, only the fact that
+    nothing can interpret the extension matters.
+    """
+    return x509.UnrecognizedExtension(x509.ObjectIdentifier(oid), b'\x05\x00')
+
+
 def generate_crl_to_file(filepath, *args, **kwargs):
     """Generate a CRL and write it to the given filepath."""
     crl_pem = generate_crl(*args, **kwargs)
@@ -2580,23 +2589,28 @@ def generate_crl_to_file(filepath, *args, **kwargs):
 
 
 def generate_crl(ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=False,
-                 this_update=None, only_some_reasons=None):
+                 this_update=None, only_some_reasons=None,
+                 critical_extension_oid=None,
+                 critical_entry_extension_oid=None):
     """Return a PEM-encoded CRL signed by the given CA.
 
     If expired=True, generates a CRL with nextUpdate in the past (expired).
     If this_update is given it is used as thisUpdate (last_update); otherwise
     defaults to now - 2 days.
     """
-    pem, _ = generate_crl_with_number(ca_cert_pem, ca_key_pem,
-                                       revoked_cert_pems, expired=expired,
-                                       this_update=this_update,
-                                       only_some_reasons=only_some_reasons)
+    pem, _ = generate_crl_with_number(
+        ca_cert_pem, ca_key_pem, revoked_cert_pems, expired=expired,
+        this_update=this_update, only_some_reasons=only_some_reasons,
+        critical_extension_oid=critical_extension_oid,
+        critical_entry_extension_oid=critical_entry_extension_oid)
     return pem
 
 
 def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
                              expired=False, freshest_crl_uri=None,
-                             this_update=None, only_some_reasons=None):
+                             this_update=None, only_some_reasons=None,
+                             critical_extension_oid=None,
+                             critical_entry_extension_oid=None):
     """Return (pem, crl_number) for a CRL signed by the given CA.
 
     revoked_cert_pems is a list of PEM strings whose serial numbers will be
@@ -2611,6 +2625,11 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
     IssuingDistributionPoint scopes the CRL to those revocation reasons only,
     so it covers a certificate's status only in part (RFC 5280 6.3.3); see
     _REASONS_HALF_A / _REASONS_HALF_B.  The default (None) covers all reasons.
+
+    critical_extension_oid / critical_entry_extension_oid add an extension
+    with that (dotted-string) OID, marked critical, to the CRL itself or to
+    every revocation entry.  Used to build the CRLs RFC 5280 5.2 says must be
+    rejected outright; see CRLBadCRLTests.
     """
     global _crl_number
     _crl_number += 1
@@ -2664,17 +2683,24 @@ def generate_crl_with_number(ca_cert_pem, ca_key_pem, revoked_cert_pems,
         )
         builder = builder.add_extension(
             x509.FreshestCRL([dp]), critical=False)
+    if critical_extension_oid is not None:
+        builder = builder.add_extension(
+            _unrecognized_extension(critical_extension_oid), critical=True)
     revoked_serials = []
     for cert_pem in revoked_cert_pems:
         cert = x509.load_pem_x509_certificate(cert_pem.encode(),
                                               default_backend())
         revoked_serials.append(cert.serial_number)
-        revoked = (
+        revoked_builder = (
             x509.RevokedCertificateBuilder()
             .serial_number(cert.serial_number)
             .revocation_date(now)
-            .build(default_backend())
         )
+        if critical_entry_extension_oid is not None:
+            revoked_builder = revoked_builder.add_extension(
+                _unrecognized_extension(critical_entry_extension_oid),
+                critical=True)
+        revoked = revoked_builder.build(default_backend())
         builder = builder.add_revoked_certificate(revoked)
 
     crl = builder.sign(ca_key, hashes.SHA256(), default_backend())
@@ -3813,6 +3839,49 @@ class CRLBadCRLTests(testlib.BaseTestSet):
             print(f'upload_expired_crl error: {error}')
             assert 'CRL expired' in error, \
                 f'Expected CRL expired error, got: {error!r}'
+        finally:
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+
+    def upload_critical_extension_test(self):
+        """A CRL with an unrecognized critical extension returns HTTP 400.
+
+        RFC 5280 5.2/5.3: such a CRL must not be used to determine any
+        certificate's status, so it must not reach the cache in the first
+        place.  Both placements are covered - on the CRL and on a revocation
+        entry - and each CRL is otherwise perfectly valid (trusted issuer,
+        current validity window), so only the extension can be the reason for
+        the rejection.  MB-73085.
+
+        Nothing here checks the recognized critical extensions still pass:
+        generate_crl_with_number marks the IssuingDistributionPoint critical
+        on every CRL it builds, so the rest of the suite covers that.
+        """
+        node = self.cluster.connected_nodes[0]
+        oid = '1.2.3.4.5.6.7.8.9.99'
+        ca_pem, ca_key_pem = generate_root_ca()
+        ca_ids = load_multiple_cas(node, [ca_pem])
+        try:
+            leaf_pem, _ = generate_client_cert_cn(ca_pem, ca_key_pem,
+                                                  'critical-ext-leaf')
+            cases = [('crl_critical_ext.pem',
+                      generate_crl(ca_pem, ca_key_pem, [leaf_pem],
+                                   critical_extension_oid=oid)),
+                     ('entry_critical_ext.pem',
+                      generate_crl(ca_pem, ca_key_pem, [leaf_pem],
+                                   critical_entry_extension_oid=oid))]
+            for filename, crl_pem in cases:
+                files = {'crl': (filename, crl_pem.encode(),
+                                 'application/x-pem-file')}
+                r = testlib.post_fail(node, '/settings/crl/files', files=files,
+                                      expected_code=400)
+                error = r.json().get('error', '')
+                print(f'upload_critical_extension error ({filename}): {error}')
+                assert f'unrecognized critical extension {oid}' in error, \
+                    f'Unexpected error: {error!r}'
+                assert filename not in [f['filename']
+                                        for f in get_crl_files(node)], \
+                    f'{filename} was stored despite being rejected'
         finally:
             for ca_id in ca_ids:
                 testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')

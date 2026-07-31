@@ -56,6 +56,22 @@
 -define(URL_FETCH_TIMEOUT_MS, ?get_timeout(url_fetch_timeout_ms, 30000)).
 -define(URL_RETRY_INTERVAL_MS, ?get_param(url_retry_interval_ms, 60000)).
 
+%% CRL and CRL-entry extensions that may be marked critical.  RFC 5280 §5.2
+%% says a CRL carrying a critical extension the application cannot process must
+%% not be used at all, so this list has to be exactly the set OTP knows how to
+%% process: pubkey_crl:verify_extensions/1 (lib/public_key/src/pubkey_crl.erl).
+%% Accepting anything beyond it would let a CRL through that OTP then quietly
+%% mishandles - it clears its valid_ext flag but pubkey_crl:crl_status/2 still
+%% reports a listed certificate as revoked (see MB-73085).
+-define(RECOGNIZED_CRITICAL_CRL_EXTS,
+        [?'id-ce-authorityKeyIdentifier',
+         ?'id-ce-issuerAltName',
+         ?'id-ce-cRLNumber',
+         ?'id-ce-certificateIssuer',
+         ?'id-ce-deltaCRLIndicator',
+         ?'id-ce-issuingDistributionPoint',
+         ?'id-ce-freshestCRL']).
+
 %% Per-entry result produced by cb_crl_manager for every CRL block found in a
 %% file (a PEM may contain multiple CertificateList entries).
 -record(entry_result, {
@@ -1886,8 +1902,25 @@ entry_error_text(#entry_result{result = {error, Reason}, issuer = Issuer}) ->
 reason_string(crl_expired)            -> <<"CRL expired">>;
 reason_string(crl_not_yet_valid)      -> <<"CRL not yet valid">>;
 reason_string(crl_issuer_not_trusted) -> <<"CRL issuer not trusted">>;
+reason_string({unrecognized_critical_extension, OID}) ->
+    misc:format_bin("unrecognized critical extension ~s", [format_oid(OID)]);
 reason_string(Other) ->
     iolist_to_binary(io_lib:format("~p", [Other])).
+
+%% Render an extension OID in the usual dotted form.  A decoded extnID is
+%% always a tuple of integers; anything else is only possible if OTP changes
+%% the representation, so fall back to the raw term rather than crashing an
+%% error path.
+-spec format_oid(term()) -> iolist().
+format_oid(OID) when is_tuple(OID) ->
+    case lists:all(fun is_integer/1, tuple_to_list(OID)) of
+        true ->
+            lists:join(".", [integer_to_list(N) || N <- tuple_to_list(OID)]);
+        false ->
+            io_lib:format("~p", [OID])
+    end;
+format_oid(Other) ->
+    io_lib:format("~p", [Other]).
 
 %% Compute a SHA-256 hex digest of raw file content.
 -spec file_checksum(binary()) -> binary().
@@ -2197,11 +2230,14 @@ crl_times(#'CertificateList'{tbsCertList = TBS}) ->
                  end,
     {ThisUpdate, NextUpdate}.
 
-%% Top-level CRL verifier: validity period first, then signature.
+%% Top-level CRL verifier: critical extensions first (a structural property of
+%% the CRL, so it is checked even when expired CRLs are allowed), then the
+%% validity period, then the signature.
 -spec verify_crl(#'CertificateList'{}, [binary()], boolean()) ->
           ok | {error, term()}.
 verify_crl(CRL, TrustedDerCAs, AllowExpiredCrls) ->
     maybe
+        ok ?= check_critical_extensions(CRL),
         ok ?= case AllowExpiredCrls of
                   true -> ok;
                   false -> check_crl_validity(CRL)
@@ -2232,6 +2268,33 @@ check_crl_validity(Cert) ->
                     end
               end
     end.
+
+%% RFC 5280 §5.2/§5.3: a critical extension the application cannot process
+%% makes the whole CRL unusable, so reject it here rather than let it reach the
+%% cache.  Both the CRL extensions and the per-entry extensions are covered,
+%% matching what pubkey_crl:verify_extensions/1 inspects.
+-spec check_critical_extensions(#'CertificateList'{}) -> ok | {error, term()}.
+check_critical_extensions(#'CertificateList'{tbsCertList = TBS}) ->
+    EntryExts =
+        [Ext || #'TBSCertList_revokedCertificates_SEQOF'{
+                    crlEntryExtensions = Exts} <-
+                    revoked_certificates(TBS),
+                Ext <- pubkey_cert:extensions_list(Exts)],
+    AllExts = pubkey_cert:extensions_list(TBS#'TBSCertList'.crlExtensions) ++
+        EntryExts,
+    Unhandled = [Id || #'Extension'{critical = true, extnID = Id} <- AllExts,
+                       not lists:member(Id, ?RECOGNIZED_CRITICAL_CRL_EXTS)],
+    case Unhandled of
+        []        -> ok;
+        [Id | _]  -> {error, {unrecognized_critical_extension, Id}}
+    end.
+
+-spec revoked_certificates(#'TBSCertList'{}) ->
+          [#'TBSCertList_revokedCertificates_SEQOF'{}].
+revoked_certificates(#'TBSCertList'{revokedCertificates = asn1_NOVALUE}) ->
+    [];
+revoked_certificates(#'TBSCertList'{revokedCertificates = Revoked}) ->
+    Revoked.
 
 %% RFC 5280 §6.3.3 step (f): verify the CRL's signature against the cluster's
 %% trusted CAs.
