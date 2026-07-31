@@ -450,6 +450,27 @@ remove_nodes(RemoteNodes, Transaction) ->
            end),
     case RV of
         {ok, _} ->
+            %% We've just dropped the nodes from nodes_wanted in chronicle and
+            %% we now need to tidy up ns_config. To ensure that ns_config is
+            %% tidied up entirely we need to handle races between the
+            %% propagation of the chronicle configuration to `ns_config_rep`
+            %% (which handles the merges from remote nodes and rejects those
+            %% from unknown nodes) on all nodes in the cluster, and, between
+            %% the node being removed sending us new ns_config updates to merge.
+            %%
+            %% Given that we propagate any config changes from the orchestrator,
+            %% we will need to sync our config with all nodes remaining in the
+            %% cluster, but we will need to do so only after we push and
+            %% propagate all chronicle events to the remaining nodes which will
+            %% update `ns_config_rep` and allow us guarantee that no further
+            %% merges from these nodes will be made.
+
+            %% We should be able to read our own nodes_wanted write.
+            NodesWanted = nodes_wanted(),
+
+            ok = chronicle_compat:push_and_sync_events(NodesWanted),
+            ok = ns_config_rep:pull_remotes(NodesWanted),
+
             ok = ns_config:update(
                    fun ({{node, Node, _}, _}) ->
                            case lists:member(Node, RemoteNodes) andalso
