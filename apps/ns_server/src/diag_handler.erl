@@ -38,6 +38,13 @@
 
 -define(ETS_MAX_TABLE_CHUNK, ?get_param(cbcollect_max_ets_chunk, 10_000)).
 
+%% Timeout for collecting per-node diagnostics (processes, ets tables, etc.)
+%% on a single node.
+-define(PER_NODE_DIAG_TIMEOUT, ?get_timeout(per_node_diag, 40000)).
+%% Timeout for the whole per-node diagnostics collection, including the
+%% overhead of spawning/monitoring the worker doing the collection.
+-define(GRAB_PER_NODE_DIAG_TIMEOUT, ?get_timeout(grab_per_node_diag, 45000)).
+
 %% Read the manifest.xml file
 manifest() ->
     case file:read_file(filename:join(path_config:component_path(bin, ".."), "manifest.xml")) of
@@ -168,7 +175,7 @@ do_diag_per_node() ->
     work_queue:submit_sync_work(
       diag_handler_worker,
       fun () ->
-              (catch collect_diag_per_node(40000))
+              (catch collect_diag_per_node(?PER_NODE_DIAG_TIMEOUT))
       end).
 
 collect_diag_per_node(Timeout) ->
@@ -426,7 +433,7 @@ handle_diag(Req) ->
     trace_memory("Finished handling diag.").
 
 grab_per_node_diag() ->
-    grab_per_node_diag(45000).
+    grab_per_node_diag(?GRAB_PER_NODE_DIAG_TIMEOUT).
 
 grab_per_node_diag(Timeout) ->
     Result = case async:run_with_timeout(fun () ->
