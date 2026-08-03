@@ -49,6 +49,10 @@
          report_prom_stats/3,
          report_prom_stats/4]).
 
+-ifdef(TEST).
+-export([normalized_metric/1]).
+-endif.
+
 -type os_pid() :: integer().
 
 -type metric() :: atom() | binary() | {atom() | binary(), [label()]}.
