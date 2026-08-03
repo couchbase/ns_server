@@ -53,6 +53,10 @@
 %% Called from remote node via rpc
 -export([notify_counter_raw/2]).
 
+-ifdef(TEST).
+-export([normalized_metric/1]).
+-endif.
+
 -type os_pid() :: integer().
 
 -type metric() :: atom() | binary() | {atom() | binary(), [label()]}.
