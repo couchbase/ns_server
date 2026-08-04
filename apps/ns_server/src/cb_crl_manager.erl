@@ -90,6 +90,48 @@
 %% Used for both loaded_locally (config/crls/local/) and uploaded (config/crls/).
 -type active_files() :: #{BaseName :: string() => binary()}.
 
+%% Status vocabulary reported by get_status/0 and reload/0.  Serialised by
+%% menelaus_web_crl:status_to_json/1 and reload_result_to_json/1, which have one
+%% clause per value below; an atom outside these types falls through their
+%% catch-all clause and leaks a raw Erlang term into the REST response.
+%% Per-entry and per-file statuses share one vocabulary on purpose, so a healthy
+%% entry and a healthy file both report 'active'.
+-type entry_status()  :: active | expired | not_yet_valid | untrusted | invalid.
+-type file_status()   :: entry_status() | not_loaded.
+-type reload_result() :: loaded | failed | not_attempted | uploaded
+                       | not_yet_synced | checksum_mismatch.
+
+%% Where the file we are using came from.  Serialised by
+%% menelaus_web_crl:file_source_to_json/1.
+-type file_source()   :: local_dir | uploaded | generated | url.
+
+%% Per-entry breakdown of the CRL copy we currently use, as built by
+%% entry_to_map/1.  Part of the module interface: one of these per entry is
+%% carried in the 'entries' field of crl_file_status().
+-type crl_entry() :: #{issuer      := binary(),
+                       status      := entry_status(),
+                       this_update := calendar:datetime() | undefined,
+                       next_update := calendar:datetime() | undefined,
+                       checksum    := binary(),
+                       crl_number  := non_neg_integer() | undefined}.
+
+%% Outcome of the most recent (re)load attempt for one file.  'time' is
+%% 'undefined' when no attempt has been recorded yet.
+-type last_reload() :: #{result := reload_result(),
+                         time   := calendar:datetime() | undefined,
+                         errors := [binary()]}.
+
+%% One element of the list returned by get_status/0 and reload/0 (see the
+%% comments on those functions).  Plain maps only, so it is RPC-safe.
+-type crl_file_status() :: #{filename    := binary(),
+                             source      := file_source(),
+                             status      := file_status(),
+                             entries     := [crl_entry()],
+                             last_reload := last_reload()}.
+
+-export_type([entry_status/0, file_status/0, reload_result/0, file_source/0,
+              crl_entry/0, last_reload/0, crl_file_status/0]).
+
 -record(state, {
     poll_directory   :: undefined | file:filename_all(),
     poll_interval_ms :: pos_integer(),
@@ -191,29 +233,24 @@ merge_default(Cfg) ->
 %% if it can be read, decoded, and every entry in it is valid.  A file that
 %% fails to load never overwrites or removes a previously loaded good copy.
 %%
-%% Returns StatusMap which has the same shape as get_status/0 (see below).
--spec reload() -> [map()].
+%% Returns the same [crl_file_status()] as get_status/0 (see below).
+-spec reload() -> [crl_file_status()].
 reload() ->
     gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
 
-%% Return the current per-file CRL status for this node.
-%%
-%% Returns #{LoadDirPath => StatusMap} where each StatusMap is a plain map
-%% (no records, RPC-safe) describing both what we are currently *using* and the
+%% Return the current per-file CRL status for this node: one crl_file_status()
+%% per known file, describing both what we are currently *using* and the
 %% outcome of the last reload attempt:
-%%   status      => active | expired | not_yet_valid | untrusted
-%%                  | invalid | not_loaded
-%%                  — state of the config/crls copy we currently use, freshly
-%%                    re-verified at query time.
-%%   entries     => [EntryMap] — per-entry breakdown of that active copy; lets
-%%                  callers see which entry is expired/untrusted.  EntryMap has:
-%%                    issuer, status, this_update, next_update, checksum.
-%%   last_reload => #{result => loaded | failed | not_attempted,
-%%                    time   => calendar:datetime() | undefined,
-%%                    errors => [binary()]}
+%%   status      => file_status() — state of the config/crls copy we currently
+%%                  use, freshly re-verified at query time.
+%%   entries     => [crl_entry()] — per-entry breakdown of that active copy;
+%%                  lets callers see which entry is expired/untrusted.  An
+%%                  entry's status uses the same vocabulary as the file-level
+%%                  status above.
+%%   last_reload => last_reload()
 %%
-%% An empty map is returned when no source is configured or no files exist.
--spec get_status() -> [map()].
+%% An empty list is returned when no source is configured or no files exist.
+-spec get_status() -> [crl_file_status()].
 get_status() ->
     gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
 
@@ -1584,12 +1621,11 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
 %%
 %% Each map contains:
 %%   filename    — binary base name
-%%   source      — local_dir | uploaded | url
-%%   status      — active | expired | not_yet_valid | untrusted
-%%                 | invalid | not_loaded
-%%   entries     — per-entry breakdown
-%%   last_reload — #{result, time, errors}
--spec build_status_map([binary()], #state{}) -> [map()].
+%%   source      — file_source()
+%%   status      — file_status()
+%%   entries     — per-entry breakdown, each with an entry_status()
+%%   last_reload — last_reload()
+-spec build_status_map([binary()], #state{}) -> [crl_file_status()].
 build_status_map(TrustedDerCAs,
                  #state{file_state       = FS,
                         loaded_locally   = LoadedLocally,
@@ -1710,8 +1746,9 @@ build_expiry_info(#state{loaded_locally   = LoadedLocally,
         maps:is_key(url_filename(URL), LoadedFromUrls)].
 
 %% Compute the current status of an active CRL by reading DER entries from
-%% the cache and re-verifying them now.  Returns {FileStatus, [EntryMap]}.
--spec current_status(file:filename_all(), [binary()]) -> {atom(), [map()]}.
+%% the cache and re-verifying them now.
+-spec current_status(file:filename_all(), [binary()]) ->
+          {file_status(), [crl_entry()]}.
 current_status(ConfigPath, TrustedDerCAs) ->
     case cb_crl_cache:get_file_crls(ConfigPath) of
         [] ->
@@ -1729,18 +1766,16 @@ current_status(ConfigPath, TrustedDerCAs) ->
     end.
 
 %% Maps current status of an uploaded file to a status map
--spec upload_file_status_map(file:filename_all(), map(), calendar:datetime(),
-                             binary()) ->
-          #{result => atom(),
-            time => calendar:datetime(),
-            errors => [binary()]}.
+-spec upload_file_status_map(file:filename_all(), active_files(),
+                             calendar:datetime(), binary()) -> last_reload().
 upload_file_status_map(Name, UploadedMap, UploadTS, ExpectedChecksum) ->
     case maps:get(Name, UploadedMap, undefined) of
         ExpectedChecksum ->
-            #{result => ok, time => UploadTS, errors => []};
+            #{result => uploaded, time => UploadTS, errors => []};
         undefined ->
-            %% File not yet downloaded
-            #{result => in_progress,
+            %% The file is registered in chronicle but this node has not
+            %% downloaded it from the uploading node yet.
+            #{result => not_yet_synced,
               time   => UploadTS,
               errors => [<<"Synchronization in progress (file is missing)">>]};
         GotChecksum ->
@@ -1754,7 +1789,7 @@ upload_file_status_map(Name, UploadedMap, UploadTS, ExpectedChecksum) ->
     end.
 
 %% Reduce per-entry results to a single file-level status, worst-first.
--spec aggregate_status([map()]) -> atom().
+-spec aggregate_status([crl_entry()]) -> entry_status().
 aggregate_status(Results) ->
     Statuses = [R || #{status := R} <- Results],
     case lists:member(expired, Statuses) of
@@ -1775,26 +1810,30 @@ aggregate_status(Results) ->
     end.
 
 %% Convert a per-entry verify result to a plain (RPC-safe) map.
--spec entry_to_map(entry_result()) -> map().
+-spec entry_to_map(entry_result()) -> crl_entry().
 entry_to_map(#entry_result{result = Result,
                            issuer      = Issuer,
                            this_update = ThisUpdate,
                            next_update = NextUpdate,
                            der         = Der,
                            crl_number  = CrlNum}) ->
-    Status = case Result of
-                 ok -> ok;
-                 {error, crl_expired} -> expired;
-                 {error, crl_not_yet_valid} -> not_yet_valid;
-                 {error, crl_issuer_not_trusted} -> untrusted;
-                 {error, _} -> invalid
-             end,
     #{issuer      => iolist_to_binary(ns_server_cert:format_name(Issuer)),
-      status      => Status,
+      status      => entry_status(Result),
       this_update => ThisUpdate,
       next_update => NextUpdate,
       checksum    => file_checksum(Der),
       crl_number  => CrlNum}.
+
+%% Map a per-entry verify result to the reported status.  A usable entry is
+%% 'active', not 'ok': entries use the same vocabulary as the file-level status
+%% (see aggregate_status/1), so that a single response never describes the same
+%% healthy CRL with two different words.
+-spec entry_status(ok | {error, term()}) -> entry_status().
+entry_status(ok)                              -> active;
+entry_status({error, crl_expired})            -> expired;
+entry_status({error, crl_not_yet_valid})      -> not_yet_valid;
+entry_status({error, crl_issuer_not_trusted}) -> untrusted;
+entry_status({error, _})                      -> invalid.
 
 %% Per-entry metadata handed to cb_crl_cache:insert_file/2 so that expiry
 %% information can be read back later (see build_expiry_info/1) without
@@ -1813,6 +1852,8 @@ entry_meta(#entry_result{issuer      = Issuer,
       checksum    => file_checksum(Der),
       crl_number  => CrlNum}.
 
+%% Stand-in entry for a cached CRL that no longer decodes.
+-spec invalid_entry_map() -> crl_entry().
 invalid_entry_map() ->
     #{issuer      => <<"unknown">>,
       status      => invalid,
@@ -1823,7 +1864,7 @@ invalid_entry_map() ->
 
 %% Convert a stored #crl_reload_status{} to a plain (RPC-safe) map.
 %% 'undefined' (no attempt recorded yet) maps to a not_attempted result.
--spec last_reload_map(#crl_reload_status{} | undefined) -> map().
+-spec last_reload_map(#crl_reload_status{} | undefined) -> last_reload().
 last_reload_map(undefined) ->
     #{result => not_attempted, time => undefined, errors => []};
 last_reload_map(#crl_reload_status{result = Result, time = Time,
@@ -2226,5 +2267,41 @@ crl_config_key_classes_complete_test() ->
     Stale = ClassifiedKeys -- DefaultKeys,
     ?assertEqual({unclassified, []}, {unclassified, Unclassified}),
     ?assertEqual({stale, []}, {stale, Stale}).
+
+%% A usable entry must report 'active' — the same word the file-level status
+%% uses — and never 'ok' (MB-72988).
+entry_status_test() ->
+    ?assertEqual(active, entry_status(ok)),
+    ?assertEqual(expired, entry_status({error, crl_expired})),
+    ?assertEqual(not_yet_valid, entry_status({error, crl_not_yet_valid})),
+    ?assertEqual(untrusted, entry_status({error, crl_issuer_not_trusted})),
+    ?assertEqual(invalid, entry_status({error, some_other_reason})).
+
+%% aggregate_status/1 reports the worst entry status, and 'active' when every
+%% entry is usable.  Entry statuses are what entry_status/1 returns.
+aggregate_status_test() ->
+    Entries = fun (Statuses) -> [#{status => S} || S <- Statuses] end,
+    ?assertEqual(active, aggregate_status(Entries([]))),
+    ?assertEqual(active, aggregate_status(Entries([active, active]))),
+    ?assertEqual(invalid, aggregate_status(Entries([active, invalid]))),
+    ?assertEqual(untrusted, aggregate_status(Entries([untrusted, invalid]))),
+    ?assertEqual(not_yet_valid,
+                 aggregate_status(Entries([not_yet_valid, untrusted]))),
+    ?assertEqual(expired,
+                 aggregate_status(Entries([expired, not_yet_valid]))).
+
+%% An uploaded file that is present with the expected content reports
+%% 'uploaded'; the two transient states use the declared reload_result()
+%% values as well.
+upload_file_status_map_test() ->
+    TS = {{2026, 1, 1}, {0, 0, 0}},
+    Result = fun (UploadedMap) ->
+                     maps:get(result,
+                              upload_file_status_map("a.pem", UploadedMap, TS,
+                                                     <<"sum">>))
+             end,
+    ?assertEqual(uploaded, Result(#{"a.pem" => <<"sum">>})),
+    ?assertEqual(not_yet_synced, Result(#{})),
+    ?assertEqual(checksum_mismatch, Result(#{"a.pem" => <<"stale">>})).
 
 -endif.

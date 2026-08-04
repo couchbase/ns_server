@@ -14,6 +14,10 @@
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([handle_get_settings/1,
          handle_post_settings/1,
          handle_reload_crl/1,
@@ -473,13 +477,14 @@ format_crl_term(Term) ->
 %%% Helpers
 %%%===================================================================
 
-%% Convert a [StatusMap] list (from cb_crl_manager:get_status/0) to a
-%% JSON array.  Each StatusMap is a plain map produced by build_status_map/1.
--spec format_status_map([map()]) -> [term()].
+%% Convert the per-file status list from cb_crl_manager:get_status/0 to a
+%% JSON array.
+-spec format_status_map([cb_crl_manager:crl_file_status()]) -> [term()].
 format_status_map(StatusList) ->
     [file_status_to_json(S) || S <- StatusList].
 
 %% Serialise a single per-file status map to an ejson object.
+-spec file_status_to_json(cb_crl_manager:crl_file_status()) -> term().
 file_status_to_json(#{filename    := Filename,
                       source      := Source,
                       status      := Status,
@@ -491,12 +496,14 @@ file_status_to_json(#{filename    := Filename,
       {entries,     [status_entry_to_json(E) || E <- Entries]},
       {lastReload,  last_reload_to_json(LastReload)}]}.
 
+-spec file_source_to_json(cb_crl_manager:file_source()) -> binary().
 file_source_to_json(local_dir) -> <<"localDir">>;
 file_source_to_json(uploaded)  -> <<"uploaded">>;
 file_source_to_json(generated) -> <<"generated">>;
 file_source_to_json(url)       -> <<"url">>.
 
 %% Serialise the per-entry breakdown of the active copy.
+-spec status_entry_to_json(cb_crl_manager:crl_entry()) -> term().
 status_entry_to_json(#{issuer      := Issuer,
                        status      := Status,
                        this_update := ThisUpdate,
@@ -511,6 +518,7 @@ status_entry_to_json(#{issuer      := Issuer,
       {crlNumber,  case CrlNum of undefined -> null; N -> N end}]}.
 
 %% Serialise the last-reload-attempt information.
+-spec last_reload_to_json(cb_crl_manager:last_reload()) -> term().
 last_reload_to_json(#{result := Result, time := Time, errors := Errors}) ->
     {[{result, reload_result_to_json(Result)},
       {time,   format_datetime(Time)},
@@ -522,26 +530,42 @@ format_datetime(undefined) ->
 format_datetime(DateTime) ->
     menelaus_util:format_server_time(DateTime, 0).
 
-%% Map a current-status atom (state of the active config/crls copy) to the
-%% string shown in the HTTP response.
+%% Map a status atom to the string shown in the HTTP response.  Used for both
+%% the file-level status (state of the active config/crls copy) and the
+%% per-entry status, which share one vocabulary: see
+%% cb_crl_manager:file_status() and cb_crl_manager:entry_status().
+%%
+%% The catch-all clause is a safety net, not an escape hatch: every atom
+%% cb_crl_manager can produce needs a clause of its own, otherwise the raw
+%% Erlang atom (say <<"ok">>) leaks into the response and contradicts the
+%% documented enum.  Same for reload_result_to_json/1 below.
 status_to_json(active)        -> <<"active">>;
 status_to_json(expired)       -> <<"expired">>;
 status_to_json(not_yet_valid) -> <<"notYetValid">>;
 status_to_json(untrusted)     -> <<"untrusted">>;
 status_to_json(invalid)       -> <<"invalid">>;
 status_to_json(not_loaded)    -> <<"notLoaded">>;
-status_to_json(Other)         -> iolist_to_binary(io_lib:format("~p", [Other])).
+status_to_json(Other)         -> unmapped_to_json(crl_status, Other).
 
-%% Map a reload-result atom to the string shown in the HTTP response.
+%% Map a reload-result atom (cb_crl_manager:reload_result()) to the string
+%% shown in the HTTP response.
 reload_result_to_json(loaded)            -> <<"loaded">>;
 reload_result_to_json(failed)            -> <<"failed">>;
 reload_result_to_json(not_attempted)     -> <<"notAttempted">>;
 reload_result_to_json(uploaded)          -> <<"uploaded">>;
-reload_result_to_json(not_downloaded)    -> <<"notDownloaded">>;
+reload_result_to_json(not_yet_synced)    -> <<"notYetSynced">>;
 reload_result_to_json(checksum_mismatch) -> <<"checksumMismatch">>;
-reload_result_to_json(read_error)        -> <<"readError">>;
 reload_result_to_json(Other)             ->
-    iolist_to_binary(io_lib:format("~p", [Other])).
+    unmapped_to_json(reload_result, Other).
+
+%% Reached only if cb_crl_manager grows a status value that was not added here,
+%% or if a peer node in a mixed-version cluster reports one we do not know.
+%% Keep the response well-formed, but leave a trace: the value that comes out
+%% is outside the documented enum.
+unmapped_to_json(Field, Value) ->
+    ?log_warning("Unmapped CRL ~p value in status response: ~p",
+                 [Field, Value]),
+    iolist_to_binary(io_lib:format("~p", [Value])).
 
 %%%===================================================================
 %%% GET /settings/crl/files
@@ -716,3 +740,50 @@ assert_supported() ->
             menelaus_util:web_exception(
               404, "CRL feature not yet enabled in this cluster")
     end.
+
+-ifdef(TEST).
+
+%% Every value cb_crl_manager can report must map to a camelCase name of its
+%% own.  A snake_case result means the atom fell through to the catch-all
+%% clause, i.e. the response advertises a value outside the documented enum.
+status_vocabulary_test() ->
+    Statuses = [active, expired, not_yet_valid, untrusted, invalid,
+                not_loaded],
+    Results  = [loaded, failed, not_attempted, uploaded, not_yet_synced,
+                checksum_mismatch],
+    Json = [status_to_json(S) || S <- Statuses] ++
+           [reload_result_to_json(R) || R <- Results],
+    ?assertEqual([], [B || B <- Json, binary:match(B, <<"_">>) =/= nomatch]),
+    %% Distinct atoms must not collapse onto the same name.
+    ?assertEqual(length(Json), length(lists:usort(Json))),
+    ?assertEqual(<<"notYetValid">>, status_to_json(not_yet_valid)),
+    ?assertEqual(<<"notLoaded">>, status_to_json(not_loaded)),
+    ?assertEqual(<<"notAttempted">>, reload_result_to_json(not_attempted)),
+    ?assertEqual(<<"notYetSynced">>, reload_result_to_json(not_yet_synced)),
+    ?assertEqual(<<"checksumMismatch">>,
+                 reload_result_to_json(checksum_mismatch)).
+
+%% One response object must not describe the same healthy CRL with
+%% two vocabularies — cacheStatus and entries[].status both say "active", and
+%% lastReload.result reports how the file arrived rather than a bare "ok".
+healthy_file_status_to_json_test() ->
+    Entry = #{issuer      => <<"CN=Test CA">>,
+              status      => active,
+              this_update => undefined,
+              next_update => undefined,
+              checksum    => <<"abc">>,
+              crl_number  => 1},
+    {Json} = file_status_to_json(#{filename    => <<"test.pem">>,
+                                   source      => uploaded,
+                                   status      => active,
+                                   entries     => [Entry],
+                                   last_reload => #{result => uploaded,
+                                                    time   => undefined,
+                                                    errors => []}}),
+    ?assertEqual(<<"active">>, proplists:get_value(cacheStatus, Json)),
+    [{EntryJson}] = proplists:get_value(entries, Json),
+    ?assertEqual(<<"active">>, proplists:get_value(status, EntryJson)),
+    {Reload} = proplists:get_value(lastReload, Json),
+    ?assertEqual(<<"uploaded">>, proplists:get_value(result, Reload)).
+
+-endif.

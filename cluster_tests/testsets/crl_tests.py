@@ -2329,6 +2329,42 @@ def reload_crl(node):
     return testlib.post_succ(node, '/node/controller/reloadCrl').json()
 
 
+# Vocabularies the status and reload endpoints may use.  Entry statuses share
+# the file-level vocabulary minus 'notLoaded' (a file that is not loaded has no
+# entries).  Kept in sync with cb_crl_manager:file_status()/reload_result() and
+# their menelaus_web_crl serialisers.
+CACHE_STATUSES = {'active', 'expired', 'notYetValid', 'untrusted', 'invalid',
+                  'notLoaded'}
+ENTRY_STATUSES = CACHE_STATUSES - {'notLoaded'}
+RELOAD_RESULTS = {'loaded', 'failed', 'notAttempted', 'uploaded',
+                  'notYetSynced', 'checksumMismatch'}
+
+
+def assert_status_vocabulary(crl_files):
+    """Assert per-file status objects stick to the documented enums.
+
+    MB-72988: one response object must not describe the same healthy CRL two
+    ways - cacheStatus, entries[].status and lastReload.result all have their
+    own enum, and none of them includes a bare 'ok'.
+    """
+    for f in crl_files:
+        cache_status = f.get('cacheStatus')
+        assert cache_status in CACHE_STATUSES, \
+            f'Unexpected cacheStatus {cache_status!r} in: {f}'
+        result = f.get('lastReload', {}).get('result')
+        assert result in RELOAD_RESULTS, \
+            f'Unexpected lastReload result {result!r} in: {f}'
+        entry_statuses = [e.get('status') for e in f.get('entries', [])]
+        unexpected = [s for s in entry_statuses if s not in ENTRY_STATUSES]
+        assert unexpected == [], \
+            f'Unexpected entry status(es) {unexpected} in: {f}'
+        if cache_status == 'active':
+            # The file-level status is the worst of its entries, so an active
+            # file cannot hold an entry described as anything else.
+            assert all(s == 'active' for s in entry_statuses), \
+                f'Active CRL with a non-active entry: {f}'
+
+
 def _assert_crl_files(crl_files, expected_status):
     """Assert that at least one CRL file has the expected current status.
 
@@ -2337,6 +2373,7 @@ def _assert_crl_files(crl_files, expected_status):
     version currently in use.
     """
     assert len(crl_files) > 0, 'Expected at least one CRL file'
+    assert_status_vocabulary(crl_files)
     assert any(obj.get('cacheStatus') == expected_status
                for obj in crl_files), \
         f'Expected a {expected_status} CRL file, got: {crl_files}'
@@ -2368,6 +2405,7 @@ def _assert_crl_file_status(cluster, filename, expected_status):
     for hostname, node_files in status.items():
         if not isinstance(node_files, list):
             continue
+        assert_status_vocabulary(node_files)
         matching = [f for f in node_files
                     if os.path.basename(f.get('filename', '')) == filename]
         assert len(matching) == 1, \
@@ -3619,6 +3657,7 @@ def assert_crl_file_load_error(result, fname, expected_cache_status=None,
                                expected_error_num=0,
                                expected_error=None):
     print(f'status: {result}')
+    assert_status_vocabulary(result)
     bad_file = next(
         (f for f in result
             if f.get('filename') == fname), None)
@@ -3649,6 +3688,7 @@ def assert_crl_load_error(status_list, expected_cache_status=None):
     """
     assert len(status_list) > 0, \
         f'Expected at least one CRL file in status: {status_list}'
+    assert_status_vocabulary(status_list)
     if expected_cache_status is not None:
         assert any(f.get('cacheStatus') == expected_cache_status
                    for f in status_list), \
