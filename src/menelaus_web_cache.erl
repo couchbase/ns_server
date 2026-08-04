@@ -98,13 +98,22 @@ compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
 
 do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
     case lookup_value_with_expiration(Key, InvalidPred, AsOf) of
-        {not_found, _} ->
-            Now = erlang:monotonic_time(millisecond),
+        {not_found, LookupTime} ->
+            PreComputeTime = erlang:monotonic_time(millisecond),
             case ComputeBody() of
                 {error, _} = Error ->
                     Error;
                 {Value, Age, InvalidationState} ->
-                    Expiration = Now + Age,
+                    %% If this is already expired then set the expiry time to
+                    %% now, rather than lookup + age. This means that anything
+                    %% waiting for this payload (in the message queue) can
+                    %% serve it instead of recomputing it.
+                    Expiration =
+                        case LookupTime + Age =< PreComputeTime of
+                            true -> erlang:monotonic_time(millisecond);
+                            false -> LookupTime + Age
+                        end,
+
                     ns_server_stats:notify_counter(<<"web_cache_updates">>),
                     ets:insert(?MODULE, {Key,
                                          Value, Expiration, InvalidationState}),
@@ -176,7 +185,9 @@ web_cache_test_() ->
       {"stale value test", fun stale_value_recomputed_t/0},
       {"invalid pref test", fun invalid_pred_forces_recompute_t/0},
       {"compute error test", fun compute_error_not_cached_t/0},
-      {"valid as of arrival test", fun valid_as_of_arrival_is_served_t/0}
+      {"valid as of arrival test", fun valid_as_of_arrival_is_served_t/0},
+      {"slow compute serve queue test",
+       fun slow_compute_serves_queued_arrival_t/0}
      ]}.
 
 %% A cold read computes and stores the value, an immediate warm read reuses
@@ -278,5 +289,51 @@ valid_as_of_arrival_is_served_t() ->
              after 10000 -> erlang:error(reader_timeout)
              end,
     ?assertEqual(v1, Result).
+
+%% When ComputeBody outlives the value's Age, the stored expiry is clamped to
+%% the compute-finish time rather than LookupTime + Age. A request that queued
+%% behind the slow compute is served the fresh value instead of recomputing.
+%% An Age of 0 makes the value expired the instant it is computed, so the
+%% clamp always applies and there is no timing to race on
+slow_compute_serves_queued_arrival_t() ->
+    IP = never_invalid(),
+    Parent = self(),
+    %% R1 blocks mid-compute until the test releases it, holding the
+    %% work_queue so R2 must queue behind it. self() here is the
+    %% work_queue process, which runs the ComputeBody
+    SlowBody = fun () ->
+                       Parent ! {computing, self()},
+                       receive proceed -> ok end,
+                       {v1, 0, undefined}
+               end,
+    spawn_link(fun () ->
+                       R = lookup_or_compute_with_expiration(
+                             ?TEST_KEY, SlowBody, IP),
+                       Parent ! {r1, R}
+               end),
+    ComputePid = receive {computing, P} -> P
+                 after 5000 -> erlang:error(compute_never_started)
+                 end,
+    %% R2 arrives while R1 is still computing, its request lands in
+    %% the work_queue mailbox behind R1's in-flight work
+    spawn_link(fun () ->
+                       R = lookup_or_compute_with_expiration(
+                             ?TEST_KEY, compute_body(v2, 60000),
+                             IP),
+                       Parent ! {r2, R}
+               end),
+    %% Release R1. Age 0 clamps the expiry to R1's compute-finish
+    %% time, at or after R2's arrival, so R2 is served from cache
+    ComputePid ! proceed,
+    R1 = receive {r1, V1} -> V1
+         after 10000 -> erlang:error(r1_timeout)
+         end,
+    R2 = receive {r2, V2} -> V2
+         after 10000 -> erlang:error(r2_timeout)
+         end,
+    ?assertEqual(v1, R1),
+    %% R2 is served R1's value, its ComputeBody never runs
+    ?assertEqual(v1, R2),
+    ?assertEqual(1, count(<<"web_cache_updates">>)).
 
 -endif.
