@@ -16,6 +16,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
 
+from testlib.test_tag_decorator import tag, Tag
 
 class CertLoadTests(testlib.BaseTestSet):
 
@@ -216,6 +217,7 @@ class CertLoadTests(testlib.BaseTestSet):
 
     ## Reload node certificates is disruptive to the system. So if the cert
     ## is the same as what is in use we skip the reloading.
+    @tag(Tag.LowUrgency)
     def short_circuit_reloading_node_cert_test(self):
 
         def load_cert_return_timestamp(force=False):
@@ -269,6 +271,7 @@ class CertLoadTests(testlib.BaseTestSet):
             if os.path.exists(pkcs12_path):
                 os.remove(pkcs12_path)
 
+    @tag(Tag.LowUrgency)
     def regen_certs_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -288,6 +291,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_and_drop_certs_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -309,6 +313,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_force_reset_certs_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -329,6 +334,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_force_reset_and_drop_certs_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -350,6 +356,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_certs_with_untrusted_ca_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -388,6 +395,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_and_drop_certs_with_untrusted_ca_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -433,6 +441,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_force_reset_certs_with_untrusted_ca_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -476,6 +485,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_force_reset_certs_and_drop_with_untrusted_ca_test(self):
         node_certs_before = self.load_custom_certs()
 
