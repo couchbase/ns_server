@@ -233,6 +233,7 @@ handle_cast({Msg, Label, Params, ConnectionPid},
 
     ?log_debug("Observed json rpc process ~p ~p",
                [{Label, Params, ConnectionPid}, Msg]),
+    TS = erlang:monotonic_time(),
     {Info, NewCBAuthInfo} =
         case OldInfo of
             undefined ->
@@ -255,7 +256,8 @@ handle_cast({Msg, Label, Params, ConnectionPid},
                 {Pid, Workers}
         end,
     menelaus_cbauth_worker:notify(WorkerPid,
-                                  personalize_info(Version, Label, Info)),
+                                  personalize_info(Version, Label, Info),
+                                  TS),
     cb_cluster_secrets:notify_cbauth(Label),
     {noreply, State#state{workers = NewWorkers, cbauth_info = NewCBAuthInfo}}.
 
@@ -297,6 +299,7 @@ handle_info(_Info, State) ->
 
 maybe_notify_cbauth(#state{workers = Workers,
                            cbauth_info = OldInfo} = State) ->
+    TS = erlang:monotonic_time(),
     NewInfo = build_auth_infos(State),
     maps:foreach(
       fun (Ver, Info) ->
@@ -305,9 +308,9 @@ maybe_notify_cbauth(#state{workers = Workers,
                       ok;
                   _ ->
                       [menelaus_cbauth_worker:notify(
-                         Pid, personalize_info(V, Label, Info)) ||
-                       #worker{label = Label, pid = Pid,
-                               version = V} <- Workers, V =:= Ver]
+                         Pid, personalize_info(V, Label, Info), TS) ||
+                          #worker{label = Label, pid = Pid,
+                                  version = V} <- Workers, V =:= Ver]
               end
       end, NewInfo),
     State#state{cbauth_info = NewInfo}.
@@ -881,7 +884,8 @@ start_fake_json_rpc_connection(Label, Params) ->
     meck:reset(menelaus_cbauth_worker),
     gen_event:notify(json_rpc_events, {started, Label, Params, Pid}),
     %% Wait for initial notify to be handled, to avoid racy tests
-    meck:wait(1, menelaus_cbauth_worker, notify, ['_', '_'], ?LONG_TIMEOUT).
+    meck:wait(1, menelaus_cbauth_worker, notify, ['_', '_', '_'],
+              ?LONG_TIMEOUT).
 
 cbauth_init_t() ->
     %% UpdateDB gets called once almost immediately
@@ -920,7 +924,7 @@ cbauth_sync_t() ->
     %% Force an update by updating the snapshot
     fake_ns_config:update_snapshot(rest, [{port, 8092}]),
     %% Wait for the update to start being handled
-    meck:wait(menelaus_cbauth_worker, notify, ['_', '_'], ?LONG_TIMEOUT),
+    meck:wait(menelaus_cbauth_worker, notify, ['_', '_', '_'], ?LONG_TIMEOUT),
     %% Sync with timeout half the perform_call sleep time, to ensure it gets hit
     ?assertExit({timeout, _}, sync(node(), ?SHORT_TIMEOUT)).
 
@@ -959,7 +963,7 @@ cbauth_many_notify_t() ->
     lists:foreach(
       fun (N) ->
               fake_ns_config:update_snapshot(rest, [{port, N}]),
-              meck:wait(N, menelaus_cbauth_worker, notify, ['_', '_'],
+              meck:wait(N, menelaus_cbauth_worker, notify, ['_', '_', '_'],
                         ?LONG_TIMEOUT)
       end, [2, 3, 4]),
     Parent = self(),
@@ -1013,7 +1017,8 @@ cbauth_notify_multiple_versions_t() ->
     gen_event:notify(user_storage_events, event),
     %% Wait for both notifications to occur, and confirm that the perform_call
     %% returned, ensuring that the payloads were both encodable by ejson
-    meck:wait(2, menelaus_cbauth_worker, notify, ['_', '_'], ?LONG_TIMEOUT),
+    meck:wait(2, menelaus_cbauth_worker, notify, ['_', '_', '_'],
+              ?LONG_TIMEOUT),
     meck:wait(2, json_rpc_connection, perform_call,
               ['_', "AuthCacheSvc.UpdateDB", '_', '_'], ?LONG_TIMEOUT),
     meck:wait(2, json_rpc_connection, perform_call,

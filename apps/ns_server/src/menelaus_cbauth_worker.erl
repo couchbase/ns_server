@@ -12,7 +12,7 @@
 
 -behaviour(gen_server).
 
--export([start_monitor/4, notify/2, collect_stats/1, sync/2,
+-export([start_monitor/4, notify/3, collect_stats/1, sync/2,
          strip_cbauth_suffix/1]).
 
 -export([init/1, handle_call/3, handle_cast/2,
@@ -44,8 +44,8 @@ start_monitor(Label, Version, Pid, Params) ->
     gen_server:start_monitor({local, ServerName}, ?MODULE,
                              [Label, Version, Pid, Params], []).
 
-notify(Pid, Info) ->
-    Pid ! {notify, ?HIDE(Info)}.
+notify(Pid, Info, TS) ->
+    Pid ! {notify, {?HIDE(Info), TS}}.
 
 collect_stats(Pid) ->
     gen_server:call(Pid, collect_stats).
@@ -85,7 +85,8 @@ handle_info(heartbeat, State = #state{label = Label, connection = Pid,
 handle_info({notify, PotentiallyStaleInfo},
             State = #state{label = Label, connection = Pid,
                            version = Version}) ->
-    LatestInfoHidden = receive_latest_notify(PotentiallyStaleInfo),
+    {LatestInfoHidden, TS} = receive_latest_notify(PotentiallyStaleInfo),
+    Opts = #{creation_timestamp => TS},
     LatestInfo = ?UNHIDE(LatestInfoHidden),
     Method = case Version of
                  internal ->
@@ -93,7 +94,7 @@ handle_info({notify, PotentiallyStaleInfo},
                  _ ->
                      "AuthCacheSvc.UpdateDBExt"
              end,
-    case invoke_no_return_method(Label, Method, Pid, LatestInfo) of
+    case invoke_no_return_method(Label, Method, Pid, LatestInfo, Opts) of
         error ->
             terminate_jsonrpc_connection(Label, Pid),
             misc:wait_for_process(Pid, infinity),
@@ -155,7 +156,10 @@ receive_latest_notify(Info, N) ->
     end.
 
 invoke_no_return_method(Label, Method, Pid, Info) ->
-    case perform_call(Label, Method, Pid, {Info}, false) of
+    invoke_no_return_method(Label, Method, Pid, Info, #{}).
+
+invoke_no_return_method(Label, Method, Pid, Info, Opts) ->
+    case perform_call(Label, Method, Pid, {Info}, false, Opts) of
         {ok, Res} when Res =:= true orelse Res =:= null ->
             ok;
         {ok, Res} ->
@@ -166,7 +170,11 @@ invoke_no_return_method(Label, Method, Pid, Info) ->
     end.
 
 perform_call(Label, Method, Pid, Params, Silent) ->
-    Opts = #{silent => Silent, timeout => ?get_timeout(perform_call, 60000)},
+    perform_call(Label, Method, Pid, Params, Silent, #{}).
+
+perform_call(Label, Method, Pid, Params, Silent, ExtraOpts) ->
+    Opts = ExtraOpts#{silent => Silent,
+                      timeout => ?get_timeout(perform_call, 60000)},
     try json_rpc_connection:perform_call(Label, Method, Params, Opts) of
         {error, method_not_found} ->
             ?log_error("Method ~p is not found", [Method]),

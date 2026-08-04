@@ -156,9 +156,9 @@ handle_call({call, Name, EJsonArgThunk, Opts}, From, State) ->
     {noreply, start_call(Name, EJsonArgThunk, Opts, Continuation, State)}.
 
 start_call(Name, EJsonArgThunk, Opts, ResHandler,
-            #state{counter = Counter,
-                   id_to_caller_tid = IdToCaller,
-                   sock = Sock} = State) ->
+           #state{counter = Counter,
+                  id_to_caller_tid = IdToCaller,
+                  sock = Sock} = State) ->
     EJsonArg = EJsonArgThunk(),
     Silent = maps:get(silent, Opts, false),
 
@@ -179,10 +179,21 @@ start_call(Name, EJsonArgThunk, Opts, ResHandler,
     EJSON = {[{jsonrpc, <<"2.0">>},
               {id, Counter},
               {method, NameB}
-              | MaybeParams]},
+             | MaybeParams]},
+
+    Staleness =
+        case maps:find(creation_timestamp, Opts) of
+            error ->
+                "";
+            {ok, TS} when is_integer(TS) ->
+                Now  = erlang:monotonic_time(),
+                Ms = misc:convert_time_unit(Now - TS, millisecond),
+                io_lib:format(" (~bms)", [Ms])
+        end,
+
     Silent orelse
-        ale:debug(?JSON_RPC_LOGGER, "sending jsonrpc call:~p",
-                  [ns_config_log:sanitize(EJSON, true)]),
+        ale:debug(?JSON_RPC_LOGGER, "sending jsonrpc call~s:~p",
+                  [Staleness, ns_config_log:sanitize(EJSON, true)]),
     ok = gen_tcp:send(Sock, [ejson:encode(EJSON) | <<"\n">>]),
     ets:insert(IdToCaller, {Counter, ResHandler, Silent}),
     State#state{counter = Counter + 1}.
