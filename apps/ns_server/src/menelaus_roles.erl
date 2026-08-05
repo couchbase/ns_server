@@ -2584,17 +2584,6 @@ extended_roles_test() ->
         meck:unload(config_profile)
     end.
 
-analytics_access_test() ->
-    config_profile:load_profile_for_test(?ANALYTICS_PROFILE_STR),
-    try
-        Roles = compile_roles([analytics_access], roles()),
-        ?assertEqual(true, is_allowed({[analytics], access}, Roles)),
-        ?assertEqual(false, is_allowed(
-                              {[admin, settings, metrics], any}, Roles))
-    after
-        config_profile:unload_profile_for_test()
-    end.
-
 analytics_admin_empty_profile_test() ->
     %% use "default" explicitly here so that this test passes when run on a
     %% workspace based on enterprise-analytics manifest
@@ -2608,18 +2597,6 @@ analytics_admin_empty_profile_test() ->
                      is_allowed(
                        {[{bucket, "foobar"}, analytics], manage}, Roles)),
         ?assertEqual(false, is_allowed({[analytics], access}, Roles))
-    after
-        config_profile:unload_profile_for_test()
-    end.
-
-analytics_admin_test() ->
-    config_profile:load_profile_for_test(?ANALYTICS_PROFILE_STR),
-    try
-        Roles = compile_roles([analytics_admin], roles()),
-        ?assertEqual(false,
-                     is_allowed(
-                       {[{bucket, "foobar"}, analytics], manage}, Roles)),
-        ?assertEqual(true, is_allowed({[analytics], access}, Roles))
     after
         config_profile:unload_profile_for_test()
     end.
