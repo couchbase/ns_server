@@ -72,7 +72,7 @@ prepare_snapshot_restore(BucketInfos) ->
          {planUUID, PlanUUID},
          {buckets, [#{name => BucketName, uuid => UUID, props => RawConfig,
                       map => Map, opts => Opts, terms => Terms} ||
-                       {{{UUID, Map, Terms, Opts}, _, _},
+                       {{{UUID, Map, Terms, Opts}, _},
                         {BucketName, _, _Manifest, RawConfig}}
                            <- lists:zip(BucketResults, BucketInfos)]}],
 
@@ -82,12 +82,11 @@ prepare_snapshot_restore(BucketInfos) ->
 
 build_restore_plan(PlanUUID, KVNodes, BucketResults) ->
     [{planUUID, PlanUUID},
-     {namespaces, [NSInfo || {_, _, NSInfo} <- BucketResults]},
      {nodes, build_nodes_info(KVNodes, BucketResults)}].
 
 build_nodes_info(KVNodes, BucketResults) ->
     {[{Node, lists:flatmap(
-               fun ({_, NodeVolumesMap, _}) ->
+               fun ({_, NodeVolumesMap}) ->
                        case maps:find(Node, NodeVolumesMap) of
                            {ok, Volumes} ->
                                Volumes;
@@ -101,18 +100,23 @@ extract_vbucket_num(VolumeID) ->
         re:run(VolumeID, "kvstore-(\\d+)$", [{capture, [1], list}]),
     list_to_integer(NumStr).
 
+dst_volume_id(DstNamespace, VBucket) ->
+    <<DstNamespace/binary, "/kvstore-", (integer_to_binary(VBucket))/binary>>.
+
 prepare_single_bucket_restore(BucketConfig, KVNodes, Manifest) ->
     NewBucketUUID = couch_uuids:random(),
-    SourceNamespacePrefix = proplists:get_value(namespace, Manifest),
-    NSInfo =
-        {[{src, list_to_binary(SourceNamespacePrefix)},
-          {dst, <<"kv/", NewBucketUUID/binary>>}]},
+    DstNamespace = <<"kv/", NewBucketUUID/binary>>,
     Volumes = proplists:get_value(volumes, Manifest),
     NVBuckets = length(Volumes),
-    VolumesMap = maps:from_list(
-                   [{extract_vbucket_num(
-                       proplists:get_value(volumeID, Volume)), {Volume}} ||
-                       {Volume} <- Volumes]),
+    VolumesMap =
+        maps:from_list(
+          lists:map(
+            fun ({Volume}) ->
+                    VB = extract_vbucket_num(proplists:get_value(
+                                               volumeID, Volume)),
+                    {VB, {[{dstVolumeID,
+                            dst_volume_id(DstNamespace, VB)} | Volume]}}
+            end, Volumes)),
     NReplicas = ns_bucket:num_replicas(BucketConfig),
     Opts = ns_rebalancer:generate_vbucket_map_options(KVNodes, BucketConfig),
     VBMap = mb_map:generate_map(mb_map:no_nodes_map(NVBuckets, NReplicas),
@@ -124,7 +128,7 @@ prepare_single_bucket_restore(BucketConfig, KVNodes, Manifest) ->
               {N, VBs} <- dict:to_list(NodeVBDict)]),
     Terms = [proplists:get_value(logManifestTerm, Volume) ||
                 {Volume} <- Volumes],
-    {{NewBucketUUID, VBMap, Terms, Opts}, NodeVolumesMap, NSInfo}.
+    {{NewBucketUUID, VBMap, Terms, Opts}, NodeVolumesMap}.
 
 -spec validate_restore(list(), list()) ->
           {ok, {[map()], list()}} |
