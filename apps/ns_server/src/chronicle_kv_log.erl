@@ -21,7 +21,9 @@
 -include("cb_cluster_secrets.hrl").
 -include("jwt.hrl").
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [],
+                          [{hibernate_after,
+                            ?get_param(hibernate_after, 10000)}]).
 
 init([]) ->
     Self = self(),
@@ -38,13 +40,13 @@ init([]) ->
 
 handle_info({{key, K}, R, {updated, VFun}}, State) ->
     NewState = log(K, VFun, R, State),
-    {noreply, NewState, hibernate};
+    {noreply, NewState};
 handle_info({{key, K}, R, deleted}, State) ->
     ?log_debug("delete (key: ~p, rev: ~p)", [K, R]),
-    {noreply, maps:remove(K, State), hibernate};
+    {noreply, maps:remove(K, State)};
 handle_info(Info, State) ->
     ?log_warning("Unexpected message(~p, ~p)", [Info, State]),
-    {noreply, State, hibernate}.
+    {noreply, State}.
 
 calculate_diff(K, V, Diff, State) ->
     {case maps:find(K, State) of
