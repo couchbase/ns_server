@@ -1178,6 +1178,22 @@ is_allowed({Object, Operation}, Roles) ->
     ObjectExpanded = lists:flatmap(expand_vertex(_, all), Object),
     lists:any(permission_granted_by_role(ObjectExpanded, Operation, _), Roles).
 
+%% Match a permission anywhere in the subtree rooted at Object, not just at or
+%% above it. Defers to is_allowed/2 per object, so exclusions still apply
+-spec is_allowed_prefix(rbac_permission(), [rbac_compiled_role()]) -> boolean().
+is_allowed_prefix({Object, Operation}, Roles) ->
+    lists:any(
+      fun (Role) ->
+              lists:any(fun (SubObject) ->
+                                is_allowed({SubObject, Operation}, [Role])
+                        end, subtree_objects(Object, Role))
+      end, Roles).
+
+%% Object plus the objects the role names below it. An unnamed sub-vertex is
+%% governed by the permissions on Object, so needs no entry
+subtree_objects(Object, Role) ->
+    [Object | [O || {O, _} <- Role, O =/= Object, lists:prefix(Object, O)]].
+
 -spec substitute_params([string()],
                         [atom()], [rbac_permission_pattern_raw()]) ->
           [rbac_permission_pattern()].
@@ -1638,25 +1654,34 @@ expand_params(AllPossibleValues) ->
                    end, get_possible_param_values(ParamDefs, AllPossibleValues))
          end)).
 
-filter_by_permission(undefined, _Snapshot, _Definitions) ->
+filter_by_permission(_IsAllowed, undefined, _Snapshot, _Definitions) ->
     pipes:filter(fun (_) -> true end);
-filter_by_permission(Permission, Snapshot, Definitions) ->
+filter_by_permission(IsAllowed, Permission, Snapshot, Definitions) ->
     pipes:filter(
       fun ({Role, _}) ->
-              is_allowed(Permission,
-                         compile_roles([Role], Definitions, Snapshot))
+              IsAllowed(Permission,
+                        compile_roles([Role], Definitions, Snapshot))
       end).
 
 -spec produce_roles_by_permission(rbac_permission(), map()) ->
-                                         pipes:producer(rbac_role()).
+          pipes:producer(rbac_role()).
 produce_roles_by_permission(Permission, Snapshot) ->
+    produce_roles_by_permission(fun is_allowed/2, Permission, Snapshot).
+
+%% As produce_roles_by_permission/2, but matching the whole subtree
+-spec produce_roles_by_permission_prefix(rbac_permission(), map()) ->
+          pipes:producer(rbac_role()).
+produce_roles_by_permission_prefix(Permission, Snapshot) ->
+    produce_roles_by_permission(fun is_allowed_prefix/2, Permission, Snapshot).
+
+produce_roles_by_permission(IsAllowed, Permission, Snapshot) ->
     AllValues = calculate_possible_param_values(Snapshot, Permission),
     Definitions = get_definitions(public),
     pipes:compose(
       [pipes:stream_list(Definitions),
        visible_roles_filter(),
        expand_params(AllValues),
-       filter_by_permission(Permission, Snapshot, Definitions)]).
+       filter_by_permission(IsAllowed, Permission, Snapshot, Definitions)]).
 
 strip_id(_, any) ->
     any;
@@ -1783,19 +1808,23 @@ drop_unrestorable_credential_grants(Roles, Snapshot) ->
 
 -spec get_security_roles(map()) -> [rbac_role()].
 get_security_roles(Snapshot) ->
-    %% A role is security-classified if it grants any operation on
-    %% [admin, security]. Credential management is gated by its own
+    %% A role is security-classified if it grants any operation in the
+    %% [admin, security] subtree. Credential management is gated by its own
     %% [admin, credentials] vertex (not [admin, security]); the
     %% parameterized credentials vertex carries `consume' only -- the
     %% delegation lane granted via `credential_consumer'. Neither of those
     %% makes a role security-classified.
-    pipes:run(produce_roles_by_permission({[admin, security], any}, Snapshot),
-              pipes:collect()).
+    pipes:run(
+      produce_roles_by_permission_prefix({[admin, security], any}, Snapshot),
+      pipes:collect()).
 
 -spec get_user_admin_roles(map()) -> [rbac_role()].
 get_user_admin_roles(Snapshot) ->
-    pipes:run(produce_roles_by_permission({[admin, users], any}, Snapshot),
-              pipes:collect()).
+    %% A role is user-admin-classified if it grants any operation in the
+    %% [admin, users] subtree
+    pipes:run(
+      produce_roles_by_permission_prefix({[admin, users], any}, Snapshot),
+      pipes:collect()).
 
 external_auth_polling_interval() ->
     ns_config:read_key_fast(external_auth_polling_interval,
@@ -3156,14 +3185,83 @@ produce_roles_by_permission_test__() ->
                enum_roles([<<"credential_consumer">>], [[any]]),
            {[{credentials, any}], consume})}].
 
-get_security_roles_test__() ->
+role_names(Roles) ->
     Name = fun ({{N, _}, _}) when is_binary(N) -> N;
                ({N, _})      when is_binary(N) -> N
            end,
-    Names = [Name(R) || R <- get_security_roles(toy_buckets())],
+    [Name(R) || R <- Roles].
+
+get_security_roles_test__() ->
     ?assertListsEqual([<<"admin">>,
                        <<"security_admin">>, <<"ro_security_admin">>],
-                      Names).
+                      role_names(get_security_roles(toy_buckets()))).
+
+get_user_admin_roles_test__() ->
+    ?assertListsEqual([<<"admin">>, <<"security_admin">>,
+                       <<"ro_security_admin">>, <<"user_admin_local">>,
+                       <<"user_admin_external">>],
+                      role_names(get_user_admin_roles(toy_buckets()))).
+
+%% Only a custom role can have a permission on a sub-vertex without one on the
+%% parent, so only a custom role exercises the subtree walk
+custom_subtree_roles_test__() ->
+    ok = set_role({<<"custom_security">>, [], [{mutable, true}],
+                   [{[admin, security, admin], [read]}]}),
+    ok = set_role({<<"custom_user_admin">>, [], [{mutable, true}],
+                   [{[admin, users, local], [read]}]}),
+    try
+        SecurityNames = role_names(get_security_roles(toy_buckets())),
+        UserAdminNames = role_names(get_user_admin_roles(toy_buckets())),
+
+        ?assert(lists:member(<<"custom_security">>, SecurityNames)),
+        ?assert(lists:member(<<"custom_user_admin">>, UserAdminNames)),
+
+        %% Each is confined to its own subtree
+        ?assertNot(lists:member(<<"custom_user_admin">>, SecurityNames)),
+        ?assertNot(lists:member(<<"custom_security">>, UserAdminNames))
+    after
+        ok = delete_role(<<"custom_security">>),
+        ok = delete_role(<<"custom_user_admin">>)
+    end.
+
+is_allowed_prefix_test__() ->
+    %% A sub-vertex permission is invisible to the exact query, but must be
+    %% seen by the prefix query
+    SecuritySub = [[{[admin, security, admin], [read]}]],
+    ?assertEqual(false, is_allowed({[admin, security], any}, SecuritySub)),
+    ?assertEqual(true, is_allowed_prefix({[admin, security], any},
+                                         SecuritySub)),
+
+    UsersSub = [[{[admin, users, local], [read]}]],
+    ?assertEqual(false, is_allowed({[admin, users], any}, UsersSub)),
+    ?assertEqual(true, is_allowed_prefix({[admin, users], any}, UsersSub)),
+
+    %% A permission at or above the queried path still matches
+    ?assertEqual(true, is_allowed_prefix({[admin, security], any},
+                                         [[{[admin, security], all}]])),
+    ?assertEqual(true, is_allowed_prefix({[admin, security], any},
+                                         [[{[admin], all}]])),
+
+    %% A sibling subtree does not
+    ?assertEqual(false, is_allowed_prefix({[admin, security], any},
+                                          [[{[admin, users, local], all}]])),
+
+    %% An explicit `none' operation gives no access
+    ?assertEqual(false,
+                 is_allowed_prefix({[admin, security], any},
+                                   [[{[admin, security, admin], none}]])),
+
+    %% The exclusion matches first, so the sub-vertex permission is never
+    %% reached
+    ?assertEqual(false,
+                 is_allowed_prefix({[admin, security], any},
+                                   [[{[admin, security], none},
+                                     {[admin, security, admin], [read]}]])),
+
+    %% The ro_admin shape, where an exclusion precedes a broader permission
+    ?assertEqual(false, is_allowed_prefix({[admin, security], any},
+                                          [[{[admin, security], none},
+                                            {[], [read, list]}]])).
 
 params_version_get_snapshot(TestProps) ->
     SubKeys = [collections, props, uuid],
@@ -3542,6 +3640,9 @@ default_profile_test_() ->
       fun replication_admin_test__/0,
       {generator, fun produce_roles_by_permission_test__/0},
       fun get_security_roles_test__/0,
+      fun get_user_admin_roles_test__/0,
+      fun custom_subtree_roles_test__/0,
+      fun is_allowed_prefix_test__/0,
       fun drop_unrestorable_credential_grants_test__/0,
       fun params_version_test__/0,
       fun validate_role_test__/0,

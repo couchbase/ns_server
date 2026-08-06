@@ -1035,6 +1035,41 @@ class UsersTestSet(testlib.BaseTestSet):
             delete_user(self.cluster, 'local', 'willgetcreated',
                         expected_code=None)
 
+    def custom_role_security_subtree_test(self):
+        # A custom role with a permission only on a sub-vertex of
+        # cluster.admin.security is still a security role, so a user admin
+        # cannot assign it
+        user = 'subtreeUserAdmin'
+        target = 'subtreeTarget'
+        try:
+            testlib.put_succ(
+                self.cluster,
+                '/settings/rbac/customRoles/custom_security_sub',
+                json={'name': 'Custom Security Sub',
+                      'description': 'Grants only on a security sub-vertex',
+                      'permissions': {
+                          'cluster.admin.security.admin': ['read']
+                      }})
+
+            password = testlib.random_str(10)
+            put_user(self.cluster, 'local', user, password,
+                     roles='user_admin_local',
+                     full_name=testlib.random_str(10),
+                     validate_user_props=True)
+
+            data = build_payload(roles='custom_security_sub',
+                                 password=testlib.random_str(10),
+                                 full_name=testlib.random_str(10))
+            testlib.put_fail(self.cluster,
+                             f'/settings/rbac/users/local/{target}',
+                             403, data=data, auth=(user, password))
+        finally:
+            delete_user(self.cluster, 'local', user, expected_code=None)
+            delete_user(self.cluster, 'local', target, expected_code=None)
+            testlib.ensure_deleted(
+                self.cluster,
+                '/settings/rbac/customRoles/custom_security_sub')
+
     def custom_role_parameterisation_test(self):
         user = 'custom_bucket_admin'
         try:
