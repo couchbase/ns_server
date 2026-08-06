@@ -568,13 +568,7 @@ build_continuous_backup_info(BucketConfig) ->
             [{continuousBackupEnabled,
               ns_bucket:get_continuous_backup_enabled(BucketConfig)},
              {continuousBackupInterval,
-              ns_bucket:get_continuous_backup_interval(BucketConfig)},
-             {continuousBackupRetentionPeriod,
-              ns_bucket:get_continuous_backup_retention_period_hrs(
-                BucketConfig)},
-             {continuousBackupLocation,
-              list_to_binary(ns_bucket:get_continuous_backup_location(
-                               BucketConfig))}];
+              ns_bucket:get_continuous_backup_interval(BucketConfig)}];
         false ->
             []
     end.
@@ -2330,11 +2324,6 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_continuous_backup_interval(Params, BucketConfig, IsNew,
                                                    Is79,
                                                    IsStorageModeMigration),
-         parse_validate_continuous_backup_location(Params, BucketConfig, IsNew,
-                                                   Is79,
-                                                   IsStorageModeMigration),
-         parse_validate_continuous_backup_retention_period(
-           Params, BucketConfig, IsNew, IsTotoro, IsStorageModeMigration),
          parse_validate_invalid_hlc_strategy(Params, IsNew, Is79),
          parse_validate_hlc_max_future_threshold(Params, IsNew, Is79),
          parse_validate_storage_quota_percentage(
@@ -2476,94 +2465,6 @@ parse_validate_continuous_backup_interval_inner(Params, IsNew,
                                                 true = _IsMagma) ->
     parse_validate_numeric_param(Params, continuousBackupInterval,
                                  continuous_backup_interval, IsNew).
-
-parse_validate_continuous_backup_location(Params, BucketConfig, IsNew,
-                                          Is79, IsStorageModeMigration) ->
-    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
-    parse_validate_continuous_backup_location_inner(Params, IsNew, Is79,
-                                                    IsMagma).
-
-parse_validate_continuous_backup_location_inner(Params, _IsNew, _Is79,
-                                                false = _IsMagma) ->
-    parse_validate_param_not_supported(
-      "continuousBackupLocation", Params, fun only_supported_on_magma/1);
-parse_validate_continuous_backup_location_inner(Params, _IsNew,
-                                                false = _Is79,
-                                                _IsMagma) ->
-    parse_validate_param_not_supported(
-      "continuousBackupLocation", Params,
-      fun not_supported_until_79_error/1);
-parse_validate_continuous_backup_location_inner(Params, IsNew,
-                                                true = _Is79,
-                                                true = _IsMagma) ->
-    parse_validate_path_or_uri(Params, continuousBackupLocation,
-                               continuous_backup_location, IsNew).
-
-parse_validate_continuous_backup_retention_period(Params, BucketConfig, IsNew,
-                                                  IsTotoro,
-                                                  IsStorageModeMigration) ->
-    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
-    parse_validate_continuous_backup_retention_period_inner(Params, IsNew,
-                                                            IsTotoro,
-                                                            IsMagma).
-
-parse_validate_continuous_backup_retention_period_inner(Params, _IsNew,
-                                                        _IsTotoro,
-                                                        false = _IsMagma) ->
-    parse_validate_param_not_supported("continuousBackupRetentionPeriod",
-                                       Params, fun only_supported_on_magma/1);
-parse_validate_continuous_backup_retention_period_inner(Params, _IsNew,
-                                                        false = _IsTotoro,
-                                                        _IsMagma) ->
-    parse_validate_param_not_supported("continuousBackupRetentionPeriod",
-                                       Params,
-                                       fun not_supported_until_totoro_error/1);
-parse_validate_continuous_backup_retention_period_inner(Params, IsNew,
-                                                        true = _IsTotoro,
-                                                        true = _IsMagma) ->
-    parse_validate_numeric_param(Params, continuousBackupRetentionPeriod,
-                                 continuous_backup_retention_period, IsNew).
-
-parse_validate_path_or_uri(Params, Param, ConfigKey, IsNew) ->
-    Value = proplists:get_value(atom_to_list(Param), Params),
-    case {Value, IsNew} of
-        {undefined, true} ->
-            %% The value wasn't supplied and we're creating a bucket:
-            %% use the default value.
-            {ok, ConfigKey, ns_bucket:attribute_default(ConfigKey)};
-        {undefined, false} ->
-            %% The value wasn't supplied and we're modifying a bucket:
-            %% don't complain since the value was either specified or a
-            %% default used when the bucket was created.
-            ignore;
-        {_, _} ->
-            validate_path_or_uri(Value, Param, ConfigKey)
-    end.
-
-validate_path_or_uri(Value, Param, ConfigKey) ->
-    case is_valid_cloud_uri(Value) orelse is_writable_dir(Value) of
-        true ->
-            {ok, ConfigKey, Value};
-        false ->
-            {error, Param, <<"Must be a valid path or uri writable "
-                             "by 'couchbase' user">>}
-    end.
-
-is_valid_cloud_uri(URI) ->
-    misc:is_valid_uri(URI, ["s3", "az", "gs"]).
-
-is_writable_dir(Dir) ->
-    case misc:is_absolute_path(Dir) of
-        true ->
-            case misc:ensure_writable_dirs([Dir]) of
-                ok ->
-                    true;
-                {error, _} ->
-                    false
-            end;
-        false ->
-            false
-    end.
 
 validate_unknown_bucket_params(Params) ->
     [{error, bucketType, <<"invalid bucket type">>}
@@ -4797,8 +4698,6 @@ basic_bucket_params_screening_t() ->
     % Only supported on magma
     ?assertNot(proplists:is_defined(continuousBackupEnabled, OK1)),
     ?assertNot(proplists:is_defined(continuousBackupInterval, OK1)),
-    ?assertNot(proplists:is_defined(continuousBackupLocation, OK1)),
-    ?assertNot(proplists:is_defined(continuousBackupRetentionPeriod, OK1)),
 
     %% it is not possible to create bucket with duplicate name
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
@@ -5326,9 +5225,7 @@ basic_bucket_params_screening_t() ->
                       {"memoryHighWatermark", "70"},
                       {"continuousBackupEnabled", "true"},
                       {"historyRetentionSeconds", "10"},
-                      {"continuousBackupInterval", "123"},
-                      {"continuousBackupRetentionPeriod", "1400"},
-                      {"continuousBackupLocation", "s3://hello/world"}],
+                      {"continuousBackupInterval", "123"}],
                     AllBuckets),
     ?assertEqual([], E37),
     ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
@@ -5337,8 +5234,6 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(70, proplists:get_value(memory_high_watermark, OK37)),
     ?assertEqual(true, proplists:get_value(continuous_backup_enabled, OK37)),
     ?assertEqual(123, proplists:get_value(continuous_backup_interval, OK37)),
-    ?assertEqual("s3://hello/world",
-                 proplists:get_value(continuous_backup_location, OK37)),
 
     %% Back to default action
     meck:expect(ns_config, read_key_fast,

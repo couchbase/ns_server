@@ -175,8 +175,6 @@
          get_min_replicas/0,
          get_continuous_backup_enabled/1,
          get_continuous_backup_interval/1,
-         get_continuous_backup_retention_period_hrs/1,
-         get_continuous_backup_location/1,
          get_invalid_hlc_strategy/1,
          get_hlc_max_future_threshold/1,
          get_num_dcp_connections/1,
@@ -727,9 +725,6 @@ attribute_default(Name) ->
         access_scanner_enabled -> true;     % boolean
         continuous_backup_enabled -> false; % boolean
         continuous_backup_interval -> 2;    % minutes
-        continuous_backup_location -> "";   % path or URI
-        continuous_backup_retention_period -> % hours
-            1;
         invalid_hlc_strategy -> error;      % atom
         hlc_max_future_threshold -> 3900;   % seconds (65 minutes)
         dcp_connections_between_nodes -> 1; % pos_integer
@@ -750,8 +745,6 @@ attribute_min(Name) ->
         memory_low_watermark -> 50;         % percentage
         memory_high_watermark -> 51;        % percentage
         continuous_backup_interval -> 2;    % minutes
-        continuous_backup_retention_period -> % hours
-            1;
         hlc_max_future_threshold -> 10;     % seconds
         dcp_connections_between_nodes -> 1; % pos_integer
         dcp_backfill_idle_limit_seconds ->  % seconds
@@ -773,7 +766,6 @@ attribute_max(Name) ->
         memory_high_watermark -> 90;                  % percentage
         continuous_backup_interval ->
             ?MAX_32BIT_SIGNED_INT;                    % minutes
-        continuous_backup_retention_period -> 1440;   % hours
         hlc_max_future_threshold ->
             ?MAX_32BIT_SIGNED_INT;                    % seconds
         dcp_connections_between_nodes -> 64;          % pos_integer
@@ -826,28 +818,6 @@ get_continuous_backup_interval(BucketConfig) ->
             undefined;
         true ->
             membase_bucket_config_value_getter(continuous_backup_interval,
-                                               BucketConfig)
-    end.
-
--spec get_continuous_backup_retention_period_hrs(config()) -> undefined |
-                                                              non_neg_integer().
-get_continuous_backup_retention_period_hrs(BucketConfig) ->
-    case is_magma(BucketConfig) of
-        false ->
-            undefined;
-        true ->
-            membase_bucket_config_value_getter(
-              continuous_backup_retention_period, BucketConfig)
-    end.
-
--spec get_continuous_backup_location(config()) -> undefined |
-                                                  string().
-get_continuous_backup_location(BucketConfig) ->
-    case is_magma(BucketConfig) of
-        false ->
-            undefined;
-        true ->
-            membase_bucket_config_value_getter(continuous_backup_location,
                                                BucketConfig)
     end.
 
@@ -3184,9 +3154,7 @@ props_to_add_for_79(BucketConfig) ->
                     [{continuous_backup_enabled,
                       attribute_default(continuous_backup_enabled)},
                      {continuous_backup_interval,
-                      attribute_default(continuous_backup_interval)},
-                     {continuous_backup_location,
-                      attribute_default(continuous_backup_location)}];
+                      attribute_default(continuous_backup_interval)}];
                 false ->
                     []
             end
@@ -3199,14 +3167,7 @@ props_to_add_for_totoro(BucketConfig) ->
         membase ->
             [{throttle_reserved, attribute_default(throttle_reserved)},
              {throttle_hard_limit, attribute_default(throttle_hard_limit)},
-             {storage_mode, magma}] ++
-            case ns_bucket:is_magma(BucketConfig) of
-                true ->
-                    [{continuous_backup_retention_period,
-                      attribute_default(continuous_backup_retention_period)}];
-                false ->
-                    []
-            end
+             {storage_mode, magma}]
     end.
 
 chronicle_update_bucket_props(BucketName, ChronicleTxn, NewPropsFn) ->
@@ -3377,8 +3338,6 @@ extract_bucket_props(Props) ->
                          encryption_dek_lifetime,
                          continuous_backup_enabled,
                          continuous_backup_interval,
-                         continuous_backup_location,
-                         continuous_backup_retention_period,
                          dcp_connections_between_nodes,
                          dcp_backfill_idle_limit_seconds,
                          dcp_backfill_idle_disk_threshold,
@@ -4368,9 +4327,6 @@ upgrade_to_totoro_test() ->
                {ram_quota, 100 * ?MIB}],
         AddProps1 = props_to_add_for_totoro(BC1),
         NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
-        ?assertEqual(attribute_default(continuous_backup_retention_period),
-                     proplists:get_value(continuous_backup_retention_period,
-                                         NewBC1)),
         ?assertEqual(attribute_default(throttle_reserved),
                      proplists:get_value(throttle_reserved, NewBC1)),
         ?assertEqual(attribute_default(throttle_hard_limit),
@@ -4384,13 +4340,10 @@ upgrade_to_totoro_test() ->
                {ram_quota, 100 * ?MIB},
                {storage_mode, magma},
                %% Preset values
-               {continuous_backup_retention_period, 147},
                {throttle_reserved, 500},
                {throttle_hard_limit, 1000}],
         AddProps2 = props_to_add_for_totoro(BC2),
         NewBC2 = check_for_preset_bucket_settings(AddProps2, BC2),
-        ?assertEqual(147, proplists:get_value(
-                            continuous_backup_retention_period, NewBC2)),
         ?assertEqual(500, proplists:get_value(throttle_reserved, NewBC2)),
         ?assertEqual(1000, proplists:get_value(throttle_hard_limit, NewBC2)),
 
