@@ -46,7 +46,7 @@ handle_info({{key, K}, R, deleted}, State) ->
     ?log_debug("delete (key: ~p, rev: ~p)", [K, R]),
     {noreply, maps:remove(K, State)};
 handle_info(Info, State) ->
-    ?log_warning("Unexpected message(~p, ~p)", [Info, State]),
+    ?log_warning("Unexpected message(~p)", [Info]),
     {noreply, State}.
 
 calculate_diff(K, V, Diff, State) ->
