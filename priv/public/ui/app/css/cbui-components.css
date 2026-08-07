@@ -548,6 +548,36 @@ color: #333;
   width: 100%;
   margin-bottom: 1rem;
 }
+/* Leave the GSI toolbar and footer visible while only the index rows scroll. */
+.gsi-table-scroll-body {
+  max-height: calc(100vh - 280px - 90px);
+  overflow-y: auto;
+}
+@media (max-height: 560px) {
+  .gsi-table-scroll-body + .row {
+    /* Ensure per-page is visible on very small screen heights. Footer is not part of normal page flow, hence the issue. */
+    padding-bottom: 78px;
+  }
+}
+@media (min-width: 1284px) {
+  .gsi-table-scroll-body {
+    /* The toolbar occupies one line at this breakpoint, leaving more row space. */
+    max-height: calc(100vh - 280px - 47px);
+    overflow-y: auto;
+  }
+  [data-view-mode="viewByNode"] .gsi-table-scroll-body {
+    max-height: calc(100vh - 280px - 90px);
+  }
+}
+.gsi-table-scroll-body {
+  /* Min height is 5 rows (~190px) or less than that (1/2/3/4) depending on the number of rows */
+  /* Empty table doesn't use this height so we don't need to consider 0 rows */
+  min-height: calc(min(190px, var(--rows-count) * 38px));
+}
+/* Node headings add height outside each table's scroll container. */
+div[data-view-mode="viewByNode"] {
+  padding-bottom: 67px;
+}
 .cbui-tablerow {
   display: flex;
   flex-wrap: nowrap;

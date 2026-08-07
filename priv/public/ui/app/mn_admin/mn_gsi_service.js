@@ -59,9 +59,18 @@ function mnGsiServiceFactory($http, $q, qwQueryService, mnPoolDefault) {
 
   function isKeystoreIndex(index, params) {
     params = params || {};
-    return params.bucket &&
-      ((params.bucket.name == index.bucket && !index.scope) ||
-       (params.bucket.name == index.bucket && params.scope.name === index.scope));
+    // Missing/isAll parents mean that this filter dimension is unrestricted.
+    if (!params.bucket || params.bucket.isAll) {
+      return true;
+    }
+    if (params.bucket.name !== index.bucket) {
+      return false;
+    }
+    // A selected bucket with no concrete scope filters by bucket only.
+    if (!params.scope || params.scope.isAll) {
+      return true;
+    }
+    return !index.scope || params.scope.name === index.scope;
   }
 
   function getIndexStatus(mnHttpParams) {

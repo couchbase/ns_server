@@ -49,6 +49,8 @@ licenses/APL2.txt.
       </span>
     </span>
   </div>
+  <!-- Scroll rows independently so the column header remains visible. -->
+  <div class="gsi-table-scroll-body" style="--rows-count: {{mnGsiTableCtl.paginatorPage.length}};">
   <section
      ng-repeat="row in mnGsiTableCtl.paginatorPage track by mnGsiTableCtl.generateIndexId(row)"
      ng-class="[(row.awaitingRemoval ? 'disabled-tag' : ''),
@@ -137,20 +139,23 @@ licenses/APL2.txt.
        ng-if="mnGsiTableCtl.isDetailsOpened(mnGsiTableCtl.generateIndexId(row))">
     </mn-gsi-item-details>
   </section>
+  </div>
   <div ng-if="!mnGsiTableCtl.paginatorPage.length" class="zero-content margin-top-1-5">
     No indexes found for this bucket.scope combination. Try another bucket.scope.
   </div>
   <div class="row">
+    <!-- A page size of zero means show all rows. -->
     <mn-select
        class="mn-select-small fix-width-3-quarters margin-top-half"
        ng-model="mnGsiTableCtl.paginatorValues.size"
-       values="[15, 20, 40, 80]"
+       values="[15, 20, 40, 80, 250, 0]"
+       labels="['15', '20', '40', '80', '250', 'All']"
        on-select="mnGsiTableCtl.sizeChanged(selectedOption)"
        open-on-top="true">
     </mn-select>
     <div
        uib-pagination
-       ng-if="list.length"
+       ng-if="list.length && mnGsiTableCtl.paginatorValues.size !== 0"
        ng-model="mnGsiTableCtl.paginatorValues.page"
        max-size="5"
        items-per-page="mnGsiTableCtl.paginatorValues.size"

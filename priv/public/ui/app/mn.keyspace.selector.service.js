@@ -41,6 +41,13 @@ class MnKeyspaceSelectorService {
   createCollectionSelector(options) {
     var filterKey = options.isRolesMode ? "value" : "name";
 
+    // isAll distinguishes display-only options from real keyspaces with similar names.
+    var allLabels = {bucket: "All Buckets", scope: "All Scopes", collection: "All Collections"};
+    var allItems = options.includeAll ? options.steps.reduce((acc, step) => {
+      acc[step] = {[filterKey]: allLabels[step], isAll: true};
+      return acc;
+    }, {}) : {};
+
     var doFocus = new Subject();
 
     var filters = options.steps.reduce((acc, step) => {
@@ -126,7 +133,8 @@ class MnKeyspaceSelectorService {
       case "bucket":
         return options.buckets || this.mnCollectionsService.stream.collectionBuckets;
       case "scope":
-        return g.bucket ?
+        // An all-buckets selection has no single manifest from which to load scopes.
+        return (g.bucket && !g.bucket.isAll) ?
           this.mnCollectionsService.getManifest(g.bucket.name)
           .pipe(pluck("scopes"),
                 catchError(() => of([]))) : of([]);
@@ -141,7 +149,12 @@ class MnKeyspaceSelectorService {
       let rv = getStepList.bind(this)([step, g]);
 
       if (step !== "ok") {
-        return rv.pipe(filters[step].pipe);
+        rv = rv.pipe(filters[step].pipe);
+        if (options.includeAll && allItems[step]) {
+          // Keep the synthetic option available without changing the source lists.
+          rv = rv.pipe(map(list => [allItems[step], ...list]));
+        }
+        return rv;
       } else {
         return rv;
       }
@@ -178,6 +191,15 @@ class MnKeyspaceSelectorService {
         setFieldsValues(currentIndex + 1, {value: "*"}, value);
         value[step] = item;
         result.next(value);
+      } else if (item.isAll) {
+        // Mark remaining steps complete so selecting a parent "All" closes the selector.
+        disableFields(currentIndex + 1);
+        options.steps.slice(currentIndex + 1).forEach(s => {
+          value[s] = allItems[s];
+          filters[s].group.get("value").setValue(allItems[s][filterKey]);
+        });
+        value[step] = item;
+        result.next(value);
       } else {
         disableFields(currentIndex + 1);
         setFieldsValues(currentIndex + 1, null, value);
@@ -200,11 +222,25 @@ class MnKeyspaceSelectorService {
     function setKeyspace(setVals) {
       let next = {};
 
+      // URL state uses "*" while selector state uses the synthetic isAll items.
+      if (options.includeAll && setVals.bucket === "*") {
+        next["bucket"] = allItems["bucket"];
+        disableFields(1);
+        options.steps.slice(1).forEach(s => {
+          next[s] = allItems[s];
+        });
+        result.next(next);
+        setStepsValuesToFields();
+        return;
+      }
+
       if (setVals.bucket) {
         next["bucket"] = {name: setVals["bucket"]};
         filters["scope"].group.get("value").enable();
       }
-      if (setVals.scope) {
+      if (options.includeAll && setVals.scope === "*") {
+        next["scope"] = allItems["scope"];
+      } else if (setVals.scope) {
         next["scope"] = {name: setVals["scope"]};
       }
 

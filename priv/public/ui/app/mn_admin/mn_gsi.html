@@ -20,7 +20,8 @@ licenses/APL2.txt.
    mn-spinner-value="!gsiCtl.state">
 </mn-main-spinner>
 
-<div style="padding-bottom: 120px;">
+<!-- Expose the mode for layout rules that account for per-node headings. -->
+<div data-view-mode="{{gsiCtl.viewBy}}">
 
   <div class="row items-bottom margin-bottom-half flex-wrap">
     <div class="column flex-grow-1-5"
@@ -44,6 +45,7 @@ licenses/APL2.txt.
        class="row flex-right flex-grow-1 margin-top-quarter"
        mn-placeholder="filter indexes..."
        mn-hide-button="true"
+       ng-model-options="{debounce: 150}"
        mn-search="gsiCtl.filterField">
     </div>
   </div>

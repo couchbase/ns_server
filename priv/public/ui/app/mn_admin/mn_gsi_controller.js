@@ -78,16 +78,21 @@ function configure($stateProvider, $transitionsProvider) {
       let params = Object.assign({}, original);
       var indexesRead = permissions.bucketCollectionsNames['.n1ql.index!read'];
 
+      // "*" is a valid bookmark value, not a bucket name requiring validation.
       if (!params.commonBucket && indexesRead && indexesRead[0]) {
         params.commonBucket = indexesRead[0];
-      } else if (params.commonBucket &&
+      } else if (params.commonBucket && params.commonBucket !== "*" &&
                  indexesRead && indexesRead.indexOf(params.commonBucket) < 0) {
         params.commonBucket = indexesRead[0];
-      } else if (params.commonBucket && (!indexesRead || !indexesRead[0])) {
+      } else if (params.commonBucket && params.commonBucket !== "*" &&
+                 (!indexesRead || !indexesRead[0])) {
         params.commonBucket = null;
       }
 
-      if (params.commonBucket && !params.commonScope) {
+      // All buckets necessarily implies all scopes and is persisted explicitly.
+      if (params.commonBucket === "*") {
+        params.commonScope = "*";
+      } else if (params.commonBucket && !params.commonScope) {
         params.commonScope = "_default";
       }
       if (!params.commonBucket) {
@@ -186,7 +191,8 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnKeyspaceSelec
     vm.mnCollectionSelectorService =
       mnKeyspaceSelectorServiceDowngrade.createCollectionSelector({
         component: {mnOnDestroy},
-        steps: ["bucket", "scope"]
+        steps: ["bucket", "scope"],
+        includeAll: true
       });
 
     vm.mnCollectionSelectorService.stream.showHideDropdown
@@ -213,9 +219,15 @@ function mnGsiController($scope, mnGsiService, mnPoller, $state, mnKeyspaceSelec
     function stateGo() {
       vm.poller.reload();
       let params = vm.mnCollectionSelectorService.stream.result.getValue();
+      // Convert the selector's synthetic All items to stable, bookmarkable URL values.
+      let commonBucket = params.bucket ?
+          (params.bucket.isAll ? "*" : params.bucket.name) : null;
+      let commonScope = commonBucket === "*" ? "*" :
+          (params.scope ? (params.scope.isAll ? "*" : params.scope.name) : null);
+
       $state.go('.', {
-        commonBucket: params.bucket ? params.bucket.name: null,
-        commonScope: params.scope ? params.scope.name : null,
+        commonBucket,
+        commonScope,
         commonCollection: null
       }, {notify: false});
     }

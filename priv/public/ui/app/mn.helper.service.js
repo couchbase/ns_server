@@ -232,8 +232,9 @@ class MnHelperService {
     var cloneStateParams = (params) =>
         Object.assign({}, params);
 
+    // A page size of zero means show the complete result set.
     var getPage = ([array, {size, page}]) =>
-        array.slice((page-1) * size, (page-1) * size + size);
+        size === 0 ? array : array.slice((page-1) * size, (page-1) * size + size);
 
     var packPerItemPaginationUrlParams = ([page, currentParams]) => {
       var rv = {};
@@ -244,8 +245,9 @@ class MnHelperService {
       return rv;
     };
 
+    // Preserve zero instead of replacing the "All" selection with the default size.
     var unpackPerItemPaginationParams = (page) => ({
-      size: page[perItem + "s"] || defaultPageSize || 10,
+      size: page[perItem + "s"] != null ? page[perItem + "s"] : (defaultPageSize || 10),
       page: page[perItem + "p"] || 1
     });
 
