@@ -421,13 +421,25 @@ with_issuer_context(IssuerConfig, Opts, OperationFun, LogPrefix) ->
     OidcSettings = maps:get(oidc_settings, IssuerConfig),
     HttpTimeoutMs = maps:get(http_timeout_ms, OidcSettings),
     TlsUrl = oidc_tls_url(OidcSettings),
-    SslOpts = extract_oidc_connect_options(TlsUrl, OidcSettings),
+    {SslOpts, ProfileKey} =
+        oidc_provider_manager:connect_options(TlsUrl, OidcSettings),
     TokenEndpointAuthMethod = maps:get(token_endpoint_auth_method,
                                        OidcSettings),
-    EnrichedOpts = Opts#{request_opts => #{timeout => HttpTimeoutMs,
-                                           ssl => SslOpts},
-                         preferred_auth_methods => [TokenEndpointAuthMethod]},
     try
+        %% Requests must go to the profile dedicated to this issuer. Sending
+        %% them on the shared profile would let httpc reuse a connection that
+        %% was opened with unrelated TLS options.
+        Profile =
+            case oidc_provider_manager:get_httpc_profile(IssuerName,
+                                                         ProfileKey) of
+                {ok, P} -> P;
+                {error, ProfileError} -> throw({error, ProfileError})
+            end,
+        EnrichedOpts = Opts#{request_opts => #{timeout => HttpTimeoutMs,
+                                               ssl => SslOpts,
+                                               httpc_profile => Profile},
+                             preferred_auth_methods =>
+                                 [TokenEndpointAuthMethod]},
         case has_discovery_uri(IssuerConfig) of
             true ->
                 OperationFun(discovery, EnrichedOpts);
@@ -439,7 +451,11 @@ with_issuer_context(IssuerConfig, Opts, OperationFun, LogPrefix) ->
                         {error, Reason}
                 end
         end
-    catch T:E:St ->
+    catch throw:{error, _} = ThrownError ->
+            ?log_warning("~s for ~p: ~p", [LogPrefix, IssuerName,
+                                           ThrownError]),
+            ThrownError;
+          T:E:St ->
             ?log_warning("~s for ~p: ~p:~p~n~p",
                          [LogPrefix, IssuerName, T, E, St]),
             {error, {T, E}}
@@ -492,15 +508,6 @@ create_provider_redirect(IssuerConfig, RedirectBaseParam,
         {ok, Uri} -> {ok, binary_to_list(iolist_to_binary(Uri))};
         Error -> Error
     end.
-
--spec extract_oidc_connect_options(URL :: string(), OidcSettings :: map()) ->
-          list().
-extract_oidc_connect_options(URL, OidcSettings) ->
-    AddressFamily = maps:get(address_family, OidcSettings, undefined),
-    VerifyPeer = maps:get(tls_verify_peer, OidcSettings, true),
-    {_, Certs} = maps:get(tls_ca, OidcSettings, {<<>>, []}),
-    SNI = maps:get(tls_sni, OidcSettings, ""),
-    misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
 
 %% Choose an OIDC URL whose scheme/host/port match the upstream IdP so that
 %% tls_connect_options/6 can apply tls_verify_peer/tls_ca/tls_sni correctly.

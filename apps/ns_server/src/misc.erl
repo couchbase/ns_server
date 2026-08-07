@@ -4007,10 +4007,10 @@ interval_to_string_test() ->
 -endif.
 
 -spec tls_connect_options(URL :: string(),
+                          AddressFamily :: undefined | inet | inet6,
                           VerifyPeer :: boolean(),
                           CACerts :: list(),
                           SNI :: string(),
-                          AddrSettings :: list(),
                           ExtraOpts :: proplists:proplist()) ->
           proplists:proplist().
 tls_connect_options(URL, AddressFamily, VerifyPeer, CACerts0, SNI0,
