@@ -84,15 +84,69 @@ setup_storage_paths() ->
         {value, _} ->
             not_changed
     end,
+    Buckets = sort_buckets_for_migration(ns_bucket:uuids()),
     lists:foreach(
       fun ({BucketName, BucketUUID}) ->
-          ok = ensure_bucket_is_in_correct_dir(BucketName, BucketUUID)
-      end, ns_bucket:uuids()),
+          ok = ensure_bucket_is_in_correct_dir(BucketName, BucketUUID, Buckets)
+      end, Buckets),
     ignore.
+
+%% Bucket uuid is a valid bucket name, and old (bucket name) and new (bucket
+%% uuid) directories live in the same namespace, so the directory of a bucket
+%% named after another bucket's uuid is that other bucket's migration target
+%% and has to be vacated first (MB-68933).
+%%
+%% No cycle is possible: naming bucket A after bucket B's uuid requires B to
+%% already exist, so a cycle would require each of the two buckets to be
+%% created before the other (uuids are random and buckets cannot be renamed).
+sort_buckets_for_migration(Buckets) ->
+    %% Such a bucket needs no migration, and it is the only way to get a
+    %% self-loop below
+    Pending = [B || {Name, UUID} = B <- Buckets,
+                    Name =/= binary_to_list(UUID)],
+    G = digraph:new(),
+    try
+        lists:foreach(
+          fun ({Name, UUID}) -> digraph:add_vertex(G, Name, UUID) end,
+          Pending),
+        lists:foreach(
+          fun ({Name, UUID}) ->
+              OccupyingBucket = binary_to_list(UUID),
+              case digraph:vertex(G, OccupyingBucket) of
+                  false -> ok;
+                  _ -> digraph:add_edge(G, OccupyingBucket, Name)
+              end
+          end, Pending),
+        case digraph_utils:topsort(G) of
+            false ->
+                %% Not reachable unless the assumption above is broken
+                ?log_error("Failed to order buckets for data migration"),
+                Pending;
+            Names ->
+                [begin
+                     {_, UUID} = digraph:vertex(G, Name),
+                     {Name, UUID}
+                 end || Name <- Names]
+        end
+    after
+        digraph:delete(G)
+    end.
+
+%% An old (bucket name) directory can hold another bucket's data only if this
+%% bucket is named after that bucket's uuid. In that case
+%% sort_buckets_for_migration/1 guarantees that nothing else can be occupying
+%% the new directory, so a new directory that already exists simply means
+%% that this bucket is migrated already (MB-68933).
+%%
+%% Buckets is the list the whole migration is based on, so that the answer
+%% cannot disagree with the migration order because of a concurrent bucket
+%% creation or deletion.
+bucket_named_after_uuid(BucketName, Buckets) ->
+    lists:keyfind(list_to_binary(BucketName), 2, Buckets).
 
 %% Move data from old bucket directory (bucket name) to new bucket directory
 %% (bucket uuid). Can be removed after support for 7.* is dropped.
-ensure_bucket_is_in_correct_dir(BucketName, BucketUUID) ->
+ensure_bucket_is_in_correct_dir(BucketName, BucketUUID, Buckets) ->
     OldBucketDir = pre_79_bucket_dbdir(BucketName),
     NewBucketDir = this_node_bucket_dbdir(BucketUUID),
     maybe
@@ -109,7 +163,8 @@ ensure_bucket_is_in_correct_dir(BucketName, BucketUUID) ->
         ok ?= filelib:ensure_dir(NewBucketDir),
         %% Since bucket data is not migrated yet, we need to ensure that
         %% views indexes are migrated as well
-        {_, ok} ?= {indexes, maybe_migrate_views(BucketName, BucketUUID)},
+        {_, ok} ?= {indexes,
+                    maybe_migrate_views(BucketName, BucketUUID, Buckets)},
         ok ?= file:rename(OldBucketDir, NewBucketDir),
         ?log_info("Bucket ~p data migration completed", [BucketName]),
         ok
@@ -118,12 +173,19 @@ ensure_bucket_is_in_correct_dir(BucketName, BucketUUID) ->
             ?log_info("Bucket ~p data migration not needed", [BucketName]),
             ok;
         {new_dir_exists, true} ->
-            % New directory exists and old directory exists - this should
-            % never happen
-            ?log_error("Bucket data migration failed: new directory "
-                       "~p exists while old directory ~p also exists",
-                       [NewBucketDir, OldBucketDir]),
-            {error, {both_dirs_exist, NewBucketDir, OldBucketDir}};
+            case bucket_named_after_uuid(BucketName, Buckets) of
+                {OtherBucket, _} ->
+                    ?log_info("Bucket ~p data is already migrated to ~p, "
+                              "~p is bucket ~p data",
+                              [BucketName, NewBucketDir, OldBucketDir,
+                               OtherBucket]),
+                    ok;
+                false ->
+                    ?log_error("Bucket data migration failed: new directory "
+                               "~p exists while old directory ~p also exists",
+                               [NewBucketDir, OldBucketDir]),
+                    {error, {both_dirs_exist, NewBucketDir, OldBucketDir}}
+            end;
         {old_dir_is_dir, false} ->
             ?log_error("Bucket ~p migration failed: old bucket directory ~p is "
                        "not a directory", [BucketName, OldBucketDir]),
@@ -139,7 +201,7 @@ ensure_bucket_is_in_correct_dir(BucketName, BucketUUID) ->
             {error, Reason}
     end.
 
-maybe_migrate_views(BucketName, BucketUUID) ->
+maybe_migrate_views(BucketName, BucketUUID, Buckets) ->
     {ok, IxDir} = this_node_ixdir(),
     OldDir = filename:join([IxDir, "@indexes", BucketName]),
     NewDir = filename:join([IxDir, "@indexes", binary_to_list(BucketUUID)]),
@@ -155,7 +217,15 @@ maybe_migrate_views(BucketName, BucketUUID) ->
             %% Migration is not needed
             ok;
         {new_dir_exists, true} ->
-            {error, {new_dir_exists, NewDir}};
+            case bucket_named_after_uuid(BucketName, Buckets) of
+                {OtherBucket, _} ->
+                    ?log_info("~p views indexes are already migrated to ~p, "
+                              "~p is bucket ~p data",
+                              [BucketName, NewDir, OldDir, OtherBucket]),
+                    ok;
+                false ->
+                    {error, {new_dir_exists, NewDir}}
+            end;
         {old_dir_is_dir, false} ->
             {error, {old_dir_not_dir, OldDir}};
         {error, Reason} ->
@@ -867,4 +937,51 @@ extract_disk_stats_for_path_test() ->
                  extract_disk_stats_for_path(DiskSupStats, "/dev/sh")),
     ?assertEqual({ok, {"/dev", 10240, 2}},
                  extract_disk_stats_for_path(DiskSupStats, "/dev")).
+
+migration_pos(Name, Sorted) ->
+    Names = [N || {N, _} <- Sorted],
+    ?assert(lists:member(Name, Names)),
+    length(lists:takewhile(fun (N) -> N =/= Name end, Names)).
+
+sort_buckets_for_migration_test() ->
+    UUID1 = "05f3c5b7a488d93b98c053ba16616d2f",
+    UUID2 = "c78a74ce842ee1e46be79dc9166b7911",
+    UUID3 = "1b16f8bbd60c0e5b46e6dcbdcdb0d1a2",
+
+    NoConflicts = [{"default", list_to_binary(UUID1)},
+                   {"eph", list_to_binary(UUID2)},
+                   {"magma", list_to_binary(UUID3)}],
+    ?assertEqual(lists:sort(NoConflicts),
+                 lists:sort(sort_buckets_for_migration(NoConflicts))),
+
+    %% MB-68933: bucket UUID1 is named after bucket default's uuid, so its
+    %% directory has to be vacated before default can be migrated into it,
+    %% no matter in which order the buckets come in
+    Default = {"default", list_to_binary(UUID1)},
+    Named = {UUID1, list_to_binary(UUID2)},
+    Other = {"magma", list_to_binary(UUID3)},
+    lists:foreach(
+      fun (Buckets) ->
+          Sorted = sort_buckets_for_migration(Buckets),
+          ?assertEqual(lists:sort(Buckets), lists:sort(Sorted)),
+          ?assert(migration_pos(UUID1, Sorted) <
+                      migration_pos("default", Sorted))
+      end, [[Default, Named], [Named, Default],
+            [Other, Default, Named], [Named, Other, Default]]),
+
+    %% Longer chain
+    Chain = [{"default", list_to_binary(UUID1)},
+             {UUID1, list_to_binary(UUID2)},
+             {UUID2, list_to_binary(UUID3)}],
+    ChainSorted = sort_buckets_for_migration(Chain),
+    ?assertEqual(lists:sort(Chain), lists:sort(ChainSorted)),
+    ?assert(migration_pos(UUID2, ChainSorted) <
+                migration_pos(UUID1, ChainSorted)),
+    ?assert(migration_pos(UUID1, ChainSorted) <
+                migration_pos("default", ChainSorted)),
+
+    %% A bucket named after its own uuid needs no migration and is dropped
+    ?assertEqual([Other],
+                 sort_buckets_for_migration([{UUID1, list_to_binary(UUID1)},
+                                             Other])).
 -endif.

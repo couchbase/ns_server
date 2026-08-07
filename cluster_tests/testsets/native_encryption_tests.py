@@ -94,6 +94,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         self.sm_node = random.choice(self.cluster.connected_nodes)
         self.bucket_name = testlib.random_str(8)
         self.bucket_name2 = testlib.random_str(8)
+        # Name is known only when the test creates the bucket
+        self.uuid_bucket_name = None
         set_cfg_encryption(self.cluster, 'nodeSecretManager', -1)
         self.sample_bucket = "beer-sample"
         # Creating a few keys whose role is to just exist while other tests
@@ -158,6 +160,9 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         self.cluster.delete_bucket(self.bucket_name)
         self.cluster.delete_bucket(self.bucket_name2)
         self.cluster.delete_bucket(self.sample_bucket)
+        if self.uuid_bucket_name is not None:
+            self.cluster.delete_bucket(self.uuid_bucket_name)
+            self.uuid_bucket_name = None
         for s in get_secrets(self.cluster):
             if s['id'] not in self.pre_existing_ids:
                 delete_secret(self.cluster, s['id'])
@@ -2417,30 +2422,63 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
                         'ramQuota': 100}
         self.cluster.create_bucket(bucket_props, sync=True)
         bucket_uuid = self.cluster.get_bucket_uuid(self.bucket_name)
+
+        # MB-68933: a bucket uuid is a valid bucket name, so the pre-8.0 dir
+        # of a bucket named after another bucket's uuid is the migration
+        # target of that other bucket. Such a bucket must be migrated first.
+        self.uuid_bucket_name = bucket_uuid
+        self.cluster.create_bucket({'name': bucket_uuid, 'ramQuota': 100},
+                                   sync=True)
+        bucket2_uuid = self.cluster.get_bucket_uuid(bucket_uuid)
+
         data_dir = Path(kv_node.data_path()) / 'data'
         new_bucket_dir = data_dir / bucket_uuid
         pre_80_bucket_dir = data_dir / self.bucket_name
+        # pre-8.0 dir of the second bucket is the current dir of the first one
+        new_bucket2_dir = data_dir / bucket2_uuid
+        pre_80_bucket2_dir = new_bucket_dir
         assert new_bucket_dir.exists(), \
                f'new bucket dir {new_bucket_dir} does not exist'
+        assert new_bucket2_dir.exists(), \
+               f'new bucket dir {new_bucket2_dir} does not exist'
         assert not pre_80_bucket_dir.exists(), \
                f'pre-8.0 bucket dir {pre_80_bucket_dir} exists'
 
         docs = {}
+        docs2 = {}
         for i in range(10):
             key, value = write_random_doc(self.cluster, self.bucket_name)
             docs[key] = value
+            key, value = write_random_doc(self.cluster, bucket_uuid)
+            docs2[key] = value
+
+        def check_docs():
+            for bucket, expected_docs in [(self.bucket_name, docs),
+                                          (bucket_uuid, docs2)]:
+                for key, expected_value in expected_docs.items():
+                    value = testlib.poll_for_condition(
+                            lambda: get_doc(self.cluster, bucket, key),
+                            sleep_time=1, attempts=50, retry_on_assert=True,
+                            verbose=True)
+                    assert value == expected_value, \
+                           f'doc {key} in bucket {bucket} does not match'
 
         self.cluster.stop_node(kv_node)
 
-        # move cluster data to old bucket dir, imitating pre-8.0 bucket
+        # move cluster data to old bucket dirs, imitating pre-8.0 buckets.
+        # The first bucket has to be moved out of the way before the second
+        # one can take its dir.
         print(f'renaming {new_bucket_dir} to {pre_80_bucket_dir}')
         moved_files = list(new_bucket_dir.iterdir())
         os.rename(new_bucket_dir, pre_80_bucket_dir)
+        print(f'renaming {new_bucket2_dir} to {pre_80_bucket2_dir}')
+        moved_files2 = list(new_bucket2_dir.iterdir())
+        os.rename(new_bucket2_dir, pre_80_bucket2_dir)
 
         self.cluster.restart_node(kv_node)
 
         testlib.poll_for_condition(
-            lambda: new_bucket_dir.exists(),
+            lambda: new_bucket_dir.exists() and new_bucket2_dir.exists(),
             sleep_time=1, attempts=50, verbose=True)
 
         testlib.poll_for_condition(
@@ -2449,21 +2487,27 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Make sure that all documents are still present (basically making
         # sure that bucket dir migration is successful)
-        for key, expected_value in docs.items():
-            value = testlib.poll_for_condition(
-                    lambda: get_doc(self.cluster, self.bucket_name, key),
-                    sleep_time=1, attempts=50, retry_on_assert=True,
-                    verbose=True)
-            assert value == expected_value, f'doc {key} does not match'
+        check_docs()
 
-        # Check that migration moved all files back to new bucket dir
-        for f in moved_files:
+        # Check that migration moved all files back to new bucket dirs
+        for f in moved_files + moved_files2:
             assert f.exists(), f'file {f} does not exist'
+
+        # Migration must be idempotent. Before MB-68933 was fixed the node
+        # was failing to start here, because the current dir of the first
+        # bucket looks like the pre-8.0 dir of the second one.
+        self.cluster.restart_node(kv_node)
+        self.cluster.wait_nodes_up()
+        check_docs()
 
         # Now make sure we remove all bucket dirs when bucket is deleted
         self.cluster.delete_bucket(self.bucket_name)
+        self.cluster.delete_bucket(bucket_uuid)
         testlib.poll_for_condition(
             lambda: not new_bucket_dir.exists(),
+            sleep_time=1, attempts=50, verbose=True)
+        testlib.poll_for_condition(
+            lambda: not new_bucket2_dir.exists(),
             sleep_time=1, attempts=50, verbose=True)
         testlib.poll_for_condition(
             lambda: not pre_80_bucket_dir.exists(),
