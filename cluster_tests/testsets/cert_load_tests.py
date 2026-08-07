@@ -12,6 +12,11 @@ import ipaddress
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta, timezone
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import ExtensionOID, NameOID
 
 scriptdir = sys.path[0]
 certs_path = os.path.join(scriptdir, 'resources', 'test_certs')
@@ -168,6 +173,32 @@ class CertLoadTests(testlib.BaseTestSet):
             purposes=['any'], critical=True)
         load_cert(node, cert, key, passphrase=None, is_client=False,
                   expected_error='serverAuth')
+
+    # a structurally malformed eku extension is rejected with a 400 rather
+    # than crashing chain path validation with a 500 (MB-72954)
+    def malformed_eku_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_malformed_eku(node.addr(),
+                                                    self.ca_pem, self.ca_key)
+        load_cert(node, cert, key, passphrase=None, is_client=False,
+                  expected_error='Malformed certificate')
+
+    def client_cert_malformed_eku_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_cert_with_malformed_eku(node.addr(),
+                                                    self.ca_pem, self.ca_key,
+                                                    is_client=True)
+        load_cert(node, cert, key, passphrase=None, is_client=True,
+                  expected_error='Malformed certificate')
+
+    # a malformed extension on an intermediate (not the leaf) is likewise
+    # caught during path validation rather than crashing with a 500 (MB-72954)
+    def malformed_intermediate_eku_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_malformed_intermediate_chain(
+            node.addr(), self.ca_pem, self.ca_key)
+        load_cert(node, cert, key, passphrase=None, is_client=False,
+                  expected_error='Malformed certificate')
 
     def generate_and_load_cert(self, key_type, node=None, is_client=False,
                                pkcs8=False, passphrase=None):
@@ -767,6 +798,88 @@ def generate_cert_with_eku(node_addr, CA, CAKey, is_client=False,
         return generate_internal_client_cert(CA, CAKey, 'test_name',
                                              extra_args=eku_args)
     return generate_node_certs(node_addr, CA, CAKey, extra_args=eku_args)
+
+
+# A BOOLEAN where a SEQUENCE OF OID is expected, so the extension fails to
+# decode as ExtKeyUsageSyntax. generate_cert can't emit one, as Go's x509 only
+# produces a well formed extended key usage
+malformed_eku = x509.UnrecognizedExtension(ExtensionOID.EXTENDED_KEY_USAGE,
+                                           b'\x01\x01\xff')
+
+ca_key_usage = x509.KeyUsage(digital_signature=True, key_cert_sign=True,
+                             crl_sign=True, content_commitment=False,
+                             key_encipherment=False, data_encipherment=False,
+                             key_agreement=False, encipher_only=False,
+                             decipher_only=False)
+
+
+def parse_ca(CA, CAKey):
+    return (x509.load_pem_x509_certificate(CA.encode()),
+            serialization.load_pem_private_key(CAKey.encode(), password=None))
+
+
+def node_san(node_addr):
+    try:
+        return x509.IPAddress(ipaddress.ip_address(node_addr))
+    except ValueError:
+        return x509.DNSName(node_addr)
+
+
+def cert_to_pem(cert):
+    return cert.public_bytes(serialization.Encoding.PEM).decode()
+
+
+def key_to_pem(key):
+    return key.private_bytes(serialization.Encoding.PEM,
+                             serialization.PrivateFormat.TraditionalOpenSSL,
+                             serialization.NoEncryption()).decode()
+
+
+def sign_cert(common_name, sans, issuer, signer_key, eku=None, is_ca=False):
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    now = datetime.now(timezone.utc)
+    builder = x509.CertificateBuilder() \
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME,
+                                                    common_name)])) \
+        .issuer_name(issuer) \
+        .public_key(key.public_key()) \
+        .serial_number(x509.random_serial_number()) \
+        .not_valid_before(now - timedelta(days=1)) \
+        .not_valid_after(now + timedelta(days=824)) \
+        .add_extension(x509.SubjectAlternativeName(sans), critical=False) \
+        .add_extension(x509.BasicConstraints(ca=is_ca, path_length=None),
+                       critical=True)
+    if is_ca:
+        builder = builder.add_extension(ca_key_usage, critical=True)
+    if eku is not None:
+        builder = builder.add_extension(eku, critical=False)
+    return (builder.sign(signer_key, hashes.SHA256()), key)
+
+
+def generate_cert_with_malformed_eku(node_addr, CA, CAKey, is_client=False):
+    ca_cert, ca_key = parse_ca(CA, CAKey)
+    if is_client:
+        name = 'TEST CLIENT CERT'
+        sans = [x509.RFC822Name('test_name@internal.couchbase.com')]
+    else:
+        name = 'TEST Server Node'
+        sans = [node_san(node_addr)]
+    cert, key = sign_cert(name, sans, ca_cert.subject, ca_key,
+                          eku=malformed_eku)
+    return (cert_to_pem(cert), key_to_pem(key))
+
+
+# The malformed extension goes on the intermediate rather than the leaf, so the
+# decode crash happens partway along the chain. The leaf needs no extended key
+# usage, as an absent one permits any purpose
+def generate_malformed_intermediate_chain(node_addr, CA, CAKey):
+    ca_cert, ca_key = parse_ca(CA, CAKey)
+    inter, inter_key = sign_cert(
+        'TEST Intermediate CA', [x509.DNSName('intermediate.example.com')],
+        ca_cert.subject, ca_key, eku=malformed_eku, is_ca=True)
+    leaf, key = sign_cert('TEST Server Node', [node_san(node_addr)],
+                          inter.subject, inter_key)
+    return (cert_to_pem(leaf) + cert_to_pem(inter), key_to_pem(key))
 
 
 def to_pkcs8(key, passphrase):
