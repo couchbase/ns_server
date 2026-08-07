@@ -26,6 +26,7 @@ start_link() ->
                             ?get_param(hibernate_after, 10000)}]).
 
 init([]) ->
+    process_flag(message_queue_data, off_heap),
     Self = self(),
     ns_pubsub:subscribe_link(
       chronicle_compat_events:kv_event_manager(),
