@@ -19,18 +19,26 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% A plain constant rather than ?get_param: cb_atomic_persistent_term is a
+%% work_queue and starts before ns_config_sup, so reading config here would
+%% crash on the missing ns_config_ets_dup table.
+-define(HIBERNATE_AFTER, 10000).
+
 start_link() ->
     start_link(fun nothing/0).
 
 start_link(Name) when is_atom(Name) orelse is_tuple(Name) ->
     start_link(Name, fun nothing/0);
 start_link(InitFun) when is_function(InitFun) ->
-    gen_server:start_link(?MODULE, InitFun, []).
+    gen_server:start_link(?MODULE, InitFun, opts()).
 
 start_link(Name, InitFun) when is_atom(Name) ->
     start_link({local, Name}, InitFun);
 start_link(Name, InitFun) when is_tuple(Name) ->
-    gen_server:start_link(Name, ?MODULE, InitFun, []).
+    gen_server:start_link(Name, ?MODULE, InitFun, opts()).
+
+opts() ->
+    [{hibernate_after, ?HIBERNATE_AFTER}].
 
 submit_work(Name, Fun) ->
     gen_server:cast(Name, Fun).
@@ -44,16 +52,20 @@ sync_work(Name) ->
 nothing() -> [].
 
 init(InitFun) ->
+    %% submit_work/2 is an unacknowledged cast of a closure, which can capture
+    %% arbitrarily large terms, so the mailbox can both grow long and hold big
+    %% messages. Keep it off the heap so GC doesn't have to walk it (MB-72708).
+    process_flag(message_queue_data, off_heap),
     InitFun(),
     {ok, []}.
 
 handle_call(Fun, _From, State) ->
     RV = Fun(),
-    {reply, RV, State, hibernate}.
+    {reply, RV, State}.
 
 handle_cast(Fun, State) ->
     Fun(),
-    {noreply, State, hibernate}.
+    {noreply, State}.
 
 handle_info(_Info, State) ->
     {noreply, State}.

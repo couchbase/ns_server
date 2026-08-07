@@ -36,9 +36,15 @@ format_status(#{state := State}) ->
     #{state => sanitize(State)}.
 
 start_link() ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [],
+                          [{hibernate_after,
+                            ?get_param(hibernate_after, 10000)}]).
 
 init([]) ->
+    %% We receive the whole KVList of every config change, so the mailbox can
+    %% both grow long and hold large terms. Keep it off the heap so GC doesn't
+    %% have to walk it (MB-72708).
+    process_flag(message_queue_data, off_heap),
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events,
                              fun (KVList) when is_list(KVList) ->
@@ -55,18 +61,18 @@ code_change(_OldVsn, State, _) -> {ok, State}.
 
 handle_call(Request, From, State) ->
     ?log_warning("Unexpected handle_call(~p, ~p, ~p)", [Request, From, State]),
-    {reply, ok, State, hibernate}.
+    {reply, ok, State}.
 
 handle_cast(Request, State) ->
     ?log_warning("Unexpected handle_cast(~p, ~p)", [Request, State]),
-    {noreply, State, hibernate}.
+    {noreply, State}.
 
 handle_info({config_change, KVList}, State) ->
     lists:foreach(fun ({K, V}) -> log_kv(K, V) end, KVList),
-    {noreply, State, hibernate};
+    {noreply, State};
 handle_info(Info, State) ->
     ?log_warning("Unexpected handle_info(~p, ~p)", [Info, State]),
-    {noreply, State, hibernate}.
+    {noreply, State}.
 
 compute_bucket_diff(NewProps, OldProps) ->
     OldMap = proplists:get_value(map, OldProps, []),

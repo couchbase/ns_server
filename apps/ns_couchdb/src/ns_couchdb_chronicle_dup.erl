@@ -41,6 +41,10 @@ ro_txn(Body) ->
 init([]) ->
     ets:new(?MODULE, [public, set, named_table]),
     process_flag(trap_exit, true),
+    %% We receive every chronicle_kv value, and one value can be huge (a 10k
+    %% collection manifest is over 4MB). Unlike chronicle_kv_log we can't drop
+    %% any of them, so keep the queue off the heap (MB-72708).
+    process_flag(message_queue_data, off_heap),
     State = subscribe_to_events(),
     pull(),
     {ok, State}.

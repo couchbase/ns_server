@@ -69,6 +69,10 @@ meta() ->
 
 init([Name, Path, Opts]) ->
     process_flag(trap_exit, true),
+    %% Every log call in the VM is an async cast to this process, so the
+    %% mailbox can grow without bound while we're blocked on the worker.
+    %% Keep it off the heap so GC doesn't have to walk it.
+    process_flag(message_queue_data, off_heap),
 
     BatchSize = proplists:get_value(batch_size, Opts, 524288),
     BatchTimeout = proplists:get_value(batch_timeout, Opts, 1000),
