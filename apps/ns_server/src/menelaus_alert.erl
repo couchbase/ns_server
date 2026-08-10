@@ -879,6 +879,11 @@ add_proplist_list_elem_test() ->
     Result2 = add_proplist_list_elem(alerts, time_out_of_sync, PL2),
     ?assertEqual(misc:sort_kv_list(Expected2), misc:sort_kv_list(Result2)).
 
+alert_keys_unique_test() ->
+    Duplicates = fun (Keys) -> Keys -- lists:usort(Keys) end,
+    ?assertEqual([], Duplicates(alert_keys_default())),
+    ?assertEqual([], Duplicates(alert_keys_all())).
+
 config_upgrade_to_76_test() ->
     %% We need the config initialised, since this upgrade depends on the
     %% memory_alert_{email|popup} keys, not just email_alerts

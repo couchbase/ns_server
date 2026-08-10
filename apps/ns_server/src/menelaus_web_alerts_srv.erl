@@ -596,6 +596,8 @@ alert_keys_added_in_79() ->
 %% This should only be updated with additions/removals when removing the
 %% associated config upgrade function from menelaus_alert.
 %% See the comment attached to menelaus_alert:alert_keys_default/0 for more info
+%% The keys added in 7.6 and 7.9 are already listed here, as they were
+%% mistakenly added to the default early.
 -spec alert_keys_default() -> [atom()].
 alert_keys_default() ->
     [ip, disk, overhead, ep_oom_errors, ep_item_commit_failed,
@@ -603,9 +605,8 @@ alert_keys_default() ->
      indexer_low_resident_percentage,
      ep_clock_cas_drift_threshold_exceeded,
      communication_issue, time_out_of_sync, disk_usage_analyzer_stuck,
-     cert_expires_soon, cert_expired, memory_threshold, history_size_warning] ++
-        alert_keys_added_in_76() ++
-        alert_keys_added_in_79().
+     cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
+     memcached_connections, disk_guardrail].
 
 %% These keys should be moved to alert_keys_default/0 when totoro is the lowest
 %% supported release
