@@ -460,7 +460,7 @@ get_kv_list() -> get_kv_list(?DEFAULT_TIMEOUT).
 get_kv_list(Timeout) -> get_kv_list_with_config(ns_config:get(Timeout)).
 
 get_kv_list_with_config(Config) ->
-    config_dynamic(Config).
+    dynamic_to_kvlist(config_dynamic(Config)).
 
 % ----------------------------------------
 
@@ -509,24 +509,25 @@ search(Config, Key, Default) ->
             Default
     end.
 
+vclock_result(RawValue) ->
+    {value, strip_metadata(RawValue), extract_vclock(RawValue)}.
+
 search_with_vclock_kvlist([], _Key) -> false;
 search_with_vclock_kvlist([KVList | Rest], Key) ->
     case lists:keyfind(Key, 1, KVList) of
         {_, RawValue} ->
-            Clock = extract_vclock(RawValue),
-            Value = strip_metadata(RawValue),
-
-            {value, Value, Clock};
+            vclock_result(RawValue);
         false ->
             search_with_vclock_kvlist(Rest, Key)
     end.
 
-get_static_and_dynamic(#config{dynamic = DL, static = SL}) -> [hd(DL) | SL];
-get_static_and_dynamic([DL]) -> [DL].
-
-search_with_vclock(Config, Key) ->
-    LL = get_static_and_dynamic(Config),
-    search_with_vclock_kvlist(LL, Key).
+search_with_vclock(#config{static = SL} = Config, Key) ->
+    case search_dynamic_with_vclock(config_dynamic(Config), Key) of
+        false -> search_with_vclock_kvlist(SL, Key);
+        R     -> R
+    end;
+search_with_vclock([DL], Key) ->
+    search_with_vclock_kvlist([DL], Key).
 
 search_node(Config, Key) ->
     search_node(node(), Config, Key).
@@ -604,8 +605,8 @@ search_raw([KVList | Rest], Key) ->
         {value, {Key, V}} -> {value, V};
         _                 -> search_raw(Rest, Key)
     end;
-search_raw(#config{dynamic = DL, static = SL}, Key) ->
-    case search_raw(DL, Key) of
+search_raw(#config{static = SL} = Config, Key) ->
+    case search_dynamic(config_dynamic(Config), Key) of
         {value, _} = R -> R;
         false          -> search_raw(SL, Key)
     end.
@@ -617,23 +618,24 @@ upgrade_config_explicitly(Upgrader) ->
 config_version_token() ->
     {ets:lookup(ns_config_announces_counter, changes_counter), erlang:whereis(?MODULE)}.
 
+fold_kvpair(Fun) ->
+    fun ({Key, Value}, Acc) ->
+            case strip_metadata(Value) of
+                ?DELETED_MARKER ->
+                    Acc;
+                V ->
+                    Fun(Key, V, Acc)
+            end
+    end.
+
 fold(_Fun, Acc, undefined) ->
     Acc;
 fold(_Fun, Acc, []) ->
     Acc;
 fold(Fun, Acc0, [KVList | Rest]) ->
-    Acc = lists:foldl(
-            fun ({Key, Value}, Acc1) ->
-                    case strip_metadata(Value) of
-                        ?DELETED_MARKER ->
-                            Acc1;
-                        V ->
-                            Fun(Key, V, Acc1)
-                    end
-            end, Acc0, KVList),
-    fold(Fun, Acc, Rest);
-fold(Fun, Acc, #config{dynamic = DL, static = SL}) ->
-    fold(Fun, fold(Fun, Acc, SL), DL);
+    fold(Fun, lists:foldl(fold_kvpair(Fun), Acc0, KVList), Rest);
+fold(Fun, Acc, #config{static = SL} = Config) ->
+    fold_dynamic(Fun, fold(Fun, Acc, SL), config_dynamic(Config));
 fold(Fun, Acc, ?NS_CONFIG_LATEST_MARKER) ->
     fold(Fun, Acc, ns_config:get()).
 
@@ -773,7 +775,7 @@ do_upgrade_config(Config, [], _Upgrader) -> Config;
 do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
     ?log_info("Upgrading config by changes:~n~p~n",
               [ns_config_log:sanitize(Changes)]),
-    ConfigList = config_dynamic(Config),
+    ConfigList = get_kv_list_with_config(Config),
     NewList =
         lists:foldl(
           fun (Change, Acc) ->
@@ -799,14 +801,15 @@ do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
           end,
           ConfigList,
           Changes),
-    NewConfig = Config#config{dynamic=[NewList]},
+    NewConfig = set_config_dynamic(Config, kvlist_to_dynamic(NewList)),
     do_upgrade_config(NewConfig, Upgrader(NewConfig), Upgrader).
 
-bump_local_changes_counter_full(#config{uuid = UUID, dynamic = [KVList]} = Config) ->
+bump_local_changes_counter_full(#config{uuid = UUID} = Config) ->
+    KVList = get_kv_list_with_config(Config),
     {RevPrefix, Tail} = bump_counter_rec(UUID, KVList, []),
     [{{local_changes_count, UUID}, _} = NewCounterPair | _] = Tail,
     NewKVList = lists:reverse(RevPrefix, Tail),
-    {Config#config{dynamic = [NewKVList]}, NewCounterPair}.
+    {set_config_dynamic(Config, kvlist_to_dynamic(NewKVList)), NewCounterPair}.
 
 bump_local_changes_counter(Config) ->
     {NewCfg, _} = bump_local_changes_counter_full(Config),
@@ -842,7 +845,7 @@ do_init(Config) ->
             true ->
                 UpgradedConfig
         end,
-    update_ets_dup(config_dynamic(InitialState)),
+    update_ets_dup(get_kv_list_with_config(InitialState)),
     {ok, update_keys_in_use(InitialState)}.
 
 init({with_state, LoadedConfig} = Init) ->
@@ -865,11 +868,12 @@ init({pull_from_node, Node} = Init) ->
     KVList0 = duplicate_node_keys(ns_config_rep:get_remote(Node, infinity),
                                   Node, node()),
     {_, KVList} = drop_deletes(KVList0),
-    Cfg = #config{dynamic = [KVList],
-                  policy_mod = ns_config_default,
-                  saver_mfa = {?MODULE, do_not_save_config, []},
-                  upgrade_config_fun = fun (C) -> C end,
-                  init = Init},
+    Cfg = set_config_dynamic(
+            #config{policy_mod = ns_config_default,
+                    saver_mfa = {?MODULE, do_not_save_config, []},
+                    upgrade_config_fun = fun (C) -> C end,
+                    init = Init},
+            kvlist_to_dynamic(KVList)),
     do_init(Cfg);
 init([ConfigPath, PolicyMod]) ->
     init({full, ConfigPath, undefined, PolicyMod}).
@@ -953,7 +957,7 @@ handle_call(resave, From, State) ->
 
 handle_call(reannounce, _From, State) ->
     %% we have to assume those are all genuine just made local changes
-    announce_locally_made_changes(config_dynamic(State)),
+    announce_locally_made_changes(get_kv_list_with_config(State)),
     {reply, ok, State};
 
 handle_call(get, _From, State) ->
@@ -973,14 +977,15 @@ handle_call(regenerate_node_uuid, From, State) ->
     {reply, ok, NewState#config{uuid=NewUUID}};
 
 handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
-    OldList = config_dynamic(State),
+    OldList = get_kv_list_with_config(State),
     case do_update_with_changes(Fun, OldList, UUID) of
         {ok, NewPairs, Erased, NewConfig, Reply} ->
             case {NewPairs, Erased} of
                 {[], []} ->
                     {reply, Reply, State};
                 {_, _} ->
-                    NewState = State#config{dynamic=[NewConfig]},
+                    NewState = set_config_dynamic(
+                                 State, kvlist_to_dynamic(NewConfig)),
 
                     {FinalState, FinalPairs} =
                         case NewPairs =/= [] of
@@ -1021,17 +1026,18 @@ handle_call({clear, Keep}, From, State) ->
                                  false
                          end
                  end,
-                 config_dynamic(State)),
+                 get_kv_list_with_config(State)),
     NewList = [{{node, node(), uuid}, attach_vclock(NewUUID, NewUUID)} | NewList0],
-    NewState = initiate_save_config(State#config{dynamic=[NewList],
-                                                 uuid=NewUUID}),
+    NewState = initiate_save_config(
+                 set_config_dynamic(State#config{uuid = NewUUID},
+                                    kvlist_to_dynamic(NewList))),
     RV = handle_call(reload, From, NewState),
     ?log_debug("Full result of clear:~n~p", [ns_config_log:sanitize(RV)]),
     RV;
 
 handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
     NewKVList1 = lists:sort(duplicate_node_keys(NewKVList0, FromNode, node())),
-    OldKVList = config_dynamic(State),
+    OldKVList = get_kv_list_with_config(State),
     NewKVList = misc:ukeymergewith(fun (New, _Old) -> New end,
                                    1, NewKVList1, lists:sort(OldKVList)),
     C = {cas_config, NewKVList, [], OldKVList, remote},
@@ -1039,27 +1045,28 @@ handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
 
     %% {cas_config, ..} above would have announced any deletions if anybody
     %% cares about them. Now we can drop them.
-    #config{dynamic = [KVList]} = NewState0,
+    KVList = get_kv_list_with_config(NewState0),
     {Deletes, FinalKVList} = drop_deletes(KVList),
     erase_ets_dup(Deletes),
-    NewState = NewState0#config{dynamic = [FinalKVList]},
+    NewState = set_config_dynamic(NewState0, kvlist_to_dynamic(FinalKVList)),
 
     {reply, ok, NewState};
 
 handle_call(merge_dynamic_and_static, _From, State) ->
-    OldDynamic = config_dynamic(State),
-    NewDynamic = do_merge_dynamic_and_static([OldDynamic], State),
-    C = {cas_config, NewDynamic, [], OldDynamic, remote},
+    OldKVList = get_kv_list_with_config(State),
+    NewKVList = do_merge_dynamic_and_static([OldKVList], State),
+    C = {cas_config, NewKVList, [], OldKVList, remote},
     {reply, true, NewState} = handle_call(C, [], State),
     {reply, ok, NewState};
 
 handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
             _From, State) ->
-    case OldKVList =:= hd(State#config.dynamic) of
+    case OldKVList =:= get_kv_list_with_config(State) of
         true ->
             HaveExtraLocalChanges = (ExtraLocalChanges =/= []),
 
-            NewState0 = State#config{dynamic = [NewKVList]},
+            NewState0 = set_config_dynamic(State,
+                                           kvlist_to_dynamic(NewKVList)),
             NewState =
                 case {Type, HaveExtraLocalChanges} of
                     {local, _} ->
@@ -1070,7 +1077,7 @@ handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
                         NewState0
                 end,
 
-            Diff = config_dynamic(NewState) -- OldKVList,
+            Diff = get_kv_list_with_config(NewState) -- OldKVList,
             update_ets_dup(Diff),
 
             {LocalDiff, RemoteDiff} =
@@ -1102,15 +1109,15 @@ handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
     end;
 
 handle_call({upgrade_config_explicitly, Upgrader}, _From, State) ->
-    OldKVList = config_dynamic(State),
+    OldKVList = get_kv_list_with_config(State),
     NewConfig0 = upgrade_config(State, Upgrader),
 
-    case OldKVList =:= config_dynamic(NewConfig0) of
+    case OldKVList =:= get_kv_list_with_config(NewConfig0) of
         true ->
             {reply, ok, State};
         false ->
             NewConfig = bump_local_changes_counter(NewConfig0),
-            NewKVList = config_dynamic(NewConfig),
+            NewKVList = get_kv_list_with_config(NewConfig),
             Diff = NewKVList -- OldKVList,
 
             update_ets_dup(Diff),
@@ -1129,10 +1136,43 @@ handle_call(get_key_ids_in_use, _From,
 
 %%--------------------------------------------------------------------
 
-% TODO: We're currently just taking the first dynamic KVList,
-%       and should instead be smushing all the dynamic KVLists together?
+%% Accessors for the dynamic part of the config. Nothing outside this block
+%% should touch #config.dynamic directly.
+%%
+%% dynamic config is historically a list which is inefficient when we have
+%% a lot of keys (scales with cluster size). To allow us to modify the backing
+%% storage in the future, we consolidated all accessors here.
+
+%% TODO: We're currently just taking the first dynamic KVList,
+%%       and should instead be smushing all the dynamic KVLists together?
 config_dynamic(#config{dynamic = [X | _]}) -> X;
-config_dynamic(#config{dynamic = []})      -> [].
+config_dynamic(#config{dynamic = []})      -> empty_dynamic().
+
+set_config_dynamic(#config{} = Config, Dynamic) ->
+    Config#config{dynamic = [Dynamic]}.
+
+empty_dynamic() -> [].
+
+%% Conversions for the boundaries that must stay list shaped: the replication
+%% wire format, config.dat, and the get_kv_list/run_txn APIs.
+dynamic_to_kvlist(Dynamic) -> Dynamic.
+
+kvlist_to_dynamic(KVList) -> KVList.
+
+search_dynamic(Dynamic, Key) ->
+    case lists:keysearch(Key, 1, Dynamic) of
+        {value, {Key, V}} -> {value, V};
+        _                 -> false
+    end.
+
+search_dynamic_with_vclock(Dynamic, Key) ->
+    case lists:keyfind(Key, 1, Dynamic) of
+        {_, RawValue} -> vclock_result(RawValue);
+        false         -> false
+    end.
+
+fold_dynamic(Fun, Acc, Dynamic) ->
+    lists:foldl(fold_kvpair(Fun), Acc, Dynamic).
 
 %%--------------------------------------------------------------------
 
@@ -1216,14 +1256,16 @@ load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
 
             ?log_info("Here's full dynamic config we loaded + static & default config:~n~p",
                       [ns_config_log:sanitize(DynamicPropList)]),
-            {ok, Config1#config{dynamic = [lists:keysort(1, DynamicPropList)]}};
+            {ok, set_config_dynamic(
+                   Config1,
+                   kvlist_to_dynamic(lists:keysort(1, DynamicPropList)))};
         E ->
             ?log_error("Failed loading static config: ~p", [E]),
             E
     end.
 
-save_config_sync(#config{dynamic = D}, DirPath, DS) ->
-    save_config_sync(D, DirPath, DS);
+save_config_sync(#config{} = Config, DirPath, DS) ->
+    save_config_sync([get_kv_list_with_config(Config)], DirPath, DS);
 
 save_config_sync(Dynamic, DirPath, DS) when is_list(Dynamic) ->
     C = dynamic_config_path(DirPath),
@@ -1779,14 +1821,20 @@ setup_with_saver() ->
     proc_lib:start(
       erlang, apply,
       [fun () ->
-               Cfg = #config{dynamic = [[{config_version, ns_config_default:get_current_version()},
-                                         {a, [{b, 1}, {c, 2}]},
-                                         {d, 3},
-                                         {{local_changes_count, testuuid}, []}]],
-                             policy_mod = ns_config_default,
-                             saver_mfa = {?MODULE, send_config, [save_config_target]},
-                             upgrade_config_fun = fun upgrade_config/1,
-                             uuid = testuuid},
+               Cfg0 = #config{
+                         policy_mod = ns_config_default,
+                         saver_mfa = {?MODULE, send_config,
+                                      [save_config_target]},
+                         upgrade_config_fun = fun upgrade_config/1,
+                         uuid = testuuid},
+               Cfg = set_config_dynamic(
+                       Cfg0,
+                       kvlist_to_dynamic(
+                         [{config_version,
+                           ns_config_default:get_current_version()},
+                          {a, [{b, 1}, {c, 2}]},
+                          {d, 3},
+                          {{local_changes_count, testuuid}, []}])),
                {ok, _} = start_link({with_state, Cfg}),
                MRef = erlang:monitor(process, Parent),
 
@@ -2335,7 +2383,8 @@ upgrade_config_case(InitialList, Changes, ExpectedList) ->
     upgrade_config_case(InitialList, Changes, ExpectedList, Upgrader).
 
 upgrade_config_case(InitialList, Changes, ExpectedList, Upgrader) ->
-    Config = #config{dynamic=[InitialList]},
+    Config = set_config_dynamic(#config{},
+                                kvlist_to_dynamic(InitialList)),
     UpgradedConfig = do_upgrade_config(Config,
                                        Changes,
                                        Upgrader),
@@ -2360,11 +2409,13 @@ make_upgrade_config_test_spec() ->
     [upgrade_config_testgen(I, C, E) || {I,C,E} <- T].
 
 test_upgrade_config_vclocks() ->
-    Config = #config{dynamic = [[{{node, node(), a}, 1},
-                                 {unchanged, 2},
-                                 {b, 2},
-                                 {{node, node(), c}, attach_vclock(1, <<"uuid">>)}]],
-                     uuid = <<"uuid">>},
+    Config = set_config_dynamic(
+               #config{uuid = <<"uuid">>},
+               kvlist_to_dynamic(
+                 [{{node, node(), a}, 1},
+                  {unchanged, 2},
+                  {b, 2},
+                  {{node, node(), c}, attach_vclock(1, <<"uuid">>)}])),
     Changes = [{set, {node, node(), a}, 2},
                {set, b, 4},
                {set, {node, node(), c}, [3]},
