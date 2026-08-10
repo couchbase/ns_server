@@ -3574,35 +3574,4 @@ analytics_admin_empty_profile_test_() ->
               ?assertEqual(false, is_allowed({[analytics], access}, Roles))
       end]}.
 
-analytics_access_test__() ->
-    Roles = compile_roles([<<"analytics_access">>], roles()),
-    ?assertEqual(true, is_allowed({[analytics], access}, Roles)),
-    ?assertEqual(false, is_allowed(
-                          {[admin, settings, metrics], any}, Roles)).
-
-analytics_admin_test__() ->
-    Roles = compile_roles([<<"analytics_admin">>], roles()),
-    ?assertEqual(false,
-                 is_allowed(
-                   {[{bucket, "foobar"}, analytics], manage}, Roles)),
-    ?assertEqual(true, is_allowed({[analytics], access}, Roles)).
-
-analytics_profile_test_setup() ->
-    setup_meck(),
-    fake_chronicle_kv:setup(),
-    set_role_definitions(),
-    config_profile:load_profile_for_test(?ANALYTICS_PROFILE_STR).
-
-analytics_profile_test_teardown(_) ->
-    config_profile:unload_profile_for_test(),
-    fake_chronicle_kv:teardown(),
-    meck:unload().
-
-analytics_profile_test_() ->
-    {setup,
-     fun analytics_profile_test_setup/0,
-     fun analytics_profile_test_teardown/1,
-     [fun analytics_access_test__/0,
-      fun analytics_admin_test__/0]}.
-
 -endif.

@@ -435,9 +435,22 @@ CONFIGURE_FILE (etc/static_config.in "${_etcdir}/couchbase/static_config" @ONLY)
 
 # Config profiles
 IF (BUILD_COLUMNAR)
-  # The analytics profile is the default profile for enterprise analytics builds
-  CONFIGURE_FILE (etc/analytics_profile "${_etcdir}/couchbase/analytics_profile" @ONLY)
-  CONFIGURE_FILE (etc/analytics_provisioned_profile "${_etcdir}/couchbase/analytics_provisioned_profile" @ONLY)
+  # The analytics profiles are maintained in cbas-core; they are the profiles
+  # for enterprise analytics builds.  CONFIGURE_DEPENDS re-runs the glob at
+  # build time so a profile added or removed there is picked up without a
+  # manual re-configure.
+  SET (_analytics_etcdir "${PROJECT_SOURCE_DIR}/../analytics/etc")
+  FILE (GLOB _analytics_profiles CONFIGURE_DEPENDS
+        "${_analytics_etcdir}/*_profile")
+  IF (NOT _analytics_profiles)
+    MESSAGE (FATAL_ERROR
+             "No *_profile files found in ${_analytics_etcdir}")
+  ENDIF ()
+  FOREACH (_analytics_profile IN LISTS _analytics_profiles)
+    GET_FILENAME_COMPONENT (_profile_name "${_analytics_profile}" NAME)
+    CONFIGURE_FILE ("${_analytics_profile}"
+                    "${_etcdir}/couchbase/${_profile_name}" @ONLY)
+  ENDFOREACH ()
 ELSE (BUILD_COLUMNAR)
   CONFIGURE_FILE (etc/default_profile "${_etcdir}/couchbase/default_profile" @ONLY)
   CONFIGURE_FILE (etc/serverless_profile "${_etcdir}/couchbase/serverless_profile" @ONLY)

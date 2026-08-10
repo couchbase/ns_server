@@ -1692,8 +1692,32 @@ handle_serve_file(AppRoot, Path, MaxAge, Req) ->
         Req, Path, AppRoot,
         [{"Cache-Control", lists:concat(["max-age=", MaxAge])}]).
 
+%% Config profiles may alias REST paths, e.g. Enterprise Analytics exposes
+%% /settings/operationalInsights as /settings/analytics:
+%%
+%%   {rest_path_aliases,
+%%    [{["settings", "operationalInsights"], ["settings", "analytics"]}]}.
+%%
+%% Aliases are resolved before dispatch, so a single entry covers every method
+%% and the permission and handler remain defined by get_action/4.  Only the
+%% tokenised path is rewritten; the clauses that hand the raw Path to their
+%% handler (metakv, serve file) see the path as it was requested.
+-spec alias_path([string()]) -> [string()].
+alias_path(PathTokens) ->
+    case config_profile:search(rest_path_aliases, []) of
+        [] ->
+            PathTokens;
+        Aliases ->
+            case lists:keyfind(PathTokens, 1, Aliases) of
+                {_, Target} ->
+                    Target;
+                false ->
+                    PathTokens
+            end
+    end.
+
 loop_inner(Req, Info, Path, PathTokens) ->
-    perform_action(Req, get_action(Req, Info, Path, PathTokens)).
+    perform_action(Req, get_action(Req, Info, Path, alias_path(PathTokens))).
 
 -spec get_bucket_id(rbac_permission() | no_check) -> bucket_name() | false.
 get_bucket_id(no_check) ->
@@ -1875,4 +1899,48 @@ parse_http_path_uri_test() ->
                  catch(parse_path(""))),
     ?assertEqual({web_exception, 400, "Bad Request", []},
                  catch(parse_path("\\/\/"))).
+
+alias_path_test() ->
+    %% alias_path/1 reads the profile through config_profile:search/2, which in
+    %% turn calls config_profile:get/0, so a synthetic profile is installed by
+    %% mocking get/0 - as menelaus_web_analytics' tests do.
+    SetProfile =
+        fun (Extra) ->
+                meck:expect(config_profile, get,
+                            fun () ->
+                                    ?DEFAULT_EMPTY_PROFILE_FOR_TESTS ++ Extra
+                            end)
+        end,
+    try
+        meck:new(config_profile, [passthrough]),
+
+        %% A profile declaring no aliases leaves every path alone.
+        SetProfile([]),
+        ?assertEqual(["settings", "analytics"],
+                     alias_path(["settings", "analytics"])),
+        ?assertEqual(["settings", "operationalInsights"],
+                     alias_path(["settings", "operationalInsights"])),
+
+        %% The alias the enterprise analytics profiles declare.
+        SetProfile([{rest_path_aliases,
+                     [{["settings", "operationalInsights"],
+                       ["settings", "analytics"]}]}]),
+        ?assertEqual(["settings", "analytics"],
+                     alias_path(["settings", "operationalInsights"])),
+
+        %% The path aliased to, and unrelated paths, are untouched.
+        ?assertEqual(["settings", "analytics"],
+                     alias_path(["settings", "analytics"])),
+        ?assertEqual(["pools", "default"],
+                     alias_path(["pools", "default"])),
+        ?assertEqual([], alias_path([])),
+
+        %% Matching is exact: neither case insensitive nor by prefix.
+        ?assertEqual(["settings", "operationalinsights"],
+                     alias_path(["settings", "operationalinsights"])),
+        ?assertEqual(["settings", "operationalInsights", "extra"],
+                     alias_path(["settings", "operationalInsights", "extra"]))
+    after
+        meck:unload(config_profile)
+    end.
 -endif.
