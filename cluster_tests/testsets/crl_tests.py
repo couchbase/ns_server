@@ -711,6 +711,66 @@ class CRLTests(testlib.BaseTestSet):
                              policy_per_scope={'clientAuth': 'Disabled',
                                                'nodeToNode': 'Disabled'})
 
+    def no_ootb_crl_test(self):
+        """A cluster CA that cannot issue CRLs leaves the cluster without one.
+
+        MB-73096: such a CA is not re-issued, so the OOTB CRL is simply
+        missing.  Nothing may break because of that, but node-to-node checking
+        cannot be enabled until the CA is regenerated - the certs the cluster
+        issues itself are checked under that scope (cb_crl:effective_scope/2)
+        and only the OOTB CRL covers them.
+        """
+        node = self.cluster.connected_nodes[0]
+
+        try:
+            # Remove the key rather than blanking it: that is the state an
+            # upgraded cluster with such a CA is left in
+            testlib.diag_eval(node,
+                              '{ok, _} = chronicle_kv:delete(kv, ootb_crl).')
+            _wait_generated_crl(self.cluster, present=False)
+
+            r = testlib.post_fail(
+                self.cluster, '/settings/crl',
+                json={'policyPerScope': {'nodeToNode': 'Require'}},
+                expected_code=400)
+            error = r.json()['error']
+            assert 'regenerateCertificate' in error, \
+                f'the error should say how to fix it, got: {error}'
+            testlib.post_fail(
+                self.cluster, '/settings/crl',
+                json={'policyPerScope': {'nodeToNode': 'Permissive'}},
+                expected_code=400)
+
+            # clientAuth does not depend on the OOTB CRL, and disabling a scope
+            # has to stay possible whatever the state is
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Require'})
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'})
+
+            # Regenerating the CA generates the CRL with it, which is the way
+            # out of this state
+            testlib.post_succ(node, '/controller/regenerateCertificate',
+                              params={'forceResetCACertificate': 'true',
+                                      'dropUploadedCertificates': 'false'})
+            _wait_generated_crl(self.cluster, present=True)
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'nodeToNode': 'Require'})
+            _wait_crl_policy(node, 'node_to_node', 'require')
+        finally:
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'})
+            # Never leave the cluster without the OOTB CRL: the tests that
+            # follow enable nodeToNode checking, which needs it.  Regenerating
+            # the CA is the only way to get a CRL that matches it.
+            if not _generated_crls(self.cluster):
+                testlib.post_succ(node, '/controller/regenerateCertificate',
+                                  params={'forceResetCACertificate': 'true',
+                                          'dropUploadedCertificates': 'false'})
+                _wait_generated_crl(self.cluster, present=True)
+
     def diagnostics_validate_test(self):
         """Test the /settings/crl/diagnostics/validate test endpoint.
 
@@ -2316,6 +2376,23 @@ def get_crl_status(cluster):
     """
     return testlib.post_succ(cluster, '/settings/crl/diagnostics/status',
                              json={}).json()
+
+
+def _generated_crls(cluster):
+    """The 'generated' (OOTB) CRL entries the nodes report."""
+    status = get_crl_status(cluster)
+    return [f for node_status in status.values()
+            if 'crlFiles' in node_status
+            for f in crl_file_statuses(node_status)
+            if f.get('source') == 'generated']
+
+
+def _wait_generated_crl(cluster, present):
+    """Wait until the OOTB CRL is (or is no longer) reported by every node."""
+    testlib.poll_for_condition(
+        lambda: (len(_generated_crls(cluster)) > 0) == present,
+        sleep_time=0.5, timeout=60,
+        msg=f'waiting for the generated CRL to be present={present}')
 
 
 def reload_crl(node):

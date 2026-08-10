@@ -59,7 +59,7 @@
          format_name/1,
          get_subject/1,
          get_ootb_crl/0,
-         ensure_ootb_crl/0]).
+         chronicle_upgrade_to_totoro/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -673,61 +673,108 @@ get_ootb_crl() ->
         _ -> undefined
     end.
 
-%% Idempotent back-fill of the OOTB CRL for the current generated CA.
-%% New CAs get their CRL written transactionally with root_cert_and_pkey
-%% (see generate_cluster_CA/2), but a cluster upgraded from a pre-CRL version
-%% has a CA with no stored CRL.  This signs one (we hold the key) and stores it.
-%% No-op on a keyless node (e.g. mid-join) or when a CRL already exists.
-ensure_ootb_crl() ->
-    case chronicle_kv:get(kv, root_cert_and_pkey) of
-        {ok, {{_CA, undefined}, _}} ->
-            ok;
-        {ok, {{CA, Key}, _}} ->
-            case get_ootb_crl() of
-                undefined -> do_backfill_ootb_crl(CA, Key);
-                _ -> ok
+%% New CAs get their CRL written transactionally with root_cert_and_pkey (see
+%% generate_cluster_CA/2), but a cluster upgraded from a pre-CRL version has a
+%% CA with no stored CRL, so one is signed here.
+%%
+%% This runs inside the chronicle upgrade transaction, which is retried on
+%% conflict, so generate_cert may be invoked more than once and only the
+%% committed result is kept.  That is the same trade jwt_issuer makes when it
+%% generates signing keys in its own upgrade step.
+chronicle_upgrade_to_totoro(ChronicleUpgradeTxn) ->
+    case chronicle_upgrade:get_key(root_cert_and_pkey, ChronicleUpgradeTxn) of
+        {ok, {CA, Key}} when is_binary(Key) ->
+            case chronicle_upgrade:get_key(ootb_crl, ChronicleUpgradeTxn) of
+                {ok, CRL} when is_binary(CRL) ->
+                    ChronicleUpgradeTxn;
+                _ ->
+                    backfill_ootb_crl_in_upgrade_txn(CA, Key,
+                                                     ChronicleUpgradeTxn)
             end;
-        {error, not_found} ->
-            ok
+        {ok, {_CA, undefined}} ->
+            ?log_warning("No cluster CA private key on this node, the OOTB CRL "
+                         "was not generated"),
+            ChronicleUpgradeTxn;
+        _ ->
+            ?log_debug("No cluster CA, nothing to backfill"),
+            ChronicleUpgradeTxn
     end.
 
-do_backfill_ootb_crl(CA, Key) ->
-    ?log_debug("OOTB CRL is missing, will generate"),
-    CRL = generate_crl_for_ca(CA, Key),
-    %% chronicle_kv:txn returns {ok, Rev} on commit, but the bare Result on
-    %% abort (chronicle_kv.erl: {abort, Result} -> Result).  Distinct abort
-    %% reasons let us match on the outcome and treat the races below as a
-    %% graceful no-op instead of relying on the caller's catch to swallow a
-    %% badmatch.  These aborts are expected on multi-node clusters where every
-    %% node runs ensure_ootb_crl on compat_version_changed and chronicle
-    %% serializes the writes — the first commits, the rest abort.
-    case chronicle_kv:txn(
-           kv,
-           fun (Txn) ->
-                   %% Re-check under the txn: only write if the current CA is
-                   %% still this one and no CRL has appeared meanwhile.
-                   case chronicle_kv:txn_get(root_cert_and_pkey, Txn) of
-                       {ok, {{CA, _}, _}} ->
-                           case chronicle_kv:txn_get(ootb_crl, Txn) of
-                               {error, not_found} ->
-                                   {commit, [{set, ootb_crl, CRL}]};
-                               {ok, {undefined, _}} ->
-                                   {commit, [{set, ootb_crl, CRL}]};
-                               _ ->
-                                   {abort, crl_already_present}
-                           end;
-                       _ ->
-                           {abort, ca_changed}
-                   end
-           end) of
-        {ok, _} ->
-            ?log_info("Backfilled OOTB CRL for the current generated CA");
-        crl_already_present ->
-            ?log_debug("OOTB CRL already present, skipping backfill");
-        ca_changed ->
-            ?log_debug("CA changed during backfill, skipping")
-    end,
-    ok.
+%% A CA that predates cRLSign cannot sign the CRL, and neither can a broken
+%% tool.  Neither is a reason to fail the upgrade: the cluster simply has no
+%% OOTB CRL, and cb_crl_manager refuses to enable node-to-node CRL checking
+%% until the CA is regenerated.  Nothing here may throw or block either: this
+%% runs in the process that drives the whole chronicle upgrade, so an exception
+%% would leave the cluster retrying (and failing) the compat version bump, and
+%% a hang would wedge it with no error at all.
+backfill_ootb_crl_in_upgrade_txn(CA, Key, ChronicleUpgradeTxn) ->
+    try
+        case ca_can_issue_crl(CA) of
+            true ->
+                case async:run_with_timeout(?cut(generate_crl_for_ca(CA, Key)),
+                                            crl_generation_timeout()) of
+                    {ok, CRL} ->
+                        chronicle_upgrade:set_key(ootb_crl, CRL,
+                                                  ChronicleUpgradeTxn);
+                    {error, timeout} ->
+                        no_ootb_crl("the CRL could not be generated in time",
+                                    ChronicleUpgradeTxn)
+                end;
+            false ->
+                %% MB-73096: the CA predates cRLSign being added to the
+                %% generated CA (MB-51654), so it cannot sign the CRL we need.
+                no_ootb_crl("the cluster CA cannot issue CRLs",
+                            ChronicleUpgradeTxn)
+        end
+    catch
+        T:E:S ->
+            ?log_error("Failed to generate the OOTB CRL: ~p", [{T, E, S}]),
+            no_ootb_crl("the CRL could not be generated", ChronicleUpgradeTxn)
+    end.
+
+%% Signing an empty CRL for an existing CA takes milliseconds, and the whole
+%% chronicle upgrade txn - every step of it - has to fit in
+%% chronicle_kv's 15s default, after which the commit itself fails with
+%% exit:timeout.  So this waits long enough to absorb a busy machine and still
+%% leaves the rest of the upgrade its share.
+crl_generation_timeout() ->
+    ?get_timeout(generate_crl, 10000).
+
+no_ootb_crl(Reason, ChronicleUpgradeTxn) ->
+    %% Emitted from inside the upgrade txn, which chronicle retries on
+    %% conflict, so an operator can see this more than once.
+    ale:warn(?USER_LOGGER,
+             "No certificate revocation list was generated for the cluster's "
+             "own CA: ~s.  Certificate revocation checking of node-to-node "
+             "traffic cannot be enabled until the cluster CA is regenerated.",
+             [Reason]),
+    ChronicleUpgradeTxn.
+
+%% A CA that issues CRLs needs the cRLSign key usage (RFC 5280 4.2.1.3); the
+%% generate_cert tool refuses to sign without it, OTP reports
+%% crl_sign_bit_not_set, and OpenSSL (memcached) fails the handshake with
+%% X509_V_ERR_KEYUSAGE_NO_CRL_SIGN even under the permissive policy.  A
+%% generated CA created before MB-51654 does not have it.  An absent keyUsage
+%% extension permits every usage, consistent with
+%% pubkey_crl:verify_crl_keybit/2.
+-spec ca_can_issue_crl(binary()) -> boolean().
+ca_can_issue_crl(CAPem) ->
+    case decode_single_certificate(CAPem) of
+        {ok, Der} ->
+            OtpCert = public_key:pkix_decode_cert(Der, otp),
+            TBSCert = OtpCert#'OTPCertificate'.tbsCertificate,
+            Exts = ssl_certificate:extensions_list(
+                     TBSCert#'OTPTBSCertificate'.extensions),
+            case ssl_certificate:select_extension(?'id-ce-keyUsage', Exts) of
+                undefined -> true;
+                #'Extension'{extnValue = Usages} when is_list(Usages) ->
+                    lists:member(cRLSign, Usages);
+                _ -> false
+            end;
+        {error, Reason} ->
+            ?log_error("Failed to decode the generated CA: ~p", [Reason]),
+            false
+    end.
 
 %% Sign an empty CRL for an existing CA cert+key via the generate_cert tool's
 %% CRL-only mode (CACERT/CAPKEY env).  Returns the CRL PEM binary.
@@ -1801,6 +1848,173 @@ chronicle_upgrade_cert_to_79(Cert) ->
           "PXCblzKwY8o4WvPdBWjS1SDEfYPubygyh3dSdX92kYJvlRthIgrtsgZg1vc4w35g"
           "Qvlx+xG9le4klA5R0kI5LYlCQ1nL4rmrOqBxbvhnG6rH+Q==\n"
           "-----END CERTIFICATE-----">>).
+
+%% A generated CA of the shape MB-51654 replaced: keyCertSign with no cRLSign,
+%% and the serverAuth extended key usage that was dropped with it.  Test data
+%% only, and only the certificate is needed - the tool is mocked wherever this
+%% is used.
+-define(PEM_PRE_76_CA,
+        <<"-----BEGIN CERTIFICATE-----\n"
+          "MIIDLzCCAhegAwIBAgIUaBa/DsgP1HRlSuf7j22eaUAApDYwDQYJKoZIhvcNAQEL"
+          "BQAwJDEiMCAGA1UEAxMZQ291Y2hiYXNlIFNlcnZlciAxYTc3YmRlZTAgFw0yNjA4"
+          "MDQyMTAyMTBaGA8yMDUxMDMyNjIxMDIxMFowJDEiMCAGA1UEAxMZQ291Y2hiYXNl"
+          "IFNlcnZlciAxYTc3YmRlZTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB"
+          "AL8cNADlUSPGl2sAGaZ6W1sVBp7lZUsIMEZDc0qHgc83twK/g+txkrbvcurHuegh"
+          "tyuhZ152P1Js++vioOfoGWfCRZH18m4WR2YOR92e8VZmqf9ANY13rNyHPp1+XA17"
+          "rFhPZXTgquHPmLrHBNEdjeqhYVtoCYAaS582vuKUkCeiiOXvbaHPX3jjh4WZh5RH"
+          "equ5efX8EOxpIa9PvpTXNluevZj6kdjsI09hUXDh+PsEwMSSlqKLM3jsXqDnl+8/"
+          "evH3cnEh8y6X5uc40Mg5pIc4sGW1iKnrKpnKmh4SVJtFVHatjZOyMh8FO3DSpZZI"
+          "d4zlvOXs4FOB3L+/tNr+xzkCAwEAAaNXMFUwDgYDVR0PAQH/BAQDAgKkMBMGA1Ud"
+          "JQQMMAoGCCsGAQUFBwMBMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFD88vHIv"
+          "0auFk9ZGEGqOUm0Q7Xz/MA0GCSqGSIb3DQEBCwUAA4IBAQCDRGFSzXb5Uk2AWrLK"
+          "mh6pdnr4QVZ+n+ZpbB6jMN+gI9CfgYQnQaYsIdfwO9lsYxEgY+TxKf5kkGgjdlj0"
+          "NaSXXhR7IM0pcnrhiC/IWW5jRTyAbFjKzsToKbiz4nJE50Jw5Po6U9oiYOhRV7qe"
+          "EFGU0KNOwDW03LQVcnxkaiJo4k3luKUzSyB9LWIwPBg5X0j1SRxKwcpoPFmtPZDa"
+          "kxIkX6pPK1SFnsRfJ0VzRmGZ62+ZE3E7Lna5ZliNR4caht2fzFb2nDIM6syGl1lU"
+          "f4aj5xIum6QSoXt2TivwahnUs4NyCWbF8VRHQay6ZTYZigZvqdJSSZpPAKfdSedN"
+          "J1U9\n"
+          "-----END CERTIFICATE-----">>).
+
+-define(PEM_EMPTY_CRL,
+        <<"-----BEGIN X509 CRL-----\nfake crl\n-----END X509 CRL-----">>).
+
+ca_can_issue_crl_test() ->
+    ?assert(ca_can_issue_crl(?PEM_DEFAULT)),
+    ?assert(ca_can_issue_crl(?PEM_WITH_OU)),
+    %% MB-51654: a CA generated before cRLSign was added cannot issue CRLs
+    ?assertNot(ca_can_issue_crl(?PEM_PRE_76_CA)),
+    ?assertNot(ca_can_issue_crl(<<"not a certificate">>)).
+
+ootb_crl_upgrade_test_() ->
+    {foreach,
+     fun () ->
+             fake_ns_config:setup(),
+             fake_chronicle_kv:setup(),
+             meck:new(misc, [passthrough])
+     end,
+     fun (_) ->
+             meck:unload(misc),
+             fake_chronicle_kv:teardown(),
+             fake_ns_config:teardown()
+     end,
+     [{"no CA at all is not an error", fun upgrade_without_ca_t/0},
+      {"a CA whose key we don't have is left alone", fun upgrade_no_pkey_t/0},
+      {"an existing CRL is kept as is", fun upgrade_crl_present_t/0},
+      {"a CRL is backfilled for a CA that can sign it",
+       fun upgrade_backfill_t/0},
+      {"a CA that cannot sign CRLs is left without one",
+       fun upgrade_ca_cannot_sign_t/0},
+      {"a failure of the tool does not fail the upgrade",
+       fun upgrade_tool_failure_t/0},
+      {"a hanging tool does not block the upgrade",
+       fun upgrade_tool_hangs_t/0},
+      {"an undecodable CA does not fail the upgrade",
+       fun upgrade_bad_ca_t/0}]}.
+
+%% Pretend the generate_cert tool emitted Parts, and remember whether it was
+%% called at all.
+expect_generate_cert(Parts) ->
+    Self = self(),
+    meck:expect(misc, run_external_tool,
+                fun (_Tool, Args, _Env) ->
+                        Self ! {generate_cert_called, Args},
+                        {0, iolist_to_binary(Parts)}
+                end).
+
+called_with() ->
+    receive {generate_cert_called, Args} -> Args
+    after 0 -> none
+    end.
+
+%% Run the upgrade step the way chronicle_upgrade:upgrade/2 does.
+run_chronicle_upgrade() ->
+    chronicle_kv:txn(
+      kv, fun (Txn) ->
+              chronicle_upgrade:build_commit(
+                chronicle_upgrade_to_totoro({#{}, Txn}))
+          end).
+
+upgrade_without_ca_t() ->
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)).
+
+upgrade_no_pkey_t() ->
+    fake_chronicle_kv:update_snapshot(root_cert_and_pkey,
+                                      {?PEM_DEFAULT, undefined}),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)),
+    ?assertEqual(none, called_with()).
+
+upgrade_crl_present_t() ->
+    fake_chronicle_kv:update_snapshot(
+      #{root_cert_and_pkey => {?PEM_DEFAULT, <<"key">>},
+        ootb_crl => ?PEM_EMPTY_CRL}),
+    expect_generate_cert([?PEM_EMPTY_CRL]),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual(none, called_with()).
+
+upgrade_backfill_t() ->
+    fake_chronicle_kv:update_snapshot(root_cert_and_pkey,
+                                      {?PEM_DEFAULT, <<"key">>}),
+    expect_generate_cert([?PEM_EMPTY_CRL]),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual(["--generate-crl"], called_with()),
+    ?assertMatch({ok, {?PEM_EMPTY_CRL, _}}, chronicle_kv:get(kv, ootb_crl)),
+    %% The CA itself is untouched
+    ?assertMatch({ok, {{?PEM_DEFAULT, <<"key">>}, _}},
+                 chronicle_kv:get(kv, root_cert_and_pkey)),
+    %% Running it again is a no-op
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual(none, called_with()).
+
+%% MB-73096: the upgrade of a cluster whose CA predates cRLSign has to succeed;
+%% the cluster just ends up without an OOTB CRL.
+upgrade_ca_cannot_sign_t() ->
+    fake_chronicle_kv:update_snapshot(root_cert_and_pkey,
+                                      {?PEM_PRE_76_CA, <<"key">>}),
+    expect_generate_cert([?PEM_EMPTY_CRL]),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    %% The tool is not even asked to sign what it would refuse to sign
+    ?assertEqual(none, called_with()),
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)),
+    ?assertMatch({ok, {{?PEM_PRE_76_CA, <<"key">>}, _}},
+                 chronicle_kv:get(kv, root_cert_and_pkey)).
+
+upgrade_tool_failure_t() ->
+    fake_chronicle_kv:update_snapshot(root_cert_and_pkey,
+                                      {?PEM_DEFAULT, <<"key">>}),
+    meck:expect(misc, run_external_tool,
+                fun (_Tool, _Args, _Env) -> {1, <<"boom">>} end),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)),
+    ?assertMatch({ok, {{?PEM_DEFAULT, <<"key">>}, _}},
+                 chronicle_kv:get(kv, root_cert_and_pkey)).
+
+%% The tool runs in the process that drives the whole chronicle upgrade, so a
+%% hang there would wedge the cluster instead of failing it.
+upgrade_tool_hangs_t() ->
+    fake_chronicle_kv:update_snapshot(root_cert_and_pkey,
+                                      {?PEM_DEFAULT, <<"key">>}),
+    %% Not {timeout, _}: fake_ns_config mecks ns_config:get_timeout/2 itself
+    %% and looks the key up verbatim, so the wrapping the real one does
+    %% (ns_config:get_timeout/2) never happens here.
+    fake_ns_config:update_snapshot({?MODULE, generate_crl}, 100),
+    meck:expect(misc, run_external_tool,
+                fun (_Tool, _Args, _Env) -> timer:sleep(infinity) end),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)).
+
+%% A CA that decodes as a PEM certificate but not as a certificate makes
+%% pkix_decode_cert raise; that must not escape either.
+upgrade_bad_ca_t() ->
+    fake_chronicle_kv:update_snapshot(
+      root_cert_and_pkey,
+      {<<"-----BEGIN CERTIFICATE-----\nZm9v\n"
+         "-----END CERTIFICATE-----">>, <<"key">>}),
+    expect_generate_cert([?PEM_EMPTY_CRL]),
+    ?assertMatch({ok, _}, run_chronicle_upgrade()),
+    ?assertEqual(none, called_with()),
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)).
 
 chronicle_upgrade_cert_to_79_test() ->
     CertWithoutPEM = [{subject, <<"CN=Couchbase Server 3f4b2bb0">>}],

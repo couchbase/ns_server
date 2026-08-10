@@ -244,15 +244,36 @@ set_config(NewCfg0) ->
                 Merged0 = maps:merge(CurrentRaw, NewCfg0),
                 NewCfg = merge_default(
                            Merged0#{policy_per_scope => MergedPPS}),
-                {commit, [{set, ?CHRONICLE_KEY, NewCfg}]}
+                case enables_node_to_node_without_crl(NewCfg0, Snapshot) of
+                    true -> {abort, {error, no_ootb_crl}};
+                    false -> {commit, [{set, ?CHRONICLE_KEY, NewCfg}]}
+                end
         end,
     %% On quorum loss chronicle raises a bare exit:timeout, and on too many
     %% conflicting updates it returns {error, exceeded_retries}.
-    try chronicle_kv:transaction(kv, [?CHRONICLE_KEY], Fun, #{}) of
+    try chronicle_kv:transaction(kv, [?CHRONICLE_KEY, ootb_crl], Fun, #{}) of
         {ok, _} -> ok;
         {error, Err} -> {error, Err}
     catch
         exit:timeout -> {error, no_quorum}
+    end.
+
+%% Certificates the cluster issues itself are checked against the CRL its own
+%% CA signs, and they are always checked under the node_to_node scope (see
+%% cb_crl:effective_scope/2), so that scope cannot be enabled without the OOTB
+%% CRL.  A CA older than cRLSign cannot sign one; regenerating the cluster CA
+%% is the way out.  Only the requested change is looked at, so disabling a
+%% scope stays possible whatever the current state is.
+enables_node_to_node_without_crl(NewCfg, Snapshot) ->
+    PPS = maps:get(policy_per_scope, NewCfg, #{}),
+    case maps:get(node_to_node, PPS, disabled) of
+        disabled ->
+            false;
+        _ ->
+            case maps:find(ootb_crl, Snapshot) of
+                {ok, {CRL, _Rev}} when is_binary(CRL) -> false;
+                _ -> true
+            end
     end.
 
 %% Wait for any pending config changes to be fully applied.
@@ -424,7 +445,6 @@ init([]) ->
       fun (?CHRONICLE_KEY)          -> Self ! config_changed;
           (ca_certificates)         -> Self ! config_changed;
           (ootb_crl)                -> Self ! ootb_crl_changed;
-          (cluster_compat_version)  -> Self ! compat_version_changed;
           (?CRL_FILES_KEY)          -> Self ! crl_files_changed;
           (_)                       -> ok
       end),
@@ -471,9 +491,9 @@ init([]) ->
     State2 = reconcile_uploaded_files(ChronicleFiles0, State1),
     %% Make chronicle authoritative for the generated OOTB CRL on disk + in the
     %% cache.  The CRL itself is created elsewhere: transactionally with the CA
-    %% in ns_server_cert:generate_cluster_CA/2 for fresh clusters, and on the
-    %% chronicle upgrade to totoro via ensure_ootb_crl/0 (handle_info
-    %% compat_version_changed) for upgraded clusters.
+    %% in ns_server_cert:generate_cluster_CA/2 for fresh clusters, and by
+    %% ns_server_cert:chronicle_upgrade_to_totoro/1 for upgraded ones.  There
+    %% may be no CRL at all - a CA older than cRLSign cannot sign one.
     State3 = reconcile_generated_crl(State2),
     %% Remove cache entries not in any of the active sets.
     ok = purge_stale_cache_entries(State3#state.loaded_locally,
@@ -575,21 +595,6 @@ handle_info(ootb_crl_changed, State) ->
     NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
                                            NewState),
     {noreply, NewState2};
-
-handle_info(compat_version_changed, State) ->
-    %% On the chronicle upgrade that enables CRL support, back-fill the OOTB CRL
-    %% for the pre-existing (pre-CRL) CA.  ensure_ootb_crl/0 is idempotent and a
-    %% no-op once the CRL exists, so it is safe for every node to run it; the
-    %% single resulting ootb_crl write then drives reconcile on all nodes via
-    %% ootb_crl_changed.  Guarded against failure so it never crashes the
-    %% manager.  It cannot run inside the chronicle upgrade txn itself, which is
-    %% retryable and must not invoke the external generate_cert tool.
-    case cluster_compat_mode:is_cluster_totoro() of
-        true  -> ns_server_cert:ensure_ootb_crl();
-        false -> ok
-    end,
-    {noreply, maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
-                                        State)};
 
 handle_info(crl_files_changed, State) ->
     ChronicleFiles = get_crl_files_metadata(),
@@ -2481,5 +2486,49 @@ dir_report_test() ->
     #{status := unreadable, errors := [ErrText]} =
         Report({unreadable, {list_dir_error, eacces}}),
     ?assertNotEqual(nomatch, binary:match(ErrText, <<"eacces">>)).
+
+%% Certificates the cluster issues itself can only be checked against the CRL
+%% its own CA signs, so the scope that covers them is refused while there is
+%% none.  A CA older than cRLSign cannot sign one (MB-73096).
+set_config_ootb_crl_test_() ->
+    {foreach,
+     fun fake_chronicle_kv:setup/0,
+     fun (_) -> fake_chronicle_kv:teardown() end,
+     [{"node_to_node cannot be enabled without the OOTB CRL",
+       fun set_config_no_crl_t/0},
+      {"everything else can", fun set_config_no_crl_allowed_t/0},
+      {"node_to_node can be enabled with the OOTB CRL",
+       fun set_config_with_crl_t/0}]}.
+
+policy(Scope, Mode) ->
+    #{policy_per_scope => #{Scope => Mode}}.
+
+stored_policy(Scope) ->
+    {ok, {Cfg, _}} = chronicle_kv:get(kv, ?CHRONICLE_KEY),
+    maps:get(Scope, maps:get(policy_per_scope, Cfg)).
+
+set_config_no_crl_t() ->
+    ?assertEqual({error, no_ootb_crl},
+                 set_config(policy(node_to_node, require))),
+    ?assertEqual({error, no_ootb_crl},
+                 set_config(policy(node_to_node, permissive))),
+    %% Nothing was written
+    ?assertEqual({error, not_found}, chronicle_kv:get(kv, ?CHRONICLE_KEY)).
+
+set_config_no_crl_allowed_t() ->
+    %% Another scope does not need the OOTB CRL: internal client certs are
+    %% checked under node_to_node whichever listener they arrive on
+    ?assertEqual(ok, set_config(policy(client_auth, require))),
+    ?assertEqual(require, stored_policy(client_auth)),
+    %% ... and disabling stays possible in any state
+    ?assertEqual(ok, set_config(policy(node_to_node, disabled))),
+    ?assertEqual(disabled, stored_policy(node_to_node)),
+    %% ... as do settings that are not policies
+    ?assertEqual(ok, set_config(#{check_intermediate_certs => true})).
+
+set_config_with_crl_t() ->
+    fake_chronicle_kv:update_snapshot(ootb_crl, <<"crl">>),
+    ?assertEqual(ok, set_config(policy(node_to_node, require))),
+    ?assertEqual(require, stored_policy(node_to_node)).
 
 -endif.

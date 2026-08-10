@@ -139,4 +139,5 @@ upgrade_to(?VERSION_80, UpgradeTxn) ->
      functools:chain(
        UpgradeTxn,
        [ns_bucket:chronicle_upgrade_to_totoro(_),
-        menelaus_roles:chronicle_upgrade_to_totoro(_)])}.
+        menelaus_roles:chronicle_upgrade_to_totoro(_),
+        ns_server_cert:chronicle_upgrade_to_totoro(_)])}.
