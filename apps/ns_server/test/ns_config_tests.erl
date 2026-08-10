@@ -453,3 +453,21 @@ data_file(Name) -> filename:join([test_dir(), Name]).
 
 decrypt(Config) ->
     Config.
+
+%% Every case must agree with New -- Old, which diff_kvlists replaces.
+diff_kvlists_cases() ->
+    [{[], []},
+     {[], [{a, 1}]},
+     {[{a, 1}], []},
+     {[{a, 1}, {b, 2}], [{a, 1}, {b, 2}]},
+     {[{a, 1}, {b, 3}], [{a, 1}, {b, 2}]},
+     {[{b, 2}, {a, 1}], [{a, 1}, {b, 2}]},
+     {[{a, 1}, {c, 3}], [{a, 1}, {b, 2}]},
+     {[{a, 1}], [{a, 1.0}]},
+     {[{a, [{'_vclock', v1}, x]}], [{a, [{'_vclock', v0}, x]}]}].
+
+diff_kvlists_test() ->
+    lists:foreach(
+      fun ({New, Old}) ->
+              ?assertEqual(New -- Old, ns_config:diff_kvlists(New, Old))
+      end, diff_kvlists_cases()).

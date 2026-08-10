@@ -45,6 +45,7 @@
          run_txn/1, run_txn_with_config/2,
          clear/1,
          merge_kv_pairs/3,
+         diff_kvlists/2,
          sync_announcements/0,
          get_kv_list/0, get_kv_list/1, get_kv_list_with_config/1,
          upgrade_config_explicitly/1, config_version_token/0,
@@ -1077,7 +1078,8 @@ handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
                         NewState0
                 end,
 
-            Diff = get_kv_list_with_config(NewState) -- OldKVList,
+            Diff = diff_kvlists(get_kv_list_with_config(NewState),
+                                OldKVList),
             update_ets_dup(Diff),
 
             {LocalDiff, RemoteDiff} =
@@ -1118,7 +1120,7 @@ handle_call({upgrade_config_explicitly, Upgrader}, _From, State) ->
         false ->
             NewConfig = bump_local_changes_counter(NewConfig0),
             NewKVList = get_kv_list_with_config(NewConfig),
-            Diff = NewKVList -- OldKVList,
+            Diff = diff_kvlists(NewKVList, OldKVList),
 
             update_ets_dup(Diff),
             announce_locally_made_changes(Diff),
@@ -1173,6 +1175,16 @@ search_dynamic_with_vclock(Dynamic, Key) ->
 
 fold_dynamic(Fun, Acc, Dynamic) ->
     lists:foldl(fold_kvpair(Fun), Acc, Dynamic).
+
+%% Pairs of New that are absent from Old or whose value has changed, in New's
+%% order. Equivalent to New -- Old, as config keys are unique, but `--` is a
+%% O(n^2) and should not be used on large lists. As we migrate to maps here
+%% we can further improve this.
+-spec diff_kvlists(kvlist(), kvlist()) -> kvlist().
+diff_kvlists(New, Old) ->
+    OldMap = maps:from_list(Old),
+    [Pair || {Key, Value} = Pair <- New,
+             maps:find(Key, OldMap) =/= {ok, Value}].
 
 %%--------------------------------------------------------------------
 

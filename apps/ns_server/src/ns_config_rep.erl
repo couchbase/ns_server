@@ -490,7 +490,9 @@ merge_remote_configs(Fun, KVLists) ->
         false ->
             case ns_config:cas_remote_config(NewKVList, TouchedKeys, LocalKVList) of
                 true ->
-                    do_push_local(misc:compress(NewKVList -- LocalKVList)),
+                    do_push_local(
+                      misc:compress(
+                        ns_config:diff_kvlists(NewKVList, LocalKVList))),
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
