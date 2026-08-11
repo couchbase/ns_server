@@ -67,6 +67,24 @@ all_test_() ->
                ?_test(test_svc())}}
      ]}.
 
+%% Most of these tests care about the static config too, so wrap
+%% ns_config:mk_config/2 to take it directly
+mk_config(DynamicKVList) ->
+    mk_config(DynamicKVList, []).
+
+mk_config(DynamicKVList, Static) ->
+    ns_config:mk_config(DynamicKVList, #config{static = Static}).
+
+%% load_config merges static and the defaults into dynamic, so a bare static
+%% {x,1} plus the generated node uuid is all that should be there.
+assert_loaded_config(R) ->
+    ?assertMatch({ok, #config{static = [[{x,1}], []],
+                              policy_mod = ?MODULE,
+                              uuid = _}}, R),
+    {ok, Config} = R,
+    ?assertMatch([{x,1}, {{node, _, uuid}, _}],
+                 lists:keysort(1, ns_config:get_kv_list_with_config(Config))).
+
 default(_Vsn) -> [].
 
 default() -> [].
@@ -83,119 +101,73 @@ test_search_list() ->
     ok.
 
 test_search_config() ->
-    ?assertMatch(false,
-                 ns_config:search(#config{},
-                                  x)),
-    ?assertMatch(false,
-                 ns_config:search(#config{dynamic = [[], []],
-                                          static = [[], []]},
-                                  x)),
-    ?assertMatch({value, 1},
-                 ns_config:search(#config{dynamic = [[{x, 1}], [{x, 2}]],
-                                          static = []},
-                                  x)),
+    ?assertMatch(false, ns_config:search(#config{}, x)),
+    ?assertMatch(false, ns_config:search(mk_config([], [[], []]), x)),
+    ?assertMatch({value, 1}, ns_config:search(mk_config([{x, 1}]), x)),
     ?assertMatch({value, 2},
-                 ns_config:search(#config{dynamic = [[{y, 1}, {x, 2}]],
-                                          static = [[], []]},
-                                  x)),
+                 ns_config:search(mk_config([{y, 1}, {x, 2}], [[], []]), x)),
     ?assertMatch({value, 3},
-                 ns_config:search(#config{dynamic = [[{y, 1}, {x, 2}]],
-                                          static = [[{w, 4}], [{z, 3}]]},
-                                  z)),
+                 ns_config:search(mk_config([{y, 1}, {x, 2}],
+                                            [[{w, 4}], [{z, 3}]]), z)),
     ?assertMatch({value, 2},
-                 ns_config:search(#config{dynamic = [[{y, 1}, {z, 2}]],
-                                          static = [[{w, 4}], [{z, 3}]]},
-                                  z)),
+                 ns_config:search(mk_config([{y, 1}, {z, 2}],
+                                            [[{w, 4}], [{z, 3}]]), z)),
     ?assertMatch({value, [{hi, there}]},
-                 ns_config:search(#config{dynamic = [[{y, 1},
-                                                      {z, [{hi, there}]}]],
-                                          static = [[{w, 4}], [{z, 3}]]},
-                                  z)),
+                 ns_config:search(mk_config([{y, 1}, {z, [{hi, there}]}],
+                                            [[{w, 4}], [{z, 3}]]), z)),
     ?assertMatch({value, [{hi, there}]},
-                 ns_config:search(#config{dynamic =
-                                              [[{y, 1},
-                                                {z, [{'_vclock', stripped},
-                                                     {hi, there}]}]],
-                                          static = [[{w, 4}], [{z, 3}]]},
-                                  z)),
+                 ns_config:search(mk_config([{y, 1},
+                                             {z, [{'_vclock', stripped},
+                                                  {hi, there}]}],
+                                            [[{w, 4}], [{z, 3}]]), z)),
     ok.
 
 test_search_prop_config() ->
+    ?assertMatch(foo, ns_config:search_prop(#config{}, x, a, foo)),
     ?assertMatch(foo,
-                 ns_config:search_prop(#config{},
-                             x, a, foo)),
+                 ns_config:search_prop(mk_config([], [[], []]), x, a, foo)),
     ?assertMatch(foo,
-                 ns_config:search_prop(#config{dynamic = [[], []],
-                                     static = [[], []]},
-                             x, a, foo)),
+                 ns_config:search_prop(mk_config([{x, []}]), x, a, foo)),
     ?assertMatch(foo,
-                 ns_config:search_prop(#config{dynamic = [[{x, []}], [{x, []}]],
-                                     static = []},
-                             x, a, foo)),
-    ?assertMatch(foo,
-                 ns_config:search_prop(#config{dynamic = [[{x, [{b, bar}]}], [{x, []}]],
-                                     static = []},
-                             x, a, foo)),
+                 ns_config:search_prop(mk_config([{x, [{b, bar}]}]),
+                                       x, a, foo)),
     ?assertMatch(baz,
-                 ns_config:search_prop(#config{dynamic = [[{x, [{b, bar},
-                                                      {a, baz}]}], [{x, []}]],
-                                     static = []},
-                             x, a, foo)),
-    ?assertMatch(foo,
-                 ns_config:search_prop(#config{dynamic = [[{x, [{b, bar}]}],
-                                                [{x, [{a, baz}]}]],
-                                     static = []},
-                             x, a, foo)),
+                 ns_config:search_prop(mk_config([{x, [{b, bar},
+                                                       {a, baz}]}]),
+                                       x, a, foo)),
     ok.
 
 test_search_node() ->
-    ?assertMatch(false,
-                 ns_config:search_node(#config{},
-                                       x)),
-    ?assertMatch(false,
-                 ns_config:search_node(#config{dynamic = [[], []],
-                                               static = [[], []]},
-                                       x)),
+    N = node(),
+    ?assertMatch(false, ns_config:search_node(#config{}, x)),
+    ?assertMatch(false, ns_config:search_node(mk_config([], [[], []]), x)),
     ?assertMatch({value, 1},
-                 ns_config:search_node(#config{dynamic =
-                                                   [[{x, 11},
-                                                     {{node, node(), x}, 1}]],
-                                               static = []},
-                                       x)),
+                 ns_config:search_node(
+                   mk_config([{x, 11}, {{node, N, x}, 1}]), x)),
     ?assertMatch({value, 2},
-                 ns_config:search_node(#config{dynamic =
-                                                   [[{y, 1}, {x, 22},
-                                                     {{node, node(), x}, 2}]],
-                                               static = [[], []]},
-                                       x)),
+                 ns_config:search_node(
+                   mk_config([{y, 1}, {x, 22}, {{node, N, x}, 2}],
+                             [[], []]), x)),
     ?assertMatch({value, 3},
-                 ns_config:search_node(#config{dynamic = [[{y, 1}, {x, 2}]],
-                                               static = [[{w, 4}], [{z, 33}, {{node, node(), z}, 3}]]},
-                                       z)),
+                 ns_config:search_node(
+                   mk_config([{y, 1}, {x, 2}],
+                             [[{w, 4}], [{z, 33}, {{node, N, z}, 3}]]), z)),
     ?assertMatch({value, 2},
-                 ns_config:search_node(#config{dynamic =
-                                                   [[{y, 1}, {z, 22},
-                                                     {{node, node(), z}, 2}]],
-                                               static = [[{w, 4}], [{z, 3}]]},
-                                       z)),
+                 ns_config:search_node(
+                   mk_config([{y, 1}, {z, 22}, {{node, N, z}, 2}],
+                             [[{w, 4}], [{z, 3}]]), z)),
     ?assertMatch({value, [{hi, there}]},
-                 ns_config:search_node(#config{dynamic =
-                                                   [[{y, 1},
-                                                     {z, [{bye, there}]},
-                                                     {{node, node(), z},
-                                                      [{hi, there}]}]],
-                                               static = [[{w, 4}], [{z, 3}]]},
-                                       z)),
+                 ns_config:search_node(
+                   mk_config([{y, 1}, {z, [{bye, there}]},
+                              {{node, N, z}, [{hi, there}]}],
+                             [[{w, 4}], [{z, 3}]]), z)),
     ?assertMatch({value, [{hi, there}]},
-                 ns_config:search_node(#config{dynamic =
-                                                   [[{y, 1},
-                                                     {z, [{'_vclock', stripped},
-                                                          {bye, there}]},
-                                                     {{node, node(), z},
-                                                      [{'_vclock', stripped},
-                                                       {hi, there}]}]],
-                                               static = [[{w, 4}], [{z, 3}]]},
-                                       z)),
+                 ns_config:search_node(
+                   mk_config([{y, 1},
+                              {z, [{'_vclock', stripped}, {bye, there}]},
+                              {{node, N, z}, [{'_vclock', stripped},
+                                              {hi, there}]}],
+                             [[{w, 4}], [{z, 3}]]), z)),
     ok.
 
 merge_kv_pairs_dynamic_test() ->
@@ -320,10 +292,7 @@ test_load_config() ->
     ok = file:write(F, <<"{x,1}.">>),
     ok = file:close(F),
     R = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
-    ?assertMatch({ok, #config{static = [[{x,1}], []],
-                              dynamic = [[{x,1}, {{node, _, uuid}, _}]],
-                              policy_mod = ?MODULE,
-                              uuid = _}}, R),
+    assert_loaded_config(R),
     ok.
 
 test_save_config() ->
@@ -332,13 +301,11 @@ test_save_config() ->
     ok = file:write(F, <<"{x,1}.">>),
     ok = file:close(F),
     R = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
-    ?assertMatch({ok, #config{static = [[{x,1}], []],
-                              dynamic = [[{x,1}, {{node, _, uuid}, _}]],
-                              policy_mod = ?MODULE,
-                              uuid = _}}, R),
-    {ok, #config{dynamic = [Dynamic]} = E} = R,
-    X = E#config{dynamic = [misc:update_proplist(Dynamic, [{x,2},{y,3}])],
-                 policy_mod = ?MODULE},
+    assert_loaded_config(R),
+    {ok, E} = R,
+    Dynamic = ns_config:get_kv_list_with_config(E),
+    X = ns_config:mk_config(misc:update_proplist(Dynamic, [{x,2},{y,3}]),
+                            E#config{policy_mod = ?MODULE}),
     ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), undefined)),
     R2 = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, X}, R2),
@@ -412,9 +379,10 @@ test_include_config() ->
     ?assertMatch({ok, #config{static = [[{x,1}, {z,9}, {y,1}], []],
                               policy_mod = ?MODULE}},
                  R),
-    {ok, #config{dynamic = [DynamicR]}} = R,
+    {ok, ConfigR} = R,
     ?assertMatch([{x,1}, {y,1}, {z,9}, {{node, _, uuid}, _}],
-                 lists:ukeysort(1, DynamicR)),
+                 lists:ukeysort(1,
+                                ns_config:get_kv_list_with_config(ConfigR))),
     ok.
 
 test_include_missing_config() ->

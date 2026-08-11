@@ -654,11 +654,12 @@ test_all_upgrades() ->
     Default = default(?LATEST_VERSION_NUM),
     KVs = misc:update_proplist(Default, [{{node, node(), config_version},
                                           get_min_supported_version()}]),
-    Cfg = #config{dynamic = [KVs], uuid = <<"uuid">>},
+    Cfg = ns_config:mk_config(KVs, #config{uuid = <<"uuid">>}),
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 
     UpgradedKVs = [{K, ns_config:strip_metadata(V)} ||
-                      {K, V} <- hd(UpgradedCfg#config.dynamic)],
+                      {K, V} <-
+                          ns_config:get_kv_list_with_config(UpgradedCfg)],
 
     ?assertEqual([], UpgradedKVs -- Default),
     ?assertEqual([], Default -- UpgradedKVs).

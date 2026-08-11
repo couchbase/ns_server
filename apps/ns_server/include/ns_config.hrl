@@ -7,8 +7,8 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 -record(config, {init,         % Initialization parameters.
-                 static = [],  % List of TupleList's; TupleList is {K, V}.
-                 dynamic = [], % List of TupleList's; TupleList is {K, V}.
+                 static = [] :: [kvlist()],
+                 dynamic = [] :: [map()],
                  policy_mod,
                  saver_mfa,
                  saver_pid,

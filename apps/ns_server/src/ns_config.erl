@@ -620,14 +620,12 @@ upgrade_config_explicitly(Upgrader) ->
 config_version_token() ->
     {ets:lookup(ns_config_announces_counter, changes_counter), erlang:whereis(?MODULE)}.
 
-fold_kvpair(Fun) ->
-    fun ({Key, Value}, Acc) ->
-            case strip_metadata(Value) of
-                ?DELETED_MARKER ->
-                    Acc;
-                V ->
-                    Fun(Key, V, Acc)
-            end
+fold_kvpair(Fun, Key, Value, Acc) ->
+    case strip_metadata(Value) of
+        ?DELETED_MARKER ->
+            Acc;
+        V ->
+            Fun(Key, V, Acc)
     end.
 
 fold(_Fun, Acc, undefined) ->
@@ -635,7 +633,9 @@ fold(_Fun, Acc, undefined) ->
 fold(_Fun, Acc, []) ->
     Acc;
 fold(Fun, Acc0, [KVList | Rest]) ->
-    fold(Fun, lists:foldl(fold_kvpair(Fun), Acc0, KVList), Rest);
+    Acc = lists:foldl(fun ({K, V}, A) -> fold_kvpair(Fun, K, V, A) end,
+                      Acc0, KVList),
+    fold(Fun, Acc, Rest);
 fold(Fun, Acc, #config{static = SL} = Config) ->
     fold_dynamic(Fun, fold(Fun, Acc, SL), config_dynamic(Config));
 fold(Fun, Acc, ?NS_CONFIG_LATEST_MARKER) ->
@@ -706,7 +706,7 @@ attach_vclock(Value, Node) ->
 compute_global_rev_pre_totoro(?NS_CONFIG_LATEST_MARKER) ->
     compute_global_rev(ns_config:get());
 compute_global_rev_pre_totoro(Config) ->
-    KVList = config_dynamic(Config),
+    KVList = get_kv_list_with_config(Config),
     lists:foldl(
       fun ({{local_changes_count, _}, Value}, Acc) ->
               %% local_changes_count never gets deleted, so it should be safe
@@ -729,7 +729,7 @@ compute_global_rev_pre_totoro(Config) ->
 compute_global_rev(?NS_CONFIG_LATEST_MARKER) ->
     compute_global_rev(ns_config:get());
 compute_global_rev(Config) ->
-    KVList = config_dynamic(Config),
+    KVList = get_kv_list_with_config(Config),
     lists:foldl(
         fun ({{local_changes_count, _}, Value}, Acc) ->
                 case strip_metadata(Value) of
@@ -1154,28 +1154,35 @@ config_dynamic(#config{dynamic = []})      -> empty_dynamic().
 set_config_dynamic(#config{} = Config, Dynamic) ->
     Config#config{dynamic = [Dynamic]}.
 
-empty_dynamic() -> [].
+empty_dynamic() -> #{}.
 
 %% Conversions for the boundaries that must stay list shaped: the replication
 %% wire format, config.dat, and the get_kv_list/run_txn APIs.
-dynamic_to_kvlist(Dynamic) -> Dynamic.
+%% Uses an ordered iterator to ensure that the resulting list order is well
+%% defined.
+dynamic_to_kvlist(Dynamic) -> maps:to_list(maps:iterator(Dynamic, ordered)).
 
-kvlist_to_dynamic(KVList) -> KVList.
+%% Folded from the right so that the earliest pair wins, matching the
+%% lists:keysearch this replaced. duplicate_node_keys/3 can produce a
+%% duplicate key, and the first one is the one reads used to see.
+kvlist_to_dynamic(KVList) ->
+    lists:foldr(fun ({Key, Value}, Acc) -> Acc#{Key => Value} end, #{},
+                KVList).
 
 search_dynamic(Dynamic, Key) ->
-    case lists:keysearch(Key, 1, Dynamic) of
-        {value, {Key, V}} -> {value, V};
-        _                 -> false
+    case maps:find(Key, Dynamic) of
+        {ok, V} -> {value, V};
+        error   -> false
     end.
 
 search_dynamic_with_vclock(Dynamic, Key) ->
-    case lists:keyfind(Key, 1, Dynamic) of
-        {_, RawValue} -> vclock_result(RawValue);
-        false         -> false
+    case maps:find(Key, Dynamic) of
+        {ok, RawValue} -> vclock_result(RawValue);
+        error          -> false
     end.
 
 fold_dynamic(Fun, Acc, Dynamic) ->
-    lists:foldl(fold_kvpair(Fun), Acc, Dynamic).
+    maps:fold(fun (K, V, A) -> fold_kvpair(Fun, K, V, A) end, Acc, Dynamic).
 
 %% Pairs of New that are absent from Old or whose value has changed, in New's
 %% order. Equivalent to New -- Old, as config keys are unique, but `--` is a
@@ -1848,14 +1855,12 @@ setup_with_saver() ->
                                       [save_config_target]},
                          upgrade_config_fun = fun upgrade_config/1,
                          uuid = testuuid},
-               Cfg = set_config_dynamic(
-                       Cfg0,
-                       kvlist_to_dynamic(
-                         [{config_version,
-                           ns_config_default:get_current_version()},
-                          {a, [{b, 1}, {c, 2}]},
-                          {d, 3},
-                          {{local_changes_count, testuuid}, []}])),
+               Cfg = mk_config(
+                       [{config_version,
+                         ns_config_default:get_current_version()},
+                        {a, [{b, 1}, {c, 2}]},
+                        {d, 3},
+                        {{local_changes_count, testuuid}, []}], Cfg0),
                {ok, _} = start_link({with_state, Cfg}),
                MRef = erlang:monitor(process, Parent),
 
@@ -2016,7 +2021,8 @@ test_clear() ->
     receive
         {saving, Ref2, NewConfig2, Pid2} ->
             Pid2 ! {Ref2, ok},
-            ?assertMatch([{{node, _, uuid}, _}], config_dynamic(NewConfig2))
+            ?assertMatch([{{node, _, uuid}, _}],
+                         get_kv_list_with_config(NewConfig2))
     end,
 
     receive
@@ -2065,7 +2071,8 @@ test_clear_with_concurrent_save() ->
     receive
         {saving, Ref2, NewConfig2, Pid2} ->
             Pid2 ! {Ref2, ok},
-            ?assertMatch([{{node, _, uuid}, _}], config_dynamic(NewConfig2))
+            ?assertMatch([{{node, _, uuid}, _}],
+                         get_kv_list_with_config(NewConfig2))
     end,
 
     receive
@@ -2291,7 +2298,7 @@ test_upgrade_config_vclock_descends() ->
           end,
 
     OldV = WithVClock([{setting, old}], OldClock),
-    Config = #config{dynamic = [[{k, OldV}]], uuid = UUID},
+    Config = mk_config([{k, OldV}], #config{uuid = UUID}),
 
     %% The three shapes an upgrader can hand back: the value carrying the clock
     %% already in the config, carrying one 8 changes behind it as it would if
@@ -2318,7 +2325,7 @@ test_upgrade_config_vclock_descends() ->
     %% The purge timestamp has to come from the value being replaced too, as
     %% merge_values/2 compares vclocks only where the two purge timestamps match
     PurgedV = [{?METADATA_VCLOCK, 5, OldClock} | [{setting, old}]],
-    PurgedCfg = #config{dynamic = [[{k, PurgedV}]], uuid = UUID},
+    PurgedCfg = mk_config([{k, PurgedV}], #config{uuid = UUID}),
     PurgedStored = Run(PurgedCfg, [{setting, new}]),
     ?assertEqual({5, [{UUID, {11, 0}}]}, extract_vclock(PurgedStored)),
     ?assertEqual({k, PurgedStored},
@@ -2332,7 +2339,7 @@ test_upgrade_config_delete_not_resurrected() ->
     OldClock = [{UUID, {10, 0}}],
 
     OldV = [{?METADATA_VCLOCK, OldClock}, {setting, old}],
-    Config = #config{dynamic = [[{k, OldV}]], uuid = UUID},
+    Config = mk_config([{k, OldV}], #config{uuid = UUID}),
 
     U = fun (Cfg) ->
                 case search(Cfg, k) of
@@ -2375,7 +2382,7 @@ test_compute_global_rev_deleted_keys() ->
     {_, DeletedVC} = extract_vclock(Deleted),
     ?assertEqual(2, vclock:count_changes(DeletedVC)),
 
-    Cfg = fun (KVList) -> #config{dynamic = [KVList]} end,
+    Cfg = mk_config(_),
     LiveKV = {{local_changes_count, U1}, Live},
     DeletedKV = {{local_changes_count, U2}, Deleted},
 
@@ -2404,14 +2411,15 @@ upgrade_config_case(InitialList, Changes, ExpectedList) ->
     upgrade_config_case(InitialList, Changes, ExpectedList, Upgrader).
 
 upgrade_config_case(InitialList, Changes, ExpectedList, Upgrader) ->
-    Config = set_config_dynamic(#config{},
-                                kvlist_to_dynamic(InitialList)),
+    Config = mk_config(InitialList),
     UpgradedConfig = do_upgrade_config(Config,
                                        Changes,
                                        Upgrader),
     StrippedUpgradedConfig = lists:map(fun ({K, V}) ->
                                                {K, strip_metadata(V)}
-                                       end, config_dynamic(UpgradedConfig)),
+                                       end,
+                                       get_kv_list_with_config(
+                                         UpgradedConfig)),
     ?assertEqual(lists:sort(ExpectedList),
                  lists:sort(StrippedUpgradedConfig)).
 
@@ -2430,13 +2438,11 @@ make_upgrade_config_test_spec() ->
     [upgrade_config_testgen(I, C, E) || {I,C,E} <- T].
 
 test_upgrade_config_vclocks() ->
-    Config = set_config_dynamic(
-               #config{uuid = <<"uuid">>},
-               kvlist_to_dynamic(
-                 [{{node, node(), a}, 1},
-                  {unchanged, 2},
-                  {b, 2},
-                  {{node, node(), c}, attach_vclock(1, <<"uuid">>)}])),
+    Config = mk_config([{{node, node(), a}, 1},
+                        {unchanged, 2},
+                        {b, 2},
+                        {{node, node(), c}, attach_vclock(1, <<"uuid">>)}],
+                       #config{uuid = <<"uuid">>}),
     Changes = [{set, {node, node(), a}, 2},
                {set, b, 4},
                {set, {node, node(), c}, [3]},

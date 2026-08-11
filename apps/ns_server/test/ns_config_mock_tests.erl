@@ -75,10 +75,11 @@ test_basic() ->
 
 test_multiple_saves() ->
     Self = self(),
-    Cfg0 = #config{dynamic=[[{a,1},{b,1}]],
-                   saver_mfa = {ns_config, send_config, [Self]},
-                   saver_pid = undefined,
-                   pending_more_save = false},
+    Cfg0 = ns_config:mk_config(
+             [{a,1},{b,1}],
+             #config{saver_mfa = {ns_config, send_config, [Self]},
+                     saver_pid = undefined,
+                     pending_more_save = false}),
 
     AssertNoCallResponses = fun () ->
                                 receive
@@ -200,21 +201,24 @@ do_test_cas_config(Self) ->
             exit(missing_cas_config_msg)
     end,
 
-    Config = #config{dynamic=[[{a,1},{b,1}]],
-                     saver_mfa = {?MODULE, send_config, [Self]},
-                     saver_pid = {Self, fun (_) -> ok end},
-                     pending_more_save = {true, fun (_) -> ok end}},
+    Config = ns_config:mk_config(
+               [{a,1},{b,1}],
+               #config{saver_mfa = {?MODULE, send_config, [Self]},
+                       saver_pid = {Self, fun (_) -> ok end},
+                       pending_more_save = {true, fun (_) -> ok end}}),
     DynamicConfig = ns_config:get_kv_list_with_config(Config),
 
-    ?assertEqual([{a,1},{b,1}], DynamicConfig),
+    ?assertEqual([{a,1},{b,1}], lists:sort(DynamicConfig)),
 
     meck:delete(ns_config, handle_call, 3),
     {reply, true, NewConfig} = ns_config:handle_call({cas_config, [{a,2}], [],
                                                       DynamicConfig, remote}, [], Config),
     NewDynamicConfig = ns_config:get_kv_list_with_config(NewConfig),
     NewPendingSave = NewConfig#config.pending_more_save,
-    ?assertEqual(NewConfig, Config#config{dynamic=[NewDynamicConfig],
-                                          pending_more_save = NewPendingSave}),
+    ?assertEqual(NewConfig,
+                 ns_config:mk_config(
+                   NewDynamicConfig,
+                   Config#config{pending_more_save = NewPendingSave})),
     ?assertEqual([{a,2}], NewDynamicConfig),
     {reply, false, NewConfig} = ns_config:handle_call({cas_config, [{a,3}], [],
                                                        DynamicConfig, remote}, [], NewConfig).
@@ -287,4 +291,3 @@ test_update() ->
 
     ?assertConfigEquals([{a, 10} | lists:keydelete(a, 1, OldConfig)], NewConfig2),
     ok.
-
