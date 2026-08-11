@@ -939,6 +939,10 @@ jsonify_security_settings(Settings) ->
                  ({cipher_suites, List}) -> {cipher_suites, {list, List}};
                  ({secure_headers, deleted}) -> {secure_headers, deleted};
                  ({secure_headers, List}) -> {secure_headers, {propset, List}};
+                 ({allowed_hosts, List}) when is_list(List) ->
+                     {allowed_hosts, {list, List}};
+                 ({azure_allowed_domains, List}) when is_list(List) ->
+                     {azure_allowed_domains, {list, List}};
                  (KV) -> KV
              end,
     json_builder:prepare_list([Format(S) || S <- Settings]).
@@ -1175,6 +1179,18 @@ rearrange_changes(Changes) ->
     {Rearrage(OldValues), Rearrage(NewValues)}.
 
 -ifdef(TEST).
+
+jsonify_security_settings_test() ->
+    %% List settings must be jsonified as json lists, otherwise their elements
+    %% get concatenated into a single string
+    ?assertEqual([{azure_allowed_domains, [<<"vault.azure.net">>,
+                                           <<"vault.azure.cn">>]}],
+                 jsonify_security_settings(
+                   [{azure_allowed_domains, [<<"vault.azure.net">>,
+                                             <<"vault.azure.cn">>]}])),
+    ?assertEqual([{allowed_hosts, [<<"example.com">>, <<"127.0.0.1">>]}],
+                 jsonify_security_settings(
+                   [{allowed_hosts, [<<"example.com">>, <<"127.0.0.1">>]}])).
 
 rearrange_changes_test() ->
                          %%  Key      OldVal, NewVal
