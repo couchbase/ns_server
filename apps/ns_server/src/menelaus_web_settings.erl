@@ -309,9 +309,14 @@ validate_allowed_hosts_list([E | Tail], Acc) ->
 get_azure_allowed_domains(Str) ->
     try ejson:decode(Str) of
         L when is_list(L) ->
-            case validate_azure_allowed_domains(L) of
-                {error, Msg} -> {error, Msg};
-                ok -> {ok, L}
+            case lists:all(fun is_binary/1, L) of
+                true ->
+                    case validate_azure_allowed_domains(L) of
+                        {error, Msg} -> {error, Msg};
+                        ok -> {ok, L}
+                    end;
+                false ->
+                    {error, "Invalid format. Expecting a list of strings"}
             end;
         _ ->
             {error, "Invalid format. Expecting a list of strings"}
@@ -439,6 +444,38 @@ parse_allowed_host_test() ->
     ?assertMatch({error, _}, parse_allowed_host(<<"test*test*.example.com">>)),
     ?assertMatch({error, _}, parse_allowed_host(<<"test.*.example.com">>)),
     ?assertMatch({error, _}, parse_allowed_host(<<"*.*.example.com">>)).
+
+get_azure_allowed_domains_test() ->
+    try
+        meck:new(ns_config, [passthrough]),
+        meck:expect(ns_config, search,
+                    fun (_Cfg, azure_allowed_domains, Default) -> Default end),
+        meck:new(cb_cluster_secrets, [passthrough]),
+        meck:expect(cb_cluster_secrets, get_all, fun () -> [] end),
+        get_azure_allowed_domains_t()
+    after
+        meck:unload(cb_cluster_secrets),
+        meck:unload(ns_config)
+    end.
+
+get_azure_allowed_domains_t() ->
+    BadFormat = {error, "Invalid format. Expecting a list of strings"},
+
+    ?assertEqual({ok, [<<"vault.azure.net">>, <<"managedhsm.azure.net">>]},
+                 get_azure_allowed_domains(
+                   <<"[\"vault.azure.net\", \"managedhsm.azure.net\"]">>)),
+    ?assertEqual({ok, []}, get_azure_allowed_domains(<<"[]">>)),
+    %% Non-string elements must be rejected, otherwise they end up in ns_config
+    %% where they break jsonification of the settings
+    ?assertEqual(BadFormat, get_azure_allowed_domains(<<"[123, 456]">>)),
+    ?assertEqual(BadFormat,
+                 get_azure_allowed_domains(<<"[\"vault.azure.net\", 456]">>)),
+    ?assertEqual(BadFormat,
+                 get_azure_allowed_domains(<<"[[\"vault.azure.net\"]]">>)),
+    ?assertEqual(BadFormat, get_azure_allowed_domains(<<"null">>)),
+    ?assertEqual(BadFormat, get_azure_allowed_domains(<<"{\"a\": \"b\"}">>)),
+    ?assertEqual({error, "Invalid format. Expecting JSON list"},
+                 get_azure_allowed_domains(<<"vault.azure.net">>)).
 -endif.
 
 check_fqdn_label(_, Wildcards) when Wildcards < 0 ->
