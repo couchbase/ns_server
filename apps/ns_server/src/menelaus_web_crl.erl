@@ -186,9 +186,9 @@ build_config(Values) ->
 
 handle_reload_crl(Req) ->
     assert_supported(),
-    StatusList = cb_crl_manager:reload(),
+    Status = cb_crl_manager:reload(),
     ns_audit:reload_crl(Req),
-    menelaus_util:reply_json(Req, format_status_map(StatusList)).
+    menelaus_util:reply_json(Req, format_status_map(Status)).
 
 %%%===================================================================
 %%% POST /settings/crl/diagnostics/status
@@ -286,8 +286,8 @@ collect_crl_status(NodePairs) ->
       fun ({_Node, Hostname}, NodeResult) ->
               NodeJson =
                   case NodeResult of
-                      StatusList when is_list(StatusList) ->
-                          format_status_map(StatusList);
+                      Status when is_map(Status) ->
+                          format_status_map(Status);
                       {badrpc, Reason} ->
                           {[{error,
                              iolist_to_binary(
@@ -477,11 +477,14 @@ format_crl_term(Term) ->
 %%% Helpers
 %%%===================================================================
 
-%% Convert the per-file status list from cb_crl_manager:get_status/0 to a
-%% JSON array.
--spec format_status_map([cb_crl_manager:crl_file_status()]) -> [term()].
-format_status_map(StatusList) ->
-    [file_status_to_json(S) || S <- StatusList].
+%% Convert the cb_crl_manager:crl_status() from get_status/0 (or reload/0) to a
+%% JSON object: the per-file statuses under "crlFiles", and the state of the
+%% poll directory itself — which is not a CRL file — beside them under
+%% "pollDirectory".
+-spec format_status_map(cb_crl_manager:crl_status()) -> term().
+format_status_map(#{files := Files, poll_directory := PollDir}) ->
+    {[{crlFiles, [file_status_to_json(S) || S <- Files]} |
+      poll_directory_to_json(PollDir)]}.
 
 %% Serialise a single per-file status map to an ejson object.
 -spec file_status_to_json(cb_crl_manager:crl_file_status()) -> term().
@@ -500,7 +503,39 @@ file_status_to_json(#{filename    := Filename,
 file_source_to_json(local_dir) -> <<"localDir">>;
 file_source_to_json(uploaded)  -> <<"uploaded">>;
 file_source_to_json(generated) -> <<"generated">>;
-file_source_to_json(url)       -> <<"url">>.
+file_source_to_json(url)       -> <<"url">>;
+file_source_to_json(Other)     -> unmapped_to_json(file_source, Other).
+
+%% Serialise how the last scan of the configured poll directory went, as a
+%% single-element proplist so an unconfigured directory (no report at all) can
+%% simply leave the field out — there is nothing to report on.
+%%
+%% The directory is not a CRL file: it has no source, no entries and no
+%% checksum, and it reports in a vocabulary of its own (dir_status_to_json/1
+%% below) rather than borrowing the per-file one.
+-spec poll_directory_to_json(cb_crl_manager:dir_report() | undefined) ->
+          [{atom(), term()}].
+poll_directory_to_json(undefined) ->
+    [];
+poll_directory_to_json(#{directory := Directory,
+                         status    := Status,
+                         last_scan := LastScan,
+                         errors    := Errors}) ->
+    [{pollDirectory,
+      {[{directory, Directory},
+        {status,    dir_status_to_json(Status)},
+        {lastScan,  format_datetime(LastScan)},
+        {errors,    Errors}]}}].
+
+%% Map a poll-directory status atom (cb_crl_manager:dir_status()) to the string
+%% shown in the HTTP response.  Deliberately its own enum: 'readable' says we
+%% could list the directory, not that some CRL in it is usable.  Same catch-all
+%% caveat as status_to_json/1 below.
+-spec dir_status_to_json(cb_crl_manager:dir_status()) -> binary().
+dir_status_to_json(readable)   -> <<"readable">>;
+dir_status_to_json(not_found)  -> <<"notFound">>;
+dir_status_to_json(unreadable) -> <<"unreadable">>;
+dir_status_to_json(Other)      -> unmapped_to_json(dir_status, Other).
 
 %% Serialise the per-entry breakdown of the active copy.
 -spec status_entry_to_json(cb_crl_manager:crl_entry()) -> term().
@@ -751,17 +786,55 @@ status_vocabulary_test() ->
                 not_loaded],
     Results  = [loaded, failed, not_attempted, uploaded, not_yet_synced,
                 checksum_mismatch],
-    Json = [status_to_json(S) || S <- Statuses] ++
-           [reload_result_to_json(R) || R <- Results],
-    ?assertEqual([], [B || B <- Json, binary:match(B, <<"_">>) =/= nomatch]),
-    %% Distinct atoms must not collapse onto the same name.
-    ?assertEqual(length(Json), length(lists:usort(Json))),
+    Sources  = [local_dir, uploaded, generated, url],
+    DirStatuses = [readable, not_found, unreadable],
+    StatusJson = [status_to_json(S) || S <- Statuses] ++
+                 [reload_result_to_json(R) || R <- Results],
+    SourceJson = [file_source_to_json(S) || S <- Sources],
+    DirJson    = [dir_status_to_json(S) || S <- DirStatuses],
+    ?assertEqual([], [B || B <- StatusJson ++ SourceJson ++ DirJson,
+                           binary:match(B, <<"_">>) =/= nomatch]),
+    %% Distinct atoms must not collapse onto the same name.  Each enum is
+    %% checked on its own: they are separate vocabularies, and reuse across
+    %% them is deliberate ('uploaded' is both a source and a reload result).
+    ?assertEqual(length(StatusJson), length(lists:usort(StatusJson))),
+    ?assertEqual(length(SourceJson), length(lists:usort(SourceJson))),
+    ?assertEqual(length(DirJson), length(lists:usort(DirJson))),
     ?assertEqual(<<"notYetValid">>, status_to_json(not_yet_valid)),
     ?assertEqual(<<"notLoaded">>, status_to_json(not_loaded)),
+    ?assertEqual(<<"notFound">>, dir_status_to_json(not_found)),
     ?assertEqual(<<"notAttempted">>, reload_result_to_json(not_attempted)),
     ?assertEqual(<<"notYetSynced">>, reload_result_to_json(not_yet_synced)),
     ?assertEqual(<<"checksumMismatch">>,
                  reload_result_to_json(checksum_mismatch)).
+
+%% The poll directory is reported beside the per-file list, never inside it,
+%% and in its own vocabulary (MB-72969): a caller reading "crlFiles" gets CRL
+%% files and nothing else.  An unconfigured directory leaves the field out
+%% entirely.
+poll_directory_to_json_test() ->
+    Status = fun (PollDir) ->
+                     {Json} = format_status_map(#{files          => [],
+                                                  poll_directory => PollDir}),
+                     Json
+             end,
+    NoDir = Status(undefined),
+    ?assertEqual([], proplists:get_value(crlFiles, NoDir)),
+    ?assertEqual(undefined, proplists:get_value(pollDirectory, NoDir)),
+
+    Reported = Status(#{directory => <<"/crls">>,
+                        status    => unreadable,
+                        last_scan => {{2026, 1, 1}, {0, 0, 0}},
+                        errors    => [<<"Failed to list directory">>]}),
+    ?assertEqual([], proplists:get_value(crlFiles, Reported)),
+    {Dir} = proplists:get_value(pollDirectory, Reported),
+    ?assertEqual(<<"/crls">>, proplists:get_value(directory, Dir)),
+    ?assertEqual(<<"unreadable">>, proplists:get_value(status, Dir)),
+    ?assertEqual([<<"Failed to list directory">>],
+                 proplists:get_value(errors, Dir)),
+    %% None of the per-file fields apply to a directory.
+    ?assertEqual([], [K || K <- [source, cacheStatus, entries, lastReload],
+                           proplists:is_defined(K, Dir)]).
 
 %% One response object must not describe the same healthy CRL with
 %% two vocabularies — cacheStatus and entries[].status both say "active", and

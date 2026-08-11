@@ -676,9 +676,9 @@ class CRLTests(testlib.BaseTestSet):
             # must be reported with the 'generated' source.
             status = get_crl_status(self.cluster)
             print(f"CRL status: {status}")
-            all_files = [f for node_files in status.values()
-                         if isinstance(node_files, list)
-                         for f in node_files]
+            all_files = [f for node_status in status.values()
+                         if 'crlFiles' in node_status
+                         for f in crl_file_statuses(node_status)]
             generated = [f for f in all_files
                          if f.get('source') == 'generated']
             assert len(generated) > 0, \
@@ -2310,11 +2310,9 @@ def crl_test_validate(cluster, policy=None, certs=None):
 def get_crl_status(cluster):
     """POST /settings/crl/diagnostics/status to get CRL status from all nodes.
 
-    Returns a dict keyed by node hostname, each containing a list of
-    per-file status objects of the form:
-      {"filename": "...", "source": "localDir"|"uploaded",
-       "cacheStatus": "active"|"expired"|..., "entries": [...],
-       "lastReload": {"result": ..., "time": ..., "errors": [...]}}
+    Returns a dict keyed by node hostname, each holding that node's status
+    response (see reload_crl below for its shape) or, for a node that did not
+    answer, {"error": "..."}.
     """
     return testlib.post_succ(cluster, '/settings/crl/diagnostics/status',
                              json={}).json()
@@ -2323,37 +2321,66 @@ def get_crl_status(cluster):
 def reload_crl(node):
     """POST /node/controller/reloadCrl to force immediate CRL reload.
 
-    Returns a list of per-file status objects (same format as the per-node
-    value in the status endpoint).
+    Returns the same object as the per-node value of the status endpoint:
+      {"crlFiles": [{"filename": "...", "source": "localDir"|"uploaded"|...,
+                     "cacheStatus": "active"|"expired"|..., "entries": [...],
+                     "lastReload": {"result": ..., "time": ...,
+                                    "errors": [...]}}],
+       "pollDirectory": {"directory": "...", "status": "readable"|...,
+                         "lastScan": ..., "errors": [...]}}
+    'pollDirectory' is absent when no poll directory is configured.
     """
     return testlib.post_succ(node, '/node/controller/reloadCrl').json()
 
 
 # Vocabularies the status and reload endpoints may use.  Entry statuses share
 # the file-level vocabulary minus 'notLoaded' (a file that is not loaded has no
-# entries).  Kept in sync with cb_crl_manager:file_status()/reload_result() and
-# their menelaus_web_crl serialisers.
+# entries).  Kept in sync with cb_crl_manager:file_status()/reload_result()/
+# file_source() and their menelaus_web_crl serialisers.
 CACHE_STATUSES = {'active', 'expired', 'notYetValid', 'untrusted', 'invalid',
                   'notLoaded'}
 ENTRY_STATUSES = CACHE_STATUSES - {'notLoaded'}
 RELOAD_RESULTS = {'loaded', 'failed', 'notAttempted', 'uploaded',
                   'notYetSynced', 'checksumMismatch'}
+SOURCES = {'localDir', 'uploaded', 'generated', 'url'}
+
+# The poll directory reports in a vocabulary of its own - it is a directory,
+# not a CRL, so none of the file-level values above apply to it (MB-72969).
+# Kept in sync with cb_crl_manager:dir_status().
+DIR_STATUSES = {'readable', 'notFound', 'unreadable'}
 
 
-def assert_status_vocabulary(crl_files):
-    """Assert per-file status objects stick to the documented enums.
+def crl_file_statuses(response):
+    """The per-file statuses of a status/reload response."""
+    return response.get('crlFiles', [])
+
+
+def poll_directory(response):
+    """The poll-directory report of a status/reload response.
+
+    None when no poll directory is configured: there is nothing to report on.
+    """
+    return response.get('pollDirectory')
+
+
+def assert_status_vocabulary(response):
+    """Assert a status/reload response sticks to the documented enums.
 
     MB-72988: one response object must not describe the same healthy CRL two
     ways - cacheStatus, entries[].status and lastReload.result all have their
-    own enum, and none of them includes a bare 'ok'.
+    own enum, and none of them includes a bare 'ok'.  MB-72969: the poll
+    directory has an enum of its own on top of those.
     """
-    for f in crl_files:
+    for f in crl_file_statuses(response):
         cache_status = f.get('cacheStatus')
         assert cache_status in CACHE_STATUSES, \
             f'Unexpected cacheStatus {cache_status!r} in: {f}'
         result = f.get('lastReload', {}).get('result')
         assert result in RELOAD_RESULTS, \
             f'Unexpected lastReload result {result!r} in: {f}'
+        source = f.get('source')
+        assert source in SOURCES, \
+            f'Unexpected source {source!r} in: {f}'
         entry_statuses = [e.get('status') for e in f.get('entries', [])]
         unexpected = [s for s in entry_statuses if s not in ENTRY_STATUSES]
         assert unexpected == [], \
@@ -2364,19 +2391,57 @@ def assert_status_vocabulary(crl_files):
             assert all(s == 'active' for s in entry_statuses), \
                 f'Active CRL with a non-active entry: {f}'
 
+    directory = poll_directory(response)
+    if directory is not None:
+        status = directory.get('status')
+        assert status in DIR_STATUSES, \
+            f'Unexpected poll directory status {status!r} in: {directory}'
+        # The directory describes a directory, not a CRL: none of the per-file
+        # fields belong to it.
+        assert not set(directory) & {'source', 'cacheStatus', 'entries',
+                                     'lastReload'}, \
+            f'Poll directory reported with per-file fields: {directory}'
 
-def _assert_crl_files(crl_files, expected_status):
-    """Assert that at least one CRL file has the expected current status.
 
-    crl_files is a list of status objects as returned by both the status
-    and reload endpoints, where obj['cacheStatus'] is the state of the
-    version currently in use.
+def assert_dir_status(response, directory, expected_status,
+                      expected_error=None):
+    """Assert the poll-directory report describes directory as expected.
+
+    expected_error is a substring one of its errors must contain; None means
+    no error may be reported at all.
     """
-    assert len(crl_files) > 0, 'Expected at least one CRL file'
-    assert_status_vocabulary(crl_files)
+    print(f'status: {response}')
+    assert_status_vocabulary(response)
+    reported = poll_directory(response)
+    assert reported is not None, \
+        f'No poll directory in status: {response}'
+    testlib.assert_eq(reported.get('directory'), directory, 'poll directory')
+    testlib.assert_eq(reported.get('status'), expected_status,
+                      f'status of {directory}')
+    errors = reported.get('errors', [])
+    if expected_error is None:
+        assert errors == [], f'Unexpected errors for {directory}: {errors}'
+    else:
+        assert any(expected_error in e for e in errors), \
+            f'Expected {expected_error!r} for {directory}, got: {errors}'
+
+
+def _assert_any_file_status(files, expected_status):
+    """Assert that at least one of files has the expected current status.
+
+    files are per-file status objects, where obj['cacheStatus'] is the state
+    of the version currently in use.
+    """
+    assert len(files) > 0, 'Expected at least one CRL file'
     assert any(obj.get('cacheStatus') == expected_status
-               for obj in crl_files), \
-        f'Expected a {expected_status} CRL file, got: {crl_files}'
+               for obj in files), \
+        f'Expected a {expected_status} CRL file, got: {files}'
+
+
+def _assert_crl_files(response, expected_status):
+    """Assert that one node's response has a CRL file in the expected state."""
+    assert_status_vocabulary(response)
+    _assert_any_file_status(crl_file_statuses(response), expected_status)
 
 
 def assert_crl_status(cluster, expected_status='active'):
@@ -2387,11 +2452,12 @@ def assert_crl_status(cluster, expected_status='active'):
     """
     status = get_crl_status(cluster)
     print(f"CRL status: {status}")
-    # Flatten the per-node lists into a single list of file status objects.
-    all_files = [f for node_files in status.values()
-                 if isinstance(node_files, list)
-                 for f in node_files]
-    _assert_crl_files(all_files, expected_status)
+    # Nodes that failed to answer report an {"error": ...} object instead.
+    responses = [s for s in status.values() if 'crlFiles' in s]
+    for node_status in responses:
+        assert_status_vocabulary(node_status)
+    _assert_any_file_status(
+        [f for s in responses for f in crl_file_statuses(s)], expected_status)
 
 
 def _assert_crl_file_status(cluster, filename, expected_status):
@@ -2402,14 +2468,15 @@ def _assert_crl_file_status(cluster, filename, expected_status):
     (still) usable.
     """
     status = get_crl_status(cluster)
-    for hostname, node_files in status.items():
-        if not isinstance(node_files, list):
+    for hostname, node_status in status.items():
+        if 'crlFiles' not in node_status:
             continue
-        assert_status_vocabulary(node_files)
-        matching = [f for f in node_files
+        assert_status_vocabulary(node_status)
+        matching = [f for f in crl_file_statuses(node_status)
                     if os.path.basename(f.get('filename', '')) == filename]
         assert len(matching) == 1, \
-            f'Expected exactly one {filename} on {hostname}, got: {node_files}'
+            f'Expected exactly one {filename} on {hostname},' \
+            f' got: {node_status}'
         testlib.assert_eq(matching[0].get('cacheStatus'), expected_status,
                           f'cacheStatus of {filename} on {hostname}')
 
@@ -3685,7 +3752,7 @@ def assert_crl_file_load_error(result, fname, expected_cache_status=None,
     print(f'status: {result}')
     assert_status_vocabulary(result)
     bad_file = next(
-        (f for f in result
+        (f for f in crl_file_statuses(result)
             if f.get('filename') == fname), None)
     assert bad_file is not None, \
         f'{fname} not in reload result: {result}'
@@ -3702,28 +3769,29 @@ def assert_crl_file_load_error(result, fname, expected_cache_status=None,
             f'Unexpected errors: {last_reload["errors"]}'
 
 
-def assert_crl_load_error(status_list, expected_cache_status=None):
+def assert_crl_load_error(response, expected_cache_status=None):
     """Assert that at least one CRL file has a non-active error status.
 
-    status_list is a list of per-file status dicts as returned by
-    reload_crl() or extracted from get_crl_status().
+    response is a status or reload response, as returned by reload_crl() or
+    taken per node from get_crl_status().
 
     If expected_cache_status is provided, asserts that at least one
     file matches that exact cacheStatus value.  Otherwise, asserts
     that no file has cacheStatus == 'active'.
     """
-    assert len(status_list) > 0, \
-        f'Expected at least one CRL file in status: {status_list}'
-    assert_status_vocabulary(status_list)
+    assert_status_vocabulary(response)
+    files = crl_file_statuses(response)
+    assert len(files) > 0, \
+        f'Expected at least one CRL file in status: {response}'
     if expected_cache_status is not None:
         assert any(f.get('cacheStatus') == expected_cache_status
-                   for f in status_list), \
+                   for f in files), \
             (f'Expected cacheStatus={expected_cache_status!r},'
-             f' got: {status_list}')
+             f' got: {files}')
     else:
         assert all(f.get('cacheStatus') != 'active'
-                   for f in status_list), \
-            f'Expected no active CRL, got: {status_list}'
+                   for f in files), \
+            f'Expected no active CRL, got: {files}'
 
 
 # =============================================================================
@@ -4070,6 +4138,82 @@ class CRLBadCRLTests(testlib.BaseTestSet):
             for ca_id in ca_ids:
                 testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
             shutil.rmtree(crl_dir, ignore_errors=True)
+
+    def poll_directory_status_test(self):
+        """The configured poll directory is reported beside the CRL files.
+
+        MB-72969: the directory used to be visible only through the files it
+        yielded, so one that could not be read - or had not been created yet -
+        looked exactly like an empty one, and both endpoints answered 200
+        saying nothing about it.
+        """
+        node = self.cluster.connected_nodes[0]
+        tmp_dir = tempfile.mkdtemp()
+        no_perm_dir = os.path.join(tmp_dir, 'no_perm_dir')
+        try:
+            readable_dir = os.path.join(tmp_dir, 'crls')
+            os.mkdir(readable_dir)
+            # Never created: the state of the default poll directory on a
+            # cluster that does not use one.
+            missing_dir = os.path.join(tmp_dir, 'not_created_yet')
+            # A regular file where a directory is expected: enotdir
+            # everywhere, no permission juggling and no dependence on who we
+            # run as.
+            not_a_dir = os.path.join(tmp_dir, 'regular_file')
+            with open(not_a_dir, 'wb') as f:
+                f.write(b'not a directory')
+            os.mkdir(no_perm_dir)
+            os.chmod(no_perm_dir, 0o000)
+
+            # (directory, status, error substring)
+            cases = [(readable_dir, 'readable', None),
+                     (missing_dir, 'notFound', None),
+                     (not_a_dir, 'unreadable', 'Failed to list directory')]
+            if not os.access(no_perm_dir, os.R_OK):
+                # The original repro (eacces); only meaningful for a user the
+                # permissions actually apply to, which excludes root.
+                cases.append((no_perm_dir, 'unreadable',
+                              'Failed to list directory'))
+
+            for directory, status, error in cases:
+                # Post to the node we then query: the settings endpoint waits
+                # for the new config to be applied on the node serving it.
+                set_crl_settings(node,
+                                 policy_per_scope={'clientAuth': 'Disabled',
+                                                   'nodeToNode': 'Disabled'},
+                                 poll_interval_ms=1000,
+                                 directory=directory)
+                # Both endpoints report it, and agree on what they report.
+                assert_dir_status(reload_crl(node), directory, status,
+                                  expected_error=error)
+                assert_dir_status(get_crl_status(node)[node.hostname()],
+                                  directory, status, expected_error=error)
+
+            # Creating the missing directory recovers to readable on the next
+            # poll, without touching the settings again.
+            set_crl_settings(node, directory=missing_dir)
+            assert_dir_status(reload_crl(node), missing_dir, 'notFound')
+            os.mkdir(missing_dir)
+            testlib.poll_for_condition(
+                lambda: assert_dir_status(
+                            get_crl_status(node)[node.hostname()],
+                            missing_dir, 'readable'),
+                sleep_time=0.5, attempts=20, retry_on_assert=True)
+
+            # Unsetting the directory drops the report: nothing to report on.
+            set_crl_settings(node, directory='')
+            status = get_crl_status(node)[node.hostname()]
+            assert_status_vocabulary(status)
+            assert poll_directory(status) is None, \
+                f'Poll directory reported while unset: {status}'
+        finally:
+            set_crl_settings(node,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'},
+                             directory='')
+            if os.path.isdir(no_perm_dir):
+                os.chmod(no_perm_dir, 0o700)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # ------------------------------------------------------------------
     # URL-based — asynchronous status

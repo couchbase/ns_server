@@ -145,8 +145,34 @@
                              entries     := [crl_entry()],
                              last_reload := last_reload()}.
 
+%% How the last look at the configured poll directory itself went, as opposed
+%% to the files found in it.
+%%   readable   — we listed it.
+%%   not_found  — it does not exist (yet).  Not a failure: the default poll
+%%                directory (data/inbox/crls) does not exist until an admin
+%%                creates it, so this is the normal state of a cluster that
+%%                does not use one.
+%%   unreadable — it exists but could not be listed; 'errors' says why.
+%% Serialised by menelaus_web_crl:dir_status_to_json/1.
+-type dir_status() :: readable | not_found | unreadable.
+
+%% The last scan of the poll directory, as built by dir_report/3: which
+%% directory was scanned, how it went, when we looked, and — for 'unreadable' —
+%% why it failed.  Plain map, so it is RPC-safe.
+-type dir_report() :: #{directory := binary(),
+                        status    := dir_status(),
+                        last_scan := calendar:datetime(),
+                        errors    := [binary()]}.
+
+%% What get_status/0 and reload/0 return: the per-file statuses, and separately
+%% the state of the poll directory itself ('undefined' when none is
+%% configured).
+-type crl_status() :: #{files          := [crl_file_status()],
+                        poll_directory := dir_report() | undefined}.
+
 -export_type([entry_status/0, file_status/0, reload_result/0, file_source/0,
-              crl_entry/0, last_reload/0, crl_file_status/0]).
+              crl_entry/0, last_reload/0, crl_file_status/0, dir_status/0,
+              dir_report/0, crl_status/0]).
 
 -record(state, {
     poll_directory   :: undefined | file:filename_all(),
@@ -154,6 +180,10 @@
     poll_timer       :: reference() | undefined,
     %% Outcome of the most recent (re)load attempt per load-directory file.
     file_state       :: file_state(),
+    %% How the last look at the poll directory itself went; 'undefined' only
+    %% when no poll directory is configured.  The directory belongs to no
+    %% single file, so we capture it in the overall state.
+    dir_report       :: undefined | dir_report(),
     %% Poll-based files held in config/crls/local/ (base name => checksum).
     loaded_locally   :: active_files(),
     %% Files placed in config/crls/ via the upload REST API.
@@ -249,24 +279,30 @@ merge_default(Cfg) ->
 %% if it can be read, decoded, and every entry in it is valid.  A file that
 %% fails to load never overwrites or removes a previously loaded good copy.
 %%
-%% Returns the same [crl_file_status()] as get_status/0 (see below).
--spec reload() -> [crl_file_status()].
+%% Returns the same crl_status() as get_status/0 (see below).
+-spec reload() -> crl_status().
 reload() ->
     gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
 
-%% Return the current per-file CRL status for this node: one crl_file_status()
-%% per known file, describing both what we are currently *using* and the
-%% outcome of the last reload attempt:
-%%   status      => file_status() — state of the config/crls copy we currently
-%%                  use, freshly re-verified at query time.
-%%   entries     => [crl_entry()] — per-entry breakdown of that active copy;
-%%                  lets callers see which entry is expired/untrusted.  An
-%%                  entry's status uses the same vocabulary as the file-level
-%%                  status above.
-%%   last_reload => last_reload()
+%% Return the current CRL status for this node as a crl_status() map:
 %%
-%% An empty list is returned when no source is configured or no files exist.
--spec get_status() -> [crl_file_status()].
+%%   files          => [crl_file_status()] — one per known CRL file, describing
+%%                     both what we are currently *using* and the outcome of
+%%                     the last reload attempt:
+%%                       status      => file_status() — state of the
+%%                                      config/crls copy we currently use,
+%%                                      freshly re-verified at query time.
+%%                       entries     => [crl_entry()] — per-entry breakdown of
+%%                                      that active copy; lets callers see
+%%                                      which entry is expired/untrusted.  An
+%%                                      entry's status uses the same vocabulary
+%%                                      as the file-level status above.
+%%                       last_reload => last_reload()
+%%                     Empty when no source is configured or no files exist.
+%%   poll_directory => dir_report() — how the last scan of the poll directory
+%%                     itself went, in its own vocabulary; 'undefined' when no
+%%                     poll directory is configured.
+-spec get_status() -> crl_status().
 get_status() ->
     gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
 
@@ -413,6 +449,7 @@ init([]) ->
                     poll_interval_ms     = ?DEFAULT_POLL_INTERVAL_MS,
                     poll_timer           = undefined,
                     file_state           = #{},
+                    dir_report           = undefined,
                     url_file_state       = #{},
                     loaded_locally       = LoadedLocally0,
                     uploaded             = Uploaded0,
@@ -1246,21 +1283,28 @@ scan_directory(undefined, _ForceReload, _TrustedCAs, State) ->
         fun (FilePath, _) ->
             maps:is_key(filename:basename(FilePath), NewLoaded)
         end, State#state.file_state),
-    State#state{file_state = NewFS, loaded_locally = NewLoaded};
+    State#state{file_state = NewFS, loaded_locally = NewLoaded,
+                dir_report = undefined};
 scan_directory(DirBin, ForceReload, TrustedCAs, State)
   when is_binary(DirBin) ->
     scan_directory(binary_to_list(DirBin), ForceReload, TrustedCAs, State);
 scan_directory(Dir, ForceReload, TrustedCAs, State) ->
+    TS = calendar:universal_time(),
     maybe
-        TS = calendar:universal_time(),
-        {ok, DiskNames} ?=
+        {ok, DiskNames, DirReport} ?=
             case file:list_dir(Dir) of
                 {ok, Names} ->
                     %% Skip dotfiles; no extension filter — try to load
                     %% everything
-                    {ok, [N || N <- Names, N =/= [], hd(N) =/= $.]};
+                    {ok, [N || N <- Names, N =/= [], hd(N) =/= $.],
+                     dir_report(Dir, TS, readable)};
                 {error, enoent} ->
-                    {ok, []};
+                    %% Not a failure: the default poll directory
+                    %% (data/inbox/crls) does not exist until an admin creates
+                    %% it, so an absent directory is the normal state of a
+                    %% cluster that does not use one.  Reported as 'not_found'
+                    %% so it is still visible.
+                    {ok, [], dir_report(Dir, TS, not_found)};
                 {error, Err} ->
                     {error, {list_dir_error, Err}}
             end,
@@ -1293,12 +1337,36 @@ scan_directory(Dir, ForceReload, TrustedCAs, State) ->
         FS2 = maps:filter(fun (Path, _Status) ->
                                 sets:is_element(Path, DiskPathSet)
                         end, UpdatedState#state.file_state),
-        UpdatedState#state{file_state = FS2, loaded_locally = Loaded2}
+        UpdatedState#state{file_state = FS2, loaded_locally = Loaded2,
+                           dir_report = DirReport}
     else
-        {error, {list_dir_error, Reason}} ->
+        {error, {list_dir_error, Reason} = Error} ->
             ?log_error("Failed to list CRL directory ~p: ~p", [Dir, Reason]),
-            State
+            %% Keep whatever was loaded before (a failed scan never makes
+            %% things worse) but remember the failure, so that build_status_map
+            %% can report it (MB-72969).
+            State#state{dir_report = dir_report(Dir, TS, {unreadable, Error})}
     end.
+
+%% Record how the last look at the poll directory itself went, for
+%% build_status_map/2.  Three outcomes: we listed it, it does not exist (yet),
+%% or we could not list it at all.  Only the last one is a failure — a
+%% directory nobody has created yet is the normal state of a cluster that does
+%% not use one, so it reports no error at all, just 'not_found'.
+-spec dir_report(file:filename_all(), calendar:datetime(),
+                 readable | not_found | {unreadable, term()}) -> dir_report().
+dir_report(Dir, TS, {unreadable, Reason}) ->
+    dir_report(Dir, TS, unreadable, format_load_errors(Reason));
+dir_report(Dir, TS, Status) ->
+    dir_report(Dir, TS, Status, []).
+
+-spec dir_report(file:filename_all(), calendar:datetime(), dir_status(),
+                 [binary()]) -> dir_report().
+dir_report(Dir, TS, Status, Errors) ->
+    #{directory => iolist_to_binary(Dir),
+      status    => Status,
+      last_scan => TS,
+      errors    => Errors}.
 
 %% Attempt to load a single file from the load directory if it has changed
 maybe_load_from_local_file(Name, FilePath, ForceReload, TS, TrustedCAs,
@@ -1432,6 +1500,8 @@ remove_from_cache(CacheType, Name) ->
 %% Should return a list of errors
 format_load_errors({read_error, Reason}) ->
     [misc:format_bin("Failed to read file. Reason: ~p", [Reason])];
+format_load_errors({list_dir_error, Reason}) ->
+    [misc:format_bin("Failed to list directory. Reason: ~p", [Reason])];
 format_load_errors({decode_error, Reason}) ->
     ReasonStr = lists:join("; ", format_load_errors(Reason)),
     [misc:format_bin("Failed to decode file. Reason: ~s", [ReasonStr])];
@@ -1627,9 +1697,10 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
 %%% Status helpers (used by get_status/0)
 %%%===================================================================
 
-%% Build the per-file status list for the status / reload endpoints.
+%% Build the crl_status() answered by the status / reload endpoints: the
+%% per-file list, plus the poll directory reported separately from it.
 %%
-%% Returns [StatusMap] — one entry per file, all values RPC-safe.
+%% 'files' holds one entry per file, all values RPC-safe.
 %% Poll-based files (source = local_dir) come from file_state and
 %% loaded_locally.  Uploaded files (source = uploaded) are driven by
 %% the chronicle crl_files key (the authoritative list); a file in
@@ -1641,9 +1712,14 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
 %%   status      — file_status()
 %%   entries     — per-entry breakdown, each with an entry_status()
 %%   last_reload — last_reload()
--spec build_status_map([binary()], #state{}) -> [crl_file_status()].
+%%
+%% 'poll_directory' is the state of the configured directory itself, which
+%% describes no file and so is reported outside the list, in its own
+%% vocabulary (see dir_report/3).
+-spec build_status_map([binary()], #state{}) -> crl_status().
 build_status_map(TrustedDerCAs,
                  #state{file_state       = FS,
+                        dir_report       = DirReport,
                         loaded_locally   = LoadedLocally,
                         uploaded         = Uploaded,
                         generated        = Generated,
@@ -1729,7 +1805,12 @@ build_status_map(TrustedDerCAs,
                                      time   => undefined,
                                      errors => []}}
           end, maps:to_list(Generated)),
-    PollList ++ UploadedList ++ GeneratedList ++ UrlList.
+    #{files          => PollList ++ UploadedList ++ GeneratedList ++ UrlList,
+      %% 'undefined' when no poll directory is configured: nothing to report
+      %% on.  A configured one is always reported, whether or not it yielded
+      %% any files — a directory that is unreadable, or has not been created
+      %% yet, used to be indistinguishable from an empty one (MB-72969).
+      poll_directory => DirReport}.
 
 %% Lightweight counterpart of build_status_map/1 for get_expiry_info/0.
 %% Returns one map per loaded file (filename => binary(), entries =>
@@ -2366,5 +2447,39 @@ upload_file_status_map_test() ->
     ?assertEqual(uploaded, Result(#{"a.pem" => <<"sum">>})),
     ?assertEqual(not_yet_synced, Result(#{})),
     ?assertEqual(checksum_mismatch, Result(#{"a.pem" => <<"stale">>})).
+
+%% The poll directory has no file to hang its state on, so it is reported on
+%% its own; without it a directory that is unreadable, or has not been created
+%% yet, is indistinguishable from an empty one and the status endpoint reports
+%% a clean bill of health (MB-72969).  It reports in its own vocabulary: none
+%% of these values may be one of the per-file ones, which describe CRL files
+%% only.
+dir_report_test() ->
+    TS = {{2026, 1, 1}, {0, 0, 0}},
+    Report = fun (Outcome) -> dir_report("/crls", TS, Outcome) end,
+    Outcomes = [readable, not_found, {unreadable, {list_dir_error, eacces}}],
+    %% Common to every outcome: the directory names itself, and says when we
+    %% last looked at it.
+    lists:foreach(
+      fun (Outcome) ->
+              R = Report(Outcome),
+              ?assertEqual(<<"/crls">>, maps:get(directory, R)),
+              ?assertEqual(TS, maps:get(last_scan, R))
+      end, Outcomes),
+    %% None of the statuses may borrow the per-file vocabulary.
+    ?assertEqual([], [S || O <- Outcomes,
+                           S <- [maps:get(status, Report(O))],
+                           lists:member(S, [active, expired, not_yet_valid,
+                                            untrusted, invalid, not_loaded])]),
+
+    %% A readable directory is healthy...
+    ?assertMatch(#{status := readable, errors := []}, Report(readable)),
+    %% ...one nobody has created yet is reported, but is not a failure...
+    ?assertMatch(#{status := not_found, errors := []}, Report(not_found)),
+    %% ...and one we cannot list is, with the reason the admin needs in order
+    %% to act.
+    #{status := unreadable, errors := [ErrText]} =
+        Report({unreadable, {list_dir_error, eacces}}),
+    ?assertNotEqual(nomatch, binary:match(ErrText, <<"eacces">>)).
 
 -endif.
