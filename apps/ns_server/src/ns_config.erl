@@ -862,13 +862,13 @@ init({full, ConfigPath, DirPath, PolicyMod} = Init) ->
 init({pull_from_node, Node} = Init) ->
     KVList0 = duplicate_node_keys(ns_config_rep:get_remote(Node, infinity),
                                   Node, node()),
-    {_, KVList} = drop_deletes(KVList0),
+    {_, KVMap} = drop_deletes(maps:from_list(KVList0)),
     Cfg = set_config_dynamic(
             #config{policy_mod = ns_config_default,
                     saver_mfa = {?MODULE, do_not_save_config, []},
                     upgrade_config_fun = fun (C) -> C end,
                     init = Init},
-            kvlist_to_dynamic(KVList)),
+            KVMap),
     do_init(Cfg);
 init([ConfigPath, PolicyMod]) ->
     init({full, ConfigPath, undefined, PolicyMod}).
@@ -1042,10 +1042,9 @@ handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
 
     %% {cas_config, ..} above would have announced any deletions if anybody
     %% cares about them. Now we can drop them.
-    KVList = get_kv_list_with_config(NewState0),
-    {Deletes, FinalKVList} = drop_deletes(KVList),
+    {Deletes, FinalDynamic} = drop_deletes(config_dynamic(NewState0)),
     erase_ets_dup(Deletes),
-    NewState = set_config_dynamic(NewState0, kvlist_to_dynamic(FinalKVList)),
+    NewState = set_config_dynamic(NewState0, FinalDynamic),
 
     {reply, ok, NewState};
 
@@ -2591,16 +2590,23 @@ do_update_with_changes(Fun, OldList, UUID) ->
             {error, {T, E, Stacktrace}}
     end.
 
-drop_deletes(KVList) ->
-    misc:partitionmap(
-      fun ({Key, Value} = Pair) ->
-              case strip_metadata(Value) of
-                  ?DELETED_MARKER ->
-                      {left, Key};
-                  _ ->
-                      {right, Pair}
-              end
-      end, KVList).
+drop_deletes(Map) when is_map(Map) ->
+    Deletes = maps:fold(
+                fun(Key, Value, Deleted) ->
+                        case strip_metadata(Value) of
+                            ?DELETED_MARKER ->
+                                [Key | Deleted];
+                            _ ->
+                                Deleted
+                        end
+                end, [], Map),
+    %% Only compute a new map if there are any deletes
+    case Deletes of
+        [] ->
+            {Deletes, Map};
+        _ ->
+            {Deletes, maps:without(Deletes, Map)}
+    end.
 
 update_key_in_txn(Key, Fun) ->
     ns_config:run_txn(
