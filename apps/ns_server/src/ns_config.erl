@@ -1079,8 +1079,7 @@ handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
                         NewState0
                 end,
 
-            Diff = diff_kvlists(get_kv_list_with_config(NewState),
-                                OldKVList),
+            Diff = diff_config(NewState, State),
             update_ets_dup(Diff),
 
             {LocalDiff, RemoteDiff} =
@@ -1120,8 +1119,7 @@ handle_call({upgrade_config_explicitly, Upgrader}, _From, State) ->
             {reply, ok, State};
         false ->
             NewConfig = bump_local_changes_counter(NewConfig0),
-            NewKVList = get_kv_list_with_config(NewConfig),
-            Diff = diff_kvlists(NewKVList, OldKVList),
+            Diff = diff_config(NewConfig, State),
 
             update_ets_dup(Diff),
             announce_locally_made_changes(Diff),
@@ -1193,6 +1191,21 @@ diff_kvlists(New, Old) ->
     OldMap = maps:from_list(Old),
     [Pair || {Key, Value} = Pair <- New,
              maps:find(Key, OldMap) =/= {ok, Value}].
+
+-spec diff_dynamic_config(map(), map()) -> kvlist().
+diff_dynamic_config(New, Old) ->
+    maps:fold(
+      fun(Key, Value, Acc) ->
+              case maps:find(Key, Old) of
+                  %% Note the match against "Value" which is the new value
+                  {ok, Value} -> Acc;
+                  _ -> [{Key, Value} | Acc]
+              end
+      end, [], New).
+
+diff_config(NewConfig, OldConfig) ->
+    diff_dynamic_config(config_dynamic(NewConfig),
+                        config_dynamic(OldConfig)).
 
 %%--------------------------------------------------------------------
 
