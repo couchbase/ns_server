@@ -1012,20 +1012,22 @@ handle_call({clear, Keep}, From, State) ->
     false = lists:member({node, node(), uuid}, Keep),
 
     NewUUID = couch_uuids:random(),
-    NewList0 = lists:filtermap(
-                 fun({K, V}) ->
-                         case lists:member(K, Keep) of
-                             true ->
-                                 {true, {K, attach_vclock(V, NewUUID)}};
-                             false ->
-                                 false
-                         end
-                 end,
-                 get_kv_list_with_config(State)),
-    NewList = [{{node, node(), uuid}, attach_vclock(NewUUID, NewUUID)} | NewList0],
+    NewDynamic0 =
+        maps:filtermap(
+          fun(K, V) ->
+                  case lists:member(K, Keep) of
+                      true ->
+                          {true, attach_vclock(V, NewUUID)};
+                      false ->
+                          false
+                  end
+          end,
+          config_dynamic(State)),
+    NewDynamic =
+        NewDynamic0#{{node, node(), uuid} => attach_vclock(NewUUID, NewUUID)},
     NewState = initiate_save_config(
                  set_config_dynamic(State#config{uuid = NewUUID},
-                                    kvlist_to_dynamic(NewList))),
+                                    NewDynamic)),
     RV = handle_call(reload, From, NewState),
     ?log_debug("Full result of clear:~n~p", [ns_config_log:sanitize(RV)]),
     RV;
