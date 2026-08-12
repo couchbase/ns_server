@@ -23,6 +23,10 @@
 -define(DELETED_MARKER, '_deleted').
 -define(NS_CONFIG_LATEST_MARKER, 'latest-config-marker').
 
+%% Where ns_config:get_timeout/2 (and hence ?get_timeout) keeps the timeout of
+%% an operation.
+-define(TIMEOUT_KEY(Operation), {timeout, Operation}).
+
 -type uuid() :: binary().
 -type vclock_counter() :: integer().
 -type vclock_timestamp() :: integer().

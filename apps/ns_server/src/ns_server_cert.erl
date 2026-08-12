@@ -1995,10 +1995,7 @@ upgrade_tool_failure_t() ->
 upgrade_tool_hangs_t() ->
     fake_chronicle_kv:update_snapshot(root_cert_and_pkey,
                                       {?PEM_DEFAULT, <<"key">>}),
-    %% Not {timeout, _}: fake_ns_config mecks ns_config:get_timeout/2 itself
-    %% and looks the key up verbatim, so the wrapping the real one does
-    %% (ns_config:get_timeout/2) never happens here.
-    fake_ns_config:update_snapshot({?MODULE, generate_crl}, 100),
+    fake_ns_config:set_timeout({?MODULE, generate_crl}, 100),
     meck:expect(misc, run_external_tool,
                 fun (_Tool, _Args, _Env) -> timer:sleep(infinity) end),
     ?assertMatch({ok, _}, run_chronicle_upgrade()),

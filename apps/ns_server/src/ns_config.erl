@@ -480,7 +480,7 @@ read_key_fast(Key, Default) ->
     end.
 
 get_timeout(Operation, Default) ->
-    search_node_with_default({timeout, Operation}, Default).
+    search_node_with_default(?TIMEOUT_KEY(Operation), Default).
 
 search_node(Key) -> search_node(latest(), Key).
 

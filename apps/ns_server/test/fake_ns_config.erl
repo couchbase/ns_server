@@ -57,7 +57,8 @@
          get_ets_snapshot/0]).
 
 %% Helper function API
--export([setup_cluster_compat_version/1]).
+-export([setup_cluster_compat_version/1,
+         set_timeout/2]).
 
 -define(TABLE_NAME, fake_ns_config).
 
@@ -125,6 +126,12 @@ delete_key(Key) ->
 setup_cluster_compat_version(Version) ->
     update_snapshot(cluster_compat_version, Version).
 
+%% Set what ?get_timeout(Operation, _) returns, without the test having to
+%% know how the key is built.
+-spec set_timeout(term(), timeout()) -> true.
+set_timeout(Operation, Timeout) ->
+    update_snapshot(?TIMEOUT_KEY(Operation), Timeout).
+
 %% -------------------------------
 %% Internal - ns_config meck setup
 %% -------------------------------
@@ -172,9 +179,12 @@ meck_setup_getters() ->
                 end),
 
 
+    %% Go through the mocked search_node_with_default/2 the way the real one
+    %% does, rather than looking Operation up as a key of its own.
     meck:expect(ns_config, get_timeout,
-                fun(Key, Default) ->
-                        fetch_with_default_from_latest_snapshot(Key, Default)
+                fun(Operation, Default) ->
+                        ns_config:search_node_with_default(
+                          ?TIMEOUT_KEY(Operation), Default)
                 end),
 
 
