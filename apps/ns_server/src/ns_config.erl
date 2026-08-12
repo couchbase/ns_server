@@ -777,8 +777,7 @@ do_upgrade_config(Config, [], _Upgrader) -> Config;
 do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
     ?log_info("Upgrading config by changes:~n~p~n",
               [ns_config_log:sanitize(Changes)]),
-    ConfigList = get_kv_list_with_config(Config),
-    NewList =
+    NewDynamic =
         lists:foldl(
           fun (Change, Acc) ->
                   {K, V} = case Change of
@@ -788,22 +787,22 @@ do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
                                    {K0, ?DELETED_MARKER}
                            end,
 
-                  case lists:keyfind(K, 1, Acc) of
-                      false ->
+                  case maps:find(K, Acc) of
+                      error ->
                           case V of
                               ?DELETED_MARKER ->
                                   Acc;
                               _ ->
-                                  [{K, attach_vclock(V, UUID)} | Acc]
+                                  Acc#{K => attach_vclock(V, UUID)}
                           end;
-                      {K, OldV} ->
+                      {ok, OldV} ->
                           NewV = upgrade_vclock(V, OldV, UUID),
-                          lists:keyreplace(K, 1, Acc, {K, NewV})
+                          Acc#{K => NewV}
                   end
           end,
-          ConfigList,
+          config_dynamic(Config),
           Changes),
-    NewConfig = set_config_dynamic(Config, kvlist_to_dynamic(NewList)),
+    NewConfig = set_config_dynamic(Config, NewDynamic),
     do_upgrade_config(NewConfig, Upgrader(NewConfig), Upgrader).
 
 bump_local_changes_counter_full(#config{uuid = UUID} = Config) ->
