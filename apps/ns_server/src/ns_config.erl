@@ -806,27 +806,21 @@ do_upgrade_config(#config{uuid = UUID} = Config, Changes, Upgrader) ->
     do_upgrade_config(NewConfig, Upgrader(NewConfig), Upgrader).
 
 bump_local_changes_counter_full(#config{uuid = UUID} = Config) ->
-    KVList = get_kv_list_with_config(Config),
-    {RevPrefix, Tail} = bump_counter_rec(UUID, KVList, []),
-    [{{local_changes_count, UUID}, _} = NewCounterPair | _] = Tail,
-    NewKVList = lists:reverse(RevPrefix, Tail),
-    {set_config_dynamic(Config, kvlist_to_dynamic(NewKVList)), NewCounterPair}.
+    DynamicCfg = config_dynamic(Config),
+    Key = {local_changes_count, UUID},
+    OldValue =
+        case maps:find(Key, DynamicCfg) of
+            {ok, V} -> V;
+            _ -> []
+        end,
+    NewValue = increment_vclock([], OldValue, UUID),
+    NewDynamic = DynamicCfg#{Key => NewValue},
+    NewCounterPair = {Key, NewValue},
+    {set_config_dynamic(Config, NewDynamic), NewCounterPair}.
 
 bump_local_changes_counter(Config) ->
     {NewCfg, _} = bump_local_changes_counter_full(Config),
     NewCfg.
-
-bump_counter_rec(UUID, [], Acc) ->
-    Pair = {{local_changes_count, UUID}, increment_vclock([], [], UUID)},
-    {Acc, [Pair]};
-bump_counter_rec(UUID, [{K, V} | KVRest], Acc) ->
-    case K of
-        %% NOTE: that UUID is bound
-        {local_changes_count, UUID} ->
-            {Acc, [{K, increment_vclock([], V, UUID)} | KVRest]};
-        _ ->
-            bump_counter_rec(UUID, KVRest, [{K, V} | Acc])
-    end.
 
 do_init(Config) ->
     erlang:process_flag(trap_exit, true),
