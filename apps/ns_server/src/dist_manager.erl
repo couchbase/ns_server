@@ -478,18 +478,17 @@ fixup_config(KV) ->
             Node = node(),
             ?log_debug("Fixing loaded config by renaming node from ~p to ~p",
                        [OldNode, Node]),
-            maps:to_list(
-              lists:foldl(
-                fun ({K, V}, Acc) ->
-                        case rename_config_kv(OldNode, Node, {K, V}) of
-                            {update, {K, NewV}} ->
-                                Acc#{K => NewV};
-                            {update, {NewK, NewV}} ->
-                                maps:remove(K, Acc#{NewK => NewV});
-                            skip ->
-                                Acc
-                        end
-                end, maps:from_list(KV), KV));
+            maps:fold(
+              fun (K, V, Acc) ->
+                      case rename_config_kv(OldNode, Node, {K, V}) of
+                          {update, {K, NewV}} ->
+                              Acc#{K => NewV};
+                          {update, {NewK, NewV}} ->
+                              maps:remove(K, Acc#{NewK => NewV});
+                          skip ->
+                              Acc
+                      end
+              end, KV, KV);
         false ->
             KV
     end.

@@ -602,10 +602,17 @@ search_node_prop(Node, Config, Key, SubKey, DefaultSubVal) ->
 
 search_raw(undefined, _Key) -> false;
 search_raw([], _Key)        -> false;
-search_raw([KVList | Rest], Key) ->
+search_raw([KVList | Rest], Key) when is_list(KVList) ->
     case lists:keysearch(Key, 1, KVList) of
         {value, {Key, V}} -> {value, V};
         _                 -> search_raw(Rest, Key)
+    end;
+search_raw([KVMap | Rest], Key) when is_map(KVMap) ->
+    case maps:find(Key, KVMap) of
+        {ok, Value} ->
+            {value, Value};
+        error ->
+            search_raw(Rest, Key)
     end;
 search_raw(#config{static = SL} = Config, Key) ->
     case search_dynamic(config_dynamic(Config), Key) of
@@ -1049,9 +1056,9 @@ handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
     {reply, ok, NewState};
 
 handle_call(merge_dynamic_and_static, _From, State) ->
-    OldKVList = get_kv_list_with_config(State),
-    NewKVList = do_merge_dynamic_and_static([OldKVList], State),
-    C = {cas_config, NewKVList, [], OldKVList, remote},
+    OldDynamic = config_dynamic(State),
+    NewKVMap = do_merge_dynamic_and_static([OldDynamic], State),
+    C = {cas_config, NewKVMap, [], OldDynamic, remote},
     {reply, true, NewState} = handle_call(C, [], State),
     {reply, ok, NewState};
 handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
@@ -1221,26 +1228,31 @@ dynamic_config_path(DirPath) ->
 merge_dynamic_and_static() ->
     gen_server:call(?MODULE, merge_dynamic_and_static, infinity).
 
-do_merge_dynamic_and_static(Dynamic, #config{static = [S, DefaultConfig], uuid = UUID}) ->
+do_merge_dynamic_and_static(DynamicList,
+                            #config{static = [S, DefaultConfig],
+                                    uuid = UUID}) ->
     DefaultConfigWithVClocks =
-        lists:map(
-          fun ({{node, Node, _} = K, V}) when Node =:= node() ->
-                  {K, attach_vclock(V, UUID)};
-              (Other) ->
-                  Other
-          end, DefaultConfig),
+        lists:foldl(
+          fun ({{node, Node, _} = K, V}, Acc) when Node =:= node() ->
+                  Acc#{K => attach_vclock(V, UUID)};
+              ({K, V}, Acc) ->
+                  Acc#{K => V}
+          end, #{}, DefaultConfig),
 
-    {_, DynamicPropList} = lists:foldl(fun (Tuple, {Seen, Acc}) ->
-                                               K = element(1, Tuple),
-                                               case sets:is_element(K, Seen) of
-                                                   true -> {Seen, Acc};
-                                                   false -> {sets:add_element(K, Seen),
-                                                             [Tuple | Acc]}
-                                               end
-                                       end,
-                                       {sets:from_list([directory]), []},
-                                       lists:append(Dynamic ++ [S, DefaultConfigWithVClocks])),
-    DynamicPropList.
+    Static = maps:from_list(S),
+
+    %% Foremost list takes precedence, so we foldr
+    MergedDynamic =
+        lists:foldr(fun(Dynamic, Acc) ->
+                            maps:merge(Acc, Dynamic)
+                    end, #{}, DynamicList),
+
+    %% Order of precedence:
+    %% Dynamic > Static > Default
+    MergedAll =
+        maps:merge(maps:merge(DefaultConfigWithVClocks, Static), MergedDynamic),
+
+    maps:remove(directory, MergedAll).
 
 load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
     DefaultConfig = PolicyMod:default(?LATEST_VERSION_NUM),
@@ -1271,31 +1283,33 @@ load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
                        end,
             ?log_debug("Here's full dynamic config we loaded:~n~p", [ns_config_log:sanitize(Dynamic0)]),
 
-            {UUID, Dynamic1} =
-                case search(Dynamic0, {node, node(), uuid}) of
+            Dynamic1 = lists:map(fun maps:from_list/1, Dynamic0),
+
+            {UUID, Dynamic2} =
+                case search(Dynamic1, {node, node(), uuid}) of
                     false ->
                         UUID0 = couch_uuids:random(),
-                        UUIDTuple = {{node, node(), uuid}, attach_vclock(UUID0, UUID0)},
+                        Key = {node, node(), uuid},
+                        Value = attach_vclock(UUID0, UUID0),
 
-                        [KVs | RestKVs] = Dynamic0,
-                        KVs1 = [UUIDTuple | KVs],
+                        [KVs | RestKVs] = Dynamic1,
+                        KVs1 = KVs#{Key => Value},
 
                         {UUID0, [KVs1 | RestKVs]};
                     {value, UUID0} ->
-                        {UUID0, Dynamic0}
+                        {UUID0, Dynamic1}
                 end,
 
             Config1 = #config{static = [S, DefaultConfig],
                               policy_mod = PolicyMod,
                               uuid = UUID},
-            DynamicPropList = PolicyMod:fixup(
-                                do_merge_dynamic_and_static(Dynamic1, Config1)),
+            DynamicMap = PolicyMod:fixup(
+                           do_merge_dynamic_and_static(Dynamic2, Config1)),
 
-            ?log_info("Here's full dynamic config we loaded + static & default config:~n~p",
-                      [ns_config_log:sanitize(DynamicPropList)]),
-            {ok, set_config_dynamic(
-                   Config1,
-                   kvlist_to_dynamic(lists:keysort(1, DynamicPropList)))};
+            ?log_info("Here's full dynamic config we loaded + static & default "
+                      "config:~n~p",
+                      [ns_config_log:sanitize(DynamicMap)]),
+            {ok, set_config_dynamic(Config1, DynamicMap)};
         E ->
             ?log_error("Failed loading static config: ~p", [E]),
             E
