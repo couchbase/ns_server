@@ -1034,10 +1034,10 @@ handle_call({clear, Keep}, From, State) ->
 
 handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
     NewKVList1 = lists:sort(duplicate_node_keys(NewKVList0, FromNode, node())),
-    OldKVList = get_kv_list_with_config(State),
-    NewKVList = misc:ukeymergewith(fun (New, _Old) -> New end,
-                                   1, NewKVList1, lists:sort(OldKVList)),
-    C = {cas_config, NewKVList, [], OldKVList, remote},
+
+    OldCfg = config_dynamic(State),
+    NewCfg = maps:merge(OldCfg, maps:from_list(NewKVList1)),
+    C = {cas_config, NewCfg, [], OldCfg, remote},
     {reply, true, NewState0} = handle_call(C, [], State),
 
     %% {cas_config, ..} above would have announced any deletions if anybody
@@ -1055,56 +1055,25 @@ handle_call(merge_dynamic_and_static, _From, State) ->
     C = {cas_config, NewKVList, [], OldKVList, remote},
     {reply, true, NewState} = handle_call(C, [], State),
     {reply, ok, NewState};
-
 handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
-            _From, State) ->
+            _From, State) when is_list(NewKVList) andalso is_list(OldKVList) ->
     case OldKVList =:= get_kv_list_with_config(State) of
         true ->
-            HaveExtraLocalChanges = (ExtraLocalChanges =/= []),
-
-            NewState0 = set_config_dynamic(State,
-                                           kvlist_to_dynamic(NewKVList)),
-            NewState =
-                case {Type, HaveExtraLocalChanges} of
-                    {local, _} ->
-                        bump_local_changes_counter(NewState0);
-                    {remote, true} ->
-                        bump_local_changes_counter(NewState0);
-                    {remote, false} ->
-                        NewState0
-                end,
-
-            Diff = diff_config(NewState, State),
-            update_ets_dup(Diff),
-
-            {LocalDiff, RemoteDiff} =
-                case {Type, HaveExtraLocalChanges} of
-                    {local, _} ->
-                        {Diff, []};
-                    {remote, false} ->
-                        {[], Diff};
-                    {remote, true} ->
-                        %% if we reach here, we definitely bumped local change
-                        %% counter, so we need to make sure it's replicated
-                        %% immediately too
-                        ToReplicate =
-                            [{local_changes_count, uuid(State)} |
-                             ExtraLocalChanges],
-
-                        lists:partition(
-                          fun ({K, _}) ->
-                                  lists:member(K, ToReplicate)
-                          end, Diff)
-                end,
-
-            announce_locally_made_changes(LocalDiff),
-            announce_changes(RemoteDiff),
-
-            {reply, true, initiate_save_config(NewState)};
+            NewState = set_config_dynamic(State,
+                                          kvlist_to_dynamic(NewKVList)),
+            cas_config_inner(Type, ExtraLocalChanges, State, NewState);
         _ ->
             {reply, false, State}
     end;
-
+handle_call({cas_config, NewKV, ExtraLocalChanges, OldKV, Type},
+            _From, State) when is_map(NewKV) andalso is_map(OldKV) ->
+    case OldKV =:= config_dynamic(State) of
+        true ->
+            NewState = set_config_dynamic(State, NewKV),
+            cas_config_inner(Type, ExtraLocalChanges, State, NewState);
+        _ ->
+            {reply, false, State}
+    end;
 handle_call({upgrade_config_explicitly, Upgrader}, _From, State) ->
     OldKVList = get_kv_list_with_config(State),
     NewConfig0 = upgrade_config(State, Upgrader),
@@ -1203,6 +1172,47 @@ diff_config(NewConfig, OldConfig) ->
                         config_dynamic(OldConfig)).
 
 %%--------------------------------------------------------------------
+
+cas_config_inner(Type, ExtraLocalChanges, State, NewState0) ->
+    HaveExtraLocalChanges = (ExtraLocalChanges =/= []),
+
+    NewState =
+        case {Type, HaveExtraLocalChanges} of
+            {local, _} ->
+                bump_local_changes_counter(NewState0);
+            {remote, true} ->
+                bump_local_changes_counter(NewState0);
+            {remote, false} ->
+                NewState0
+        end,
+
+    Diff = diff_config(NewState, State),
+    update_ets_dup(Diff),
+
+    {LocalDiff, RemoteDiff} =
+        case {Type, HaveExtraLocalChanges} of
+            {local, _} ->
+                {Diff, []};
+            {remote, false} ->
+                {[], Diff};
+            {remote, true} ->
+                %% if we reach here, we definitely bumped local change
+                %% counter, so we need to make sure it's replicated
+                %% immediately too
+                ToReplicate =
+                    [{local_changes_count, uuid(State)} |
+                     ExtraLocalChanges],
+
+                lists:partition(
+                  fun ({K, _}) ->
+                          lists:member(K, ToReplicate)
+                  end, Diff)
+        end,
+
+    announce_locally_made_changes(LocalDiff),
+    announce_changes(RemoteDiff),
+
+    {reply, true, initiate_save_config(NewState)}.
 
 dynamic_config_path(DirPath) ->
     C = filename:join(DirPath, "config.dat"),
