@@ -711,23 +711,47 @@ class CRLTests(testlib.BaseTestSet):
                              policy_per_scope={'clientAuth': 'Disabled',
                                                'nodeToNode': 'Disabled'})
 
-    def no_ootb_crl_test(self):
-        """A cluster CA that cannot issue CRLs leaves the cluster without one.
+    def ootb_crl_test(self):
+        """The OOTB CRL through its whole life: held, missing, regenerated.
 
-        MB-73096: such a CA is not re-issued, so the OOTB CRL is simply
-        missing.  Nothing may break because of that, but node-to-node checking
-        cannot be enabled until the CA is regenerated - the certs the cluster
-        issues itself are checked under that scope (cb_crl:effective_scope/2)
-        and only the OOTB CRL covers them.
+        MB-73096: a cluster CA that cannot issue CRLs is not re-issued, so the
+        OOTB CRL is simply missing.  Nothing may break because of that, but
+        node-to-node checking cannot be enabled until the CA is regenerated -
+        the certs the cluster issues itself are checked under that scope
+        (cb_crl:effective_scope/2) and only the OOTB CRL covers them.
+
+        Each of the three states is checked against the status and reload
+        endpoints, including the load time they report for it.
         """
         node = self.cluster.connected_nodes[0]
 
         try:
+            # The OOTB CRL is loaded from chronicle the way the other sources
+            # load their files, so it reports when that happened - it used to
+            # be the one source with a null lastReload.time.  Ask this node
+            # about itself: every node loads the CRL for itself, at startup, so
+            # their times need not agree.
+            was = _assert_ootb_crl_loaded(_node_crl_status(node))
+
+            # A manual reload is the one caller that loads the CRL whether it
+            # changed or not, so the time moves forward.  Not strictly: the
+            # stamp has second granularity, so a reload can legitimately land
+            # in the same second.
+            now = _assert_ootb_crl_loaded(reload_crl(node))
+            assert now >= was, f'Reload went back in time: {now} < {was}'
+
             # Remove the key rather than blanking it: that is the state an
             # upgraded cluster with such a CA is left in
             testlib.diag_eval(node,
                               '{ok, _} = chronicle_kv:delete(kv, ootb_crl).')
             _wait_generated_crl(self.cluster, present=False)
+
+            _assert_ootb_crl_missing(_node_crl_status(node))
+            # Reloading without an OOTB CRL is not an error: there is nothing
+            # to load.  The slot is still reported, so that a cluster with no
+            # OOTB CRL is distinguishable from one that never had the notion.
+            _assert_ootb_crl_missing(reload_crl(node))
+            _assert_ootb_crl_missing(_node_crl_status(node))
 
             r = testlib.post_fail(
                 self.cluster, '/settings/crl',
@@ -755,6 +779,10 @@ class CRLTests(testlib.BaseTestSet):
                               params={'forceResetCACertificate': 'true',
                                       'dropUploadedCertificates': 'false'})
             _wait_generated_crl(self.cluster, present=True)
+            # The new CRL is content the node has never held, so it is loaded
+            # (not skipped) and reported with a time of its own again.
+            then = _assert_ootb_crl_loaded(_node_crl_status(node))
+            assert then >= now, f'Regenerated before the reload: {then} < {now}'
             set_crl_settings(self.cluster,
                              policy_per_scope={'nodeToNode': 'Require'})
             _wait_crl_policy(node, 'node_to_node', 'require')
@@ -2379,12 +2407,70 @@ def get_crl_status(cluster):
 
 
 def _generated_crls(cluster):
-    """The 'generated' (OOTB) CRL entries the nodes report."""
+    """The OOTB CRLs the nodes actually hold.
+
+    The slot itself is reported whether or not the cluster has a CRL for it, so
+    a notLoaded one does not count as having it.
+    """
     status = get_crl_status(cluster)
     return [f for node_status in status.values()
             if 'crlFiles' in node_status
             for f in crl_file_statuses(node_status)
-            if f.get('source') == 'generated']
+            if f.get('source') == 'generated'
+            and f.get('cacheStatus') != 'notLoaded']
+
+
+def _node_crl_status(node):
+    """One node's own view of the CRL status, as the reload endpoint returns."""
+    return get_crl_status(node)[node.hostname()]
+
+
+def _node_generated_crl(response):
+    """The OOTB CRL status in one node's status/reload response.
+
+    The slot is always reported, even when the cluster has no OOTB CRL at all -
+    then it reads notLoaded/notAttempted.
+    """
+    assert_status_vocabulary(response)
+    generated = [f for f in crl_file_statuses(response)
+                 if f.get('source') == 'generated']
+    testlib.assert_eq(len(generated), 1, 'reported OOTB CRLs')
+    return generated[0]
+
+
+def _assert_ootb_crl_loaded(response):
+    """Assert the OOTB CRL is loaded, and return when it was loaded.
+
+    The load time is the point: every other source reports one, and this was
+    the source that used to report null.  The format is the one
+    menelaus_util:format_server_time/2 emits - ISO-8601 UTC, milliseconds, 'Z'.
+    """
+    crl = _node_generated_crl(response)
+    testlib.assert_eq(crl.get('cacheStatus'), 'active',
+                      'cacheStatus of the OOTB CRL')
+    time = crl['lastReload']['time']
+    assert time is not None, f'lastReload.time must be set, got: {crl}'
+    return datetime.datetime.strptime(time, '%Y-%m-%dT%H:%M:%S.%fZ')
+
+
+def _assert_ootb_crl_missing(response):
+    """Assert the OOTB CRL slot is reported, saying it has nothing in it.
+
+    Nothing was loaded, so there is no load time to report either - unlike the
+    loaded case, a null here is correct, and the errors say why.
+    """
+    crl = _node_generated_crl(response)
+    testlib.assert_eq(crl.get('cacheStatus'), 'notLoaded',
+                      'cacheStatus with no OOTB CRL')
+    last_reload = crl['lastReload']
+    testlib.assert_eq(last_reload['result'], 'notAttempted',
+                      'lastReload result with no OOTB CRL')
+    testlib.assert_eq(last_reload['time'], None,
+                      'lastReload time with no OOTB CRL')
+    testlib.assert_eq(crl['entries'], [], 'entries with no OOTB CRL')
+    errors = last_reload['errors']
+    assert any('CA needs to be regenerated' in e for e in errors), \
+        f'the errors should say how to fix it, got: {errors}'
 
 
 def _wait_generated_crl(cluster, present):
