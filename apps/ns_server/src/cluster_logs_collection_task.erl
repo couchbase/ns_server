@@ -417,12 +417,21 @@ preflight_base_url(BaseURL, {upload_proxy, URL}) ->
             %% If "Host" is not a DNS hostname the preflight check may fail
             %% (see otp ssl:validate_option(server_name_indication...) for
             %% details).
+            %%
+            %% Note: BaseURL's TLS options go in proxy_ssl_options here, not
+            %% connect_options. When proxying, lhttpc's initial socket
+            %% connect is a plain TCP connection to the (non-TLS) proxy, and
+            %% it applies connect_options to that connect too; a TLS-only
+            %% option like `verify' there makes gen_tcp:connect fail with
+            %% badarg. proxy_ssl_options is only applied to the TLS
+            %% handshake with BaseURL, made after the CONNECT tunnel via the
+            %% proxy is established.
             preflight_lhttpc_request("Base",
                                      BaseURL,
                                      [{proxy, URL},
                                       {proxy_ssl_options,
-                                       [{server_name_indication, Host}]}] ++
-                                     build_connect_options(BaseURL));
+                                       [{server_name_indication, Host}] ++
+                                       tls_verify_options(BaseURL)}]);
         {error, _} = Error ->
             Error
     end;
@@ -435,10 +444,14 @@ preflight_proxy_url({upload_proxy, URL}) ->
     preflight_lhttpc_request("Proxy", URL, build_connect_options(URL)).
 
 build_connect_options(URL) ->
-    case URL of
-        "https://" ++ _ ->
-            [{connect_options,
-              [{verify, verify_none}]}];
-        "http://" ++ _ ->
-            []
+    case tls_verify_options(URL) of
+        [] ->
+            [];
+        Options ->
+            [{connect_options, Options}]
     end.
+
+tls_verify_options("https://" ++ _) ->
+    [{verify, verify_none}];
+tls_verify_options("http://" ++ _) ->
+    [].

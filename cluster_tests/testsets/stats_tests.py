@@ -369,39 +369,48 @@ class StatsTests(testlib.BaseTestSet):
     def connected_node(self):
         return self.cluster.connected_nodes[1]
 
-    # This test kills one of the nodes and verifies the associated stat
-    # is incremented.
-    def node_unreachable_prometheus_metric_test(self):
-        statname = "cm_node_unreachable_total"
+    # This test kills one of the nodes and verifies the node_unreachable stat
+    # is incremented when it goes down, and node_reachable when it comes back.
+    def node_reachable_prometheus_metric_test(self):
+        unreachable_stat = "cm_node_unreachable_total"
+        reachable_stat = "cm_node_reachable_total"
         victim_node = self.connected_node()
 
         # Until the stat is "created" there won't be any results.
-        def stat_in_results():
+        def stat_in_results(statname):
             return make_prometheus_query(self.from_node(), statname) != []
 
         # Return sum of the stats, ignoring "reason" as it is OS-specific.
-        def get_stat_total():
+        def get_stat_total(statname):
             total = 0
             for res in make_prometheus_query(self.from_node(), statname):
                 if res["metric"]["node"] == victim_node.otp_node():
                     total += int(res["value"][1])
             return total
 
-        def node_unreachable_metric_recorded():
-            return get_stat_total() > starting_total
-
-        # Wait until the stat exists and is available. Save the initial
-        # total to verify our actions cause the stat to get incremented.
-        testlib.poll_for_condition(stat_in_results, sleep_time=2, timeout=60)
-        starting_total = get_stat_total()
+        # Wait until both stats exist and are available. Save the initial
+        # totals to verify our actions cause the stats to get incremented.
+        for statname in [unreachable_stat, reachable_stat]:
+            print(f"Waiting for {statname} to be created and available...")
+            testlib.poll_for_condition(lambda: stat_in_results(statname),
+                                       sleep_time=2, timeout=60)
+        starting_unreachable = get_stat_total(unreachable_stat)
+        starting_reachable = get_stat_total(reachable_stat)
 
         victim_node.kill_ns_server()
         testlib.poll_for_condition(lambda: check_node_up(victim_node),
                                    sleep_time=2, timeout=300,
                                    msg="wait for ns_server to be back up")
 
-        testlib.poll_for_condition(node_unreachable_metric_recorded,
-                                   sleep_time=2, timeout=60)
+        print(f"Waiting for {unreachable_stat} to be incremented...")
+        testlib.poll_for_condition(
+            lambda: get_stat_total(unreachable_stat) > starting_unreachable,
+            sleep_time=2, timeout=60)
+
+        print(f"Waiting for {reachable_stat} to be incremented...")
+        testlib.poll_for_condition(
+            lambda: get_stat_total(reachable_stat) > starting_reachable,
+            sleep_time=2, timeout=60)
 
 
 def make_prometheus_query(node, statname):
