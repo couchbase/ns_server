@@ -118,7 +118,7 @@ init([]) ->
     send_ping_all_msg(),
     self() ! nodes_wanted_updated,
     % Track the last list of actual ndoes.
-    create_node_unreachable_metric(nodes_actual()),
+    create_node_reachable_metrics(nodes_actual()),
     {ok, maybe_monitor_rename_txn(dist_manager:get_rename_txn_pid(),
                                   #state{nodes = []})}.
 
@@ -163,6 +163,14 @@ handle_info({'DOWN', MRef, _, _, _},
 handle_info({nodeup, Node, InfoList}, State) ->
     ?user_log(?NODE_UP, "Node ~p saw that node ~p came up. Tags: ~p",
               [node(), Node, InfoList]),
+    maybe_apply_metrics_function(
+        Node,
+        fun (N) ->
+            ns_server_stats:notify_counter(
+                {<<"node_reachable">>,
+                [{node, N}]})
+        end),
+
     self() ! notify_clients,
     {noreply, State};
 
@@ -237,18 +245,21 @@ do_notify(#state{nodes = NodesOld} = State) ->
     case NodesNew =:= NodesOld of
         true  -> State;
         false ->
-            create_node_unreachable_metric(NodesNew),
+            create_node_reachable_metrics(NodesNew),
             gen_event:notify(ns_node_disco_events,
                              {ns_node_disco_events, NodesOld, NodesNew}),
             State#state{nodes = NodesNew}
     end.
 
-create_node_unreachable_metric(Nodes) ->
+create_node_reachable_metrics(Nodes) ->
     lists:foreach(
       fun (Node) ->
               maybe_apply_metrics_function(
                 Node,
                 fun (N) ->
+                        ns_server_stats:create_counter(
+                          {<<"node_reachable">>,
+                           [{node, N}]}),
                         ns_server_stats:create_counter(
                           {<<"node_unreachable">>,
                            [{node, N},
