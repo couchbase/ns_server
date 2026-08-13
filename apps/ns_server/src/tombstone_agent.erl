@@ -86,8 +86,8 @@ do_purge_cluster(PurgeTS) ->
     %% merge all the changes that were pushed by prepare_purge()
     ns_config_rep:synchronize_local(),
 
-    KVList = ns_config:get_kv_list(),
-    case find_tombstones(KVList, PurgeTS) of
+    KVMap = ns_config:get_kv_map(),
+    case find_tombstones(KVMap, PurgeTS) of
         [] ->
             ok;
         Tombstones ->
@@ -186,19 +186,18 @@ purge(PurgeTS) ->
 
 
 have_tombstones(PurgeTS) ->
-    find_tombstones(ns_config:get_kv_list(), PurgeTS) =/= [].
+    find_tombstones(ns_config:get_kv_map(), PurgeTS) =/= [].
 
-find_tombstones(KVList, PurgeTS) ->
-    lists:filtermap(
-      fun (KV) ->
-              case purgeable(KV, PurgeTS) of
-                  true ->
-                      {Key, _} = KV,
-                      {true, Key};
-                  false ->
-                      false
-              end
-      end, KVList).
+find_tombstones(KVMap, PurgeTS) when is_map(KVMap) ->
+    maps:fold(
+        fun(Key, Value, Acc) ->
+            case purgeable({Key, Value}, PurgeTS) of
+                true ->
+                    [Key | Acc];
+                false ->
+                    Acc
+            end
+        end, [], KVMap).
 
 purge_kvlist(KVList, PurgeTS) ->
     lists:filter(
@@ -251,10 +250,10 @@ handle_prepare_purge(Node, Rev, State) ->
             %% new timestamp.
             ns_config:sync();
         false ->
-            %% get_kv_list() ensures that ns_config picked up the new
+            %% get_kv_map() ensures that ns_config picked up the new
             %% timestamp implicitly.
-            KVList = ns_config:get_kv_list(),
-            Tombstones = find_tombstones(KVList, TS),
+            KVMap = ns_config:get_kv_map(),
+            Tombstones = find_tombstones(KVMap, TS),
             ns_config_rep:push_keys(Tombstones),
             ns_config_rep:ensure_config_pushed()
     end,
