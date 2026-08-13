@@ -48,6 +48,7 @@
          diff_kvlists/2,
          sync_announcements/0,
          get_kv_list/0, get_kv_list/1, get_kv_list_with_config/1,
+         get_kv_map/0, get_kv_map/1,
          upgrade_config_explicitly/1, config_version_token/0,
          fold/3, read_key_fast/2, get_timeout/2,
          delete/1,
@@ -463,6 +464,12 @@ get_kv_list(Timeout) -> get_kv_list_with_config(ns_config:get(Timeout)).
 
 get_kv_list_with_config(Config) ->
     dynamic_to_kvlist(config_dynamic(Config)).
+
+-spec get_kv_map() -> map().
+get_kv_map() -> get_kv_map(?DEFAULT_TIMEOUT).
+
+-spec get_kv_map(timeout()) -> map().
+get_kv_map(Timeout) -> config_dynamic(ns_config:get(Timeout)).
 
 % ----------------------------------------
 

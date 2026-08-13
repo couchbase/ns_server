@@ -152,23 +152,23 @@ perform_purge() ->
 perform_purge(0) ->
     {error, exceeded_retries};
 perform_purge(I) ->
-    KVList = ns_config:get_kv_list(),
-    {NewKVList, Tombstones} =
-        lists:foldr(
-          fun ({Key, FullValue} = Pair, {AccNewKVList, AccTombstones}) ->
+    KVMap = ns_config:get_kv_map(),
+    {NewKVMap, Tombstones} =
+        maps:fold(
+          fun(Key, FullValue, {AccNewKVMap, AccTombstones}) ->
                   case ns_config:strip_metadata(FullValue) of
                       '_deleted' ->
-                          {AccNewKVList, [Key | AccTombstones]};
+                          {AccNewKVMap, [Key | AccTombstones]};
                       _ ->
-                          {[Pair | AccNewKVList], AccTombstones}
+                          {AccNewKVMap#{Key => FullValue}, AccTombstones}
                   end
-          end, {[], []}, KVList),
+          end, {#{}, []}, KVMap),
 
     case Tombstones of
         [] ->
             {ok, not_purged};
         _ ->
-            case ns_config:cas_local_config(NewKVList, KVList) of
+            case ns_config:cas_local_config(NewKVMap, KVMap) of
                 true ->
                     log("Purged ~b tombstones:~n"
                         "~200P",
