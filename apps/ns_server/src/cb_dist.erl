@@ -1351,11 +1351,8 @@ update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
             State#s{connections = Rest};
         {value, #con{pid = shutdown}, Rest} ->
             info_msg("Closing connection ~p because acceptor is dead", [Pid]),
-            %% No point in using close_dist_connection here as {KernelPid,
-            %% disconnect} message is only useful after we forward the
-            %% controller message to AcceptorPid(which no longer exists), and it
-            %% in turn sends another controller message to ConPid to proceed
-            %% accepting connection.
+            %% Kill: this connection was never brought up, as the controller
+            %% message was never forwarded, and nothing waits for it to stop.
             force_close_dist_connection(Pid),
             State#s{connections = Rest};
         {value, Con, Rest} ->
@@ -1368,18 +1365,14 @@ update_connection_pid(Ref, Pid, #s{connections = Connections} = State) ->
             State
     end.
 
-close_dist_connection(MonRef, Pid, KernelPid) ->
-    catch erlang:demonitor(MonRef, [flush]),
-    Pid ! {KernelPid, disconnect},
-    case misc:wait_for_process(Pid, ?TERMINATE_TIMEOUT) of
-        ok -> ok;
-        {error, Reason} ->
-            error_msg("Close connection ~p error: ~p", [Pid, Reason]),
-            force_close_dist_connection(Pid)
-    end.
+%% Signalling instead of sending {KernelPid, disconnect}: only
+%% dist_util:con_loop handles that message, so a connection that hasn't finished
+%% its handshake yet would ignore it. Connection processes don't trap exits, and
+%% con_loop's own graceful shutdown is exit(disconnected) anyway.
+close_dist_connection(Pid) ->
+    exit(Pid, disconnected).
 
-close_all_tls_dist_connections(Reason, #s{connections = Connections,
-                                          kernel_pid = KernelPid} = State) ->
+close_all_tls_dist_connections(Reason, #s{connections = Connections} = State) ->
     IsTLSWithPid =
         fun (#con{mod = Mod, pid = Pid}) ->
                 case proto2netsettings(Mod) of
@@ -1388,12 +1381,40 @@ close_all_tls_dist_connections(Reason, #s{connections = Connections,
                 end
         end,
     {ToClose, ToKeep} = lists:partition(IsTLSWithPid, Connections),
-    misc:parallel_map(
-      fun (#con{pid = Pid, mon = Mon}) ->
+    lists:foreach(
+      fun (#con{pid = Pid}) ->
               info_msg("Closing connection ~p, reason: ~s", [Pid, Reason]),
-              close_dist_connection(Mon, Pid, KernelPid)
-      end, ToClose, infinity),
+              close_dist_connection(Pid)
+      end, ToClose),
+    wait_for_connections(ToClose, ?TERMINATE_TIMEOUT),
     State#s{connections = ToKeep}.
+
+%% Normally returns as soon as the exit signals are delivered. The timeout is a
+%% backstop and applies to the whole batch, so that we never block here for
+%% longer than that no matter how many connections there are.
+wait_for_connections(Cons, Timeout) ->
+    Start = erlang:monotonic_time(millisecond),
+    Deadline = Start + Timeout,
+    do_wait_for_connections(Cons, Deadline),
+    info_msg("Done waiting for ~b connection(s) in ~bms",
+             [length(Cons), erlang:monotonic_time(millisecond) - Start]).
+
+do_wait_for_connections([], _Deadline) -> ok;
+do_wait_for_connections([#con{pid = Pid, mon = Mon} | Tail], Deadline) ->
+    Timeout = max(Deadline - erlang:monotonic_time(millisecond), 0),
+    receive
+        {'DOWN', Mon, process, _, _} ->
+            do_wait_for_connections(Tail, Deadline)
+    after
+        Timeout ->
+            error_msg("Connection ~p didn't stop in ~bms, killing it",
+                      [Pid, ?TERMINATE_TIMEOUT]),
+            force_close_dist_connection(Pid),
+            %% The kill is untrappable, so the DOWN is guaranteed; we only
+            %% need it out of the mailbox, not waited for.
+            erlang:demonitor(Mon, [flush]),
+            do_wait_for_connections(Tail, Deadline)
+    end.
 
 force_close_dist_connection(ConPid) ->
     exit(ConPid, kill).
