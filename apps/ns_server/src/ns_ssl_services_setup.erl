@@ -1008,6 +1008,12 @@ handle_call({set_certificate_chain, Type, CAEntry, Chain, PKeyFun,
 
     case Reload of
         true ->
+            %% The CA that signed this chain is known to chronicle (the
+            %% chain has been validated against the trusted CAs already),
+            %% but it may have arrived from another node and not have
+            %% reached ca.pem yet. Store the CAs before the leaf, never
+            %% after it. See MB-73273.
+            maybe_store_ca_certs(),
             Props = save_uploaded_certs(Type, CAEntry, Chain, NewPKey,
                                         NewPassphraseSettings),
             {reply, {ok, Props}, read_marker_and_reload_ssl(State)};
@@ -1094,6 +1100,14 @@ handle_info(ca_certificates_updated, #state{} = State) ->
 handle_info(cert_and_pkey_changed, #state{} = State) ->
     ?log_info("cert_and_pkey changed"),
     misc:flush(cert_and_pkey_changed),
+    %% The new CA and the new root key are committed to chronicle in one
+    %% transaction, but we get one event per key, so ca_certificates_updated
+    %% may still be sitting in our mailbox. Store the CAs here as well,
+    %% otherwise we publish (and tell everyone to reload) a certificate signed
+    %% by a CA that is not in ca.pem yet, and every TLS connection made in that
+    %% window fails with "certificate signed by unknown authority".
+    %% See MB-73273.
+    maybe_store_ca_certs(),
     maybe_generate_node_certs(),
     maybe_generate_client_certs(),
     {noreply, read_marker_and_reload_ssl(State)};
