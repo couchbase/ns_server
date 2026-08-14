@@ -523,10 +523,9 @@ handle_info({accept, HandshakeProcPid, ConSocket, Family, Protocol}, State) ->
     HandshakeProcPid ! {self(), unsupported_protocol},
     {noreply, State};
 
-handle_info({KernelPid, controller, {ConRef, ConPid, HandshakeProcPid}},
+handle_info({KernelPid, controller, ControllerInfo},
             #s{kernel_pid = KernelPid} = State) ->
-    HandshakeProcPid ! {self(), controller, ConPid},
-    {noreply, update_connection_pid(ConRef, ConPid, State)};
+    {noreply, handle_controller_msg(ControllerInfo, State)};
 
 handle_info({'EXIT', Kernel, Reason}, State = #s{kernel_pid = Kernel}) ->
     error_msg("received EXIT from kernel, stoping: ~p", [Reason]),
@@ -848,8 +847,7 @@ start_ensure_config_timer(#s{} = State) ->
     State.
 
 remove_proto({_AddrType, Mod} = Listener,
-             #s{listeners = Listeners, acceptors = Acceptors,
-                connections = Connections} = State) ->
+             #s{listeners = Listeners, acceptors = Acceptors} = State) ->
     case proplists:get_value(Listener, Listeners) of
         {LSocket, _, _} ->
             info_msg("Closing listener ~p", [Listener]),
@@ -873,30 +871,33 @@ remove_proto({_AddrType, Mod} = Listener,
             info_msg("Full list of processes expected to stop: ~p",
                      [AcceptorProcs]),
             catch Mod:close(LSocket),
-            wait_for_acceptors(AcceptorProcs, Mod, ?TERMINATE_ACCEPTOR_TIMEOUT),
+            State2 = wait_for_acceptors(AcceptorProcs, Mod,
+                                        ?TERMINATE_ACCEPTOR_TIMEOUT, State),
             NewConnections =
                 lists:map(
                   fun (#con{mod = CM, pid = undefined} = Con) when CM == Mod ->
                           Con#con{pid = shutdown};
                       (Con) ->
                           Con
-                  end, Connections),
-            State#s{listeners = proplists:delete(Listener, Listeners),
-                    acceptors = [{P, M} || {P, M} <- Acceptors, M =/= Listener],
-                    connections = NewConnections};
+                  end, State2#s.connections),
+            NewAcceptors = [{P, M} || {P, M} <- Acceptors, M =/= Listener],
+            State2#s{listeners = proplists:delete(Listener, Listeners),
+                     acceptors = NewAcceptors,
+                     connections = NewConnections};
         undefined ->
             info_msg("ignoring closing of ~p because listener is not started",
                      [Listener]),
             State
     end.
 
-wait_for_acceptors(Acceptors, Mod, Timeout) ->
+wait_for_acceptors(Acceptors, Mod, Timeout, State) ->
     MRefs = [{A, erlang:monitor(process, A)} || A <- Acceptors],
     Deadline = erlang:monotonic_time(millisecond) + Timeout,
-    ok = do_wait_for_acceptors(Mod, Deadline, MRefs).
+    do_wait_for_acceptors(Mod, Deadline, MRefs, State).
 
-do_wait_for_acceptors(_Mod, _Deadline, []) -> ok;
-do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail]) when is_pid(A) ->
+do_wait_for_acceptors(_Mod, _Deadline, [], State) -> State;
+do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail], State)
+                                                            when is_pid(A) ->
     Timeout = max(Deadline - erlang:monotonic_time(millisecond), 0),
     {AFamily, EncryptionEnabled} = proto2netsettings(Mod),
     Protocol = case EncryptionEnabled of
@@ -906,13 +907,26 @@ do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail]) when is_pid(A) ->
     receive
         {'DOWN', MRef, process, Pid, _Reason} ->
             info_msg("Down from ~p", [Pid]),
-            do_wait_for_acceptors(Mod, Deadline, MRefTail);
+            do_wait_for_acceptors(Mod, Deadline, MRefTail, State);
         {accept, AcceptorSpawn, _, AFamily, Protocol} ->
             info_msg("Received accept from ~p/~p acceptor that is being shut "
                      "down, will reply with unsupported_protocol",
                      [AFamily, Protocol]),
             AcceptorSpawn ! {self(), unsupported_protocol},
-            do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail])
+            do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail], State);
+        {KernelPid, controller, {ConRef, _, _} = ControllerInfo}
+                                    when KernelPid =:= State#s.kernel_pid ->
+            %% The process that we are waiting for might be the one that is
+            %% blocked waiting for us to forward this message to it. Note that
+            %% connections that arrived on the listener being removed must not
+            %% come up, as they would use the settings we are replacing.
+            NewState =
+                case lists:keyfind(ConRef, #con.ref, State#s.connections) of
+                    #con{mod = Mod} -> reject_connection(ControllerInfo, State);
+                    _ -> handle_controller_msg(ControllerInfo, State)
+                end,
+            do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail],
+                                  NewState)
     after
         Timeout ->
             error_msg("Wait for acceptor: ~p timed out", [A]),
@@ -923,7 +937,7 @@ do_wait_for_acceptors(Mod, Deadline, [{A, MRef} | MRefTail]) when is_pid(A) ->
                  exit(must_not_happen)
             end,
             ?flush({accept, A, _, _, _}),
-            do_wait_for_acceptors(Mod, Deadline, MRefTail)
+            do_wait_for_acceptors(Mod, Deadline, MRefTail, State)
     end.
 
 listen_proto({AddrType, Module}, NodeName) ->
@@ -1386,25 +1400,35 @@ close_all_tls_dist_connections(Reason, #s{connections = Connections} = State) ->
               info_msg("Closing connection ~p, reason: ~s", [Pid, Reason]),
               close_dist_connection(Pid)
       end, ToClose),
-    wait_for_connections(ToClose, ?TERMINATE_TIMEOUT),
-    State#s{connections = ToKeep}.
+    %% Connections are removed from the state before waiting, so that a
+    %% connection registered while we wait is not lost.
+    wait_for_connections(ToClose, ?TERMINATE_TIMEOUT,
+                         State#s{connections = ToKeep}).
 
 %% Normally returns as soon as the exit signals are delivered. The timeout is a
 %% backstop and applies to the whole batch, so that we never block here for
 %% longer than that no matter how many connections there are.
-wait_for_connections(Cons, Timeout) ->
+wait_for_connections(Cons, Timeout, State) ->
     Start = erlang:monotonic_time(millisecond),
     Deadline = Start + Timeout,
-    do_wait_for_connections(Cons, Deadline),
+    State2 = do_wait_for_connections(Cons, Deadline, State),
     info_msg("Done waiting for ~b connection(s) in ~bms",
-             [length(Cons), erlang:monotonic_time(millisecond) - Start]).
+             [length(Cons), erlang:monotonic_time(millisecond) - Start]),
+    State2.
 
-do_wait_for_connections([], _Deadline) -> ok;
-do_wait_for_connections([#con{pid = Pid, mon = Mon} | Tail], Deadline) ->
+do_wait_for_connections([], _Deadline, State) -> State;
+do_wait_for_connections([#con{pid = Pid, mon = Mon} = Con | Tail], Deadline,
+                        State) ->
     Timeout = max(Deadline - erlang:monotonic_time(millisecond), 0),
     receive
         {'DOWN', Mon, process, _, _} ->
-            do_wait_for_connections(Tail, Deadline)
+            do_wait_for_connections(Tail, Deadline, State);
+        {KernelPid, controller, ControllerInfo}
+                                    when KernelPid =:= State#s.kernel_pid ->
+            %% Not handling this message would block the process that is
+            %% waiting for us to forward it for as long as we wait here.
+            NewState = handle_controller_msg(ControllerInfo, State),
+            do_wait_for_connections([Con | Tail], Deadline, NewState)
     after
         Timeout ->
             error_msg("Connection ~p didn't stop in ~bms, killing it",
@@ -1413,8 +1437,22 @@ do_wait_for_connections([#con{pid = Pid, mon = Mon} | Tail], Deadline) ->
             %% The kill is untrappable, so the DOWN is guaranteed; we only
             %% need it out of the mailbox, not waited for.
             erlang:demonitor(Mon, [flush]),
-            do_wait_for_connections(Tail, Deadline)
+            do_wait_for_connections(Tail, Deadline, State)
     end.
+
+handle_controller_msg({ConRef, ConPid, HandshakeProcPid}, State) ->
+    HandshakeProcPid ! {self(), controller, ConPid},
+    update_connection_pid(ConRef, ConPid, State).
+
+%% Refuse an inbound connection the same way we refuse a fresh accept during
+%% shutdown, and forget what we know about it.
+reject_connection({ConRef, ConPid, HandshakeProcPid},
+                  #s{connections = Connections} = State) ->
+    info_msg("Rejecting connection ~p because its listener is being removed",
+             [ConPid]),
+    HandshakeProcPid ! {self(), unsupported_protocol},
+    force_close_dist_connection(ConPid),
+    State#s{connections = lists:keydelete(ConRef, #con.ref, Connections)}.
 
 force_close_dist_connection(ConPid) ->
     exit(ConPid, kill).
