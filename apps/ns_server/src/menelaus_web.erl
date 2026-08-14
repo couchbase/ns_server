@@ -1748,7 +1748,13 @@ perform_action(Req, {Permission, Fun, Args}) ->
         auth_failure ->
             ns_audit:auth_failure(NewReq),
             ns_server_stats:notify_counter(<<"rest_request_auth_failure">>),
-            menelaus_util:require_auth(NewReq);
+            case menelaus_auth:get_auth_failure_reason(NewReq) of
+                undefined ->
+                    menelaus_util:require_auth(NewReq);
+                Reason ->
+                    menelaus_util:reply_json(
+                      NewReq, {[{errors, Reason}]}, 401)
+            end;
         forbidden when Permission == local ->
             ns_audit:access_forbidden(NewReq),
             ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),

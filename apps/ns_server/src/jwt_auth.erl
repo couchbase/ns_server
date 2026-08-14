@@ -586,11 +586,13 @@ validate_payload(Claims, IssProps) ->
 -spec validate_user(Claims :: map(), IssProps :: map()) ->
           {ok, string()} | {error, binary()}.
 validate_user(Claims, IssProps) ->
-    case map_claim(sub, Claims, IssProps) of
-        [] ->
-            UserBin = list_to_binary(maps:get(sub, Claims)),
-            {error, <<UserBin/binary, " isn't a valid user name">>};
-        [Username] -> {ok, Username}
+    Value = maps:get(sub, Claims),
+    case maps:get(name, IssProps) =:= jwt_issuer:name() of
+        true ->
+            %% we can trust our own token to have the correct user name
+            {ok, Value};
+        false ->
+            auth_mapping:map_user(Value, maps:get(sub_maps, IssProps, []))
     end.
 
 -spec validate(exp | nbf | aud, Claims :: map(), IssProps :: map()) ->
@@ -636,17 +638,10 @@ validate_map_claim_values(Type, MappingType, IssProps, Values) ->
                               IssProps, true),
     auth_mapping:map_identities(MappingType, Values, Rules, StopFirstMatch).
 
--spec map_claim(sub | groups | roles, Claims :: map(), IssProps :: map()) ->
-          [string()] | {error, binary()}.
-map_claim(sub, Claims, IssProps) ->
-    Value = maps:get(sub, Claims),
-    case maps:get(name, IssProps) =:= jwt_issuer:name() of
-        true ->
-            %% we can trust our own token to have the correct user name
-            [Value];
-        false ->
-            validate_map_claim_values(sub, user, IssProps, [Value])
-    end;
+%% The sub claim is mapped by validate_user/2, which needs the reason a
+%% mapping failed rather than a list of the values that mapped.
+-spec map_claim(groups | roles, Claims :: map(), IssProps :: map()) ->
+          [string()].
 map_claim(Type, Claims, IssProps) when Type =:= groups; Type =:= roles ->
     Values = case maps:get(Type, Claims, undefined) of
                  undefined ->
@@ -709,35 +704,13 @@ get_claim_value_test() ->
     ?assertEqual(undefined, get_claim_value(integer, undefined)),
     ?assertEqual(undefined, get_claim_value(list, undefined)).
 
-validate_sub_test_() ->
-    {setup,
-     fun() -> meck:new(auth_mapping) end,
-     fun(_) -> meck:unload(auth_mapping) end,
-     fun(_) ->
-             IssProps = #{name => "test-issuer"},
-             [
-              {"mapped username",
-               fun() ->
-                       meck:expect(auth_mapping, map_identities,
-                                   fun(user, ["test-user"], _, true) ->
-                                           ["mapped-user"] end),
-                       ?assertEqual({ok, "mapped-user"},
-                                    validate_user(#{sub => "test-user"},
-                                                  IssProps))
-               end},
-
-              {"unmapped username",
-               fun() ->
-                       meck:expect(auth_mapping, map_identities,
-                                   fun(user, ["unmapped-user"], _, true) ->
-                                           [] end),
-                       ?assertEqual({error, <<"unmapped-user isn't a valid user"
-                                              " name">>},
-                                    validate_user(#{sub => "unmapped-user"},
-                                                  IssProps))
-               end}
-             ]
-     end}.
+%% A token from our own issuer carries a user name we produced, so it is used
+%% as-is, without mapping or validation. Every other issuer goes through
+%% auth_mapping:map_user/2, which is covered by its own tests.
+validate_sub_own_issuer_test() ->
+    ?assertEqual({ok, "internal-user"},
+                 validate_user(#{sub => "internal-user"},
+                               #{name => jwt_issuer:name()})).
 
 validate_claims_test() ->
     Now = erlang:system_time(second),

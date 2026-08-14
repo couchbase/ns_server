@@ -879,7 +879,7 @@ class JWTTests(testlib.BaseTestSet):
         claims = self.base_claims.copy()
         claims["groups"] = ["jwt_bucket_admins"]
 
-        # Test cases: (claim_modifier, alg, key_id, expected_code)
+        # Test cases: (claim_modifier, alg, key_id, expected_code, error)
         test_cases = [
             # expired
             (
@@ -887,6 +887,7 @@ class JWTTests(testlib.BaseTestSet):
                 "RS256",
                 "2011-04-29",
                 401,
+                "Token has expired",
             ),
             # future
             (
@@ -894,15 +895,17 @@ class JWTTests(testlib.BaseTestSet):
                 "RS256",
                 "2011-04-29",
                 401,
+                "Token not yet valid",
             ),
             # wrong audience
             (lambda c: {**c, "aud": "wrong-audience"}, "RS256", "2011-04-29",
-             401),
-            # wrong signature
-            (lambda c: c, "ES256", "es256-key", 401),
+             401, "Invalid audience"),
+            # wrong signature (algorithm mismatch with configured issuer)
+            (lambda c: c, "ES256", "es256-key", 401,
+             "Mismatched signing algorithm in JWT"),
         ]
 
-        for modify_claims, alg, key_id, expected_code in test_cases:
+        for modify_claims, alg, key_id, expected_code, error in test_cases:
             token = self.create_token(modify_claims(claims), key_id=key_id,
                                       alg=alg)
             headers = {"Authorization": f"Bearer {token}"}
@@ -911,6 +914,51 @@ class JWTTests(testlib.BaseTestSet):
                 headers=headers
             )
             assert r.status_code == expected_code
+            assert r.json() == {"errors": error}
+
+    def invalid_subject_claim_test(self):
+        """JWT auth failures caused by an invalid/unmapped sub claim must
+        surface a specific reason in the 401 body (MB-72543), instead of a
+        bare 401.
+        """
+        self.auth_setup()
+
+        def assert_reason(reason, claims):
+            token = self.create_token(claims)
+            headers = {"Authorization": f"Bearer {token}"}
+            r = testlib.get(
+                self.cluster, "/pools/default/buckets", auth=None,
+                headers=headers
+            )
+            assert r.status_code == 401
+            assert r.json() == {"errors": reason}
+
+        # Oversized subject, mapped by the default identity rule: the mapped
+        # value is what validate_cred rejects, and its reason is reported.
+        self.configure_jwt()
+        assert_reason("Username may not exceed 128 characters",
+                      {**self.base_claims, "sub": "a" * 129})
+
+        # A subject no rule matches. Nothing was mapped, so there is no
+        # specific reason to give, and the rule mismatch internals aren't
+        # leaked either.
+        self.configure_jwt({"subMaps": ["^prefix-(.*)$ \\1"]})
+        assert_reason("Username not provisioned", self.base_claims.copy())
+
+        # A subject that is a valid username on its own, but whose mapped
+        # value is not. The reason has to come from the mapped value: the raw
+        # subject passes validation, so reporting on it would give the
+        # generic "not provisioned" and point the operator at the wrong thing.
+        self.configure_jwt({"subMaps": ["^(.*)$ cbuser-\\1"]})
+        assert_reason("Username may not exceed 128 characters",
+                      {**self.base_claims, "sub": "a" * 122})
+
+        # The first rule to match decides. A later rule that would map the
+        # same subject to a usable name must not take over, or the token
+        # authenticates as an identity the matched rule never described.
+        self.configure_jwt({"subMaps": ["^(.*)$ cbuser-\\1", "^(.*)$ \\1"]})
+        assert_reason("Username may not exceed 128 characters",
+                      {**self.base_claims, "sub": "a" * 122})
 
     @staticmethod
     def create_token(claims, key_id="2011-04-29", alg="RS256"):

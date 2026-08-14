@@ -40,7 +40,11 @@
 
 -export([validate_mapping_rule/1,
          map_identities/4,
+         map_user/2,
          format_mapping_rules/1]).
+
+%% Used when no mapping rules are configured, so that a value maps to itself.
+-define(IDENTITY_RULE, {"^(.*)$", "\\1"}).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -201,12 +205,37 @@ extract_mapped_result({roles, RolesScope}, Value) ->
           mapped_result().
 %% Apply the identity mapping if mapping rules aren't supplied.
 map_identities(Type, Values, [], StopFirstMatch) ->
-    map_identities(Type, Values, [{"^(.*)$", "\\1"}], StopFirstMatch);
+    map_identities(Type, Values, [?IDENTITY_RULE], StopFirstMatch);
 map_identities(Type, Values, Rules, StopFirstMatch) ->
     lists:usort(
       lists:flatmap(fun(Value) ->
                             map_value(Type, Value, Rules, StopFirstMatch)
                     end, Values)).
+
+%% @doc Maps a single external user name, keeping the reason a mapping failed.
+%%
+%% map_identities/4 drops values it cannot map, because a login must still
+%% proceed with whichever groups and roles did map. A user is different: if it
+%% cannot be mapped the authentication fails, and the caller has to report why.
+%%
+%% Rules are in priority order and the first one to match decides the outcome.
+%% When no rule matches there is no mapped value to report on, only the absence.
+-spec map_user(Value :: input_value(), Rules :: [mapping_rule()]) ->
+          {ok, mapped_user()} | {error, binary()}.
+map_user(Value, []) ->
+    map_user(Value, [?IDENTITY_RULE]);
+map_user(Value, Rules) ->
+    try_user_rules(Value, Rules).
+
+-spec try_user_rules(input_value(), [mapping_rule()]) ->
+          {ok, mapped_user()} | {error, binary()}.
+try_user_rules(_Value, []) ->
+    {error, <<"Username not provisioned">>};
+try_user_rules(Value, [Rule | Rest]) ->
+    case apply_mapping_rule(Value, Rule) of
+        nomatch -> try_user_rules(Value, Rest);
+        Mapped -> extract_mapped_result(user, Mapped)
+    end.
 
 -spec format_mapping_rules(undefined | [{string(), string()}]) ->
           undefined | [binary()].
@@ -427,7 +456,45 @@ mapping_test_() ->
       ?_assertEqual(["cb-admins"],
                     map_identities(groups, ["GoogleGroup:admins"],
                                    [{"^GoogleGroup:(.*)", "\\1"},
-                                    {"^GoogleGroup:(.*)", "cb-\\1"}], false))
+                                    {"^GoogleGroup:(.*)", "cb-\\1"}], false)),
+
+      %% map_user/2 reports why a mapping failed, where map_identities/4 only
+      %% drops the value.
+      ?_assertEqual({ok, "alice"},
+                    map_user("GoogleUser:alice",
+                             [{"^GoogleUser:(.*)", "\\1"}])),
+      ?_assertEqual({ok, "alice"}, map_user("alice", [])),
+
+      %% No rule matched, so there is no mapped value to report on.
+      ?_assertEqual({error, <<"Username not provisioned">>},
+                    map_user("AzureUser:alice",
+                             [{"^GoogleUser:(.*)", "\\1"}])),
+
+      %% A rule matched and its result was rejected, so the specific reason is
+      %% reported rather than the generic one.
+      ?_assertEqual({error, <<"Invalid username">>},
+                    map_user("GoogleUser:carol",
+                             [{"^GoogleUser:(.*)", "\\1"}])),
+      ?_assertEqual({error, <<"External auth not allowed">>},
+                    map_user("GoogleUser:bob",
+                             [{"^GoogleUser:(.*)", "@\\1"}])),
+
+      %% The first rule to match decides, so a later rule neither reports the
+      %% failure nor maps the user itself.
+      ?_assertEqual({error, <<"Invalid username">>},
+                    map_user("GoogleUser:carol",
+                             [{"^GoogleUser:(.*)", "\\1"},
+                              {"^GoogleUser:(.*)", "@\\1"}])),
+      ?_assertEqual({error, <<"Invalid username">>},
+                    map_user("GoogleUser:carol",
+                             [{"^GoogleUser:(.*)", "\\1"},
+                              {"^GoogleUser:.*", "alice"}])),
+
+      %% A rule that does not match is skipped, so a later rule still applies.
+      ?_assertEqual({ok, "alice"},
+                    map_user("GoogleUser:carol",
+                             [{"^AzureUser:(.*)", "\\1"},
+                              {"^GoogleUser:.*", "alice"}]))
      ]}.
 
 -endif.

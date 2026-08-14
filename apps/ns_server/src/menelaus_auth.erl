@@ -53,7 +53,8 @@
          is_external_auth_allowed/1,
          get_authn_res_audit_props/1,
          maybe_set_auth_audit_props/2,
-         check_expiration/1]).
+         check_expiration/1,
+         get_auth_failure_reason/1]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
@@ -666,7 +667,8 @@ verify_rest_auth(Req, Permission) ->
         {error, auth_failure, AuthAuditProps} ->
             Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
             Req3 = maybe_set_auth_audit_props(Req2, AuthAuditProps),
-            {auth_failure, Req3};
+            Req4 = maybe_store_auth_failure_reason(Req3, AuthAuditProps),
+            {auth_failure, Req4};
         {error, temporary_failure, AuthAuditProps} ->
             Req2 = maybe_set_auth_audit_props(Req, AuthAuditProps),
             {temporary_failure, Req2};
@@ -1029,6 +1031,22 @@ maybe_set_auth_audit_props(Req, []) ->
     Req;
 maybe_set_auth_audit_props(Req, AuthAuditProps) ->
     mochiweb_request:set_meta(auth_audit_props, AuthAuditProps, Req).
+
+-spec maybe_store_auth_failure_reason(mochiweb_request(),
+                                      auth_audit_props()) ->
+          mochiweb_request().
+maybe_store_auth_failure_reason(Req, AuditProps) ->
+    case {proplists:get_value(<<"type">>, AuditProps),
+          proplists:get_value(<<"reason">>, AuditProps)} of
+        {<<"jwt">>, Reason} when Reason =/= undefined ->
+            mochiweb_request:set_meta(auth_failure_reason, Reason, Req);
+        _ ->
+            Req
+    end.
+
+-spec get_auth_failure_reason(mochiweb_request()) -> binary() | undefined.
+get_auth_failure_reason(Req) ->
+    mochiweb_request:get_meta(auth_failure_reason, undefined, Req).
 
 -spec check_expiration(#authn_res{}) -> ok | {error, expired}.
 check_expiration(#authn_res{expiration_datetime_utc = undefined}) ->
