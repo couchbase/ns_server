@@ -10,6 +10,10 @@ from enum import Enum
 from typing import Union, List, Dict
 import re
 
+# Node name (see misc:localhost_alias/0) that is used by a node that has never
+# been renamed.
+CB_LOCAL = 'cb.local'
+
 
 class Service(Enum):
     KV = "kv"

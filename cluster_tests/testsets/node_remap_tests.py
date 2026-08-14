@@ -57,9 +57,11 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                                             buckets=[],
                                             test_generated_cluster=True,
                                             num_vbuckets=16),
-                # Test with a single node. The hostname mapping is slightly
-                # different. We make assumptions about paths, we cannot use a
-                # provided cluster.
+                # Test with a single node. The point of this configuration is
+                # to test a one node cluster that uses the cb.local node name:
+                # a node that has never been added to a cluster is named
+                # n_X@cb.local instead of n_X@127.0.0.1, so the node names that
+                # have to be remapped are different.
                 testlib.ClusterRequirements(edition="Enterprise",
                                             num_nodes=1,
                                             include_services=
@@ -70,6 +72,16 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
                                             num_vbuckets=16)]
 
     def setup(self):
+        # A one node cluster is expected to use the cb.local node name (see
+        # requirements()), but the cluster that we are given can have been
+        # renamed to 127.0.0.1 by a previously executed testset: adding a node
+        # to a cluster renames it, and the new name is persisted in
+        # <datadir>/ip, so it survives a restart. Rename it back, otherwise the
+        # node names that we ask node_remap to rewrite are not the names that
+        # the node actually uses.
+        if len(self.cluster._nodes) == 1:
+            self.cluster.connected_nodes[0].reset_node_name()
+
         self.load_and_assert_sample_bucket(self.cluster, "travel-sample")
         # The script remaps chronicle snapshots and chronicle logs. Make sure
         # that we have a snapshot containing the travel-sample info, we will
@@ -119,7 +131,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
         hostname = '127.0.0.1'
 
         if len(old_cluster._nodes) == 1:
-            hostname = 'cb.local'
+            hostname = testlib.CB_LOCAL
 
         for i in range(len(old_cluster._nodes)):
             old_node_index = old_start_index + i
@@ -189,7 +201,7 @@ class NodeRemapTest(testlib.BaseTestSet, SampleBucketTasksBase):
 
         hostname = '127.0.0.1'
         if len(old_cluster._nodes) == 1:
-            hostname = 'cb.local'
+            hostname = testlib.CB_LOCAL
 
         for i in range(len(old_cluster._nodes)):
             old_node_index = old_start_index + i

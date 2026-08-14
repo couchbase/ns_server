@@ -8,7 +8,7 @@
 # licenses/APL2.txt.
 
 import testlib
-from testlib.util import strings_to_services, Service
+from testlib.util import strings_to_services, Service, CB_LOCAL
 import requests
 import os
 import subprocess
@@ -138,6 +138,44 @@ class Node:
         r = testlib.get_succ(self, '/nodes/self')
         return r.json()['otpNode']
 
+    def uses_cb_local(self):
+        return self.otp_node().split('@')[1] == CB_LOCAL
+
+    # Reset the name of the node to the name that it would use if it had never
+    # been renamed.
+    # Note that a node can be renamed explicitly only if it is the only node in
+    # the cluster.
+    def reset_node_name(self):
+        if self.uses_cb_local():
+            return
+
+        print(f'Resetting the name of {self.otp_node()} to use {CB_LOCAL}')
+
+        # The rename regenerates the node certificate, which restarts the web
+        # server, so the reply to this request can be lost, and the node can be
+        # briefly unreachable afterwards.
+        def renamed():
+            try:
+                return self.uses_cb_local()
+            except requests.exceptions.ConnectionError:
+                return False
+
+        try:
+            testlib.post_succ(self, '/node/controller/rename',
+                              data={'hostname': CB_LOCAL})
+        except requests.exceptions.ConnectionError:
+            pass
+
+        testlib.poll_for_condition(
+            renamed, sleep_time=0.5, timeout=60,
+            msg=f'wait for the node to be renamed to use {CB_LOCAL}')
+
+        # A rename to cb.local, unlike a rename to a raw loopback address, is
+        # recorded as a user supplied address (misc:is_localhost/1 only
+        # recognizes raw addresses), and a node with a user supplied address is
+        # never renamed automatically. Reset that, so that the node is
+        # equivalent to a node that has never been renamed.
+        testlib.diag_eval(self, 'dist_manager:reset_address().')
 
     def get_ns_server_pid(self):
         r = testlib.diag_eval(self, "os:getpid().")
