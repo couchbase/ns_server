@@ -1278,6 +1278,20 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             key_name='GCP Key',
             expected_key_type='gcpkms-symmetric')
 
+    def gcp_secret_key_resource_id_test(self):
+        # A crypto key version pins the key material to one version, which
+        # can't be used to encrypt with that key
+        version_id = ('projects/p/locations/l/keyRings/r/cryptoKeys/k/'
+                      'cryptoKeyVersions/1')
+        bad_json = gcp_test_secret(name='GCP Key Version',
+                                   key_resource_id=version_id)
+        errors = create_secret(self.random_node(), bad_json,
+                               expected_code=400)
+        assert errors['data']['keyResourceId'] == \
+               ('must be a crypto key resource id, key versions '
+                '("cryptoKeyVersions") are not supported'), \
+               f'unexpected error: {errors}'
+
     def basic_azure_secret_test(self):
         self._basic_kms_secret_test_logic(
             secret_builder=azure_test_secret,
@@ -3442,7 +3456,8 @@ def aws_test_secret(name=None, usage=None, good_arn=True, creds_file=None):
  # This secret does not actually go to GCP when asked encrypt or decrypt data.
 # All GCP secrets with special keyResourceId=TEST_GCP_RESOURCE_ID simply
 # encrypt data using dummy key.
-def gcp_test_secret(name=None, usage=None, creds_file=None):
+def gcp_test_secret(name=None, usage=None, creds_file=None,
+                    key_resource_id=None):
     if usage is None:
         usage = ['bucket-encryption',
                  'KEK-encryption',
@@ -3454,6 +3469,9 @@ def gcp_test_secret(name=None, usage=None, creds_file=None):
         name = f'Test secret {testlib.random_str(5)}'
 
     data = {'keyResourceId': 'TEST_GCP_RESOURCE_ID'}
+
+    if key_resource_id is not None:
+        data['keyResourceId'] = key_resource_id
 
     if creds_file is not None:
         data['credentialsFile'] = creds_file

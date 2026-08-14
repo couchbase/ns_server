@@ -834,6 +834,19 @@ validate_awskm_arn(Name, State) ->
               end
       end, Name, State).
 
+%% Only the crypto key non version identifier itself is accepted, GCP then
+%% encrypts with whichever version is primary at the time. GCP supports
+%% decryption with KEY_NAME as well and will use appropriate key version
+%% during decrypt.
+validate_gcp_key_resource_id(KeyResourceId) ->
+    case lists:reverse(string:split(KeyResourceId, "/", all)) of
+        [_Version, "cryptoKeyVersions" | _] ->
+            {error, "must be a crypto key resource id, key versions "
+                    "(\"cryptoKeyVersions\") are not supported"};
+        _ ->
+            ok
+    end.
+
 validate_optional_file(Name, State) ->
     validator:validate(
       fun (Path) ->
@@ -894,7 +907,8 @@ gcpkms_key_validators(CurSecretProps) ->
         #{data := #{key_resource_id := KeyResourceId}} ->
             [enforce_static_field_validator(keyResourceId, KeyResourceId, _)];
         #{} when map_size(CurSecretProps) == 0 ->
-            []
+            [validator:validate(fun validate_gcp_key_resource_id/1,
+                                keyResourceId, _)]
     end.
 
 azurekms_key_validators(CurSecretProps) ->
@@ -1726,6 +1740,29 @@ validate_azure_key_test() ->
     after
         meck:unload(ns_config)
     end.
+
+validate_gcp_key_resource_id_test() ->
+    Key = "projects/p/locations/l/keyRings/r/cryptoKeys/k",
+    ?assertEqual(ok, validate_gcp_key_resource_id(Key)),
+    ?assertEqual(ok, validate_gcp_key_resource_id("TEST_GCP_RESOURCE_ID")),
+
+    %% A key name that merely looks like the version collection is fine
+    ?assertEqual(ok, validate_gcp_key_resource_id(Key ++ "cryptoKeyVersions")),
+
+    %% "cryptoKeyVersions" is a legal key ring and crypto key name. Such ids
+    %% still refer to the key itself, not to one of its versions
+    ?assertEqual(ok, validate_gcp_key_resource_id(
+                       "projects/p/locations/l/keyRings/r/cryptoKeys/"
+                       "cryptoKeyVersions")),
+    ?assertEqual(ok, validate_gcp_key_resource_id(
+                       "projects/p/locations/l/keyRings/cryptoKeyVersions/"
+                       "cryptoKeys/k")),
+
+    {error, Error} =
+        validate_gcp_key_resource_id(Key ++ "/cryptoKeyVersions/1"),
+    ?assertEqual("must be a crypto key resource id, key versions "
+                 "(\"cryptoKeyVersions\") are not supported",
+                 lists:flatten(Error)).
 
 validate_hashi_vault_url_test() ->
     {error, Error0} =
