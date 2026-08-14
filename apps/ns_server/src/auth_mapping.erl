@@ -22,14 +22,16 @@
 %% If multiple group/role mappings are needed, multiple rules should be used.
 %%
 %% Mapping behavior:
-%% - Users: A user can only be mapped to a single value.
-%% The first valid match is used. StopFirstMatch is ignored.
+%% - Users: A user can only be mapped to a single value. The first rule that
+%%   matches is used, and if its result is not a usable user name the
+%%   authentication fails. StopFirstMatch is ignored.
 %% - Groups & Roles: Multiple values can be mapped using multiple rules.
 %%   Each value can match multiple rules, and behavior is controlled by
 %%   `StopFirstMatch`:
-%%   - `true`  → Stop after the first valid match.
-%%   - `false` → Continue matching in priority order, collecting all valid
-%%    matches.
+%%   - `true`  → Stop at the first rule that matches. The value maps to that
+%%     rule's result, or to nothing if the result is rejected.
+%%   - `false` → Continue matching in priority order, collecting the results of
+%%     every rule that matches.
 %% By default, if no rules are specified, the identity is mapped to itself.
 -module(auth_mapping).
 
@@ -140,6 +142,7 @@ try_rules(Type, Value, [Rule | Rest], StopFirstMatch, Acc) ->
                 {ok, ValidResult} ->
                     try_rules(Type, Value, Rest, StopFirstMatch,
                               [ValidResult | Acc]);
+                {error, _} when StopFirstMatch -> Acc;
                 {error, _} ->
                     try_rules(Type, Value, Rest, StopFirstMatch, Acc)
             end
@@ -405,7 +408,26 @@ mapping_test_() ->
                                    [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
       ?_assertEqual(["cb-admins", "users@cb"],
                     map_identities(groups, ["group1", "cb-admins", "users@cb"],
-                                   [], true))
+                                   [], true)),
+
+      %% Stopping at the first match means stopping at the rule that matched,
+      %% not at the first one whose result was usable, so a rejected result
+      %% does not hand the value to a later rule.
+      ?_assertEqual([],
+                    map_identities(groups, ["GoogleGroup:admins"],
+                                   [{"^GoogleGroup:(.*)", "\\1"},
+                                    {"^GoogleGroup:(.*)", "cb-\\1"}], true)),
+      ?_assertEqual([],
+                    map_identities({roles, public}, ["GoogleRole:invalid"],
+                                   [{"^GoogleRole:(.*)", "\\1"},
+                                    {"^GoogleRole:.*", "admin"}], true)),
+
+      %% Collecting every match is different: each rule contributes on its own,
+      %% so a rejected result only drops itself.
+      ?_assertEqual(["cb-admins"],
+                    map_identities(groups, ["GoogleGroup:admins"],
+                                   [{"^GoogleGroup:(.*)", "\\1"},
+                                    {"^GoogleGroup:(.*)", "cb-\\1"}], false))
      ]}.
 
 -endif.
