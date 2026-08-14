@@ -366,8 +366,7 @@ handle_call({listen, Name}, _From, State) ->
                       "Errors: ~p~n"
                       "Net kernel will not start",
                       [NotStartedRequired, RequiredReasons]),
-            close_listeners(State2),
-            {reply, {error, RequiredReasons}, State}
+            {reply, {error, RequiredReasons}, close_listeners(State2)}
     end;
 
 handle_call({accept, KernelPid}, _From, #s{listeners = Listeners,
