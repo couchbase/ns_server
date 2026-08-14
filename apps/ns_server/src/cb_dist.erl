@@ -168,6 +168,49 @@ select(Node) ->
             false
     end.
 
+%% Setting up an outbound connection. net_kernel calls this function, the
+%% dist module's setup/5 callback, in its own process (dist modules require
+%% self() to be net_kernel). So the code issuing (1)-(3) lives in cb_dist but
+%% runs on the net_kernel lane, and each of those calls blocks net_kernel
+%% until the cb_dist process answers it - which is why cb_dist must not wait
+%% for anything that in turn needs net_kernel.
+%%
+%% "====>" is a gen_server call, pointing at the process being called; its
+%% reply is not drawn. "---->" is a plain message send. The bracket on the
+%% right spans the rows during which net_kernel is inside a dist callback.
+%%
+%%                  cb_dist      net_kernel     Connection
+%%                     |              |              |
+%%                     |<==== (1) ====|              |   .- cb_dist:setup/5
+%%                     |<==== (2) ====|              |   |
+%%                     |              |--- spawn --->|   |  Mod:setup/5
+%%                     |<==== (3) ====|              |   |
+%%                     |              |              |   '- returns Connection
+%%                     |              |<--- (4) -----|
+%%                     |              |<--- (5) -----|
+%%                     |              |---- (6) ---->|
+%%                     |              |---- (7) ---->|
+%%                     |<----------- (8) ------------|
+%%
+%% (1) {get_preferred, Node} -> Mod, from get_preferred_dist/1
+%% (2) {register_outgoing_connection, Mod} -> {ok, Ref}, from
+%%     with_registered_connection/3; adds a #con{} that has no pid yet
+%% (3) {update_connection_pid, Ref, Connection}, also from
+%%     with_registered_connection/3; cb_dist monitors it
+%%     -- Connection now connects to the peer and runs the dist_util
+%%     handshake with it, which is not shown here as the peer has no lane --
+%% (4) {dist_ctrlr, DistCtrl, Node, Connection}, sent by the VM when
+%%     Connection calls erlang:setnode/3 at the end of that handshake
+%% (5) {Connection, {nodeup, Node, Address, Type, NamedMe}}
+%% (6) {net_kernel, inserted, TickIntensity}, after which Connection enters
+%%     dist_util:con_loop and the node is up
+%% (7) {net_kernel, tick} and {net_kernel, aux_tick} from then on, and
+%%     {net_kernel, disconnect} to take the connection down
+%% (8) 'DOWN', later, from the monitor cb_dist set when it handled (3)
+%%
+%% The pid is recorded as soon as Mod:setup/5 returns, i.e. before (4)-(6), so
+%% a #con.pid is often a process that is not in con_loop yet and therefore
+%% cannot act on the disconnect of (7).
 -spec setup(Node :: atom(),
             Type :: hidden | normal,
             MyNode :: atom(),
@@ -503,6 +546,39 @@ handle_cast(Msg, State) ->
     error_msg("Received unknown cast message: ~p", [Msg]),
     {noreply, State}.
 
+%% Setting up an inbound connection. cb_dist sits between the acceptor and
+%% net_kernel: cb_dist:listen/1 and cb_dist:accept/1, both called once at
+%% startup, made it the "net kernel" that Mod:accept/1 was given and the
+%% "acceptor" that net_kernel knows about. So the controller message travels
+%% through it and it learns the connection process on the way.
+%%
+%% The bracket on the right spans the rows during which net_kernel is inside a
+%% dist callback.
+%%
+%%  Acceptor        cb_dist      net_kernel     Connection
+%%      |              |              |              |
+%%      |---- (1) ---->|              |              |
+%%      |              |---- (2) ---->|              |
+%%      |              |              |--- spawn --->|  .- cb_dist:
+%%      |              |<--- (3) -----|              |  '- accept_connection/5
+%%      |<--- (4) -----|              |              |
+%%      |------------------- (5) ------------------->|
+%%      |              |              |<--- (6) ---->|
+%%      |              |<----------- (7) ------------|
+%%
+%% (1) {accept, Acceptor, ConSocket, Family, Proto}
+%% (2) {accept, cb_dist, {Ref, Acceptor, Mod, ConSocket}, cb_dist, cb_dist}
+%% (3) {net_kernel, controller, {Ref, Connection, Acceptor}}, the return value
+%%     of cb_dist:accept_connection/5 - which spawned Connection by calling
+%%     Mod:accept_connection/5 - echoed back
+%% (4) {cb_dist, controller, Connection}
+%% (5) {Acceptor, controller}, after handing the socket over to Connection
+%% (6) dist_util handshake ({accept_pending, ..}, {nodeup, ..}), then con_loop
+%% (7) 'DOWN', later, from the monitor cb_dist set when it handled (3)
+%%
+%% The Acceptor lane is the process Mod:accept/1 spawned: for inet_tls_dist a
+%% short-lived per-connection process that exits after (5), for inet_tcp_dist
+%% the acceptor loop itself, which goes back to accepting.
 handle_info({accept, HandshakeProcPid, ConSocket, Family, Protocol},
             #s{kernel_pid = KernelPid, connections = Connections} = State)
                                 when Family =:= inet orelse Family =:= inet6,
