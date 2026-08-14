@@ -256,6 +256,27 @@ class CertLoadTests(testlib.BaseTestSet):
         ## The reload was forced so the returned timestamp will be different.
         assert (ts1 != ts3)
 
+    @tag(Tag.LowUrgency)
+    def short_circuit_reloading_client_cert_test(self):
+
+        def load_cert_return_timestamp(force=False):
+            node = self.cluster.connected_nodes[0]
+            load_cert(node, cert, key, passphrase=None, is_client=True,
+                      force_reload=force)
+            return get_node_cert(node, is_client=True)['loadTimestamp']
+
+        cert, key = generate_internal_client_cert(self.ca_pem, self.ca_key,
+                                                  'test_name')
+
+        ts1 = load_cert_return_timestamp(force=False)
+        time.sleep(2)
+        ts2 = load_cert_return_timestamp(force=False)
+        ## The cert has not changed, so it was not reloaded.
+        assert ts1 == ts2, f'client cert was reloaded: {ts1} -> {ts2}'
+        ts3 = load_cert_return_timestamp(force=True)
+        ## Unless the reload is forced.
+        assert ts1 != ts3, 'forced reload of the client cert did nothing'
+
     def generate_and_load_pkcs12_cert(self, key_type, passphrase=None,
                                       is_client=False):
         if is_client:

@@ -969,8 +969,16 @@ handle_call({set_certificate_chain, Type, CAEntry, Chain, PKeyFun,
              PassphraseSettingsFun, ForceReload}, _From, State) ->
     NewPKey = PKeyFun(),
     NewPassphraseSettings = PassphraseSettingsFun(),
-    {value, SavedProps} = ns_config:search(ns_config:latest(),
-                                           {node, node(), node_cert}),
+    %% Whatever is stored for this Type, not always the node cert: comparing
+    %% an uploaded client chain against the node cert never matched, so
+    %% reloadClientCertificate re-saved certs that had not changed, and every
+    %% redundant save re-encrypts the key with a new passphrase.
+    SavedProps =
+        case ns_config:search(ns_config:latest(), {node, node(), Type}) of
+            {value, P} -> P;
+            %% A node that has no private key to sign with stores neither.
+            false -> []
+        end,
     Pem = proplists:get_value(pem, SavedProps),
     PassphraseSettings = proplists:get_value(pkey_passphrase_settings,
                                              SavedProps, []),
