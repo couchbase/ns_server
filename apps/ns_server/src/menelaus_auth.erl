@@ -638,6 +638,7 @@ verify_rest_auth(Req, Permission) ->
         {ok, #authn_res{} = AuthnRes, RespHeaders, AuthAuditProps} ->
             Req1 = append_resp_headers(RespHeaders, Req),
             Req2 = maybe_set_auth_audit_props(Req1, AuthAuditProps),
+            maybe_audit_jwt_auth_success(Req2, AuthnRes, AuthAuditProps),
 
             case apply_on_behalf_of_authn_res(AuthnRes, Req2) of
                 error ->
@@ -1031,6 +1032,19 @@ maybe_set_auth_audit_props(Req, []) ->
     Req;
 maybe_set_auth_audit_props(Req, AuthAuditProps) ->
     mochiweb_request:set_meta(auth_audit_props, AuthAuditProps, Req).
+
+-spec maybe_audit_jwt_auth_success(mochiweb_request(), #authn_res{},
+                                   auth_audit_props()) -> ok.
+maybe_audit_jwt_auth_success(Req, AuthnRes, AuthAuditProps) ->
+    %% ns_audit doesn't run on the couchdb node, whose requests aren't
+    %% audited here at all, so there is nothing to record from there.
+    case proplists:get_value(<<"type">>, AuthAuditProps) == <<"jwt">> andalso
+        ns_node_disco:couchdb_node() /= node() of
+        true ->
+            ns_audit:jwt_auth_success(store_authn_res(AuthnRes, Req));
+        false ->
+            ok
+    end.
 
 -spec maybe_store_auth_failure_reason(mochiweb_request(),
                                       auth_audit_props()) ->

@@ -960,6 +960,78 @@ class JWTTests(testlib.BaseTestSet):
         assert_reason("Username may not exceed 128 characters",
                       {**self.base_claims, "sub": "a" * 122})
 
+    def auth_success_audit_test(self):
+        """A successful JWT authentication can be audited (MB-73364).
+
+        The event is off by default: it is recorded on every request a token
+        authenticates, not once per session.
+        """
+        self.auth_setup()
+        node = self.cluster.connected_nodes[0]
+        self.configure_jwt({"subMaps": ["^(.*)$ jwt-\\1"],
+                            "groupsMaps": ["^data-(.*)$ jwt_\\1_admins"]})
+
+        jti = "token-id-one"
+        claims = {**self.base_claims, "sub": "subject-one", "jti": jti,
+                  "groups": ["data-bucket"]}
+        headers = {"Authorization": f"Bearer {self.create_token(claims)}"}
+
+        offset = testlib.audit_log_offset(node)
+        testlib.get_succ(self.cluster, "/whoami", auth=None, headers=headers)
+        testlib.assert_no_audit_event(node, 8311, since_offset=offset)
+
+        # The POST derives the enabled set from what is left out of disabled,
+        # so the event is turned on by dropping it from that list.
+        default_disabled = testlib.get_succ(
+            self.cluster, "/settings/audit").json()["disabled"]
+        assert 8311 in default_disabled, \
+            f"8311 is not disabled by default: {default_disabled}"
+
+        def set_disabled(ids):
+            testlib.post_succ(self.cluster, "/settings/audit",
+                              data={"disabled": ",".join(map(str, ids))})
+
+        set_disabled([i for i in default_disabled if i != 8311])
+        try:
+            offset = testlib.audit_log_offset(node)
+
+            # The settings POST returns before memcached has reloaded the
+            # audit configuration, so authenticate until the event lands
+            # rather than assuming the first token is recorded.
+            def authenticate_and_find():
+                whoami = testlib.get_succ(self.cluster, "/whoami", auth=None,
+                                          headers=headers).json()
+                testlib.assert_eq(whoami["id"], "jwt-subject-one", "identity")
+                events, _ = testlib.read_audit_events(node, offset)
+                for e in events:
+                    if e.get("id") == 8311 and e.get("jti") == jti:
+                        return e
+                return False
+
+            event = testlib.poll_for_condition(
+                authenticate_and_find, sleep_time=0.5, timeout=30,
+                msg="waiting for the JWT authentication success event")
+
+            # Both halves of the identity: what the token said, and who it
+            # was allowed to be.
+            testlib.assert_eq(event["sub"], "subject-one", "audited sub")
+            testlib.assert_eq(event["iss"], "test-issuer", "audited iss")
+            testlib.assert_eq(event["type"], "jwt", "audited type")
+            testlib.assert_eq(event["real_userid"]["user"], "jwt-subject-one",
+                              "audited user")
+            testlib.assert_eq(event["real_userid"]["domain"], "external",
+                              "audited domain")
+            testlib.assert_eq(event["mapped_groups"], "jwt_bucket_admins",
+                              "audited mapped_groups")
+            testlib.assert_eq(event["raw_url"], "/whoami", "audited raw_url")
+
+            # Only JWT authentications are recorded here.
+            offset = testlib.audit_log_offset(node)
+            testlib.get_succ(self.cluster, "/whoami")
+            testlib.assert_no_audit_event(node, 8311, since_offset=offset)
+        finally:
+            set_disabled(default_disabled)
+
     @staticmethod
     def create_token(claims, key_id="2011-04-29", alg="RS256"):
         """Create a signed JWT for testing.

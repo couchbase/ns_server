@@ -113,7 +113,8 @@
          create_external_collection/5,
          modify_external_collection/5,
          drop_external_collection/5,
-         obscure_sessionid/1
+         obscure_sessionid/1,
+         jwt_auth_success/1
         ]).
 
 -export([start_link/0, stats/0]).
@@ -583,7 +584,9 @@ code(upload_crl_file) ->
 code(delete_crl_file) ->
     8309;
 code(reload_crl) ->
-    8310.
+    8310;
+code(jwt_auth_success) ->
+    8311.
 
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
@@ -1219,6 +1222,11 @@ drop_external_collection(Req, BucketName, ScopeName,
          {scope_name, ScopeName},
          {collection_name, CollectionName},
          {new_manifest_uid, Uid}]).
+
+jwt_auth_success(Req) ->
+    RawPath = mochiweb_request:get(raw_path, Req),
+    AuthProps = get_auth_audit_props(Req),
+    put(jwt_auth_success, Req, [{raw_url, RawPath}] ++ AuthProps).
 
 auth_failure(Req0) ->
     Req =

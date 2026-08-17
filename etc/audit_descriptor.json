@@ -2499,6 +2499,38 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : ""
           }
+      },
+      {
+        "id": 8311,
+        "name" : "JWT authentication succeeded",
+        "description" : "REST operation authenticated with a JWT",
+        "sync" : false,
+        "enabled" : false,
+        "filtering_permitted": true,
+        "mandatory_fields" : {
+            "timestamp" : "",
+            "remote" : {"ip" : "", "port" : 1},
+            "local" : {"ip" : "", "port" : 1},
+            "raw_url" : ""
+        },
+        "optional_fields" : {
+            "real_userid" : {"domain" : "", "user" : ""},
+            "type": "",
+            "iss": "",
+            "alg": "",
+            "sub": "",
+            "aud": "",
+            "exp": 0,
+            "kid": "",
+            "nbf": 0,
+            "iat": 0,
+            "jti": "",
+            "groups": "",
+            "roles": "",
+            "mapped_groups": "",
+            "mapped_roles": "",
+            "expiry_with_leeway": ""
+        }
       }
     ]
 }
