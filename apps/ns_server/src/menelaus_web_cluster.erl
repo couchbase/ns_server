@@ -1082,7 +1082,11 @@ busy_reply(What, Error) ->
     end.
 
 op_to_string(sync_fusion_log_store) ->
-    "sync fusion log store".
+    "sync fusion log store";
+op_to_string(prepare_fusion_snapshot_restore) ->
+    "prepare fusion snapshot restore";
+op_to_string(fusion_snapshot_restore) ->
+    "fusion snapshot restore".
 
 busy_reply_str(rebalance_running) ->
     "Cannot ~s during rebalance";
