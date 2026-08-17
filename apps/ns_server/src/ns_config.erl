@@ -1447,51 +1447,55 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, _UUID)
 do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
     RemoteKVList1 = lists:sort(RemoteKVList),
     LocalKVList1 = lists:sort(LocalKVList),
-    Merger = fun (_, {directory, _} = LP) ->
-                     LP;
-                 ({_, [VClock | ?DELETED_MARKER]}, {{node, Node, _}, _LV} = LP)
-                   when Node =:= node(), is_tuple(VClock),
-                        element(1, VClock) =:= ?METADATA_VCLOCK ->
-                     %% we don't allow incoming replications of
-                     %% deletions of our per-node keys. This is
-                     %% because they (deletions) are done as part of
-                     %% ejecting us from cluster in which case we'll
-                     %% detect that (via nodes_wanted) and leave
-                     %% (resetting config).
-                     %%
-                     %% Allowing deletions in this case might break
-                     %% things in this node preventing it from leaving
-                     %% cluster.
-                     LP;
-                 ({_, RV} = RP, {{node, Node, Key} = K, LV} = LP) when Node =:= node() ->
-                     %% we want to make sure that that no one is able to
-                     %% modify our own UUID, database_dir or index_dir
-                     Bounce = (Key =:= uuid) orelse (Key =:= database_dir)
-                         orelse (Key =:= index_dir),
+    Merger =
+        fun (_, {directory, _} = LP) ->
+                LP;
+            ({_, [VClock | ?DELETED_MARKER]}, {{node, Node, _}, _LV} = LP)
+              when Node =:= node(), is_tuple(VClock),
+                   element(1, VClock) =:= ?METADATA_VCLOCK ->
+                %% we don't allow incoming replications of
+                %% deletions of our per-node keys. This is
+                %% because they (deletions) are done as part of
+                %% ejecting us from cluster in which case we'll
+                %% detect that (via nodes_wanted) and leave
+                %% (resetting config).
+                %%
+                %% Allowing deletions in this case might break
+                %% things in this node preventing it from leaving
+                %% cluster.
+                LP;
+            ({_, RV} = RP, {{node, Node, Key} = K, LV} = LP)
+              when Node =:= node() ->
+                %% we want to make sure that that no one is able to
+                %% modify our own UUID, database_dir or index_dir
+                Bounce = (Key =:= uuid) orelse (Key =:= database_dir)
+                    orelse (Key =:= index_dir),
 
-                     case Bounce of
-                         true ->
-                             case RV =:= LV of
-                                 true ->
-                                     %% same values imply same vclocks
-                                     %% so no real merge is needed
-                                     LV = merge_vclocks(LV, RV),
-                                     {K, LV};
-                                 false ->
-                                     ?log_debug("Special-casing incoming replication "
-                                                "of my node key ~p and different value. "
-                                                "Overriding remote with local:~n"
-                                                "local = ~p~n"
-                                                "remote = ~p", [K, LV, RV]),
-                                     touch_key(K),
-                                     {K, increment_vclock(LV, merge_vclocks(LV, RV), UUID)}
-                             end;
-                         false ->
-                             merge_values(RP, LP)
-                     end;
-                 (RP, LP) ->
-                     merge_values(RP, LP)
-             end,
+                case Bounce of
+                    true ->
+                        case RV =:= LV of
+                            true ->
+                                %% same values imply same vclocks
+                                %% so no real merge is needed
+                                LV = merge_vclocks(LV, RV),
+                                {K, LV};
+                            false ->
+                                ?log_debug("Special-casing incoming "
+                                           "replication of my node key ~p and "
+                                           "different value. Overriding remote "
+                                           "with local:~n local = ~p~n"
+                                           "remote = ~p", [K, LV, RV]),
+                                touch_key(K),
+                                {K,
+                                 increment_vclock(LV,
+                                                  merge_vclocks(LV, RV), UUID)}
+                        end;
+                    false ->
+                        merge_values(RP, LP)
+                end;
+            (RP, LP) ->
+                merge_values(RP, LP)
+        end,
     misc:ukeymergewith(Merger, 1, RemoteKVList1, LocalKVList1).
 
 -spec merge_values(kvpair(), kvpair()) -> kvpair().
