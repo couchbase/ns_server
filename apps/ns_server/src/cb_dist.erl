@@ -49,6 +49,7 @@
          format_error/1,
          netsettings2str/1,
          restart_tls/0,
+         pkey_passphrase_updated/0,
          netsettings2proto/1,
          proto2netsettings/1]).
 
@@ -347,6 +348,13 @@ update_config(Props) ->
 restart_tls() ->
     gen_server:call(?MODULE, restart_tls, infinity).
 
+%% Called when pkey passphrases become available in ns_secrets, so that we don't
+%% have to wait for the ensure_config timer to retry. Asynchronous on purpose:
+%% handling it extracts the passphrase from ns_secrets, and the caller of this
+%% function is the process that has just loaded it there.
+pkey_passphrase_updated() ->
+    gen_server:cast(?MODULE, pkey_passphrase_updated).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -541,6 +549,19 @@ handle_call(restart_tls, _From, #s{listeners = Listeners} = State) ->
 handle_call(Request, _From, State) ->
     error_msg("Received unknown call: ~p", [Request]),
     {noreply, State}.
+
+%% A pending ensure_config timer means we are waiting for something (the pkey
+%% passphrase among other things), so it doubles as the "retry is needed" flag.
+handle_cast(pkey_passphrase_updated,
+            #s{ensure_config_timer = undefined} = State) ->
+    misc:flush(pkey_passphrase_updated),
+    {noreply, State};
+handle_cast(pkey_passphrase_updated,
+            #s{ensure_config_timer = Ref} = State) ->
+    info_msg("Pkey passphrase updated, ensuring config now", []),
+    misc:flush(pkey_passphrase_updated),
+    _ = erlang:cancel_timer(Ref),
+    {noreply, ensure_config(State#s{ensure_config_timer = undefined})};
 
 handle_cast(Msg, State) ->
     error_msg("Received unknown cast message: ~p", [Msg]),

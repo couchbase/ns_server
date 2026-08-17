@@ -915,6 +915,9 @@ init([]) ->
     maybe_generate_client_certs(),
     reload_pkey_passphrase(node_cert),
     reload_pkey_passphrase(client_cert),
+    %% cb_dist can't get the passphrase before we load it here, which normally
+    %% happens after it has already tried to start its TLS listeners.
+    cb_dist:pkey_passphrase_updated(),
     self() ! {validate_pkey, node_cert},
     self() ! {validate_pkey, client_cert},
     %% Note that it should do nothing if "auto-generated"
