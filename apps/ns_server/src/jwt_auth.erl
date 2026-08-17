@@ -299,16 +299,26 @@ normalize_claim(Claim) when is_list(Claim) -> list_to_binary(Claim).
 %% JSON keys must be strings (binaries).
 normalize_key(K) when is_binary(K) -> K.
 
-%% Normalize decoded JSON values for auditing (ejson encoding).
-normalize_val(V) when is_number(V); is_boolean(V); is_binary(V) -> V;
-normalize_val(null) -> null;
-normalize_val(V) when is_list(V) ->
-    case io_lib:printable_list(V) of
-        true -> list_to_binary(V);
-        false -> [normalize_val(E) || E <- V]
-    end;
-normalize_val(V) when is_map(V) ->
-    {[{normalize_key(K), normalize_val(Val)} ||
+%% The audit map holds two kinds of values. A standard or mapped claim has been
+%% through get_claim_value/2, so it is a string, a list of strings or an
+%% integer, and get_claim_value_type/1 says which. A custom claim is keyed by
+%% the name the operator configured and holds the decoded JSON as it came off
+%% the token.
+-spec audit_value_type(Claim :: claims()) -> claim_value_type() | decoded.
+audit_value_type(Claim) when is_atom(Claim) -> get_claim_value_type(Claim);
+audit_value_type(Claim) when is_list(Claim) -> decoded.
+
+%% Normalize a claim value for auditing (ejson encoding).
+normalize_val(string, V) -> list_to_binary(V);
+normalize_val(list, Vs) -> [list_to_binary(V) || V <- Vs];
+normalize_val(integer, V) when is_integer(V) -> V;
+normalize_val(decoded, V) -> normalize_decoded(V).
+
+normalize_decoded(V) when is_number(V); is_boolean(V); is_binary(V) -> V;
+normalize_decoded(null) -> null;
+normalize_decoded(V) when is_list(V) -> [normalize_decoded(E) || E <- V];
+normalize_decoded(V) when is_map(V) ->
+    {[{normalize_key(K), normalize_decoded(Val)} ||
          {K, Val} <- maps:to_list(V)]}.
 
 %% Converts the claims map to a proplist containing only binaries for auditing.
@@ -316,18 +326,22 @@ normalize_val(V) when is_map(V) ->
 audit_map_to_proplist(AuditMap) ->
     lists:sort(maps:fold(
                  fun(Claim, Value, Acc) ->
-                         [{normalize_claim(Claim), normalize_val(Value)} | Acc]
+                         [{normalize_claim(Claim),
+                           normalize_val(audit_value_type(Claim), Value)} | Acc]
                  end, [], AuditMap)).
 
 -spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) ->
           auth_audit_props().
 audit_success(Claims, AuthnRes) ->
-    audit_map_to_proplist(Claims#{type => <<"jwt">>}) ++
+    [{<<"type">>, <<"jwt">>} | audit_map_to_proplist(Claims)] ++
         menelaus_auth:get_authn_res_audit_props(AuthnRes).
 
+%% The reason is ns_server text rather than anything the token said, so it
+%% does not go through the claims map.
 -spec audit_failure(map(), binary()) -> auth_audit_props().
 audit_failure(Claims, Reason) ->
-    audit_map_to_proplist(Claims#{reason => Reason, type => <<"jwt">>}).
+    [{<<"type">>, <<"jwt">>}, {<<"reason">>, Reason} |
+     audit_map_to_proplist(Claims)].
 
 -spec validate_token(Token :: string(), Issuers :: map()) ->
           {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
@@ -969,27 +983,28 @@ audit_map_to_proplist_test() ->
                                 ]}
                  ], lists:sort(audit_map_to_proplist(Roles))),
 
-    %% Test error reason
-    Error = #{
-              reason => <<"Token has expired">>,
-              exp => 1234567890
-             },
+    %% A claim value carrying anything above ASCII. It is a list of utf8
+    %% bytes rather than a printable list, and the type declared for the
+    %% claim, not the shape of the list, is what says it is a string.
+    NonAscii = #{
+                 sub => binary_to_list(<<"Алиса"/utf8>>),
+                 groups => [binary_to_list(<<"Ingenjörer"/utf8>>), "eng"]
+                },
     ?assertEqual([
-                  {<<"exp">>, 1234567890},
-                  {<<"reason">>, <<"Token has expired">>}
-                 ], lists:sort(audit_map_to_proplist(Error))),
+                  {<<"groups">>, [<<"Ingenjörer"/utf8>>, <<"eng">>]},
+                  {<<"sub">>, <<"Алиса"/utf8>>}
+                 ], lists:sort(audit_map_to_proplist(NonAscii))),
 
-    %% Test mapped claims
-    Mapped = #{
-               mapped_groups => ["admins", "users"],
-               mapped_roles => ["bucket_admin[*]", "data_reader[*:*.*]"]
+    %% A custom claim holds the decoded JSON, so an array of small integers
+    %% stays an array. Guessing by shape would have made it a string.
+    Custom = #{
+               "port_list" => [101, 110, 103],
+               "tenant" => <<"acme">>
               },
     ?assertEqual([
-                  {<<"mapped_groups">>, [<<"admins">>, <<"users">>]},
-                  {<<"mapped_roles">>, [<<"bucket_admin[*]">>,
-                                        <<"data_reader[*:*.*]">>]}
-                 ], lists:sort(audit_map_to_proplist(Mapped))),
-
+                  {<<"port_list">>, [101, 110, 103]},
+                  {<<"tenant">>, <<"acme">>}
+                 ], lists:sort(audit_map_to_proplist(Custom))),
 
     Nested = #{
                "user_metadata" =>

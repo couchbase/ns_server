@@ -14,6 +14,7 @@
 -behaviour(gen_server).
 
 -include("ns_common.hrl").
+-include("rbac.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
 -export([login_success/1,
@@ -1244,8 +1245,26 @@ auth_failure(Req0) ->
         end,
 
     RawPath = mochiweb_request:get(raw_path, Req),
-    JwtProps = mochiweb_request:get_meta(auth_audit_props, [], Req),
-    put(auth_failure, Req, [{raw_url, RawPath}] ++ JwtProps).
+    AuthProps = get_auth_audit_props(Req),
+    put(auth_failure, Req, [{raw_url, RawPath}] ++ AuthProps).
+
+%% Auth audit props hold decoded JSON values, because memcached is sent the
+%% same props and encodes them as JSON directly. An audit event instead goes
+%% through json_builder:to_binary/1, which turns an untagged list into a single
+%% binary and would join the elements of an array valued prop into one string.
+%% Tag arrays here to say they are already in the shape the encoder wants.
+%%
+%% A list means an array and nothing else: every producer of these props
+%% supplies binaries for string values, jwt_auth by normalizing each claim to
+%% the type declared for it rather than guessing from the shape of the value.
+-spec get_auth_audit_props(mochiweb_request()) ->
+          [{binary(), audit_prop_value() | {json, audit_prop_value()}}].
+get_auth_audit_props(Req) ->
+    [{Key, case Value of
+               _ when is_list(Value) -> {json, Value};
+               _ -> Value
+           end} ||
+        {Key, Value} <- mochiweb_request:get_meta(auth_audit_props, [], Req)].
 
 %% TLS handshake failure reported by the mochiweb acceptor (e.g. a client
 %% presenting a revoked certificate).  There is no "Req" because the failure
@@ -1292,8 +1311,8 @@ tls_description_bin(Other) ->
 
 access_forbidden(Req) ->
     RawPath = mochiweb_request:get(raw_path, Req),
-    JwtProps = mochiweb_request:get_meta(auth_audit_props, [], Req),
-    put(access_forbidden, Req, [{raw_url, RawPath}] ++ JwtProps).
+    AuthProps = get_auth_audit_props(Req),
+    put(access_forbidden, Req, [{raw_url, RawPath}] ++ AuthProps).
 
 rbac_info_retrieved(Req, Type) ->
     RawPath = mochiweb_request:get(raw_path, Req),
@@ -1513,5 +1532,28 @@ tls_auth_failure_params_test() ->
     ?assertEqual(?TLS_HANDSHAKE_RAW_URL,
                  proplists:get_value(raw_url, Prepared)),
     ?assertEqual(<<"bad cert">>, proplists:get_value(reason, Prepared)).
+
+auth_audit_props_test() ->
+    Props = [{<<"aud">>, [<<"couchbase">>]},
+             {<<"exp">>, 1234567890},
+             {<<"groups">>, [<<"group1">>, <<"group2">>]},
+             {<<"sub">>, <<"Алиса"/utf8>>}],
+    Req = mochiweb_request:set_meta(
+            auth_audit_props, Props,
+            mochiweb_request:new(nil, 'GET', "/whoami", {1, 1},
+                                 mochiweb_headers:make([]))),
+    Prepared = prepare_list(get_auth_audit_props(Req)),
+
+    %% An array valued claim reaches the record as an array, of one element
+    %% or of many, rather than as its elements run together.
+    ?assertEqual([<<"group1">>, <<"group2">>],
+                 proplists:get_value(<<"groups">>, Prepared)),
+    ?assertEqual([<<"couchbase">>], proplists:get_value(<<"aud">>, Prepared)),
+
+    %% A string valued claim is not mistaken for an array, whatever bytes it
+    %% carries, and a number stays a number.
+    ?assertEqual(<<"Алиса"/utf8>>,
+                 proplists:get_value(<<"sub">>, Prepared)),
+    ?assertEqual(1234567890, proplists:get_value(<<"exp">>, Prepared)).
 
 -endif.
