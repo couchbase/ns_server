@@ -1086,7 +1086,9 @@ op_to_string(sync_fusion_log_store) ->
 op_to_string(prepare_fusion_snapshot_restore) ->
     "prepare fusion snapshot restore";
 op_to_string(fusion_snapshot_restore) ->
-    "fusion snapshot restore".
+    "fusion snapshot restore";
+op_to_string(flush_bucket) ->
+    "flush bucket".
 
 busy_reply_str(rebalance_running) ->
     "Cannot ~s during rebalance";

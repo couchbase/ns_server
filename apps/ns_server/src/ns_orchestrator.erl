@@ -19,7 +19,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--type op() :: sync_fusion_log_store | prepare_fusion_snapshot_restore.
+-type op() :: sync_fusion_log_store | prepare_fusion_snapshot_restore |
+              fusion_snapshot_restore | flush_bucket.
 
 -type busy() :: rebalance_running |
                 in_recovery |
@@ -259,14 +260,14 @@ delete_bucket(BucketName) ->
     call({delete_bucket, BucketName}, infinity).
 
 -spec flush_bucket(bucket_name()) ->
-          ok | busy() |
+          ok | busy() | stopped |
           bucket_not_found |
           flush_disabled |
           {prepare_flush_failed, _, _} |
           {flush_wait_failed, _, _} |
           {old_style_flush_failed, _, _}.
 flush_bucket(BucketName) ->
-    call({flush_bucket, BucketName}, infinity).
+    call({start_op, flush_bucket, [{bucket, BucketName}]}, infinity).
 
 -spec start_pause_bucket(Args :: #bucket_hibernation_op_args{}) ->
           ok | busy() |
@@ -1006,19 +1007,13 @@ idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
                 create_membase_bucket(BucketName, BucketConfig, undefined)
         end,
     {keep_state_and_data, [{reply, From, Reply}]};
+%% Synchronous flush_bucket call issued by a pre-totoro node. Converted to
+%% the asynchronous operation. The caller still gets the reply only after the
+%% flush is completed, so it is fully compatible with the old behavior.
 idle({flush_bucket, BucketName}, From, _State) ->
-    RV = perform_bucket_flushing(BucketName),
-    case RV of
-        ok -> ok;
-        {flush_wait_failed, _FailedNodes, _FailedCalls} ->
-            ale:info(?USER_LOGGER,
-                     "Flushing ~p failed or timed out with error: ~n~p",
-                     [BucketName, RV]);
-        _ ->
-            ale:info(?USER_LOGGER, "Flushing ~p failed with error: ~n~p",
-                     [BucketName, RV])
-    end,
-    {keep_state_and_data, [{reply, From, RV}]};
+    {keep_state_and_data,
+     [{next_event, {call, From},
+       {start_op, flush_bucket, [{bucket, BucketName}]}}]};
 idle({delete_bucket, BucketName}, From, _State) ->
     handle_delete_bucket(BucketName, From, idle, []);
 %% In mixed mode cluster, depending upon the node from which the update bucket
@@ -1810,34 +1805,27 @@ run_hibernation_op(Op,
                                op = Op},
      [{reply, From, ok}]}.
 
-perform_bucket_flushing(BucketName) ->
-    case ns_bucket:get_bucket(BucketName) of
-        not_present ->
-            bucket_not_found;
-        {ok, BucketConfig} ->
-            case proplists:get_value(flush_enabled, BucketConfig, false) of
-                true ->
-                    RV = perform_bucket_flushing_with_config(BucketName,
-                                                             BucketConfig),
-                    case RV of
-                        ok ->
-                            UUID = ns_bucket:uuid(BucketName, direct),
-                            event_log:add_log(
-                              bucket_flushed,
-                              [{bucket, list_to_binary(BucketName)},
-                               {bucket_uuid, UUID}]),
-                            ok;
-
-                        _ ->
-                            RV
-                    end;
-                false ->
-                    flush_disabled
-            end
-    end.
+perform_bucket_flushing(BucketName, BucketConfig) ->
+    RV = do_perform_bucket_flushing(BucketName, BucketConfig),
+    case RV of
+        ok ->
+            UUID = ns_bucket:uuid(BucketName, direct),
+            event_log:add_log(
+              bucket_flushed,
+              [{bucket, list_to_binary(BucketName)},
+               {bucket_uuid, UUID}]);
+        {flush_wait_failed, _FailedNodes, _FailedCalls} ->
+            ale:info(?USER_LOGGER,
+                     "Flushing ~p failed or timed out with error: ~n~p",
+                     [BucketName, RV]);
+        _ ->
+            ale:info(?USER_LOGGER, "Flushing ~p failed with error: ~n~p",
+                     [BucketName, RV])
+    end,
+    RV.
 
 
-perform_bucket_flushing_with_config(BucketName, BucketConfig) ->
+do_perform_bucket_flushing(BucketName, BucketConfig) ->
     ale:info(?MENELAUS_LOGGER, "Flushing bucket ~p from node ~p",
              [BucketName, erlang:node()]),
     case ns_bucket:bucket_type(BucketConfig) =:= memcached of
@@ -2948,6 +2936,19 @@ do_delete_bucket(BucketName) ->
             Error
     end.
 
+verify_op(flush_bucket, Params) ->
+    BucketName = proplists:get_value(bucket, Params),
+    case ns_bucket:get_bucket(BucketName) of
+        not_present ->
+            bucket_not_found;
+        {ok, BucketConfig} ->
+            case proplists:get_value(flush_enabled, BucketConfig, false) of
+                true ->
+                    {ok, BucketConfig};
+                false ->
+                    flush_disabled
+            end
+    end;
 verify_op(sync_fusion_log_store, Params) ->
     case proplists:get_value(buckets, Params) of
         all ->
@@ -2980,6 +2981,8 @@ verify_op(fusion_snapshot_restore, Params) ->
             Error
     end.
 
+handle_op(flush_bucket, Params, BucketConfig) ->
+    perform_bucket_flushing(proplists:get_value(bucket, Params), BucketConfig);
 handle_op(sync_fusion_log_store, Props, BucketsSpec) ->
     Timeout = proplists:get_value(timeout, Props),
     Reset = proplists:get_value(reset, Props),

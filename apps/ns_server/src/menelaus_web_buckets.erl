@@ -1487,6 +1487,8 @@ do_handle_bucket_flush(BucketName, Req) ->
         {flush_wait_failed, _, _} ->
             reply_json(Req, {[{'_',
                                <<"Flush failed or timed out">>}]}, 504);
+        stopped ->
+            reply_json(Req, {[{'_', <<"Flush was stopped">>}]}, 503);
         Other ->
             case menelaus_web_cluster:busy_reply("flush bucket", Other) of
                 {Code, Msg} ->
