@@ -104,4 +104,5 @@ upgrade(?VERSION_80, Config) ->
      ns_config:config_upgrade_to_totoro(Config) ++
          menelaus_alert:config_upgrade_to_totoro(Config) ++
          menelaus_web_activity:config_upgrade_to_totoro(Config) ++
-         index_settings_manager:config_upgrade_to_totoro(Config)}.
+         index_settings_manager:config_upgrade_to_totoro(Config) ++
+         menelaus_web_app_telemetry:config_upgrade_to_totoro(Config)}.

@@ -63,3 +63,4 @@
         {failover_preserve_durability_majority,false},
         {allow_failover_ephemeral_no_replicas,false}]}]}.
 {custom_roles_enabled, true}.
+{app_telemetry, [{enabled, true}]}.

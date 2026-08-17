@@ -13,7 +13,7 @@
 %% API
 -export([handle_get/1, handle_post/1, get_config/0, is_enabled/1,
          get_max_clients_per_node/1, get_scrape_interval/1,
-         is_accepting_connections/0]).
+         is_accepting_connections/0, config_upgrade_to_totoro/1]).
 
 -define(CONFIG_KEY, app_telemetry).
 
@@ -69,6 +69,15 @@ params() ->
 -spec get_config() -> proplists:proplist().
 get_config() ->
     ns_config:read_key_fast(?CONFIG_KEY, []).
+
+config_upgrade_to_totoro(Config) ->
+    OldSettings = ns_config:search(Config, ?CONFIG_KEY, []),
+    SettingsFromProfile = config_profile:get_value(?CONFIG_KEY, []),
+    NewSettings = misc:update_proplist(OldSettings, SettingsFromProfile),
+    case NewSettings of
+        OldSettings -> [];
+        _ -> [{set, ?CONFIG_KEY, NewSettings}]
+    end.
 
 -spec is_enabled(proplists:proplist()) -> boolean().
 is_enabled(Config) ->
