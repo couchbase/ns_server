@@ -470,21 +470,35 @@ pull_from_all_nodes(Nodes, Timeout) ->
 merge_one_remote_config(KVList) ->
     merge_remote_configs(fun (L) -> L end, [KVList]).
 
+-spec merge_remote_configs(fun(), list()) -> ok.
 merge_remote_configs(_, []) ->
     ok;
-merge_remote_configs(Fun, KVLists) ->
+merge_remote_configs(Fun, Payloads) ->
     Config = ns_config:get(),
     LocalKVMap = ns_config:get_kv_map(Config),
     UUID = ns_config:uuid(Config),
 
     {NewKVMap, TouchedKeys} =
         lists:foldl(
-          fun (RemoteKVList, {AccKVMap, AccTouched}) ->
+          fun (RemoteKVs, {AccKVMap, AccTouched}) ->
+                  %% Lazily decompressing and converting payloads to avoid
+                  %% memory bloat
+                  Decompressed = Fun(RemoteKVs),
+
+                  %% Older versions (pre-Totoro) send config as lists, not maps
+                  RemoteKVMap =
+                      case is_map(Decompressed) of
+                          true -> Decompressed;
+                          false ->
+                              true = is_list(Decompressed),
+                              maps:from_list(Decompressed)
+                      end,
+
                   do_merge_one_remote_config(UUID,
-                                             maps:from_list(Fun(RemoteKVList)),
+                                             RemoteKVMap,
                                              AccKVMap,
                                              AccTouched)
-          end, {LocalKVMap, []}, KVLists),
+          end, {LocalKVMap, []}, Payloads),
 
     case NewKVMap =:= LocalKVMap of
         true ->
@@ -500,7 +514,7 @@ merge_remote_configs(Fun, KVLists) ->
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
-                    merge_remote_configs(Fun, KVLists)
+                    merge_remote_configs(Fun, Payloads)
             end
     end.
 
