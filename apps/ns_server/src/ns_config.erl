@@ -468,8 +468,11 @@ get_kv_list_with_config(Config) ->
 -spec get_kv_map() -> map().
 get_kv_map() -> get_kv_map(?DEFAULT_TIMEOUT).
 
--spec get_kv_map(timeout()) -> map().
-get_kv_map(Timeout) -> config_dynamic(ns_config:get(Timeout)).
+-spec get_kv_map(timeout() | term()) -> map().
+get_kv_map(Timeout) when is_integer(Timeout) orelse Timeout =:= infinity ->
+    config_dynamic(ns_config:get(Timeout));
+get_kv_map(Config) ->
+    config_dynamic(Config).
 
 % ----------------------------------------
 
@@ -1433,24 +1436,36 @@ with_touched_keys(Body) ->
         erlang:erase(?TOUCHED_KEYS)
     end.
 
--spec merge_kv_pairs(kvlist(), kvlist(), uuid()) -> {kvlist(), [key()]}.
-merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
+-spec merge_kv_pairs(kvlist() | map(), kvlist() | map(), uuid()) ->
+    {kvlist() | map(), [key()]}.
+merge_kv_pairs(RemoteKVList, LocalKVList, UUID)
+  when is_list(RemoteKVList) andalso is_list(LocalKVList) ->
     with_touched_keys(
       fun () ->
               do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID)
+      end);
+merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
+  when is_map(RemoteKVMap) andalso is_map(LocalKVMap) ->
+    with_touched_keys(
+      fun() ->
+              do_merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
       end).
 
--spec do_merge_kv_pairs(kvlist(), kvlist(), uuid()) -> kvlist().
+-spec do_merge_kv_pairs(kvlist() | map(), kvlist() | map(), uuid()) ->
+    kvlist() | map().
 do_merge_kv_pairs(RemoteKVList, LocalKVList, _UUID)
   when RemoteKVList =:= LocalKVList ->
     LocalKVList;
-do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
-    RemoteKVList1 = lists:sort(RemoteKVList),
-    LocalKVList1 = lists:sort(LocalKVList),
+do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID)
+  when is_list(RemoteKVList) andalso is_list(LocalKVList) ->
+    do_merge_kv_pairs(maps:from_list(RemoteKVList),
+                      maps:from_list(LocalKVList), UUID);
+do_merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
+  when is_map(RemoteKVMap) andalso is_map(LocalKVMap) ->
     Merger =
-        fun (_, {directory, _} = LP) ->
-                LP;
-            ({_, [VClock | ?DELETED_MARKER]}, {{node, Node, _}, _LV} = LP)
+        fun (directory, _, LV) ->
+                LV;
+            ({node, Node, _}, [VClock | ?DELETED_MARKER], LV)
               when Node =:= node(), is_tuple(VClock),
                    element(1, VClock) =:= ?METADATA_VCLOCK ->
                 %% we don't allow incoming replications of
@@ -1463,8 +1478,8 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
                 %% Allowing deletions in this case might break
                 %% things in this node preventing it from leaving
                 %% cluster.
-                LP;
-            ({_, RV} = RP, {{node, Node, Key} = K, LV} = LP)
+                LV;
+            ({node, Node, Key} = K, RV, LV)
               when Node =:= node() ->
                 %% we want to make sure that that no one is able to
                 %% modify our own UUID, database_dir or index_dir
@@ -1478,7 +1493,7 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
                                 %% same values imply same vclocks
                                 %% so no real merge is needed
                                 LV = merge_vclocks(LV, RV),
-                                {K, LV};
+                                LV;
                             false ->
                                 ?log_debug("Special-casing incoming "
                                            "replication of my node key ~p and "
@@ -1486,21 +1501,22 @@ do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID) ->
                                            "with local:~n local = ~p~n"
                                            "remote = ~p", [K, LV, RV]),
                                 touch_key(K),
-                                {K,
-                                 increment_vclock(LV,
-                                                  merge_vclocks(LV, RV), UUID)}
+                                increment_vclock(LV,
+                                                 merge_vclocks(LV, RV),
+                                                 UUID)
                         end;
                     false ->
-                        merge_values(RP, LP)
+                        merge_values(K, RV, LV)
                 end;
-            (RP, LP) ->
-                merge_values(RP, LP)
+            (K, RV, LV) ->
+                merge_values(K, RV, LV)
         end,
-    misc:ukeymergewith(Merger, 1, RemoteKVList1, LocalKVList1).
+    maps:merge_with(Merger, RemoteKVMap, LocalKVMap).
 
--spec merge_values(kvpair(), kvpair()) -> kvpair().
-merge_values({_K, RV} = RP, {_, LV} = _LP) when RV =:= LV -> RP;
-merge_values({K, RV} = RP, {_, LV} = LP) ->
+-spec merge_values(key(), value(), value()) -> value().
+merge_values(_K, RV, LV) when RV =:= LV ->
+    RV;
+merge_values(K, RV, LV) ->
     {RPurgeTS, RClock} = extract_vclock(RV),
     {LPurgeTS, LClock} = extract_vclock(LV),
 
@@ -1525,9 +1541,11 @@ merge_values({K, RV} = RP, {_, LV} = LP) ->
                                                               LV, LClock,
                                                               RV, RClock)
                         end,
-                    {K, Merged};
-                {true, false} -> RP;
-                {false, true} -> LP
+                    Merged;
+                {true, false} ->
+                    RV;
+                {false, true} ->
+                    LV
             end;
         false ->
             %% Pick the value with the later timestamp, break ties using purge
@@ -1546,7 +1564,7 @@ merge_values({K, RV} = RP, {_, LV} = LP) ->
                         sanitize_just_value(K, Winner),
                         sanitize_just_value(K, Loser)]),
 
-            {K, Winner}
+            Winner
     end.
 
 sanitize_just_value(K, V) ->
@@ -1554,8 +1572,8 @@ sanitize_just_value(K, V) ->
     Sanitized.
 
 -spec merge_values_using_timestamps(key(),
-                                    kvpair(), vclock(),
-                                    kvpair(), vclock()) -> kvpair().
+                                    value(), vclock(),
+                                    value(), vclock()) -> value().
 merge_values_using_timestamps(K, LV, LClock, RV, RClock) ->
     LocalTS = vclock:get_latest_timestamp(LClock),
     RemoteTS = vclock:get_latest_timestamp(RClock),
@@ -2361,7 +2379,7 @@ test_upgrade_config_vclock_descends() ->
               ?assertEqual(false, vclock:descends(OldClock, Clock)),
 
               %% ...and so wins against the old value replicated back in
-              ?assertEqual({k, Stored}, merge_values({k, OldV}, {k, Stored}))
+              ?assertEqual(Stored, merge_values(k, OldV, Stored))
       end, Returned),
 
     %% The purge timestamp has to come from the value being replaced too, as
@@ -2370,8 +2388,8 @@ test_upgrade_config_vclock_descends() ->
     PurgedCfg = mk_config([{k, PurgedV}], #config{uuid = UUID}),
     PurgedStored = Run(PurgedCfg, [{setting, new}]),
     ?assertEqual({5, [{UUID, {11, 0}}]}, extract_vclock(PurgedStored)),
-    ?assertEqual({k, PurgedStored},
-                 merge_values({k, PurgedV}, {k, PurgedStored})).
+    ?assertEqual(PurgedStored,
+                 merge_values(k, PurgedV, PurgedStored)).
 
 %% A delete from an upgrader reaches upgrade_vclock/3 as ?DELETED_MARKER, which
 %% carries no clock of its own, so the tombstone has to descend from the value
@@ -2399,7 +2417,7 @@ test_upgrade_config_delete_not_resurrected() ->
     ?assertEqual(false, vclock:descends(OldClock, Clock)),
 
     %% ...so the live value replicated back in loses and the key stays deleted
-    {k, Merged} = merge_values({k, OldV}, {k, Tombstone}),
+    Merged= merge_values(k, OldV, Tombstone),
     ?assertEqual(?DELETED_MARKER, strip_metadata(Merged)).
 
 %% Covers how the two global-rev computations treat DELETED (tombstoned)
@@ -2578,8 +2596,7 @@ mutate(Value, Nodes) ->
       end, Value, Mutations).
 
 merge_values_helper(RP, LP) ->
-    {_, V} = merge_values({key, RP}, {key, LP}),
-    V.
+    merge_values(key, RP, LP).
 
 merge_values_test_iter() ->
     Nodes = [a,b,c,d,e],

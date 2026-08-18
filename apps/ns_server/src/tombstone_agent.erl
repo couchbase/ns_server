@@ -14,7 +14,7 @@
 -include("ns_config.hrl").
 
 -export([start_link/0]).
--export([purge_ts/0, vclock_ts/0, purge_kvlist/1, purge_cluster/1,
+-export([purge_ts/0, vclock_ts/0, purge_kvmap/1, purge_cluster/1,
          refresh/0, wipe/0, refresh_timestamps/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -41,8 +41,8 @@ vclock_ts() ->
 ts() ->
     calendar:datetime_to_gregorian_seconds(erlang:universaltime()).
 
-purge_kvlist(KVList) ->
-    purge_kvlist(KVList, purge_ts()).
+purge_kvmap(KVMap) ->
+    purge_kvmap(KVMap, purge_ts()).
 
 purge_cluster(PurgeAge) ->
     OldPurgeTS =
@@ -199,11 +199,11 @@ find_tombstones(KVMap, PurgeTS) when is_map(KVMap) ->
             end
         end, [], KVMap).
 
-purge_kvlist(KVList, PurgeTS) ->
-    lists:filter(
-      fun (KV) ->
-              not purgeable(KV, PurgeTS)
-      end, KVList).
+purge_kvmap(KVMap, PurgeTS) ->
+    maps:filter(
+      fun(Key, Value) ->
+              not purgeable({Key, Value}, PurgeTS)
+      end, KVMap).
 
 purgeable({_Key, FullValue}, PurgeTS) ->
     Value = ns_config:strip_metadata(FullValue),

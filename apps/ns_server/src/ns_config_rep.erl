@@ -474,25 +474,29 @@ merge_remote_configs(_, []) ->
     ok;
 merge_remote_configs(Fun, KVLists) ->
     Config = ns_config:get(),
-    LocalKVList = ns_config:get_kv_list_with_config(Config),
+    LocalKVMap = ns_config:get_kv_map(Config),
     UUID = ns_config:uuid(Config),
 
-    {NewKVList, TouchedKeys} =
+    {NewKVMap, TouchedKeys} =
         lists:foldl(
-          fun (RemoteKVList, {AccKVList, AccTouched}) ->
-                  do_merge_one_remote_config(UUID, Fun(RemoteKVList), AccKVList,
+          fun (RemoteKVList, {AccKVMap, AccTouched}) ->
+                  do_merge_one_remote_config(UUID,
+                                             maps:from_list(Fun(RemoteKVList)),
+                                             AccKVMap,
                                              AccTouched)
-          end, {LocalKVList, []}, KVLists),
+          end, {LocalKVMap, []}, KVLists),
 
-    case NewKVList =:= LocalKVList of
+    case NewKVMap =:= LocalKVMap of
         true ->
             ok;
         false ->
-            case ns_config:cas_remote_config(NewKVList, TouchedKeys, LocalKVList) of
+            case ns_config:cas_remote_config(NewKVMap, TouchedKeys,
+                                             LocalKVMap) of
                 true ->
                     do_push_local(
                       misc:compress(
-                        ns_config:diff_kvlists(NewKVList, LocalKVList))),
+                        ns_config:diff_kvlists(maps:to_list(NewKVMap),
+                                               maps:to_list(LocalKVMap)))),
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
@@ -500,11 +504,11 @@ merge_remote_configs(Fun, KVLists) ->
             end
     end.
 
-do_merge_one_remote_config(UUID, RemoteKVList, AccKVList, AccTouched) ->
+do_merge_one_remote_config(UUID, RemoteKVMap, AccKVList, AccTouched) ->
     %% Make sure that tombstones that we might have already purged don't get
     %% replicated to us again.
-    PurgedKVList = tombstone_agent:purge_kvlist(RemoteKVList),
-    {Merged, Touched} = ns_config:merge_kv_pairs(PurgedKVList, AccKVList, UUID),
+    PurgedKVMap = tombstone_agent:purge_kvmap(RemoteKVMap),
+    {Merged, Touched} = ns_config:merge_kv_pairs(PurgedKVMap, AccKVList, UUID),
     {Merged, ordsets:union(AccTouched, Touched)}.
 
 

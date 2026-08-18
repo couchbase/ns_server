@@ -171,27 +171,27 @@ test_search_node() ->
     ok.
 
 merge_kv_pairs_dynamic_test() ->
-    ?assertEqual({[{y,1}], []},
+    ?assertEqual({#{y => 1}, []},
                  ns_config:merge_kv_pairs(
                    [],
                    [{y,1}],
                    <<"uuid">>)),
-    ?assertEqual({[{y,1}], []},
+    ?assertEqual({#{y => 1}, []},
                  ns_config:merge_kv_pairs(
                    [{y,1}],
                    [],
                    <<"uuid">>)),
 
-    Strip = fun (L) -> [{K, ns_config:strip_metadata(V)} || {K, V} <- L] end,
+    Strip = fun (L) -> #{K => ns_config:strip_metadata(V) || K := V <- L} end,
 
     {NewKVList0, Touched0} = ns_config:merge_kv_pairs([{y,1}, {a,a}],
                                                       [{y,2}, {b,b}],
                                                       <<"uuid">>),
 
-    NewKVList = Strip(lists:sort(NewKVList0)),
+    NewKVMap = Strip(NewKVList0),
     Touched = lists:sort(Touched0),
 
-    ?assertEqual(lists:sort([{y,1},{a,a},{b,b}]), NewKVList),
+    ?assertEqual(#{y => 1, a => a, b => b}, NewKVMap),
     ?assertEqual([y], Touched).
 
 merge_kv_pairs_vclock_test() ->
@@ -199,21 +199,22 @@ merge_kv_pairs_vclock_test() ->
     VClocka1 = vclock:increment(a, VClock),
     VClockab1 = vclock:increment(b, VClocka1),
     VClocka2 = vclock:increment(a, VClocka1),
-    X0 = [{x,1},
-          {y,[{?METADATA_VCLOCK,VClock}, yy]}],
+    X0 = #{x => 1,
+           y => [{?METADATA_VCLOCK,VClock}, yy]},
     ?assertEqual({X0, []},
                  ns_config:merge_kv_pairs(
                    [],
                    [{y,[{?METADATA_VCLOCK,VClock}, yy]}, {x,1}],
                    <<"uuid">>)),
-    X2 = [{x,1},{y,[{?METADATA_VCLOCK,VClocka1}, y2]}],
+    X2 = #{x => 1,
+           y => [{?METADATA_VCLOCK,VClocka1}, y2]},
     ?assertEqual({X2, []},
                  ns_config:merge_kv_pairs(
                    [{y,[{?METADATA_VCLOCK,VClock}, y1]}, {x,1}],
                    [{y,[{?METADATA_VCLOCK,VClocka1}, y2]}],
                    <<"uuid">>)),
-    X3 = [{x,[{?METADATA_VCLOCK,VClockab1}, x1]},
-          {y,[{?METADATA_VCLOCK,VClocka2}, y2]}],
+    X3 = #{x => [{?METADATA_VCLOCK,VClockab1}, x1],
+           y => [{?METADATA_VCLOCK,VClocka2}, y2]},
     ?assertEqual({X3, []},
                  ns_config:merge_kv_pairs(
                    [{x,[{?METADATA_VCLOCK,VClockab1}, x1]},
@@ -232,9 +233,9 @@ merge_kv_pairs_timestamps_test() ->
     {MergedRight, TouchedRight} = ns_config:merge_kv_pairs(X1, X0, <<"uuid">>),
     ?assertEqual({value, [{data, 2}]}, ns_config:search([MergedRight], x)),
     ?assertEqual([x], TouchedRight),
-    [{x, [{'_vclock', ClockLeft}|_]}] = MergedLeft,
+    #{x := [{'_vclock', ClockLeft}|_]} = MergedLeft,
     ?assertEqual([{<<"uuid">>, {1, 11}}], ClockLeft),
-    [{x, [{'_vclock', ClockRight}|_]}] = MergedRight,
+    #{x := [{'_vclock', ClockRight}|_]} = MergedRight,
     ?assertEqual([{<<"uuid">>, {1, 11}}], ClockRight).
 
 merge_kv_pairs_same_value_test() ->
@@ -244,11 +245,11 @@ merge_kv_pairs_same_value_test() ->
     V1 = [{<<"b">>, {1, 11}}],
     X1 = [{x, [{'_vclock', V1}, {data, 1}]}],
 
-    {[R1], [x]} = ns_config:merge_kv_pairs(X0, X1, <<"a">>),
-    {[R2], [x]} = ns_config:merge_kv_pairs(X1, X0, <<"b">>),
+    {R1, [x]} = ns_config:merge_kv_pairs(X0, X1, <<"a">>),
+    {R2, [x]} = ns_config:merge_kv_pairs(X1, X0, <<"b">>),
 
     ?assertEqual(R1, R2),
-    {x, Merged} = R1,
+    #{x := Merged} = R1,
     {_, MergedClock} = ns_config:extract_vclock(Merged),
 
     ?assert(vclock:descends(MergedClock, V0)),
