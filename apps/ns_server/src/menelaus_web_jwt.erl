@@ -1059,16 +1059,41 @@ validate_public_https_url(Url) when is_list(Url) ->
 validate_public_https_url(_) ->
     {error, "Value must be a string"}.
 
+%% Keys of the parameter table whose value is masked on GET. Deriving the set
+%% from the table rather than listing it here keeps the chronicle log path and
+%% the REST path from drifting apart when a secret field is added.
+%%
+%% resolve_issuer_kept_secrets/3 is not derived from this and still names its
+%% fields. A new secret field might need a clause there, and an
+%% is_masked_placeholder/1 check in its own validator. (Otherwise, a client that
+%% PUTs back the document it got from a masked GET stores the placeholder as the
+%% secret and destroys the real one.)
+secret_fields(Params) ->
+    [Key || {Key, Format} <- Params, Format =:= fun format_secret/1].
+
+mask_fields(Props, Fields) ->
+    lists:foldl(
+      fun(Field, Acc) ->
+              case maps:get(Field, Acc, undefined) of
+                  undefined -> Acc;
+                  _ -> Acc#{Field => chronicle_kv_log:masked()}
+              end
+      end, Props, Fields).
+
+sanitize_issuer(Props) ->
+    Masked = mask_fields(Props, secret_fields(?ISSUER_PARAMS_WITH_FORMATTERS)),
+    case maps:get(oidc_settings, Masked, undefined) of
+        OidcSettings when is_map(OidcSettings) ->
+            OidcSecrets = secret_fields(?OIDC_PROVIDER_PARAMS_WITH_FORMATTERS),
+            Masked#{oidc_settings => mask_fields(OidcSettings, OidcSecrets)};
+        _ ->
+            Masked
+    end.
+
 -spec sanitize_chronicle_cfg(map()) -> map().
 sanitize_chronicle_cfg(#{issuers := Issuers} = Settings) ->
     SanitizedIssuers =
-        maps:map(fun(_Name, Props) ->
-                         case maps:get(shared_secret, Props, undefined) of
-                             undefined -> Props;
-                             _ -> Props#{shared_secret =>
-                                             chronicle_kv_log:masked()}
-                         end
-                 end, Issuers),
+        maps:map(fun(_Name, Props) -> sanitize_issuer(Props) end, Issuers),
     Settings#{issuers => SanitizedIssuers};
 sanitize_chronicle_cfg(Settings) -> Settings.
 
@@ -1569,6 +1594,41 @@ format_conversion_test_() ->
      ?_assertEqual(DeepToList(Expected1),
                    DeepToList(Actual1))
     ].
+
+sanitize_chronicle_cfg_test_() ->
+    Masked = chronicle_kv_log:masked(),
+    Settings =
+        #{enabled => true,
+          issuers =>
+              #{<<"hmac">> =>
+                    #{signing_algorithm => <<"HS256">>,
+                      shared_secret => <<"hmac_secret">>},
+                <<"oidc">> =>
+                    #{signing_algorithm => <<"RS256">>,
+                      oidc_settings =>
+                          #{client_id => <<"client_id">>,
+                            client_secret => <<"client_secret">>}}}},
+    #{issuers := #{<<"hmac">> := Hmac, <<"oidc">> := Oidc}} =
+        sanitize_chronicle_cfg(Settings),
+    [?_assertEqual(Masked, maps:get(shared_secret, Hmac)),
+     ?_assertEqual(Masked,
+                   maps:get(client_secret, maps:get(oidc_settings, Oidc))),
+
+     %% Fields that are not secrets are left alone.
+     ?_assertEqual(<<"client_id">>,
+                   maps:get(client_id, maps:get(oidc_settings, Oidc))),
+
+     %% The masked set is the set the REST layer masks on GET. A secret field
+     %% added to either parameter table without a formatter, or with one that
+     %% is not format_secret/1, fails here.
+     ?_assertEqual([shared_secret],
+                   secret_fields(?ISSUER_PARAMS_WITH_FORMATTERS)),
+     ?_assertEqual([client_secret],
+                   secret_fields(?OIDC_PROVIDER_PARAMS_WITH_FORMATTERS)),
+
+     %% Settings without issuers pass through.
+     ?_assertEqual(#{enabled => false},
+                   sanitize_chronicle_cfg(#{enabled => false}))].
 
 validate_redirect_uri_test_() ->
     [
