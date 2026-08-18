@@ -302,6 +302,8 @@ get_ets_table_sanitizer(menelaus_ui_auth, _Info) ->
     skip;
 get_ets_table_sanitizer(menelaus_ui_auth_by_expiration, _Info) ->
     skip;
+get_ets_table_sanitizer(oidc_preauth_store, _Info) ->
+    skip;
 get_ets_table_sanitizer(chronicle_mem_log, _Info) ->
     skip;
 get_ets_table_sanitizer(kv, _Info) ->
