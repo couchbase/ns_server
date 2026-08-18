@@ -160,13 +160,15 @@ extract_mapped_result(user, Value) ->
         true ->
             case menelaus_auth:is_external_auth_allowed(Value) of
                 false ->
-                    ?log_warning("User:~s cannot use external auth.", [Value]),
+                    ?log_warning("User:~s cannot use external auth.",
+                                 [ns_config_log:tag_user_name(Value)]),
                     {error, <<"External auth not allowed">>};
                 true ->
                     {ok, Value}
             end;
         Error ->
-            ?log_warning("Invalid user: ~s. ~s", [Value, Error]),
+            ?log_warning("Invalid user: ~s. ~s",
+                         [ns_config_log:tag_user_name(Value), Error]),
             {error, Error}
     end;
 extract_mapped_result(groups, Value) ->
@@ -174,24 +176,28 @@ extract_mapped_result(groups, Value) ->
         true ->
             {ok, Value};
         false ->
-            ?log_warning("Ignoring invalid group: ~s", [Value]),
+            ?log_warning("Ignoring invalid group: ~s",
+                         [ns_config_log:tag_group_name(Value)]),
             {error, <<"Invalid group">>}
     end;
 extract_mapped_result({roles, RolesScope}, Value) ->
     case menelaus_web_rbac:parse_roles(Value) of
         [{error, _}] ->
-            ?log_warning("Ignoring invalid roles ~s", [Value]),
+            ?log_warning("Ignoring invalid roles ~s",
+                         [ns_config_log:tag_misc_item(Value)]),
             {error, <<"Invalid role format">>};
         [ParsedRole] ->
             case menelaus_roles:validate_roles([ParsedRole], RolesScope) of
                 {[ValidRole], []} ->
                     {ok, ValidRole};
-                {[], [InvalidRole]} ->
-                    ?log_warning("Ignoring invalid role: ~p", [InvalidRole]),
+                {[], [_InvalidRole]} ->
+                    ?log_warning("Ignoring invalid role: ~s",
+                                 [ns_config_log:tag_misc_item(Value)]),
                     {error, <<"Invalid role">>}
             end;
         _ ->
-            ?log_warning("Ignoring invalid roles: ~s", [Value]),
+            ?log_warning("Ignoring invalid roles: ~s",
+                         [ns_config_log:tag_misc_item(Value)]),
             {error, <<"Invalid role format">>}
     end.
 
