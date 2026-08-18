@@ -100,6 +100,7 @@
 
 %% external API
 -export([active_buckets/0,
+         get_active_buckets_with_uuids/0,
          server/1,
          get_mark_warmed_timeout/0,
          bucket_statuses/0,
@@ -458,6 +459,9 @@ handle_call(warmup_stats, _From, State) ->
     {reply, State#state.warmup_stats, State};
 handle_call(is_jwt_set, _From, State) ->
     {reply, State#state.jwt_set, State};
+handle_call(get_bucket_uuid, _From,
+            #state{bucket_uuid = BucketUUID} = State) ->
+    {reply, BucketUUID, State};
 handle_call(maybe_reencrypt_bucket_metadata, _From,
             #state{bucket = Bucket, bucket_uuid = BucketUUID} = State) ->
     {ok, DS} = cb_crypto:fetch_deks_snapshot({bucketDek, BucketUUID}),
@@ -1397,6 +1401,36 @@ perform_very_long_call_with_timing(Bucket, Name, Fun, Opts) ->
 active_buckets() ->
     [Bucket || ?MODULE_STRING "-" ++ Bucket <-
                    [atom_to_list(Name) || Name <- registered()]].
+
+%% Unlike ns_bucket:uuids/0 the uuids are taken from the running
+%% ns_memcached processes, so the returned uuid is always the one the bucket
+%% is currently running with, even if chronicle already knows about a newer
+%% incarnation of the bucket.
+-spec get_active_buckets_with_uuids() -> [{ns_bucket:name(), binary()}].
+get_active_buckets_with_uuids() ->
+    lists:filtermap(
+      fun (Bucket) ->
+              case get_bucket_uuid(Bucket) of
+                  {ok, UUID} ->
+                      {true, {Bucket, UUID}};
+                  {error, not_running} ->
+                      false
+              end
+      end, active_buckets()).
+
+-spec get_bucket_uuid(ns_bucket:name()) -> {ok, binary()} |
+                                           {error, not_running}.
+get_bucket_uuid(Bucket) ->
+    try do_call(server(Bucket), Bucket, get_bucket_uuid, ?TIMEOUT) of
+        UUID when is_binary(UUID) ->
+            {ok, UUID}
+    catch
+        %% ns_memcached might be gone by the time we call it, since the
+        %% bucket could have been deleted after we got the list of active
+        %% buckets. Anything else (a timeout, for instance) is propagated.
+        exit:{Reason, {gen_server, call, _}} when Reason =/= timeout ->
+            {error, not_running}
+    end.
 
 -spec status(node(), ns_bucket:name(), pos_integer() | infinity) ->
     status() | no_status.

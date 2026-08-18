@@ -31,13 +31,19 @@
 -export([init/1, handle_info/2, handle_call/3]).
 
 %% RPC calls
--export([do_delete_namespace/1, do_get_namespaces/0]).
+-export([do_delete_namespace/1, do_get_namespaces/0,
+         do_get_active_bucket_uuids/0]).
 
 -type state() :: {fusion_uploaders:state(), [binary()]}.
 
 -define(UPLOADERS_STOP_TIMEOUT, ?get_timeout(uploaders_stop, 60000)).
 -define(WAIT_FOR_UPLOADERS_INTERVAL, ?get_param(wait_for_uploaders_interval,
                                                 1000)).
+-define(BUCKET_SHUTDOWN_TIMEOUT, ?get_timeout(bucket_shutdown, 60000)).
+-define(WAIT_FOR_BUCKET_SHUTDOWN_INTERVAL,
+        ?get_param(wait_for_bucket_shutdown_interval, 1000)).
+-define(GET_ACTIVE_BUCKET_UUIDS_TIMEOUT,
+        ?get_timeout(get_active_bucket_uuids, 10000)).
 
 start_link() ->
     gen_server2:start_link({local, ?MODULE}, ?MODULE, [], []).
@@ -223,6 +229,45 @@ uploaders_stopped(BucketName, BucketConfig) ->
             Error
     end.
 
+%% The bucket is already gone from the chronicle, but memcached might still
+%% have it open on some of the nodes, so we cannot touch the namespace until
+%% every active kv node has shut the bucket down.
+wait_for_bucket_shutdown(BucketUUID) ->
+    case misc:poll_for_condition(
+           ?cut(bucket_is_shut_down(BucketUUID)),
+           ?BUCKET_SHUTDOWN_TIMEOUT, ?WAIT_FOR_BUCKET_SHUTDOWN_INTERVAL) of
+        timeout ->
+            {error, timeout};
+        Other ->
+            Other
+    end.
+
+bucket_is_shut_down(BucketUUID) ->
+    KVNodes = ns_cluster_membership:service_active_nodes(kv),
+    case misc:rpc_multicall_with_plist_result(
+           KVNodes, ?MODULE, do_get_active_bucket_uuids, [],
+           ?GET_ACTIVE_BUCKET_UUIDS_TIMEOUT) of
+        {Good, [], []} ->
+            case [N || {N, UUIDs} <- Good, lists:member(BucketUUID, UUIDs)] of
+                [] ->
+                    ok;
+                NodesWithBucket ->
+                    ?log_debug("Bucket with uuid = ~p is still active on ~p",
+                               [BucketUUID, NodesWithBucket]),
+                    false
+            end;
+        {_, BadResults, FailedNodes} ->
+            %% We cannot tell if the bucket is still open on the nodes we
+            %% failed to reach, so give up and let the janitor retry.
+            {error, {failed_nodes,
+                     BadResults ++ [{N, node_was_down} || N <- FailedNodes]}}
+    end.
+
+-spec do_get_active_bucket_uuids() -> [binary()].
+do_get_active_bucket_uuids() ->
+    [UUID || {_BucketName, UUID} <-
+                 ns_memcached:get_active_buckets_with_uuids()].
+
 pre_delete_data(Namespace) ->
     [_, BucketUUID] = binary:split(Namespace, [<<"/">>]),
     case ns_bucket:uuid2bucket(BucketUUID) of
@@ -239,8 +284,16 @@ pre_delete_data(Namespace) ->
                                                      [Namespace, BucketName]))}
             end;
         {error, not_found} ->
-            ?log_info("Bucket with uuid = ~p is not found.", [BucketUUID]),
-            {ok, lists:flatten(io_lib:format("~p", [Namespace]))}
+            ?log_info("Bucket with uuid = ~p is not found. Waiting for it to "
+                      "be shut down on all kv nodes.", [BucketUUID]),
+            case wait_for_bucket_shutdown(BucketUUID) of
+                {error, Err} ->
+                    ?log_error("Error waiting for bucket with uuid = ~p to be "
+                               "shut down: ~p", [BucketUUID, Err]),
+                    error;
+                ok ->
+                    {ok, lists:flatten(io_lib:format("~p", [Namespace]))}
+            end
     end.
 
 delete_data(Parent, Namespace) ->
