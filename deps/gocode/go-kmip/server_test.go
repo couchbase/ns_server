@@ -193,7 +193,8 @@ func (s *ServerSuite) TestOperationGenericFail() {
 	s.Require().NoError(s.client.Connect())
 
 	_, err := s.client.DiscoverVersions(nil)
-	s.Require().EqualError(errors.Cause(err), "oops!")
+	s.Require().EqualError(errors.Cause(err), "OPERATION_DISCOVER_VERSIONS failed "+
+		"(RESULT_STATUS_OPERATION_FAILED, RESULT_REASON_GENERAL_FAILURE): oops!")
 	s.Require().Equal(errors.Cause(err).(Error).ResultReason(), RESULT_REASON_GENERAL_FAILURE)
 }
 
@@ -205,7 +206,8 @@ func (s *ServerSuite) TestOperationPanic() {
 	s.Require().NoError(s.client.Connect())
 
 	_, err := s.client.DiscoverVersions(nil)
-	s.Require().EqualError(errors.Cause(err), "panic: oops!")
+	s.Require().EqualError(errors.Cause(err), "OPERATION_DISCOVER_VERSIONS failed "+
+		"(RESULT_STATUS_OPERATION_FAILED, RESULT_REASON_GENERAL_FAILURE): panic: oops!")
 	s.Require().Equal(errors.Cause(err).(Error).ResultReason(), RESULT_REASON_GENERAL_FAILURE)
 }
 
@@ -217,7 +219,8 @@ func (s *ServerSuite) TestOperationFailWithReason() {
 	s.Require().NoError(s.client.Connect())
 
 	_, err := s.client.DiscoverVersions(nil)
-	s.Require().EqualError(errors.Cause(err), "oops!")
+	s.Require().EqualError(errors.Cause(err), "OPERATION_DISCOVER_VERSIONS failed "+
+		"(RESULT_STATUS_OPERATION_FAILED, RESULT_REASON_CRYPTOGRAPHIC_FAILURE): oops!")
 	s.Require().Equal(errors.Cause(err).(Error).ResultReason(), RESULT_REASON_CRYPTOGRAPHIC_FAILURE)
 }
 
@@ -225,7 +228,9 @@ func (s *ServerSuite) TestOperationNotSupported() {
 	s.Require().NoError(s.client.Connect())
 
 	_, err := s.client.Send(OPERATION_GET, GetRequest{})
-	s.Require().EqualError(errors.Cause(err), "operation not supported")
+	s.Require().EqualError(errors.Cause(err), "OPERATION_GET failed "+
+		"(RESULT_STATUS_OPERATION_FAILED, RESULT_REASON_OPERATION_NOT_SUPPORTED): "+
+		"operation not supported")
 	s.Require().Equal(errors.Cause(err).(Error).ResultReason(), RESULT_REASON_OPERATION_NOT_SUPPORTED)
 }
 

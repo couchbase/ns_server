@@ -141,7 +141,7 @@ func KmipEncryptData(clientConfig KmipClientConfig, keyUid string, data []byte, 
 
 	resp, err := client.Send(kmip.OPERATION_ENCRYPT, encrReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt: %w:", err)
+		return nil, fmt.Errorf("failed to encrypt: %w", err)
 	}
 
 	authTagLen := len(resp.(kmip.EncryptResponse).AuthTag)
@@ -182,7 +182,7 @@ func KmipDecryptData(clientConfig KmipClientConfig, keyUid string, encrAttrs Kmi
 
 	resp, err := client.Send(kmip.OPERATION_DECRYPT, decrReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt: %w:", err)
+		return nil, fmt.Errorf("failed to decrypt: %w", err)
 	}
 
 	decryptedData := resp.(kmip.DecryptResponse).Data
@@ -204,7 +204,7 @@ func KmipGetAes256Key(clientConfig KmipClientConfig, keyUid string) ([]byte, err
 
 	resp, err := client.Send(kmip.OPERATION_GET, getReq)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get key with keyID %s: error %w:", keyUid, err)
+		return nil, fmt.Errorf("failed to get key with keyID %s: %w", keyUid, err)
 	}
 
 	key := resp.(kmip.GetResponse).SymmetricKey.KeyBlock.Value.KeyMaterial

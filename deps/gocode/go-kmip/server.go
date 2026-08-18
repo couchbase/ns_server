@@ -345,7 +345,7 @@ func (s *Server) handleBatch(session *SessionContext, req *Request) (resp *Respo
 
 		batchResp, batchErr = s.handleWrapped(requestCtx, &req.BatchItems[i])
 		if batchErr != nil {
-			s.Log.Printf("[WARN] [%s] Request failed, operation %v: %s", requestCtx.SessionID, operationMap[req.BatchItems[i].Operation], batchErr)
+			s.Log.Printf("[WARN] [%s] Request failed, operation %v: %s", requestCtx.SessionID, OperationName(req.BatchItems[i].Operation), batchErr)
 
 			resp.BatchItems[i].ResultStatus = RESULT_STATUS_OPERATION_FAILED
 			// TODO: should we skip returning error message? or return it only for specific errors?
@@ -356,7 +356,7 @@ func (s *Server) handleBatch(session *SessionContext, req *Request) (resp *Respo
 				resp.BatchItems[i].ResultReason = RESULT_REASON_GENERAL_FAILURE
 			}
 		} else {
-			s.Log.Printf("[INFO] [%s] Request processed, operation %v", requestCtx.SessionID, operationMap[req.BatchItems[i].Operation])
+			s.Log.Printf("[INFO] [%s] Request processed, operation %v", requestCtx.SessionID, OperationName(req.BatchItems[i].Operation))
 			resp.BatchItems[i].ResultStatus = RESULT_STATUS_SUCCESS
 			resp.BatchItems[i].ResponsePayload = batchResp
 		}
@@ -373,7 +373,7 @@ func (s *Server) handleWrapped(request *RequestContext, item *RequestBatchItem) 
 			buf := make([]byte, 8192)
 
 			n := runtime.Stack(buf, false)
-			s.Log.Printf("[ERROR] [%s] Panic in request handler, operation %s: %s", request.SessionID, operationMap[item.Operation], string(buf[:n]))
+			s.Log.Printf("[ERROR] [%s] Panic in request handler, operation %s: %s", request.SessionID, OperationName(item.Operation), string(buf[:n]))
 		}
 	}()
 

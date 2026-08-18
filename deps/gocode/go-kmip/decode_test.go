@@ -53,10 +53,12 @@ func (s *DecoderSuite) TestReadInteger() {
 	s.Assert().EqualError(err, "unexpected EOF")
 
 	_, err = NewDecoder(bytes.NewReader(s.parseSpecValue("42 00 21 | 02 | 00 00 00 04 | 00 00 00 08 00 00 00 "))).readInteger(CRYPTOGRAPHIC_ALGORITHM)
-	s.Assert().EqualError(err, "expecting tag 420028, but 420021 was encountered")
+	s.Assert().EqualError(err, "expecting tag CRYPTOGRAPHIC_ALGORITHM (0x420028), "+
+		"but COMPROMISE_OCCURRENCE_DATE (0x420021) was encountered")
 
 	_, err = NewDecoder(bytes.NewReader(s.parseSpecValue("42 00 20 | 01 | 00 00 00 04 | 00 00 00 08 00 00 00 00"))).readInteger(COMPROMISE_DATE)
-	s.Assert().EqualError(err, "expecting type 2, but 1 was encountered")
+	s.Assert().EqualError(err, "expecting type INTEGER (0x02), "+
+		"but STRUCTURE (0x01) was encountered")
 
 	_, err = NewDecoder(bytes.NewReader(s.parseSpecValue("42 00 20 | 02 | 00 00 00 03 | 00 00 00 08 00 00 00 00"))).readInteger(COMPROMISE_DATE)
 	s.Assert().EqualError(err, "expecting length 4, but 3 was encountered")
@@ -455,6 +457,66 @@ func (s *DecoderSuite) TestDecodeMessageGet() {
 			},
 		},
 	}, m)
+}
+
+// TestDecodeMessageFailureNoOperation checks that a response which reports a
+// failure the server hit before it could tell what the operation was decodes:
+// such a response has no Operation in the batch item, and the result the
+// server did send is the only clue about what went wrong
+func (s *DecoderSuite) TestDecodeMessageFailureNoOperation() {
+	var m Response
+
+	err := NewDecoder(bytes.NewReader(s.parseSpecValue(
+		"42 00 7B | 01 | 00 00 00 90 |" +
+			"42 00 7A | 01 | 00 00 00 48 |" +
+			"42 00 69 | 01 | 00 00 00 20 |" +
+			"42 00 6A | 02 | 00 00 00 04 | 00 00 00 01 00 00 00 00 |" +
+			"42 00 6B | 02 | 00 00 00 04 | 00 00 00 04 00 00 00 00 |" +
+			"42 00 92 | 09 | 00 00 00 08 | 00 00 00 00 5F 5E 10 00 |" +
+			"42 00 0D | 02 | 00 00 00 04 | 00 00 00 01 00 00 00 00 |" +
+			"42 00 0F | 01 | 00 00 00 38 |" +
+			"42 00 7F | 05 | 00 00 00 04 | 00 00 00 01 00 00 00 00 |" +
+			"42 00 7E | 05 | 00 00 00 04 | 00 00 00 04 00 00 00 00 |" +
+			"42 00 7D | 07 | 00 00 00 0B | 62 61 64 20 72 65 71 75 65 73 74 00 00 00 00 00"))).Decode(&m)
+	s.Assert().NoError(err)
+	s.Assert().Equal(Response{
+		Header: ResponseHeader{
+			Version:    ProtocolVersion{Major: 1, Minor: 4},
+			TimeStamp:  time.Unix(1600000000, 0),
+			BatchCount: 1,
+		},
+		BatchItems: []ResponseBatchItem{
+			{
+				ResultStatus:  RESULT_STATUS_OPERATION_FAILED,
+				ResultReason:  RESULT_REASON_INVALID_MESSAGE,
+				ResultMessage: "bad request",
+			},
+		},
+	}, m)
+}
+
+// TestDecodeMessageNoOperationWithPayload checks the error reported for a
+// response which carries a payload but no operation in the batch item: there
+// is nothing to tell the decoder which payload structure to expect, and the
+// error has to point at that instead of at a tag mismatch
+func (s *DecoderSuite) TestDecodeMessageNoOperationWithPayload() {
+	var m Response
+
+	err := NewDecoder(bytes.NewReader(s.parseSpecValue(
+		"42 00 7B | 01 | 00 00 00 70 |" +
+			"42 00 7A | 01 | 00 00 00 48 |" +
+			"42 00 69 | 01 | 00 00 00 20 |" +
+			"42 00 6A | 02 | 00 00 00 04 | 00 00 00 01 00 00 00 00 |" +
+			"42 00 6B | 02 | 00 00 00 04 | 00 00 00 04 00 00 00 00 |" +
+			"42 00 92 | 09 | 00 00 00 08 | 00 00 00 00 5F 5E 10 00 |" +
+			"42 00 0D | 02 | 00 00 00 04 | 00 00 00 01 00 00 00 00 |" +
+			"42 00 0F | 01 | 00 00 00 18 |" +
+			"42 00 7F | 05 | 00 00 00 04 | 00 00 00 00 00 00 00 00 |" +
+			// the payload contents are never reached: decoding fails as
+			// soon as the decoder has to pick a type for them
+			"42 00 7C | 01 | 00 00 00 00"))).Decode(&m)
+	s.Assert().EqualError(err, "error reading field BatchItems: error reading field ResponsePayload: "+
+		"response batch item has no operation, response payload type can't be determined")
 }
 
 func TestDecoderSuite(t *testing.T) {

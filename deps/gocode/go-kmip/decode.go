@@ -86,7 +86,8 @@ func (d *Decoder) expectTag(expected Tag) error {
 	}
 
 	if expected != t && expected != ANY_TAG {
-		return errors.Errorf("expecting tag %x, but %x was encountered", expected, t)
+		return errors.Errorf("expecting tag %s, but %s was encountered",
+			TagName(expected), TagName(t))
 	}
 
 	return nil
@@ -108,7 +109,8 @@ func (d *Decoder) expectType(expected Type) error {
 	}
 
 	if expected != t {
-		return errors.Errorf("expecting type %d, but %d was encountered", expected, t)
+		return errors.Errorf("expecting type %s, but %s was encountered",
+			TypeName(expected), TypeName(t))
 	}
 
 	return nil
@@ -359,6 +361,7 @@ func (d *Decoder) decode(rv reflect.Value, structD *structDesc) (n int, err erro
 
 				tag, err = dd.peekTag()
 				if err != nil {
+					err = errors.Wrapf(err, "error reading field %v", f.name)
 					return
 				}
 
@@ -383,7 +386,8 @@ func (d *Decoder) decode(rv reflect.Value, structD *structDesc) (n int, err erro
 	}
 
 	if actualLen != expectedLen {
-		err = errors.Errorf("error reading structure expected %d != actual %d", expectedLen, actualLen)
+		err = errors.Errorf("error reading structure %s: expected length %d != actual %d",
+			TagName(structD.tag), expectedLen, actualLen)
 	}
 
 	return

@@ -6,6 +6,7 @@ package kmip
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"time"
 
@@ -148,8 +149,14 @@ func (c *Client) Send(operation Enum, req interface{}) (resp interface{}, err er
 		return
 	}
 
+	return responsePayload(operation, &response)
+}
+
+// responsePayload verifies the response to a single item batch and returns
+// payload of that item, or the error the server has reported
+func responsePayload(operation Enum, response *Response) (resp interface{}, err error) {
 	if response.Header.BatchCount != 1 {
-		err = errors.Errorf("unexepcted response batch count: %d", response.Header.BatchCount)
+		err = errors.Errorf("unexpected response batch count: %d", response.Header.BatchCount)
 		return
 	}
 
@@ -158,16 +165,44 @@ func (c *Client) Send(operation Enum, req interface{}) (resp interface{}, err er
 		return
 	}
 
-	if response.BatchItems[0].Operation != operation {
-		err = errors.Errorf("unexpected response operation: %d", response.BatchItems[0].Operation)
+	batchItem := response.BatchItems[0]
+
+	// result status is checked before the operation: a failed batch item
+	// might carry no operation at all (see ResponseBatchItem), and the error
+	// the server reports is way more useful than a complaint about the
+	// operation being missing
+	if batchItem.ResultStatus != RESULT_STATUS_SUCCESS {
+		err = batchItemError(operation, batchItem)
 		return
 	}
 
-	if response.BatchItems[0].ResultStatus == RESULT_STATUS_SUCCESS {
-		resp = response.BatchItems[0].ResponsePayload
+	if batchItem.Operation != operation {
+		err = errors.Errorf("unexpected response operation: expecting %s, but %s was encountered",
+			OperationName(operation), OperationName(batchItem.Operation))
 		return
 	}
 
-	err = wrapError(errors.New(response.BatchItems[0].ResultMessage), response.BatchItems[0].ResultReason)
+	resp = batchItem.ResponsePayload
 	return
+}
+
+// batchItemError builds an error out of a batch item which didn't succeed
+//
+// Result Message is optional in KMIP and plenty of servers never send it, so
+// the error is built out of everything the server did report instead of the
+// message alone, otherwise the caller is left with an empty error.
+func batchItemError(operation Enum, item ResponseBatchItem) error {
+	details := ResultStatusName(item.ResultStatus)
+
+	if item.ResultReason != 0 {
+		details += ", " + ResultReasonName(item.ResultReason)
+	}
+
+	msg := fmt.Sprintf("%s failed (%s)", OperationName(operation), details)
+
+	if item.ResultMessage != "" {
+		msg += ": " + item.ResultMessage
+	}
+
+	return wrapError(errors.New(msg), item.ResultReason)
 }

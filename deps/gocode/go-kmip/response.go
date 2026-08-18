@@ -32,8 +32,16 @@ type ResponseHeader struct {
 }
 
 // ResponseBatchItem is a Response Batch Item Structure
+//
+// Operation is not marked as required on purpose: servers echo it back for
+// the operations they were able to process, but a server which failed before
+// it could tell what the operation was (unparsable request, unsupported
+// protocol version, authentication failure) replies with a batch item which
+// carries the result status, reason and message only. Requiring Operation
+// here would fail such a response with a TTLV tag mismatch and hide the very
+// error the server was trying to report.
 type ResponseBatchItem struct {
-	Operation                   Enum             `kmip:"OPERATION,required"`
+	Operation                   Enum             `kmip:"OPERATION"`
 	UniqueID                    []byte           `kmip:"UNIQUE_BATCH_ITEM_ID"`
 	ResultStatus                Enum             `kmip:"RESULT_STATUS,required"`
 	ResultReason                Enum             `kmip:"RESULT_REASON"`
@@ -78,8 +86,12 @@ func (bi *ResponseBatchItem) BuildFieldValue(name string) (v interface{}, err er
 		v = &ReKeyResponse{}
 	case OPERATION_QUERY:
 		v = &QueryResponse{}
+	case 0:
+		// see the note on ResponseBatchItem.Operation
+		err = errors.New("response batch item has no operation, " +
+			"response payload type can't be determined")
 	default:
-		err = errors.Errorf("unsupported operation: %v", bi.Operation)
+		err = errors.Errorf("unsupported operation: %s", OperationName(bi.Operation))
 	}
 
 	return
