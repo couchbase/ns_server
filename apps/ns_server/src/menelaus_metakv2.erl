@@ -407,7 +407,7 @@ handle_post_sync_quorum(Req) ->
       fun (Props) ->
               Start = os:timestamp(),
               case chronicle_metakv:sync_quorum(
-                     proplists:get_value(key, Props)) of
+                     proplists:get_value(timeout, Props)) of
                   ok ->
                       reply_mutation(Req, Start, {[]}, 200);
                   {error, timeout} ->
