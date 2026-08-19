@@ -599,7 +599,6 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
                             ?log_debug("Access denied for OIDC user \"~s\": ~s",
                                        [ns_config_log:tag_user_name(Username),
                                         format_access_denied_error(
-                                          Username,
                                           AuthnRes#authn_res.extra_groups,
                                           AuthnRes#authn_res.extra_roles)]),
                             redirect_to_ui_with_error(Req, access_denied);
@@ -634,15 +633,18 @@ redirect_to_ui_with_error(Req, Code) ->
 ui_error_redirect_url(Code) ->
     "/ui/index.html#/?oidcError=" ++ atom_to_list(Code).
 
-format_access_denied_error(Username, ExtraGroups, ExtraRoles) ->
-    MainError = io_lib:format("Access denied for user \"~s\": "
-                              "Insufficient Permissions",
-                              [Username]),
+%% Logged, never sent in a response: the tagged spans below would reach the
+%% UI as markup. The roles are left untagged: they have been through
+%% validate_roles/2, so they are role names rather than identifiers.
+format_access_denied_error(ExtraGroups, ExtraRoles) ->
+    MainError = "Insufficient Permissions",
     Hint = "Ensure the user's roles include \"Web Console Access\" (ui_access)",
     GroupsInfo =
         case ExtraGroups of
             [] -> [];
-            _ -> ["Extracted groups: " ++ misc:intersperse(ExtraGroups, ", ")]
+            _ -> ["Extracted groups: " ++
+                      misc:intersperse([ns_config_log:tag_group_name(G)
+                                        || G <- ExtraGroups], ", ")]
         end,
     RolesInfo =
         case ExtraRoles of
