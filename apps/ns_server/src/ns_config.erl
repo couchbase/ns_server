@@ -63,7 +63,9 @@
          reload/0,
          get_key_ids_in_use/0,
          config_upgrade_to_totoro/1,
-         remove_nodes_config_keys/3]).
+         remove_nodes_config_keys/3,
+         ensure_config_is_map/1,
+         ensure_config_is_list/1]).
 
 -export([compute_global_rev_pre_totoro/1,
          compute_global_rev/1]).
@@ -877,9 +879,9 @@ init({full, ConfigPath, DirPath, PolicyMod} = Init) ->
             {stop, Error}
     end;
 init({pull_from_node, Node} = Init) ->
-    KVList0 = duplicate_node_keys(ns_config_rep:get_remote(Node, infinity),
-                                  Node, node()),
-    {_, KVMap} = drop_deletes(maps:from_list(KVList0)),
+    RemoteCfg = ns_config_rep:get_remote(Node, infinity),
+    MapCfg = ensure_config_is_map(RemoteCfg),
+    {_, KVMap} = drop_deletes(duplicate_node_keys(MapCfg, Node, node())),
     Cfg = set_config_dynamic(
             #config{policy_mod = ns_config_default,
                     saver_mfa = {?MODULE, do_not_save_config, []},
@@ -890,12 +892,14 @@ init({pull_from_node, Node} = Init) ->
 init([ConfigPath, PolicyMod]) ->
     init({full, ConfigPath, undefined, PolicyMod}).
 
-duplicate_node_keys(KVList, FromNode, ToNode) ->
-    lists:flatmap(fun ({{node, Node, Key}, Value} = Val) when Node =:= FromNode ->
-                          [{{node, ToNode, Key}, Value}, Val];
-                      (Other) ->
-                          [Other]
-                  end, KVList).
+%% The couchdb node runs under its own name, so it can only resolve node
+%% scoped keys if it holds a copy of them under that name
+duplicate_node_keys(KVMap, FromNode, ToNode) ->
+    maps:fold(fun ({node, Node, Key}, Value, Acc) when Node =:= FromNode ->
+                      Acc#{{node, ToNode, Key} => Value};
+                  (_, _, Acc) ->
+                      Acc
+              end, KVMap, KVMap).
 
 -spec wait_saver(#config{}, infinity | non_neg_integer()) -> {ok, #config{}} | timeout.
 wait_saver(State, Timeout) ->
@@ -1049,11 +1053,15 @@ handle_call({clear, Keep}, From, State) ->
     ?log_debug("Full result of clear:~n~p", [ns_config_log:sanitize(RV)]),
     RV;
 
-handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
-    NewKVList1 = lists:sort(duplicate_node_keys(NewKVList0, FromNode, node())),
-
+handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, From, State)
+  when is_list(NewKVList0) ->
+    handle_call({merge_ns_couchdb_config, maps:from_list(NewKVList0), FromNode},
+                From, State);
+handle_call({merge_ns_couchdb_config, NewKVMap0, FromNode}, _From, State)
+  when is_map(NewKVMap0) ->
     OldCfg = config_dynamic(State),
-    NewCfg = maps:merge(OldCfg, maps:from_list(NewKVList1)),
+    NewCfg = maps:merge(OldCfg,
+                        duplicate_node_keys(NewKVMap0, FromNode, node())),
     C = {cas_config, NewCfg, [], OldCfg, remote},
     {reply, true, NewState0} = handle_call(C, [], State),
 
@@ -1064,7 +1072,6 @@ handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, _From, State) ->
     NewState = set_config_dynamic(NewState0, FinalDynamic),
 
     {reply, ok, NewState};
-
 handle_call(merge_dynamic_and_static, _From, State) ->
     OldDynamic = config_dynamic(State),
     NewKVMap = do_merge_dynamic_and_static([OldDynamic], State),
@@ -1141,8 +1148,7 @@ empty_dynamic() -> #{}.
 dynamic_to_kvlist(Dynamic) -> maps:to_list(maps:iterator(Dynamic, ordered)).
 
 %% Folded from the right so that the earliest pair wins, matching the
-%% lists:keysearch this replaced. duplicate_node_keys/3 can produce a
-%% duplicate key, and the first one is the one reads used to see.
+%% lists:keysearch this replaced.
 kvlist_to_dynamic(KVList) ->
     lists:foldr(fun ({Key, Value}, Acc) -> Acc#{Key => Value} end, #{},
                 KVList).
@@ -1188,6 +1194,18 @@ diff_config(NewConfig, OldConfig) ->
                         config_dynamic(OldConfig)).
 
 %%--------------------------------------------------------------------
+
+-spec ensure_config_is_map(map() | list()) -> map().
+ensure_config_is_map(Config) when is_map(Config) ->
+    Config;
+ensure_config_is_map(Config) when is_list(Config) ->
+    maps:from_list(Config).
+
+-spec ensure_config_is_list(map() | list()) -> list().
+ensure_config_is_list(Config) when is_map(Config) ->
+    maps:to_list(Config);
+ensure_config_is_list(Config) when is_list(Config) ->
+    Config.
 
 cas_config_inner(Type, ExtraLocalChanges, State, NewState0) ->
     HaveExtraLocalChanges = (ExtraLocalChanges =/= []),

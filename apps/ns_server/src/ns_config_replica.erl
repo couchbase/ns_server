@@ -86,7 +86,11 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(get_compressed, _From, State) ->
-    RV = misc:compress(ns_config:get_kv_list()),
+    Payload = case cluster_compat_mode:is_cluster_totoro() of
+                  false -> ns_config:get_kv_list();
+                  true -> ns_config:get_kv_map()
+              end,
+    RV = misc:compress(Payload),
     {reply, RV, State};
 handle_call(_Request, _From, State) ->
     Reply = ok,

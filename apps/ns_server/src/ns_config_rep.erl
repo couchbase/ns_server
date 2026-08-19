@@ -261,8 +261,12 @@ handle_info({pull_and_push, Nodes}, State) ->
 
     ?log_info("Replicating config to/from:~n~p", [KnownNodes]),
     pull_one_node(KnownNodes, length(KnownNodes)),
-    RawKVList = ns_config:get_kv_list(?SELF_PULL_TIMEOUT),
-    Blob = misc:compress(RawKVList),
+    Payload =
+        case cluster_compat_mode:is_cluster_totoro() of
+            false -> ns_config:get_kv_list(?SELF_PULL_TIMEOUT);
+            true -> ns_config:get_kv_map(?SELF_PULL_TIMEOUT)
+        end,
+    Blob = misc:compress(Payload),
     do_push(Blob, KnownNodes, NewState#state.nodes_rev),
     ?log_debug("config pull_and_push done.", []),
     {noreply, NewState};
@@ -409,10 +413,16 @@ do_push_keys(Keys, AllKVs, State) ->
     do_push(KVsToPush, State).
 
 do_push(State) ->
-    do_push(ns_config:get_kv_list(?SELF_PULL_TIMEOUT), State).
+    do_push(ns_config:get_kv_map(?SELF_PULL_TIMEOUT), State).
 
-do_push(RawKVList, #state{nodes_rev = Revision} = State) ->
-    Blob = misc:compress(RawKVList),
+do_push(RawKVs, #state{nodes_rev = Revision} = State) ->
+    Payload = case cluster_compat_mode:is_cluster_totoro() of
+        true ->
+            ns_config:ensure_config_is_map(RawKVs);
+        false ->
+            ns_config:ensure_config_is_list(RawKVs)
+    end,
+    Blob = misc:compress(Payload),
     do_push_local(Blob),
     LiveNodes = live_other_nodes(State),
     do_push(Blob, LiveNodes, Revision).
@@ -486,13 +496,7 @@ merge_remote_configs(Fun, Payloads) ->
                   Decompressed = Fun(RemoteKVs),
 
                   %% Older versions (pre-Totoro) send config as lists, not maps
-                  RemoteKVMap =
-                      case is_map(Decompressed) of
-                          true -> Decompressed;
-                          false ->
-                              true = is_list(Decompressed),
-                              maps:from_list(Decompressed)
-                      end,
+                  RemoteKVMap = ns_config:ensure_config_is_map(Decompressed),
 
                   do_merge_one_remote_config(UUID,
                                              RemoteKVMap,
