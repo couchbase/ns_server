@@ -2769,7 +2769,7 @@ try_to_perform_very_long_call(Fun, Bucket, Opts) ->
     end.
 
 reply_start_stop_uploaders(What, RVs) ->
-    case [T || {_, RV} = T <- misc:enumerate(RVs, 0), RV =/= ok] of
+    case [T || {_, RV} = T <- RVs, RV =/= ok] of
         [] ->
             {reply, ok};
         Bad ->
@@ -2808,9 +2808,10 @@ maybe_start_fusion_uploaders(Bucket, Uploaders) ->
             try_to_perform_very_long_call(
               fun (Sock) ->
                       RVs =
-                          [mc_client_binary:start_fusion_uploader(Sock,
-                                                                  VBucket, Term)
-                           || {VBucket, Term} <- Uploaders],
+                          [{VBucket,
+                            mc_client_binary:start_fusion_uploader(
+                              Sock, VBucket, Term)} ||
+                              {VBucket, Term} <- Uploaders],
                       reply_start_stop_uploaders("starting", RVs)
               end, Bucket, [json])
     end.
@@ -2822,8 +2823,8 @@ maybe_stop_fusion_uploaders(_Bucket, []) ->
 maybe_stop_fusion_uploaders(Bucket, VBuckets) ->
     try_to_perform_very_long_call(
       fun (Sock) ->
-              RVs = [mc_client_binary:stop_fusion_uploader(Sock, VBucket) ||
-                        VBucket <- VBuckets],
+              RVs = [{VBucket, mc_client_binary:stop_fusion_uploader(
+                                 Sock, VBucket)} || VBucket <- VBuckets],
               reply_start_stop_uploaders("stopping", RVs)
       end, Bucket, []).
 
