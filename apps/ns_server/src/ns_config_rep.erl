@@ -203,12 +203,12 @@ accumulate_and_push_keys(_Keys0, 0, State) ->
     %% changes we'll just replicate the entire configuration.
     ?log_info("Exceeded retries count trying to get consistent keys/values "
               "for config replication. The full config will be replicated."),
-    KVs = lists:sort(ns_config:get_kv_list()),
-    Keys = [K || {K, _} <- KVs],
-    do_push_keys(Keys, KVs, State);
+    KVs = ns_config:get_kv_map(),
+    Keys = maps:keys(KVs),
+    do_push_and_log_keys(Keys, KVs, State);
 accumulate_and_push_keys(Keys0, RetriesLeft, State) ->
     Keys = accumulate_push_keys(Keys0),
-    AllConfigKV = ns_config:get_kv_list(),
+    AllConfigKV = ns_config:get_kv_map(),
     %% the following ensures that all queued ns_config_events_local
     %% events are processed (and thus we've {push_keys, ...} in our
     %% mailbox if there were any local config mutations
@@ -387,19 +387,14 @@ schedule_config_sync() ->
     Frequency = 5000 + trunc(rand:uniform() * 55000),
     erlang:send_after(Frequency, self(), sync_random).
 
-extract_kvs([], _KVs, Acc) ->
-    Acc;
-extract_kvs([K | Ks] = AllKs, [{CK,_} = KV | KVs], Acc) ->
-    case K =:= CK of
-        true ->
-            extract_kvs(Ks, KVs, [KV | Acc]);
-        _ ->
-            %% we expect K to be present in kvs
-            true = (K > CK),
-            extract_kvs(AllKs, KVs, Acc)
-    end.
-
 do_push_keys(Keys, AllKVs, State) ->
+    KVsToPush =
+        lists:foldl(
+            fun(Key, Acc) -> Acc#{Key => maps:get(Key, AllKVs)} end,
+            #{}, Keys),
+    do_push_and_log_keys(Keys, KVsToPush, State).
+
+do_push_and_log_keys(Keys, KVsToPush, State) ->
     TrimmedList =
         lists:filter(?cut(not ns_config_log:frequently_changed_key(_)),
                      lists:sublist(Keys, 64)),
@@ -409,7 +404,6 @@ do_push_keys(Keys, AllKVs, State) ->
         _ ->
             ?log_debug("Replicating some config keys (~p..)", [TrimmedList])
     end,
-    KVsToPush = extract_kvs(Keys, lists:sort(AllKVs), []),
     do_push(KVsToPush, State).
 
 do_push(State) ->
