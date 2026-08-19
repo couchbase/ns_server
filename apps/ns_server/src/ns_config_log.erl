@@ -25,6 +25,10 @@
 -include_lib("ns_common/include/generic.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -record(state, {buckets=[]}).
 
 %% state sanitization
@@ -102,7 +106,71 @@ do_tag_user_name(_) ->
 
 tag_user_data(DebugKVList) ->
     misc:rewrite_tuples(
-      fun tag_user_tuples_fun/1, DebugKVList).
+      fun tag_user_tuples_fun/1, tag_jwt_audit_claims(DebugKVList)).
+
+%% A JWT authentication audit body is a proplist keyed by claim name, and an
+%% operator can add any custom claim to it under any name, so there is no
+%% fixed set of keys for tag_user_tuples_fun/1 to match on. Identify the body
+%% by its type claim instead and tag the claim values wholesale, the way
+%% menelaus_web_saml wraps a whole decoded assertion.
+tag_jwt_audit_claims(KVList) when is_list(KVList) ->
+    case lists:member({<<"type">>, <<"jwt">>}, KVList) of
+        true ->
+            [tag_jwt_claim(KV) || KV <- KVList];
+        false ->
+            KVList
+    end;
+tag_jwt_audit_claims(Other) ->
+    Other.
+
+%% Keys this pass leaves alone. There are two unrelated reasons:
+%%
+%% Cannot identify anyone: aud, exp, iss, reason and type carry no identifier,
+%% and mapped_roles is safe because roles are a closed vocabulary that ships
+%% with the product - jwt_auth keeps only the ones
+%% menelaus_roles:validate_roles/2 accepted.
+%%
+%% mapped_groups is here for the opposite reason. It does identify people:
+%% groups are named by whoever set the cluster up, which is why this module
+%% has a tag_group_name/1 and a tag_user_name/1 and no tag_role_name. It is
+%% tagged by the {<<"mapped_groups">>, _} clause of tag_user_tuples_fun/1
+%% instead of here, because it is not a claim at all -
+%% menelaus_auth:get_authn_res_audit_props/1 builds it from
+%% #authn_res.extra_groups - and menelaus_web_rbac:handle_access_forbidden/3
+%% audits it in a body that carries no type claim, which this pass never
+%% looks at. Tagging on the key covers every body that can carry it. Tagging
+%% it here as well would tag the JWT one twice and emit
+%% <ud><ud>eng</ud></ud>, which the non-greedy <ud>(.+?)</ud> rule in
+%% cbcollect_info cannot unpick. So do not "fix" this by dropping it from
+%% this list; the tagging lives one function down.
+%%
+%% The token_roles claim is tagged as well: it is whatever the IdP put at the
+%% operator-configured path, and it is audited without being checked against
+%% the vocabulary at all.
+-define(UNTAGGED_JWT_CLAIMS, [<<"aud">>, <<"exp">>, <<"iss">>,
+                              <<"mapped_groups">>, <<"mapped_roles">>,
+                              <<"reason">>, <<"type">>]).
+
+tag_jwt_claim({Key, Value}) ->
+    case lists:member(Key, ?UNTAGGED_JWT_CLAIMS) of
+        true -> {Key, Value};
+        false -> {Key, tag_jwt_claim_value(Value)}
+    end;
+tag_jwt_claim(Other) ->
+    Other.
+
+%% Only strings can carry an identifier that redaction needs to strip.
+%% Numbers and booleans are left alone so that timestamp claims such as nbf
+%% and iat stay readable, and so that tagging cannot turn a value into
+%% something the reader cannot recognise.
+tag_jwt_claim_value(Value) when is_binary(Value) ->
+    tag_misc_item(Value);
+tag_jwt_claim_value(Values) when is_list(Values) ->
+    [tag_jwt_claim_value(V) || V <- Values];
+tag_jwt_claim_value({KVs}) when is_list(KVs) ->
+    {[{K, tag_jwt_claim_value(V)} || {K, V} <- KVs]};
+tag_jwt_claim_value(Value) ->
+    Value.
 
 tag_user_tuples_fun({user, UserName}) when is_binary(UserName) ->
     {stop, {user, tag_user_name(UserName)}};
@@ -143,6 +211,32 @@ tag_user_tuples_fun({<<"spOrgName">>, OrgName}) ->
     {stop, {<<"spOrgName">>, tag_misc_item(OrgName)}};
 tag_user_tuples_fun({<<"spOrgURL">>, OrgURL}) ->
     {stop, {<<"spOrgURL">>, tag_misc_item(OrgURL)}};
+%% Fixed key names that carry an identifier and reach the debug.log copy in
+%% bodies tag_jwt_audit_claims/1 does not see. Unlike a JWT claim, whose name
+%% the operator chooses, every key below is written in this repo, so matching
+%% the key is enough and the positional pass is not needed.
+%%
+%% mapped_groups is the joined list menelaus_auth:get_authn_res_audit_props/1
+%% builds, so the whole run is tagged as one item rather than group by group.
+tag_user_tuples_fun({<<"mapped_groups">>, Groups}) ->
+    {stop, {<<"mapped_groups">>, tag_group_name(Groups)}};
+%% A credential id is chosen by the operator and is commonly the name of the
+%% system or the person the credential belongs to. The description is free
+%% text, and the list prefix can be a whole id, so all three are identifiers.
+tag_user_tuples_fun({credential_id, Id}) ->
+    {stop, {credential_id, tag_misc_item(Id)}};
+tag_user_tuples_fun({credential_description, Description}) ->
+    {stop, {credential_description, tag_misc_item(Description)}};
+tag_user_tuples_fun({prefix, Prefix}) ->
+    {stop, {prefix, tag_misc_item(Prefix)}};
+%% menelaus_web_jwt audits the already-encoded settings response, so by the
+%% time the body gets here the document is one binary with nothing left to
+%% walk into. It holds groups_maps, sub_maps and roles_maps - rules written
+%% over group and subject names, which auth_mapping tags when it logs them -
+%% so tag the whole document. Tagging cannot be done where it is audited:
+%% that value also goes to the audit sink, which must stay verbatim.
+tag_user_tuples_fun({jwt_settings, Settings}) ->
+    {stop, {jwt_settings, tag_misc_item(Settings)}};
 tag_user_tuples_fun(_Other) ->
     continue.
 
@@ -307,3 +401,169 @@ frequently_changed_key({metakv, <<"/regulator/report", _/binary>>}) ->
     true;
 frequently_changed_key(_) ->
     false.
+
+-ifdef(TEST).
+
+%% The audit body jwt_auth builds for a successful authentication, with a
+%% custom claim, a nested custom claim and an array claim.
+jwt_audit_body() ->
+    [{<<"aud">>, [<<"couchbase">>]},
+     {<<"department">>, <<"finance">>},
+     {<<"exp">>, 1234567890},
+     {<<"groups">>, [<<"eng">>, <<"ops">>]},
+     {<<"iss">>, <<"https://idp.example.com">>},
+     %% menelaus_auth:get_authn_res_audit_props/1 joins the groups into one
+     %% binary.
+     {<<"mapped_groups">>, <<"admins,ops">>},
+     {<<"mapped_roles">>, [<<"bucket_admin[*]">>]},
+     {<<"nbf">>, 1234567800},
+     {<<"profile">>, {[{<<"email">>, <<"a@example.com">>}]}},
+     {<<"sub">>, <<"alice">>},
+     {<<"token_roles">>, [<<"cluster_admin">>]},
+     {<<"type">>, <<"jwt">>}].
+
+tag_jwt_audit_claims_test() ->
+    Tagged = tag_jwt_audit_claims(jwt_audit_body()),
+    Get = fun(K) -> proplists:get_value(K, Tagged) end,
+
+    %% Identifiers taken from the token are tagged, whether the claim is a
+    %% string or an array, and whichever name the operator gave it.
+    ?assertEqual(<<"<ud>alice</ud>">>, Get(<<"sub">>)),
+    ?assertEqual([<<"<ud>eng</ud>">>, <<"<ud>ops</ud>">>],
+                 Get(<<"groups">>)),
+
+    %% mapped_groups is left to tag_user_tuples_fun/1, which owns it in every
+    %% body rather than only in a JWT one. Tagging it here too would nest the
+    %% markers.
+    ?assertEqual(<<"admins,ops">>, Get(<<"mapped_groups">>)),
+    ?assertEqual(<<"<ud>finance</ud>">>, Get(<<"department">>)),
+
+    %% A nested custom claim is tagged at its leaves, keys untouched.
+    ?assertEqual({[{<<"email">>, <<"<ud>a@example.com</ud>">>}]},
+                 Get(<<"profile">>)),
+
+    %% The claim is whatever the IdP sent, so it is tagged too. It is
+    %% audited as token_roles, the event's own roles field being the grant.
+    ?assertEqual([<<"<ud>cluster_admin</ud>">>], Get(<<"token_roles">>)),
+
+    %% mapped_roles survived validate_roles/2, so it is a role name and is
+    %% left readable. So are the claims that cannot identify anyone.
+    ?assertEqual([<<"bucket_admin[*]">>], Get(<<"mapped_roles">>)),
+    ?assertEqual([<<"couchbase">>], Get(<<"aud">>)),
+    ?assertEqual(<<"https://idp.example.com">>, Get(<<"iss">>)),
+    ?assertEqual(<<"jwt">>, Get(<<"type">>)),
+
+    %% Numbers stay numbers, so timestamp claims remain readable.
+    ?assertEqual(1234567890, Get(<<"exp">>)),
+    ?assertEqual(1234567800, Get(<<"nbf">>)),
+
+    %% Every key of the body survives.
+    ?assertEqual(length(jwt_audit_body()), length(Tagged)).
+
+tag_jwt_audit_claims_non_ascii_test() ->
+    %% jwt_auth normalizes a claim value by the type declared for the claim,
+    %% so a value carrying anything above ASCII arrives here as a utf8 binary
+    %% rather than as the list of byte values this would have recursed into
+    %% and left untagged.
+    Body = [{<<"groups">>, [<<"Ingenjörer"/utf8>>]},
+            {<<"sub">>, <<"Алиса"/utf8>>},
+            {<<"type">>, <<"jwt">>}],
+    Tagged = tag_jwt_audit_claims(Body),
+    ?assertEqual(<<"<ud>Алиса</ud>"/utf8>>,
+                 proplists:get_value(<<"sub">>, Tagged)),
+    ?assertEqual([<<"<ud>Ingenjörer</ud>"/utf8>>],
+                 proplists:get_value(<<"groups">>, Tagged)).
+
+tag_jwt_audit_claims_only_for_jwt_test() ->
+    %% A body that is not a JWT audit record is returned untouched, so the
+    %% other callers of tag_user_data/1 are unaffected.
+    Other = [{<<"sub">>, <<"alice">>}, {<<"type">>, <<"saml">>}],
+    ?assertEqual(Other, tag_jwt_audit_claims(Other)),
+    ?assertEqual([], tag_jwt_audit_claims([])),
+    ?assertEqual({user, <<"alice">>},
+                 tag_jwt_audit_claims({user, <<"alice">>})).
+
+tag_jwt_audit_failure_test() ->
+    %% A failure body carries the reason and no mapped values. The reason is
+    %% ns_server text, not a claim, so it stays readable.
+    Body = [{<<"reason">>, <<"Token has expired">>},
+            {<<"sub">>, <<"alice">>},
+            {<<"type">>, <<"jwt">>}],
+    Tagged = tag_jwt_audit_claims(Body),
+    ?assertEqual(<<"Token has expired">>,
+                 proplists:get_value(<<"reason">>, Tagged)),
+    ?assertEqual(<<"<ud>alice</ud>">>,
+                 proplists:get_value(<<"sub">>, Tagged)).
+
+tag_user_data_tags_jwt_claims_test() ->
+    %% The whole path: tag_user_data/1 is what ns_audit calls.
+    Tagged = tag_user_data(jwt_audit_body()),
+    ?assertEqual(<<"<ud>alice</ud>">>,
+                 proplists:get_value(<<"sub">>, Tagged)),
+
+    %% The claim pass leaves mapped_groups alone and tag_user_tuples_fun/1
+    %% tags it, so the whole path tags it exactly once. Nested markers would
+    %% defeat the non-greedy redaction rule.
+    ?assertEqual(<<"<ud>admins,ops</ud>">>,
+                 proplists:get_value(<<"mapped_groups">>, Tagged)).
+
+%% The body menelaus_web_rbac:handle_access_forbidden/3 audits. It carries
+%% mapped_groups with no type claim, so tag_jwt_audit_claims/1 does not fire
+%% and the key clause is the only thing tagging it. This is the case that
+%% reached debug.log in the clear.
+access_forbidden_body() ->
+    [{raw_url, <<"/pools/default/buckets">>},
+     {<<"expiry_with_leeway">>, <<"2026-08-26T12:00:00">>},
+     {<<"mapped_groups">>, <<"admins,ops">>},
+     {<<"mapped_roles">>, <<"bucket_admin[*]">>}].
+
+tag_user_data_tags_mapped_groups_without_a_type_claim_test() ->
+    Tagged = tag_user_data(access_forbidden_body()),
+    Get = fun(K) -> proplists:get_value(K, Tagged) end,
+    ?assertEqual(<<"<ud>admins,ops</ud>">>, Get(<<"mapped_groups">>)),
+
+    %% mapped_roles stays readable here for the same reason it does in a JWT
+    %% body, and the expiry is a timestamp.
+    ?assertEqual(<<"bucket_admin[*]">>, Get(<<"mapped_roles">>)),
+    ?assertEqual(<<"2026-08-26T12:00:00">>, Get(<<"expiry_with_leeway">>)).
+
+tag_user_data_tags_credential_fields_test() ->
+    %% What menelaus_web_credentials:format_audit_params/3 emits, after
+    %% ns_audit:prepare_list/1 has turned the strings into binaries.
+    Body = [{credential_id, <<"alice-backup">>},
+            {credential_description, <<"nightly backup to s3">>},
+            {prefix, <<"alice-">>},
+            {type, <<"password">>},
+            {count, 3}],
+    Tagged = tag_user_data(Body),
+    Get = fun(K) -> proplists:get_value(K, Tagged) end,
+    ?assertEqual(<<"<ud>alice-backup</ud>">>, Get(credential_id)),
+    ?assertEqual(<<"<ud>nightly backup to s3</ud>">>,
+                 Get(credential_description)),
+    ?assertEqual(<<"<ud>alice-</ud>">>, Get(prefix)),
+
+    %% The credential type is a closed vocabulary and the count is a number.
+    ?assertEqual(<<"password">>, Get(type)),
+    ?assertEqual(3, Get(count)).
+
+%% What ns_audit:settings/3 builds for modify_jwt. It wraps every settings
+%% audit as [{settings, {KVs}}], so the pair menelaus_web_jwt supplies ends up
+%% nested inside an ejson object rather than at the top level of the body, and
+%% prepare_list/1 has already dropped the {json, _} marker by then.
+jwt_settings_body(Settings) ->
+    [{settings, {[{jwt_settings, Settings}]}}].
+
+tag_user_data_tags_jwt_settings_test() ->
+    %% menelaus_web_jwt audits the encoded response, so the whole document
+    %% arrives as one binary with nothing left to walk into, and is tagged as
+    %% one item.
+    Settings = <<"{\"issuers\":[{\"name\":\"idp\",\"groupsMaps\":"
+                 "[\"eng->admins\"]}]}">>,
+    ?assertEqual(jwt_settings_body(<<"<ud>", Settings/binary, "</ud>">>),
+                 tag_user_data(jwt_settings_body(Settings))),
+
+    %% A delete audits an atom, which has nothing to tag.
+    ?assertEqual(jwt_settings_body(deleted),
+                 tag_user_data(jwt_settings_body(deleted))).
+
+-endif.
