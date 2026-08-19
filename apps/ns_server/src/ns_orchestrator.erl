@@ -2411,7 +2411,7 @@ validate_services(Services, NodesToEject, [], Snapshot, ServiceNodesMap) ->
             throw({must_rebalance_services, lists:usort(NeededServices)})
     end.
 
-validate_rebalance_plan(Params, Snapshot) ->
+validate_rebalance_plan(#{delta_nodes := DeltaNodes} = Params, Snapshot) ->
     Err =
         fun (Message, FusionPlan) ->
                 ?rebalance_info(
@@ -2422,6 +2422,16 @@ validate_rebalance_plan(Params, Snapshot) ->
 
     case validate_fusion_plan(Params, rebalance, Err) of
         #{fusion_plan := FusionPlan} = NewParams ->
+            case DeltaNodes of
+                [] ->
+                    ok;
+                _ ->
+                    ?rebalance_info(
+                       "Delta recovery of nodes ~p is not supported with "
+                       "fusion rebalance plan.", [DeltaNodes]),
+                    throw(delta_recovery_not_possible)
+            end,
+
             Buckets = proplists:get_value(buckets, FusionPlan),
             lists:foreach(
               fun ({Bucket, Props}) ->
