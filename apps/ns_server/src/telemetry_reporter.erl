@@ -262,6 +262,13 @@ build_version() ->
             ProdCompatVersion
     end.
 
+build_node_version(Props) ->
+    list_to_binary(
+      proplists:get_value(ns_server,
+                          proplists:get_value(version, Props, []),
+                          "")).
+
+
 build_edition(Node, Config) ->
     case cluster_compat_mode:is_node_enterprise(Node, Config) of
         true -> <<"enterprise">>;
@@ -292,6 +299,7 @@ create_report() ->
                          proplists:get_value(system_arch, Props, "unknown")),
                   Hostname = iolist_to_binary(misc:extract_node_address(Node)),
                   Edition = build_edition(Node, Config),
+                  Version = build_node_version(Props),
                   UptimeSeconds = proplists:get_value(wall_clock, Props, 0),
                   CoresLogical = proplists:get_value(cpu_count, Props, 0),
                   SystemStats = proplists:get_value(system_stats, Props, []),
@@ -313,6 +321,7 @@ create_report() ->
                   #{os => Os,
                     hostname => Hostname,
                     edition => Edition,
+                    version => Version,
                     uptimeSeconds => UptimeSeconds,
                     cpuLogicalCores => CoresLogical,
                     cpuPhysicalCores => CoresPhysical,
@@ -353,6 +362,7 @@ node_keys() ->
      <<"hostname">>,
      <<"os">>,
      <<"edition">>,
+     <<"version">>,
      <<"ramBytesTotal">>,
      <<"ramBytesUsed">>,
      <<"cgroupRamBytesTotal">>,
