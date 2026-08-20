@@ -51,8 +51,8 @@ init([]) ->
     process_flag(message_queue_data, off_heap),
     Self = self(),
     ns_pubsub:subscribe_link(ns_config_events,
-                             fun (KVList) when is_list(KVList) ->
-                                     Self ! {config_change, KVList};
+                             fun (KVMap) when is_map(KVMap) ->
+                                     Self ! {config_change, KVMap};
                                  (_) ->
                                      ok
                              end),
@@ -71,8 +71,8 @@ handle_cast(Request, State) ->
     ?log_warning("Unexpected handle_cast(~p, ~p)", [Request, State]),
     {noreply, State}.
 
-handle_info({config_change, KVList}, State) ->
-    lists:foreach(fun ({K, V}) -> log_kv(K, V) end, KVList),
+handle_info({config_change, KVMap}, State) ->
+    maps:foreach(fun (K, V) -> log_kv(K, V) end, KVMap),
     {noreply, State};
 handle_info(Info, State) ->
     ?log_warning("Unexpected handle_info(~p, ~p)", [Info, State]),

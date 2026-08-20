@@ -310,8 +310,8 @@ ns_config_iterate_matching(Key, Continuous, Callback) ->
         true ->
             ns_pubsub:subscribe_link(
               ns_config_events,
-              fun ([_|_] = KVs) ->
-                      %% we receive kvlist events because they include
+              fun (KVs) when is_map(KVs), map_size(KVs) > 0 ->
+                      %% we receive the whole KV map event as it includes
                       %% vclocks
                       Self ! {config, KVs};
                   (_) ->
@@ -337,13 +337,6 @@ ns_config_iterate_loop(Key, Callback) ->
             erlang:exit(normal)
     end.
 
-ns_config_emit_values(KV, Callback) when is_list(KV) ->
-    lists:foreach(
-      fun({{metakv, K}, V0}) ->
-              VC = ns_config:extract_vclock(V0),
-              {Sensitive, V} = strip_sensitive(ns_config:strip_metadata(V0)),
-              Callback({K, V, VC, Sensitive})
-      end, KV);
 ns_config_emit_values(KV, Callback) when is_map(KV) ->
     %% Ordered iteration to preserve historic behaviour
     Itr = maps:iterator(KV, ordered),
@@ -354,13 +347,6 @@ ns_config_emit_values(KV, Callback) when is_map(KV) ->
               Callback({K, V, VC, Sensitive})
       end, Itr).
 
-ns_config_matching_kvs(Key, KVList) when is_list(KVList) ->
-    Filter = mk_config_filter(Key),
-    %% This function gets called during subsequent iteration of
-    %% menelaus_metakv:handle_iterate(). Do not skip deleted entries.
-    %% This will retain the behaviour as it existed
-    %% before this code was moved here from menelaus_metakv.erl.
-    [{K, V} || {K, V} <- KVList, Filter(K)];
 ns_config_matching_kvs(Key, KVMap) when is_map(KVMap) ->
     Filter = mk_config_filter(Key),
     %% This function gets called during subsequent iteration of

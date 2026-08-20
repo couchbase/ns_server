@@ -1398,15 +1398,17 @@ announce_changes(KVList) ->
     ets:update_counter(ns_config_announces_counter, changes_counter, 1),
     do_announce_changes(KVList).
 
-do_announce_changes(KVList) ->
+do_announce_changes(KVList) when is_list(KVList) ->
+    do_announce_changes(maps:from_list(KVList));
+do_announce_changes(KVMap) when is_map(KVMap) ->
     %% Fire an event per changed key.
-    lists:foreach(fun ({Key, Value}) ->
-                          gen_event:notify(ns_config_events,
-                                           {Key, strip_metadata(Value)})
-                  end,
-                  KVList),
+    maps:foreach(fun (Key, Value) ->
+                         gen_event:notify(ns_config_events,
+                                          {Key, strip_metadata(Value)})
+                 end,
+                 KVMap),
     %% Fire a generic event that 'something changed'.
-    gen_event:notify(ns_config_events, KVList).
+    gen_event:notify(ns_config_events, KVMap).
 
 update_ets_dup(KVList) ->
     KVs = [{K, strip_metadata(V)} || {K, V} <- KVList],
