@@ -744,8 +744,9 @@ get_external_auth_service([], _Params) ->
     is_external_auth_service_enabled().
 
 get_fusion_rate(Name, Params) ->
-    case rebalance:status() of
-        running ->
+    case {fusion_uploaders:get_state(), rebalance:status()} of
+        {FusionState, running} when FusionState =/= disabled andalso
+                                    FusionState =/= stopped ->
             0;
         _ ->
             proplists:get_value(Name, Params)
