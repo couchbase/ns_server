@@ -92,7 +92,7 @@ grab_all_xdcr_checkpoints(BucketName, Timeout) ->
     rpc:call(ns_node_disco:couchdb_node(), erlang, apply, [Fn, []]).
 
 grab_all_goxdcr_checkpoints() ->
-    {json, {metakv:iterate_matching(?XDCR_CHECKPOINT_PATTERN)}}.
+    {json, {maps:to_list(metakv:iterate_matching(?XDCR_CHECKPOINT_PATTERN))}}.
 
 shutdown_nicely() ->
     ns_babysitter_bootstrap:remote_stop(ns_server:get_babysitter_node()).

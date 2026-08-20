@@ -134,8 +134,8 @@ simple_store_mutation(Key, Value) ->
 
 simple_store_iterate_matching(KeyPrefix, Callback) ->
     KVs = simple_store:iterate_matching(?XDCR_CHECKPOINT_STORE, KeyPrefix),
-    lists:foreach(
-      fun({K, V}) ->
+    maps:foreach(
+      fun(K, V) ->
               Callback({K, V})
       end,
       KVs).
@@ -297,12 +297,12 @@ mk_config_filter(KeyBin) ->
     end.
 
 ns_config_iterate_matching(Key) ->
-    KVs = ns_config_matching_kvs(Key, ns_config:get_kv_list()),
+    KVs = ns_config_matching_kvs(Key, ns_config:get_kv_map()),
     %% This function gets called during first iteration of
     %% menelaus_metakv:handle_iterate(). Skip deleted entries for
     %% the first iteration. This will retain the behaviour as it existed
     %% before this code was moved here from menelaus_metakv.erl.
-    [{K, V} || {K, V} <- KVs, ns_config:strip_metadata(V) =/= ?DELETED_MARKER].
+    #{K => V || K := V <- KVs, ns_config:strip_metadata(V) =/= ?DELETED_MARKER}.
 
 ns_config_iterate_matching(Key, Continuous, Callback) ->
     Self = self(),
@@ -337,21 +337,37 @@ ns_config_iterate_loop(Key, Callback) ->
             erlang:exit(normal)
     end.
 
-ns_config_emit_values(KV, Callback) ->
+ns_config_emit_values(KV, Callback) when is_list(KV) ->
     lists:foreach(
       fun({{metakv, K}, V0}) ->
               VC = ns_config:extract_vclock(V0),
               {Sensitive, V} = strip_sensitive(ns_config:strip_metadata(V0)),
               Callback({K, V, VC, Sensitive})
-      end, KV).
+      end, KV);
+ns_config_emit_values(KV, Callback) when is_map(KV) ->
+    %% Ordered iteration to preserve historic behaviour
+    Itr = maps:iterator(KV, ordered),
+    maps:foreach(
+      fun({metakv, K}, V0) ->
+              VC = ns_config:extract_vclock(V0),
+              {Sensitive, V} = strip_sensitive(ns_config:strip_metadata(V0)),
+              Callback({K, V, VC, Sensitive})
+      end, Itr).
 
-ns_config_matching_kvs(Key, KVList) ->
+ns_config_matching_kvs(Key, KVList) when is_list(KVList) ->
     Filter = mk_config_filter(Key),
     %% This function gets called during subsequent iteration of
     %% menelaus_metakv:handle_iterate(). Do not skip deleted entries.
     %% This will retain the behaviour as it existed
     %% before this code was moved here from menelaus_metakv.erl.
-    [{K, V} || {K, V} <- KVList, Filter(K)].
+    [{K, V} || {K, V} <- KVList, Filter(K)];
+ns_config_matching_kvs(Key, KVMap) when is_map(KVMap) ->
+    Filter = mk_config_filter(Key),
+    %% This function gets called during subsequent iteration of
+    %% menelaus_metakv:handle_iterate(). Do not skip deleted entries.
+    %% This will retain the behaviour as it existed
+    %% before this code was moved here from menelaus_metakv.erl.
+    #{K => V || K := V <- KVMap, Filter(K)}.
 
 %% Takes in a vector clock and returns an opaque SHA256 hash of that clock.
 convert_vc_to_opaque_hash(VC) ->

@@ -94,11 +94,11 @@ iterate_matching(StoreName, KeyPattern) ->
               case misc:is_prefix(KeyPattern, Key) of
                   true ->
                       ?metakv_debug("Returning Key ~p.", [Key]),
-                      [{Key, Value} | Acc];
+                      Acc#{Key => Value};
                   false ->
                       Acc
               end
-      end, [], StoreName).
+      end, #{}, StoreName).
 
 resave(StoreName) ->
     do_work(StoreName, fun resave/2, []).

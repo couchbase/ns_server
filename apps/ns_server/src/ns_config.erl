@@ -78,6 +78,7 @@
          load_file/3, send_config/3,
          test_setup/1, upgrade_config/2,
          do_announce_changes/1,
+         kvlist_to_dynamic/1,
          mk_config/1, mk_config/2]).
 -export([mock_tombstone_agent/0, unmock_tombstone_agent/0]).
 -endif.

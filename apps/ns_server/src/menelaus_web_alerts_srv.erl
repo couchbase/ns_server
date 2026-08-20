@@ -1861,9 +1861,9 @@ can_listen(Host) ->
     end.
 
 init_xdcr_replications() ->
-    lists:foldl(
-      fun ({K, V}, Acc) ->
-          add_xdcr_replication(K, ns_config:strip_metadata(V), Acc)
+    maps:fold(
+      fun (K, V, Acc) ->
+              add_xdcr_replication(K, ns_config:strip_metadata(V), Acc)
       end, #{}, metakv:iterate_matching(<<"/replicationSpec/">>)).
 
 add_xdcr_replication(_K, ?DELETED_MARKER, Acc) -> Acc;

@@ -273,6 +273,18 @@ meck_setup_getters() ->
     meck:expect(ns_config, get_kv_list,
                 fun () ->
                         get_ets_snapshot()
+                end),
+    meck:expect(ns_config, kvlist_to_dynamic, 1, meck:passthrough()),
+    meck:expect(ns_config, get_kv_map,
+                fun() ->
+                        ns_config:kvlist_to_dynamic(get_ets_snapshot())
+                end),
+    meck:expect(ns_config, get_kv_map,
+                fun(Timeout) when is_integer(Timeout)
+                                  orelse Timeout =:= infinity ->
+                        ns_config:kvlist_to_dynamic(get_ets_snapshot());
+                   (Config) when is_list(Config) ->
+                        ns_config:kvlist_to_dynamic(Config)
                 end).
 
 meck_setup_setters() ->
