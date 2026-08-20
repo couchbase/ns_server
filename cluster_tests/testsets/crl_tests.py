@@ -2127,9 +2127,13 @@ def _tls_context(version):
     return ctx
 
 
-def tls_handshake(node, version, cert_path=None, timeout=15):
-    """Drive one TLS handshake against the node's HTTPS REST port, pinned to a
+def tls_handshake(node, version, cert_path=None, timeout=15, port=None,
+                  path='/whoami'):
+    """Drive one TLS handshake against a TLS port of the node, pinned to a
     single TLS version.  Optionally present a client certificate.
+
+    Defaults to the HTTPS REST port; pass port/path to probe a service listener
+    instead (see service_tls_handshake).
 
     Returns None if the server accepted the connection, otherwise the exception
     its alert produced.
@@ -2140,17 +2144,19 @@ def tls_handshake(node, version, cert_path=None, timeout=15):
     wrap_socket() returns before the server has validated it and the rejection
     only surfaces on the first read - hence the send/recv.
     """
+    if port is None:
+        port = node.tls_service_port()
     ctx = _tls_context(version)
     ctx.verify_mode = ssl.CERT_NONE
     if cert_path is not None:
         ctx.load_cert_chain(certfile=cert_path)
     try:
-        with socket.create_connection((node.host, node.tls_service_port()),
+        with socket.create_connection((node.host, port),
                                       timeout=timeout) as sock:
             with ctx.wrap_socket(sock) as tls:
                 tls.settimeout(timeout)
-                tls.sendall(b'GET /whoami HTTP/1.1\r\nHost: localhost\r\n'
-                            b'Connection: close\r\n\r\n')
+                tls.sendall(f'GET {path} HTTP/1.1\r\nHost: localhost\r\n'
+                            f'Connection: close\r\n\r\n'.encode())
                 if tls.recv(1) == b'':
                     return ssl.SSLError('server closed without responding')
         return None
@@ -4592,3 +4598,339 @@ class CRLBadCRLTests(testlib.BaseTestSet):
             for ca_id in ca_ids:
                 testlib.delete(
                     node, f'/pools/default/trustedCAs/{ca_id}')
+
+
+# =============================================================================
+# Go service TLS listeners (clientAuth scope)
+# =============================================================================
+
+# Services installing the clientAuth-scoped CRL callback on their client-facing
+# TLS listener.  All four are one-line wrappers around cbauth.CRLsValidate, so
+# testing them together makes a regression in that shared path visible whichever
+# service happens to be exercised.
+_CRL_SERVICES = (testlib.Service.QUERY, testlib.Service.INDEX,
+                 testlib.Service.FTS, testlib.Service.EVENTING)
+
+# Alerts that count as a CRL rejection.  Go answers an error from
+# VerifyPeerCertificate - where the CRL check lives - with bad_certificate.
+# unknown_ca is deliberately excluded so a test whose CA never got trusted fails
+# instead of passing for the wrong reason.  The names differ between the OpenSSL
+# and LibreSSL builds python may be linked against.
+_CRL_REJECT_ALERTS = ('BAD_CERTIFICATE', 'CERTIFICATE_REVOKED')
+
+# A missing cert under mandatory client cert auth, refused by crypto/tls itself:
+# bad_certificate on TLS 1.2, certificate_required on TLS 1.3.
+_NO_CERT_REJECT_ALERTS = ('BAD_CERTIFICATE', 'CERTIFICATE_REQUIRED',
+                          'certificate required', 'HANDSHAKE_FAILURE')
+
+# The revrpc label each service registers with (see
+# menelaus_cbauth:service_to_label/1).
+_CBAUTH_LABELS = {
+    testlib.Service.QUERY: 'cbq-engine',
+    testlib.Service.INDEX: 'index',
+    testlib.Service.FTS: 'fts',
+    testlib.Service.EVENTING: 'eventing',
+}
+
+
+def service_tls_handshake(node, service, version=None, cert_path=None,
+                          timeout=15):
+    """One TLS handshake against a service's client-facing TLS port.
+
+    Same contract as tls_handshake/2.  GET / is used because all four services
+    answer it with a 404 without credentials, and some reply is needed: under
+    TLS 1.3 the client cert is validated only after wrap_socket() returns.
+    """
+    if version is None:
+        version = _TLS_VERSIONS[0]
+    return tls_handshake(node, version, cert_path=cert_path, timeout=timeout,
+                         port=node.tls_service_port(service), path='/')
+
+
+def _wait_service_tls_listener(node, service, timeout_s=120):
+    """Wait until a service has opened its client-facing TLS listener.
+
+    A Go service creates that listener only once cbauth has handed it a TLS
+    config, which can be well after ns_server calls the node healthy.  Tests
+    that break cbauth on purpose need the listener to be there already: while
+    the db is stale the service cannot create it, so the handshake would get
+    ECONNREFUSED instead of the verdict under test.
+    """
+    port = node.tls_service_port(service)
+
+    def check():
+        return not isinstance(service_tls_handshake(node, service),
+                              (ConnectionRefusedError, ConnectionResetError))
+
+    testlib.poll_for_condition(
+        check, sleep_time=0.5, timeout=timeout_s,
+        msg=f'{service.value}: TLS listener on port {port} to come up')
+
+
+def _wait_service_verdict(node, service, cert_path, expect_rejected, name,
+                          timeout_s=60, alerts=_CRL_REJECT_ALERTS):
+    """Poll a service's TLS port until it reaches the expected verdict.
+
+    A policy change reaches a service asynchronously over cbauth revrpc and has
+    no externally visible barrier, so the handshake outcome is the barrier.  A
+    rejection only counts when its alert is one of alerts.
+    """
+    last = []
+
+    def check():
+        err = service_tls_handshake(node, service, cert_path=cert_path)
+        last.clear()
+        last.append(err)
+        if expect_rejected:
+            return err is not None and any(a in str(err) for a in alerts)
+        return err is None
+
+    try:
+        testlib.poll_for_condition(check, sleep_time=0.5, timeout=timeout_s,
+                                   msg=f'{service.value}: {name}')
+    except Exception:
+        verdict = 'rejected' if expect_rejected else 'accepted'
+        raise AssertionError(
+            f'{service.value} ({name}): expected the handshake to be '
+            f'{verdict}, last result was {last[0]!r}')
+
+
+_SUSPEND_CBAUTH_PUSH = """
+case erlang:whereis(crl_test_cbauth_suspender) of
+    undefined ->
+        Pid = erlang:spawn(
+                fun () ->
+                    erlang:suspend_process(erlang:whereis(menelaus_cbauth)),
+                    receive resume -> ok after 120000 -> ok end
+                end),
+        true = erlang:register(crl_test_cbauth_suspender, Pid),
+        suspended;
+    _ ->
+        already_suspended
+end.
+"""
+
+_RESUME_CBAUTH_PUSH = """
+case erlang:whereis(crl_test_cbauth_suspender) of
+    undefined -> not_suspended;
+    Pid -> Pid ! resume, resumed
+end.
+"""
+
+
+def _suspend_cbauth_push(node):
+    """Stop ns_server handing a fresh db to a reconnecting cbauth client.
+
+    The suspending process has to outlive the diag/eval that starts it, since
+    erlang:suspend_process/1 is undone when its caller exits; it gives up after
+    two minutes so a dying test cannot wedge the node.
+    """
+    testlib.diag_eval(node, _SUSPEND_CBAUTH_PUSH)
+
+
+def _resume_cbauth_push(node):
+    testlib.diag_eval(node, _RESUME_CBAUTH_PUSH)
+
+
+def _kill_cbauth_revrpc(node, service):
+    """Drop a service's cbauth revrpc connection, which makes cbauth reset its
+    db to nil (getCbauthErrorPolicy in cbauth/default.go)."""
+    label = _CBAUTH_LABELS[service]
+    testlib.diag_eval(
+        node,
+        f"exit(erlang:whereis('json_rpc_connection-{label}-cbauth'), kill).")
+
+
+class CRLServiceClientAuthTests(testlib.BaseTestSet):
+    """clientAuth-scope CRL enforcement on the Go services' TLS listeners.
+
+    CRLTests covers ns_server's own listener, which enforces CRLs in an Erlang
+    verify_fun.  The services go through a wholly separate path: ns_server
+    pushes the policy over cbauth revrpc, the service installs
+    cbauth.CRLsValidate as its tls.Config.VerifyPeerCertificate, and that calls
+    back into /_cbauth/crlsValidate for a verdict.
+
+    Client cert auth stays optional ("enable") throughout - the interesting
+    mode, where a client presenting no cert must still reach password auth.
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(
+            edition='Enterprise', num_nodes=1,
+            include_services=list(_CRL_SERVICES))
+
+    def setup(self):
+        self.node = self.cluster.connected_nodes[0]
+        self.crl_dir = tempfile.mkdtemp()
+        self.ca_ids = []
+        self._exit_stack = contextlib.ExitStack()
+
+        root_ca_pem, root_ca_key_pem = generate_root_ca()
+        # Two intermediates, differing only in whether a CRL for them is
+        # published: certs from the second can only be "status undetermined",
+        # which is what separates Permissive from Require.
+        self.crl_ca_pem, crl_ca_key_pem = generate_intermediate_ca(
+            root_ca_pem, root_ca_key_pem, cn='CRL Service Tests CA')
+        nocrl_ca_pem, nocrl_ca_key_pem = generate_intermediate_ca(
+            root_ca_pem, root_ca_key_pem, cn='CRL Service Tests No-CRL CA')
+
+        valid_pem, valid_key = generate_client_cert_cn(
+            self.crl_ca_pem, crl_ca_key_pem, testlib.random_str(8))
+        revoked_pem, revoked_key = generate_client_cert_cn(
+            self.crl_ca_pem, crl_ca_key_pem, testlib.random_str(8))
+        undet_pem, undet_key = generate_client_cert_cn(
+            nocrl_ca_pem, nocrl_ca_key_pem, testlib.random_str(8))
+
+        self.ca_ids = load_multiple_cas(
+            self.node, [root_ca_pem, self.crl_ca_pem, nocrl_ca_pem])
+
+        self.valid_cert = self._exit_stack.enter_context(
+            client_cert_file(valid_pem, self.crl_ca_pem, valid_key))
+        self.revoked_cert = self._exit_stack.enter_context(
+            client_cert_file(revoked_pem, self.crl_ca_pem, revoked_key))
+        self.undetermined_cert = self._exit_stack.enter_context(
+            client_cert_file(undet_pem, nocrl_ca_pem, undet_key))
+
+        _setup_full_crl(self.crl_dir, self.crl_ca_pem, crl_ca_key_pem,
+                        [revoked_pem])
+        set_crl_settings(self.cluster, directory=self.crl_dir,
+                         poll_interval_ms=5000)
+        testlib.toggle_client_cert_auth(
+            self.node, enabled=True, mandatory=False,
+            prefixes=[{'delimiter': '', 'path': 'subject.cn', 'prefix': ''}])
+        # Node health says nothing about the services' TLS listeners, and
+        # cbauth_revrpc_blip_test cannot let one appear once it has started.
+        for service in _CRL_SERVICES:
+            _wait_service_tls_listener(self.node, service)
+
+    def teardown(self):
+        _resume_cbauth_push(self.node)
+        set_crl_settings(self.cluster,
+                         policy_per_scope={'clientAuth': 'Disabled',
+                                           'nodeToNode': 'Disabled'},
+                         directory='', urls=[])
+        testlib.toggle_client_cert_auth(self.node, enabled=False)
+        for ca_id in self.ca_ids:
+            testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
+        self.ca_ids = []
+        self._exit_stack.close()
+        shutil.rmtree(self.crl_dir, ignore_errors=True)
+
+    def _set_client_auth_policy(self, policy):
+        """Set the clientAuth policy and load the CRL.
+
+        The policy is hashed into the CRL version, so a verdict cached under the
+        previous policy cannot be served here.
+        """
+        set_crl_settings(self.cluster,
+                         policy_per_scope={'clientAuth': policy,
+                                           'nodeToNode': 'Disabled'},
+                         directory=self.crl_dir)
+        _wait_crl_policy(self.node, 'client_auth', policy.lower())
+        assert_reload_crl(self.node)
+
+    def disabled_policy_test(self):
+        """Disabled: nothing is checked, so even a revoked cert gets in."""
+        self._set_client_auth_policy('Disabled')
+        for service in _CRL_SERVICES:
+            _wait_service_verdict(self.node, service, self.revoked_cert,
+                                  False, 'revoked cert under Disabled')
+            _wait_service_verdict(self.node, service, self.undetermined_cert,
+                                  False, 'undetermined cert under Disabled')
+            _wait_service_verdict(self.node, service, None,
+                                  False, 'no client cert under Disabled')
+
+    def permissive_policy_test(self):
+        """Permissive: a revoked cert is refused, an undetermined one is not."""
+        self._set_client_auth_policy('Permissive')
+        for service in _CRL_SERVICES:
+            _wait_service_verdict(self.node, service, self.revoked_cert,
+                                  True, 'revoked cert under Permissive')
+            _wait_service_verdict(self.node, service, self.valid_cert,
+                                  False, 'valid cert under Permissive')
+            _wait_service_verdict(self.node, service, self.undetermined_cert,
+                                  False,
+                                  'undetermined cert under Permissive')
+            _wait_service_verdict(self.node, service, None,
+                                  False, 'no client cert under Permissive')
+
+    def require_policy_test(self):
+        """Require: a cert is refused unless its status could be established."""
+        self._set_client_auth_policy('Require')
+        for service in _CRL_SERVICES:
+            _wait_service_verdict(self.node, service, self.revoked_cert,
+                                  True, 'revoked cert under Require')
+            _wait_service_verdict(self.node, service, self.valid_cert,
+                                  False, 'valid cert under Require')
+            _wait_service_verdict(self.node, service, self.undetermined_cert,
+                                  True, 'undetermined cert under Require')
+            _wait_service_verdict(self.node, service, None,
+                                  False, 'no client cert under Require')
+
+    def cbauth_revrpc_blip_test(self):
+        """A client presenting no certificate must survive a cbauth blip.
+
+        cbauth resets its db to nil on any revrpc error, and while it
+        is nil CRLsValidate cannot resolve a policy.  crypto/tls calls
+        VerifyPeerCertificate even for a peer that presented nothing, and any
+        error there is a fatal bad_certificate alert - so an optional-mTLS
+        client authenticating with a password used to lose its connection to a
+        revocation check that had nothing to check.
+
+        Refusing a cert-bearing peer here is correct: it has a revocation status
+        we cannot establish.  An empty chain has nothing to say about it.
+        """
+        self._set_client_auth_policy('Permissive')
+        for service in _CRL_SERVICES:
+            with self._stale_cbauth_db(service):
+                # Confirms the db really is stale; without it this test could
+                # pass while doing nothing.
+                _wait_service_verdict(
+                    self.node, service, self.valid_cert, True,
+                    'cert-bearing peer while the cbauth db is stale')
+                # Nothing to wait for, so keep the poll short.
+                _wait_service_verdict(
+                    self.node, service, None, False,
+                    'no client cert while the cbauth db is stale',
+                    timeout_s=15)
+            _wait_service_verdict(self.node, service, self.valid_cert, False,
+                                  'valid cert once cbauth recovered')
+
+        # Mandatory client cert auth: no cert is a hard failure, stale or not.
+        # This is what stops the fix above from becoming "an empty chain always
+        # passes" - crypto/tls has to keep refusing here on its own.  Set before
+        # the blip, since a suspended pusher cannot deliver it.
+        testlib.toggle_client_cert_auth(
+            self.node, enabled=True, mandatory=True,
+            prefixes=[{'delimiter': '', 'path': 'subject.cn', 'prefix': ''}])
+        try:
+            for service in _CRL_SERVICES:
+                _wait_service_verdict(
+                    self.node, service, None, True,
+                    'no client cert under mandatory client cert auth',
+                    alerts=_NO_CERT_REJECT_ALERTS)
+                with self._stale_cbauth_db(service):
+                    _wait_service_verdict(
+                        self.node, service, None, True,
+                        'no client cert under mandatory, cbauth db stale',
+                        alerts=_NO_CERT_REJECT_ALERTS)
+        finally:
+            testlib.toggle_client_cert_auth(
+                self.node, enabled=True, mandatory=False,
+                prefixes=[{'delimiter': '', 'path': 'subject.cn',
+                           'prefix': ''}])
+
+    @contextlib.contextmanager
+    def _stale_cbauth_db(self, service):
+        """Hold a service's cbauth db in the nil (stale) state.
+
+        Suspending the pusher first makes the window last as long as the block,
+        instead of the second or so a bare kill would give.
+        """
+        _suspend_cbauth_push(self.node)
+        try:
+            _kill_cbauth_revrpc(self.node, service)
+            yield
+        finally:
+            _resume_cbauth_push(self.node)
