@@ -470,7 +470,7 @@ has_changed(BucketName, Name, Value, Dict) ->
             true;
         error ->
             %% KV doesn't know about the parameters, setting it would result in
-            %% some error. This is valid in Totoro/8.1, buckets may have config
+            %% some error. This is valid in Totoro/8.5, buckets may have config
             %% for other services such as continuous backup.
             false
     end.

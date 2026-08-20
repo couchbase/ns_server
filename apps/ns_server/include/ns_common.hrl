@@ -270,7 +270,7 @@
 -define(VERSION_76, [7, 6]).
 -define(VERSION_79, [7, 9]).
 -define(VERSION_80, [8, 0]).
--define(VERSION_TOTORO, [8, 1]).
+-define(VERSION_TOTORO, [8, 5]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_72).
 

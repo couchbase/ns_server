@@ -1140,7 +1140,7 @@ strongly_lower_priority_services_t() ->
                                                      {Version76, NameA, [kv]},
                                                      ?DEFAULT_SERVICE_WEIGHTS)).
 
-%% Tests for the post-8.1 candidate priority algorithm.
+%% Tests for the post-8.5 candidate priority algorithm.
 %% Note, the priority algorithm does not have a cluster compat mode check as
 %% it is designed to be backwards compatible.
 higher_priority_candidate_node_t() ->

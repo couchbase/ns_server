@@ -122,7 +122,7 @@ sequenceDiagram
 
 If you are implementing credential consumption in a new service:
 
-1. **Ensure prerequisites are met** — the credential store requires all nodes at Totoro (8.1)+, Enterprise edition, config encryption enabled, **and** n2n encryption enabled on all nodes before any credential operation succeeds, including consume.
+1. **Ensure prerequisites are met** — the credential store requires all nodes at Totoro (8.5)+, Enterprise edition, config encryption enabled, **and** n2n encryption enabled on all nodes before any credential operation succeeds, including consume.
    Without these, ns_server rejects the request.
    See [architecture.md — Storage](architecture.md#storage) for details and how to set overrides for the encryption requirements during development.
 

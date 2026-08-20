@@ -531,8 +531,8 @@ upgrade_config(Config) ->
                 %% test will still pass, despite the fact that offline upgrades
                 %% from the version immediately prior to CurrentVersion would
                 %% not actually be allowed.
-                [{set, {node, node(), config_version}, {8,1}} |
-                 upgrade_config_from_80_to_81()];
+                [{set, {node, node(), config_version}, {8,5}} |
+                 upgrade_config_from_80_to_85()];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),
@@ -592,7 +592,7 @@ do_upgrade_config_from_76_to_79(_Config, DefaultConfig) ->
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 
-upgrade_config_from_80_to_81() ->
+upgrade_config_from_80_to_85() ->
     DefaultConfig = default(?VERSION_TOTORO),
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].

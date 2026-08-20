@@ -14,7 +14,7 @@
     "cm_alerts_triggered_total": {
         "type": "counter",
         "help": "Number of times an alert has been triggered",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "committed",
         "labels": [
             {
@@ -64,7 +64,7 @@
     "cm_bucket_autoreprovision_total": {
         "type": "counter",
         "help": "Number of times buckets have been auto-reprovisioned. Only reported by the orchestrator node.",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "committed"
     },
     "cm_build_streaming_info_total": {
@@ -75,25 +75,25 @@
     "cm_cbauth_crl_cache_current_items": {
         "type": "gauge",
         "help": "Current number of items available in cbauth CRL status cache",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal"
     },
     "cm_cbauth_crl_cache_hit_total": {
         "type": "counter",
         "help": "Total number of cbauth CRL status cache hits",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal"
     },
     "cm_cbauth_crl_cache_max_items": {
         "type": "gauge",
         "help": "Maximum capacity of cbauth CRL status cache",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal"
     },
     "cm_cbauth_crl_cache_miss_total": {
         "type": "counter",
         "help": "Total number of cbauth CRL status cache misses",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal"
     },
     "cm_chronicle_append_batch_size_1m_max": {
@@ -143,7 +143,7 @@
     "cm_crl_status_checks_total": {
         "type": "counter",
         "help": "Total number of certificate revocation status checks performed by the Cluster Manager only",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "committed",
         "labels": [
             {
@@ -183,7 +183,7 @@
     "cm_encr_at_rest_deks_imported_total": {
         "type": "counter",
         "help": "Total number of DEK imported",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -195,7 +195,7 @@
     "cm_encr_at_rest_deks_import_failures_total": {
         "type": "counter",
         "help": "Total number of DEK import failures",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -207,7 +207,7 @@
     "cm_encr_at_rest_deks_import_skipped_total": {
         "type": "counter",
         "help": "Total number of DEK import skipped (because it already exists)",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -255,7 +255,7 @@
     "cm_encr_at_rest_retire_key_events_total": {
         "type": "counter",
         "help": "Total number of successful key retirement events",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -267,7 +267,7 @@
     "cm_encr_at_rest_retire_key_failures_total": {
         "type": "counter",
         "help": "Total number of key retirement failures",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "stability": "internal",
         "labels": [
             {
@@ -653,7 +653,7 @@
     "cm_node_reachable_total": {
         "type": "counter",
         "help": "Total number of times the node identified by the node label was reported as reachable (came up). This complements cm_node_unreachable_total and can help identify intermittent network connectivity issues that may not trigger auto-failover.",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "labels": [
             {
                 "name": "node",
@@ -1575,7 +1575,7 @@
     "cm_fusion_state_timestamp_seconds": {
         "type": "gauge",
         "help": "Timestamp when fusion entered the state",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "labels": [
             {
                 "name": "state",
@@ -1586,7 +1586,7 @@
     "cm_fusion_bucket_state_timestamp_seconds": {
         "type": "gauge",
         "help": "Timestamp when bucket entered the fusion state",
-        "added": "8.1.0",
+        "added": "8.5.0",
         "labels": [
             {
                 "name": "bucket",

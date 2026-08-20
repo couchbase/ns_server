@@ -265,7 +265,7 @@ class UsersBackupTests(testlib.BaseTestSet):
             #       data_backup + local_admin_security =>
             #           data_backup + Local User Admin + Security Admin
             #
-            # In addition, the 8.1 release made Web Console Access (ui_access)
+            # In addition, the 8.5 release made Web Console Access (ui_access)
             # a separate role.
 
             verify_roles(self.cluster, 'localsecurityadmin76',
@@ -574,7 +574,7 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert (res["errors"]["backup"]["compat_version"] ==
                 "Cannot restore a backup with cluster version '12.4' "
                 "as it is greater than what is supported (cluster compat "
-                "version is '8.1').")
+                "version is '8.5').")
 
         # Set compat version to something earlier than is supported. This
         # would only occur if someone manually edited the backup results.

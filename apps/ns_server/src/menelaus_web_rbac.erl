@@ -1262,7 +1262,7 @@ handle_get_service_roles(ServiceName, Req) ->
             menelaus_util:reply_global_error(
               Req,
               <<"Service role management requires cluster upgrade to version "
-                "8.1 or later">>);
+                "8.5 or later">>);
         true ->
             do_get_service_roles(ServiceName, Req)
     end.
@@ -1287,7 +1287,7 @@ handle_put_service_roles(ServiceName, Req) ->
             menelaus_util:reply_global_error(
               Req,
               <<"Service role management requires cluster upgrade to version "
-                "8.1 or later">>);
+                "8.5 or later">>);
         true ->
             do_put_service_roles(ServiceName, Req)
     end.
@@ -1470,7 +1470,7 @@ handle_delete_service_roles(ServiceName, Req) ->
             menelaus_util:reply_global_error(
               Req,
               <<"Service role management requires cluster upgrade to version "
-                "8.1 or later">>);
+                "8.5 or later">>);
         true ->
             do_delete_service_roles(ServiceName, Req)
     end.

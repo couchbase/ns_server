@@ -16,7 +16,7 @@ Once the config is loaded into memory they are held unencrypted.
 
 **Prerequisites for credential operations.** Every credential store operation — create, read, list, update, delete, **and** consume — calls `ensure_prerequisites/1`, which requires:
 
-1. **All nodes at Totoro (8.1) or later** — the credential store is a Totoro feature; mixed-version clusters with pre-8.1 nodes cannot use it.
+1. **All nodes at Totoro (8.5) or later** — the credential store is a Totoro feature; mixed-version clusters with pre-8.5 nodes cannot use it.
 
 2. **Enterprise edition** — the credential store is an Enterprise-only feature.
 
@@ -105,7 +105,7 @@ Administrative duties are split so that no single non-Full-Admin role can both p
 | Assign roles to service identities | **Full Admin only** |
 
 The separation of User Admin and Security Admin dates back to Morpheus (8.0).
-New in Totoro (8.1):
+New in Totoro (8.5):
 - The **credential store** itself (CRUD, consume, guardrails).
 - The **`service_admin`** internal role, which removes credential access from service identities so they must be granted `credential_consumer` explicitly.
 - The **`credential_consumer`** role and the service roles endpoint (`/settings/rbac/services/:name/roles`).
