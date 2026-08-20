@@ -104,6 +104,39 @@ class CertLoadTests(testlib.BaseTestSet):
         self.generate_and_load_cert('ec', is_client=True, pkcs8=True,
                                     passphrase=testlib.random_str(8))
 
+    def unencrypted_key_with_passphrase_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_node_certs(node.addr(), self.ca_pem, self.ca_key)
+        load_cert(node, cert, key, passphrase=testlib.random_str(8),
+                  is_client=False,
+                  expected_error='private key is not encrypted')
+
+    def client_cert_unencrypted_key_with_passphrase_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_internal_client_cert(self.ca_pem, self.ca_key,
+                                                  'test_name')
+        load_cert(node, cert, key, passphrase=testlib.random_str(8),
+                  is_client=True,
+                  expected_error='private key is not encrypted')
+
+    # An empty passphrase is a passphrase like any other, it is stored and
+    # passed to services, so it must be rejected for an unencrypted key too
+    def unencrypted_key_with_empty_passphrase_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_node_certs(node.addr(), self.ca_pem, self.ca_key)
+        load_cert(node, cert, key, passphrase='', is_client=False,
+                  expected_error='private key is not encrypted')
+
+    # pkcs8 keys can be encrypted with an empty passphrase, such a key needs
+    # that passphrase to be loaded, and must not be mistaken for a plain one
+    def empty_passphrase_encrypted_key_test(self):
+        node = self.cluster.connected_nodes[0]
+        cert, key = generate_node_certs(node.addr(), self.ca_pem, self.ca_key)
+        key = to_pkcs8(key, '')
+        load_cert(node, cert, key, passphrase=None, is_client=False,
+                  expected_error='Check password')
+        load_cert(node, cert, key, passphrase='', is_client=False)
+
     def client_pkcs12_with_rsa_key_test(self):
         self.generate_and_load_pkcs12_cert('rsa', is_client=True)
 

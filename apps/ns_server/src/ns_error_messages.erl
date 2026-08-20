@@ -365,6 +365,9 @@ reload_node_certificate_error({test_server_error, Reason}) ->
                                    [{chars_limit, 80}]));
 reload_node_certificate_error(could_not_decrypt) ->
     <<"Failed to decrypt provided private key. Check password">>;
+reload_node_certificate_error(pkey_not_encrypted) ->
+    <<"Private key passphrase is provided, but the private key is not "
+      "encrypted">>;
 reload_node_certificate_error({script_execution_failed,
                                {status, Status, Output}}) ->
     iolist_to_binary(io_lib:format("Script exited with status ~p:~n~s",

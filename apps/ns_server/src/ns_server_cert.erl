@@ -1128,6 +1128,9 @@ set_certificate_chain(Type, Chain, PKey, PassphraseSettings, ForceReload) ->
                                       LeafCert, PKey, PassFun)
                                 end,
                                 fun () ->
+                                    validate_pkey_encryption(PKey, PassFun)
+                                end,
+                                fun () ->
                                     validate_otp_certs(
                                       Type, ChainPem, PKey, PassFun)
                                 end]),
@@ -1156,6 +1159,29 @@ set_certificate_chain(Type, Chain, PKey, PassphraseSettings, ForceReload) ->
             end;
         {error, Reason} ->
             {error, Reason}
+    end.
+
+%% A passphrase given for an unencrypted key is never applied: the key is
+%% stored as is (see ns_ssl_services_setup:save_certs/6), while the passphrase
+%% is still handed to everything that uses the key, and tools like cbimport
+%% reject a password they can't use. Erlang ssl just ignores it, so such a
+%% combination would stay unnoticed until one of those tools runs. Only new
+%% uploads are rejected, keys that are already in use are left as they are.
+validate_pkey_encryption(PKeyPem, PassFun) ->
+    case PassFun() of
+        undefined ->
+            ok;
+        _ ->
+            %% The key is known to be valid here, it is validated by
+            %% validate_cert_and_pkey/3 before this check
+            case public_key:pem_decode(PKeyPem) of
+                [{_, _, not_encrypted}] ->
+                    ?log_error("Passphrase is provided for a private key "
+                               "that is not encrypted"),
+                    {error, pkey_not_encrypted};
+                _ ->
+                    ok
+            end
     end.
 
 validate_otp_certs(client_cert, ChainPem, PKeyPem, PassphraseFun) ->
