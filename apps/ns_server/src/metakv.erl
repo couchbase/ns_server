@@ -19,7 +19,7 @@
          delete_matching/1,
          ns_config_get/2,
          mutate/2, mutate/3,
-         iterate_matching/1, iterate_matching/2, iterate_matching/3,
+         iterate_matching/1, iterate_matching/3,
          check_continuous_allowed/1,
          convert_vc_to_opaque_hash/1]).
 
@@ -73,11 +73,6 @@ iterate_matching(KeyPrefix) ->
         ns_config ->
             ns_config_iterate_matching(KeyPrefix)
     end.
-
-%% User has passed the full KV list, we need to return KVs that match the
-%% prefix.
-iterate_matching(KeyPrefix, KVList) ->
-    ns_config_matching_kvs(KeyPrefix, KVList).
 
 %% Read keys from appropriate store and run the Callback function on
 %% KVs that match the prefix
