@@ -141,12 +141,13 @@ cleanup_fusion_uploaders(Bucket, BucketConfig, Servers) ->
                         _ ->
                             ok
                     end,
-                    cleanup_fusion_uploaders(Uploaders, Bucket, BucketConfig,
-                                             Servers, Map)
+                    cleanup_fusion_uploaders(Uploaders, Bucket, Servers, Map)
             end
     end.
 
-cleanup_fusion_uploaders(Uploaders, Bucket, BucketConfig, Servers, Map) ->
+cleanup_fusion_uploaders(Uploaders, Bucket, Servers, Map) ->
+    %% re-fetch bucket config since the caller could have changed it
+    {ok, BucketConfig} = ns_bucket:get_bucket(Bucket),
     EnumeratedUploaders = lists:zip3(lists:seq(0, length(Uploaders) - 1),
                                      Uploaders, Map),
     FusionState = ns_bucket:get_fusion_state(BucketConfig),
