@@ -745,6 +745,20 @@ class FusionTests(testlib.BaseTestSet):
         assert snapshot_uuid["bucket_uuid"] == bucket_uuid
         assert snapshot_uuid["num_vbuckets"] == 16
 
+        # Aborting the prepared rebalance drops the plan, so the plan uuid
+        # stored alongside the snapshots stops validating. The janitor should
+        # then release the snapshots and remove the stored entries.
+        testlib.post_succ(
+            self.cluster,
+            f"/controller/fusion/abortPreparedRebalance?planUUID={plan_uuid}")
+
+        def snapshots_deleted():
+            return self.get_snapshot_uuids() == []
+
+        testlib.poll_for_condition(
+            snapshots_deleted, 1, attempts=60,
+            msg="Wait for stored snapshot entries to be deleted")
+
     def swap_rebalance_test(self):
         self.init_fusion()
 

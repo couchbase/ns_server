@@ -1230,7 +1230,7 @@ delete_snapshots({PlanUUID, BucketUUID, NumVBuckets} = Entry) ->
       failed_to_delete_snapshots).
 
 remove_snapshot_entry(Entry) ->
-    chronicle_kv:update(kv, snapshots_key(), lists:delete({Entry}, _)).
+    chronicle_kv:update(kv, snapshots_key(), lists:delete(Entry, _)).
 
 cleanup_snapshots() ->
     ToDelete =
