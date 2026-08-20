@@ -181,6 +181,8 @@ class NodeAdditionWithCertsBase:
         self.new_node_cert_from_int, self.new_node_key_from_int = \
             generate_node_certs(self.new_node().addr(afamily=afamily),
                                 self.new_node_int, self.new_node_int_key)
+        self.new_node_key_from_int = to_pkcs8(self.new_node_key_from_int,
+                                              self.new_node_passphrase)
 
         if self.int_cert_in_chain:
             self.new_node_chain = (f"{self.new_node_cert_from_int}\n"
@@ -202,6 +204,9 @@ class NodeAdditionWithCertsBase:
             generate_internal_client_cert(self.new_node_int,
                                           self.new_node_int_key,
                                           'test_client_name3')
+        self.new_node_client_key_from_int = \
+            to_pkcs8(self.new_node_client_key_from_int,
+                     self.new_node_client_passphrase)
 
         if self.int_cert_in_chain:
             self.new_node_ca = self.new_node_root_ca
