@@ -234,8 +234,14 @@ perform_loading_task(TaskId, Sample, Bucket, Quota, CacheDir, BucketState) ->
                 [{"CB_CLIENT_CERT",
                   ns_ssl_services_setup:chain_file_path(client_cert)},
                  {"CB_CLIENT_KEY",
-                  ns_ssl_services_setup:pkey_file_path(client_cert)},
-                 {"CB_CLIENT_KEY_PASSWORD", ClientPassFun()}];
+                  ns_ssl_services_setup:pkey_file_path(client_cert)}] ++
+                %% Note that an unset passphrase must not be passed at all:
+                %% cbimport fails if it gets a password it can't use, and
+                %% open_port doesn't accept anything but strings anyway
+                case ClientPassFun() of
+                    undefined -> [];
+                    Pass -> [{"CB_CLIENT_KEY_PASSWORD", Pass}]
+                end;
             _ ->
                 []
         end,

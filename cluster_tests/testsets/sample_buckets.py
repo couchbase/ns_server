@@ -374,3 +374,31 @@ class SampleBucketTLSTestSet(testlib.BaseTestSet, SampleBucketTasksBase):
     # the specified sample
     def post_without_existing_bucket_test(self):
         self.load_and_assert_sample_bucket(self.cluster, "travel-sample")
+
+
+# Same as above, but with pkey auto encryption disabled, so the client
+# certificate key is stored unencrypted and no passphrase is set at all. The
+# sample loader must not pass a passphrase to cbimport in that case.
+class SampleBucketTLSNoPKeyPassTestSet(SampleBucketTLSTestSet):
+
+    def setup(self):
+        testlib.post_succ(self.cluster, '/settings/security',
+                          data={'autoEncryptPKeys': 'false'})
+        self.regenerate_certs()
+        r = testlib.post_succ(
+            self.cluster, '/diag/eval',
+            data='(ns_secrets:get_pkey_pass(client_cert))().')
+        assert r.text.strip() == 'undefined', \
+            f'client pkey passphrase is set: {r.text}'
+        super().setup()
+
+    def teardown(self):
+        testlib.post_succ(self.cluster, '/settings/security',
+                          data={'autoEncryptPKeys': 'true'})
+        self.regenerate_certs()
+        super().teardown()
+
+    def regenerate_certs(self):
+        testlib.post_succ(self.cluster, '/controller/regenerateCertificate',
+                          params={'forceResetCACertificate': 'true',
+                                  'dropUploadedCertificates': 'true'})
