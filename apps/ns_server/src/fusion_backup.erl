@@ -40,6 +40,7 @@
 -type restore_error() ::
         wait_for_bucket |
         {failed_nodes, [node()]} |
+        {janitor_failed, term()} |
         ns_orchestrator:bucket_create_error().
 
 -type restore_bucket_error() ::
@@ -220,6 +221,13 @@ restore_bucket(Servers, Volumes, #{name := BucketName, map := Map}) ->
         NodesVBMap = maps:from_list(
                        dict:to_list(mb_map:map_to_vbuckets_dict(Map))),
 
+        %% The bucket has just been created, so it might not be up yet on
+        %% all the nodes.
+        ?log_debug("Wait for bucket ~p to be ready on ~p",
+                   [BucketName, Servers]),
+        true ?= ns_rebalancer:wait_for_bucket(BucketName, Servers) =:= ok orelse
+            {error, wait_for_bucket},
+
         ?log_info("Mount volumes ~p for bucket ~p. NodesVBMap: ~p",
                   [Volumes, BucketName, NodesVBMap]),
         ok ?= janitor_agent:mount_volumes(BucketName, Volumes, NodesVBMap,
@@ -231,17 +239,23 @@ restore_bucket(Servers, Volumes, #{name := BucketName, map := Map}) ->
         ok ?= janitor_agent:apply_new_bucket_config(
                 BucketName, Servers, BucketConfig, [{use_snapshot, fusion}],
                 undefined_timeout),
-        ok = ns_bucket:update_bucket_config(
-               BucketName, lists:keydelete(fusion_restore_in_progress, 1, _)),
 
-        ?log_debug("Wait for bucket ~p to be available on ~p",
-                   [BucketName, Servers]),
-        true ?= ns_rebalancer:wait_for_bucket(BucketName, Servers) =:= ok orelse
-            {error, wait_for_bucket}
+        ok = ns_bucket:update_bucket_config(
+               BucketName, lists:keydelete(fusion_restore_in_progress, 1, _))
     end.
 
 restore_in_progress(BucketConfig) ->
     proplists:get_bool(fusion_restore_in_progress, BucketConfig).
+
+run_janitor([]) ->
+    [];
+run_janitor(BucketNames) ->
+    ?log_debug("Run janitor for restored buckets ~p", [BucketNames]),
+    [{BucketName, {janitor_failed, Error}} ||
+        {BucketName, Error} <- ns_janitor:cleanup_buckets(
+                                 [{BucketName, []} ||
+                                     BucketName <- BucketNames], []),
+        Error =/= ok].
 
 -spec restore(list(), list()) ->
           ok | [{ns_bucket:name(), restore_error()}].
@@ -262,11 +276,13 @@ restore(Volumes, BucketInfos) ->
                    end, BucketInfos, ?BUCKET_RESTORE_TIMEOUT),
             BucketRestoreErrors =
                 [{BucketName, Error} || {BucketName, {error, Error}} <- RV],
-            case BucketRestoreErrors of
+            JanitorErrors =
+                run_janitor([BucketName || {BucketName, ok} <- RV]),
+            case BucketRestoreErrors ++ JanitorErrors of
                 [] ->
                     ok;
-                _ ->
-                    BucketRestoreErrors
+                Errors ->
+                    Errors
             end;
         _ ->
             BucketCreateErrors

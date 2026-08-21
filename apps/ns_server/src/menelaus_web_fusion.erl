@@ -645,6 +645,10 @@ restore_error_to_json(wait_for_bucket) ->
 restore_error_to_json({failed_nodes, Nodes}) ->
     iolist_to_binary(
       io_lib:format("Failed nodes while mounting volumes: ~p", [Nodes]));
+restore_error_to_json({janitor_failed, Error}) ->
+    iolist_to_binary(
+      io_lib:format("Failed to run janitor for the restored bucket: ~p",
+                    [Error]));
 restore_error_to_json(Error = {error, _}) ->
     case menelaus_web_buckets:bucket_create_reply(Error) of
         undefined ->
