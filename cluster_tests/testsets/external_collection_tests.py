@@ -917,6 +917,7 @@ class ExternalCollectionTests(testlib.BaseTestSet):
         caps = node_services.get("clusterCapabilities", {})
         n1ql_caps = caps.get("n1ql", [])
         testlib.assert_in("externalCollections", n1ql_caps)
+        testlib.assert_in("conversationalQuery", n1ql_caps)
 
     def put_manifest_creates_external_collection_test(
             self):
