@@ -828,7 +828,8 @@ process_vbucket_stats(Node, BucketName, VB, VBStats, DesiredTerm, Acc) ->
                 end,
             functools:chain(
               Acc1,
-              [add_stat_value_from(snapshot_pending_bytes, VBStats, _)]);
+              [add_stat_value_from(snapshot_pending_bytes, VBStats, _),
+               add_stat_value_from(checkpoint_pending_bytes, VBStats, _)]);
         Other ->
             case DesiredTerm of
                 undefined ->
@@ -924,7 +925,7 @@ maybe_advance_state(enabling) ->
                     analyze_fusion_stats(
                       EnabledBuckets, FusionStats,
                       fun (_BucketName, BucketInfo, Acc) ->
-                              case {maps:find(snapshot_pending_bytes,
+                              case {maps:find(checkpoint_pending_bytes,
                                               BucketInfo),
                                     maps:find(uploaders_state_mismatch,
                                               BucketInfo)} of
