@@ -148,8 +148,8 @@ If you are implementing credential consumption in a new service:
    Each maps to a specific user-facing condition.
 
 6. **Enforce service-side guardrails** — after receiving a `Credential`, inspect `Meta.Guardrails` and enforce:
-   - `URLWhitelist` (with `AllAccess`, `AllowedURLs`, `DisallowedURLs`) / `AllowedResources` / `AllowedOperations`
-   - ns_server does NOT enforce these; your service must.
+   - `URLWhitelist` (with `AllAccess`, `AllowedURLs`, `DisallowedURLs`)
+   - ns_server does NOT enforce this; your service must.
 
 7. **Clear sensitive data** — zero out secret fields (passwords, keys) when no longer needed.
 

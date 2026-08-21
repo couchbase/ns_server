@@ -573,8 +573,6 @@ class CredentialGuardrailsTests(testlib.BaseTestSet):
                 "allowedUrls": ["https://api.example.com/v1"],
                 "disallowedUrls": ["https://evil.example.com"],
             },
-            "allowedResources": ["bucket/backup-data"],
-            "allowedOperations": ["READ", "LIST"],
         }
         body["description"] = "guardrails test credential"
 
@@ -607,12 +605,6 @@ class CredentialGuardrailsTests(testlib.BaseTestSet):
             testlib.assert_eq(wl["disallowedUrls"],
                               ["https://evil.example.com"],
                               "disallowedUrls in public GET")
-            testlib.assert_eq(gr["allowedResources"],
-                              ["bucket/backup-data"],
-                              "allowedResources in public GET")
-            testlib.assert_eq(gr["allowedOperations"],
-                              ["READ", "LIST"],
-                              "allowedOperations in public GET")
 
             # description should be in meta too
             testlib.assert_eq(meta.get("description"),
@@ -645,12 +637,6 @@ class CredentialGuardrailsTests(testlib.BaseTestSet):
             testlib.assert_eq(cb_wl["disallowedUrls"],
                               ["https://evil.example.com"],
                               "disallowedUrls in cbauth")
-            testlib.assert_eq(cb_gr["allowedResources"],
-                              ["bucket/backup-data"],
-                              "allowedResources in cbauth")
-            testlib.assert_eq(cb_gr["allowedOperations"],
-                              ["READ", "LIST"],
-                              "allowedOperations in cbauth")
 
         finally:
             testlib.ensure_deleted(self.cluster, cred_url(cred_id))
@@ -685,7 +671,6 @@ class CredentialGuardrailsTests(testlib.BaseTestSet):
             updated = aws_body()
             updated["guardrails"] = {
                 "allowedServices": ["fts"],
-                "allowedOperations": ["WRITE"],
             }
             testlib.put_succ(self.cluster, cred_url(cred_id), json=updated)
 
@@ -694,8 +679,6 @@ class CredentialGuardrailsTests(testlib.BaseTestSet):
             gr = r.json()["meta"]["guardrails"]
             testlib.assert_eq(gr["allowedServices"], ["fts"],
                               "allowedServices after update")
-            testlib.assert_eq(gr["allowedOperations"], ["WRITE"],
-                              "allowedOperations after update")
 
         finally:
             testlib.ensure_deleted(self.cluster, cred_url(cred_id))
@@ -704,24 +687,6 @@ class CredentialGuardrailsTests(testlib.BaseTestSet):
         """Empty guardrail arrays and empty urlWhitelist sub-objects
         must be rejected with 400."""
         cred_id = "test/guardrails/e2e"
-
-        # Empty allowedResources
-        body = aws_body()
-        body["guardrails"] = {
-            "allowedServices": ["n1ql"],
-            "allowedResources": [],
-        }
-        testlib.post_fail(self.cluster, cred_url(cred_id),
-                          400, json=body)
-
-        # Empty allowedOperations
-        body = aws_body()
-        body["guardrails"] = {
-            "allowedServices": ["n1ql"],
-            "allowedOperations": [],
-        }
-        testlib.post_fail(self.cluster, cred_url(cred_id),
-                          400, json=body)
 
         # Empty allowedServices
         body = aws_body()
@@ -2426,13 +2391,10 @@ class CredentialPatchTests(testlib.BaseTestSet):
 
         r = testlib.patch_succ(
             self.cluster, cred_url(cred_id),
-            json={"guardrails": {"allowedServices": ["fts", "index"],
-                                 "allowedOperations": ["READ"]}})
+            json={"guardrails": {"allowedServices": ["fts", "index"]}})
         j = r.json()
         testlib.assert_eq(j["meta"]["guardrails"]["allowedServices"],
                           ["fts", "index"], "guardrails replaced")
-        testlib.assert_eq(j["meta"]["guardrails"]["allowedOperations"],
-                          ["READ"], "allowedOperations set")
         testlib.assert_eq(j["meta"]["description"], "x",
                           "description preserved")
 

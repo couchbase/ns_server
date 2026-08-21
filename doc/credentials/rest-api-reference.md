@@ -197,8 +197,6 @@ ns_server enforces **only** `allowedServices`; all other guardrails are the cons
 |---|---|---|
 | `allowedServices` | ns_server | Which services may consume (end-user path) |
 | `urlWhitelist` | Service | URL allow/disallow lists + allAccess |
-| `allowedResources` | Service | Resource-level restrictions |
-| `allowedOperations` | Service | Operation restrictions (READ, LIST …) |
 
 ### `allowedServices` valid values
 

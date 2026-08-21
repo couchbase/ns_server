@@ -39,9 +39,7 @@
 %%    "guardrails": {"allowedServices": ["n1ql"],
 %%                   "urlWhitelist": {"allAccess": false,
 %%                                    "allowedUrls": ["https://..."],
-%%                                    "disallowedUrls": ["https://..."]},
-%%                   "allowedResources": ["bucket/path"],
-%%                   "allowedOperations": ["READ", "LIST"]},
+%%                                    "disallowedUrls": ["https://..."]}},
 %%    "description": "...",
 %%    "expiresAt": 1740000000000}
 %%
@@ -932,12 +930,6 @@ guardrails_validators() ->
      validator:convert(allowedServices, ConvertArray, _),
      validator:decoded_json(urlWhitelist,
                             url_whitelist_validators(), _),
-     validator:string_array(allowedResources, _),
-     validator:array_length(allowedResources, 1, infinity, _),
-     validator:convert(allowedResources, ConvertArray, _),
-     validator:string_array(allowedOperations, _),
-     validator:array_length(allowedOperations, 1, infinity, _),
-     validator:convert(allowedOperations, ConvertArray, _),
      validator:unsupported(_)].
 
 %% @doc Validators for the urlWhitelist sub-object inside guardrails.
@@ -981,9 +973,7 @@ url_whitelist_validators() ->
 %% validation time.  urlWhitelist is converted to a nested map with
 %% snake_case keys.
 validated_guardrails_to_store(GuardrailProps) ->
-    Mapping = [{allowedServices, allowed_services},
-               {allowedResources, allowed_resources},
-               {allowedOperations, allowed_operations}],
+    Mapping = [{allowedServices, allowed_services}],
     Base = lists:foldl(
              fun ({RestKey, StorageKey}, Acc) ->
                      case proplists:get_value(RestKey, GuardrailProps) of
@@ -1078,9 +1068,7 @@ export_author(#{user := User, domain := Domain}) ->
 %% (camelCase binary keys).  Iterates over stored data so unknown keys
 %% crash immediately.  url_whitelist is exported as a nested JSON object.
 export_guardrails(Guardrails) ->
-    Mapping = #{allowed_services => <<"allowedServices">>,
-                allowed_resources => <<"allowedResources">>,
-                allowed_operations => <<"allowedOperations">>},
+    Mapping = #{allowed_services => <<"allowedServices">>},
     maps:fold(
       fun (url_whitelist, WL, Acc) ->
               Acc#{<<"urlWhitelist">> =>
@@ -1247,8 +1235,7 @@ export_guardrails_test() ->
                                       allowed_urls =>
                                           [<<"https://api.stripe.com/*">>],
                                       disallowed_urls =>
-                                          [<<"https://evil.com">>]},
-                   allowed_operations => [<<"READ">>]},
+                                          [<<"https://evil.com">>]}},
     Got = export_guardrails(Guardrails),
     ?assertEqual([<<"n1ql">>, <<"fts">>],
                  maps:get(<<"allowedServices">>, Got)),
@@ -1258,11 +1245,7 @@ export_guardrails_test() ->
     ?assertEqual([<<"https://api.stripe.com/*">>],
                  maps:get(<<"allowedUrls">>, WL)),
     ?assertEqual([<<"https://evil.com">>],
-                 maps:get(<<"disallowedUrls">>, WL)),
-    ?assertEqual([<<"READ">>],
-                 maps:get(<<"allowedOperations">>, Got)),
-    %% allowed_resources was not set, so it must be absent
-    ?assertNot(maps:is_key(<<"allowedResources">>, Got)).
+                 maps:get(<<"disallowedUrls">>, WL)).
 
 export_guardrails_empty_test() ->
     ?assertEqual(#{}, export_guardrails(#{})).
@@ -1298,8 +1281,7 @@ validated_guardrails_to_store_test() ->
     Props = [{allowedServices, [<<"index">>, <<"n1ql">>]},
              {urlWhitelist, [{allAccess, false},
                              {allowedUrls, [<<"https://example.com">>]},
-                             {disallowedUrls, [<<"https://bad.com">>]}]},
-             {allowedOperations, [<<"READ">>, <<"LIST">>]}],
+                             {disallowedUrls, [<<"https://bad.com">>]}]}],
     Got = validated_guardrails_to_store(Props),
     ?assertEqual([<<"index">>, <<"n1ql">>],
                  maps:get(allowed_services, Got)),
@@ -1309,11 +1291,7 @@ validated_guardrails_to_store_test() ->
     ?assertEqual([<<"https://example.com">>],
                  maps:get(allowed_urls, WL)),
     ?assertEqual([<<"https://bad.com">>],
-                 maps:get(disallowed_urls, WL)),
-    ?assertEqual([<<"READ">>, <<"LIST">>],
-                 maps:get(allowed_operations, Got)),
-    %% allowedResources was not present in Props, so must be absent
-    ?assertNot(maps:is_key(allowed_resources, Got)).
+                 maps:get(disallowed_urls, WL)).
 
 sanitize_chronicle_cfg_test() ->
     Cred = #{type => aws,
