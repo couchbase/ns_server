@@ -2234,6 +2234,97 @@ class JWTTests(testlib.BaseTestSet):
             headers=headers,
         )
 
+    def pre_totoro_settings_format_test(self):
+        """Settings written by a pre-Totoro node stay readable on Totoro.
+
+        Enterprise Analytics shipped JWT on ns_server 8.0.x ahead of Totoro by
+        setting {jwt_enabled, true} in its config profile, so an EA cluster can
+        hold jwt_settings that a pre-Totoro node wrote. MB-73362 removed that
+        flag, which stops an upgraded node from writing settings until cluster
+        compat reaches Totoro. It does not stop a node that has not been
+        upgraded yet: that node keeps its own gate and can still accept a PUT,
+        so pre-Totoro settings can be written at any point during a rolling
+        upgrade and must be read natively afterwards.
+
+        No conversion exists because none is needed, and that rests on two
+        properties nothing else pins:
+
+        1. Both lines store the same representation. Issuer names and string
+           values are Erlang strings, so a Totoro node finds the issuer by the
+           name in the token's iss claim. Were that to become a binary, the
+           lookup would miss and every token would be refused as an unknown
+           issuer.
+        2. Storage keys that Totoro does not know are dropped on read, which
+           covers jwksUriTlsExtraOpts, the one issuer field 8.0.x has and
+           Totoro does not.
+
+        The fields Totoro added to an issuer (oidcSettings, customClaims,
+        displayName) need nothing here: they are optional, and a plain issuer
+        without them is already what the other tests in this file configure.
+
+        A failure here is a compatibility decision, not a broken test: it means
+        Enterprise Analytics cannot take the release without a stored-format
+        converter and an upgrade path for it. See MB-73362.
+        """
+        self.auth_setup()
+        self.configure_jwt({"jitProvisioning": True})
+
+        # Property 1, against what a plain issuer stores today. An 8.0.x node
+        # writes this same shape.
+        shape = testlib.diag_eval(
+            self.cluster,
+            "{ok, {#{issuers := Is}, _}} = chronicle_kv:get(kv, jwt_settings),"
+            "[{Name, Props}] = maps:to_list(Is),"
+            "{is_list(Name),"
+            " is_list(maps:get(sub_claim, Props)),"
+            " is_list(maps:get(aud_claim, Props))}.",
+        ).text.strip()
+        testlib.assert_eq(shape, "{true,true,true}", name="stored shape")
+
+        # Property 2. Add the field only 8.0.x knows, the way that node would
+        # have stored it, bypassing the REST layer because Totoro's validator
+        # has no such field to accept.
+        testlib.diag_eval(
+            self.cluster,
+            "{ok, {Settings, _}} = chronicle_kv:get(kv, jwt_settings),"
+            "#{issuers := Is} = Settings,"
+            "NewIs = maps:map(fun(_, Props) ->"
+            "                     Props#{jwks_uri_tls_extra_opts =>"
+            "                                [{verify, verify_peer}]}"
+            "                 end, Is),"
+            "{ok, _} = chronicle_kv:set(kv, jwt_settings,"
+            "                           Settings#{issuers => NewIs}),"
+            "ok.",
+        )
+
+        # Authentication is what matters to a customer mid-upgrade, and it is
+        # what breaks first if either property is lost. Polled because the
+        # settings write reaches jwt_cache asynchronously.
+        claims = self.base_claims.copy()
+        claims["groups"] = ["jwt_bucket_admins"]
+        headers = {"Authorization": f"Bearer {self.create_token(claims)}"}
+        testlib.poll_for_condition(
+            lambda: testlib.get(
+                self.cluster, "/pools/default/buckets", auth=None,
+                headers=headers,
+            ).status_code == 200,
+            sleep_time=0.5,
+            timeout=60,
+            msg="authenticate against pre-Totoro settings",
+        )
+
+        # GET drops the unknown field rather than reflecting it, and renders
+        # strings as strings. A representation mismatch shows up here as JSON
+        # arrays of integers.
+        issuer = testlib.get_succ(self.cluster, self.endpoint).json()[
+            "issuers"
+        ][0]
+        testlib.assert_eq(issuer["audClaim"], "aud", name="audClaim")
+        testlib.assert_eq(issuer["subClaim"], "sub", name="subClaim")
+        assert "jwksUriTlsExtraOpts" not in issuer, (
+            f"8.0.x-only field reflected back by GET: {issuer}"
+        )
+
 
 JWT_ENDPOINT = "/settings/jwt"
 ENCR_AT_REST_CONFIG = "/settings/security/encryptionAtRest/config"

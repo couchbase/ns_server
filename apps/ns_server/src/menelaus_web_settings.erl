@@ -545,9 +545,7 @@ is_allowed_on_cluster([scram_sha256_enabled]) ->
 is_allowed_on_cluster([scram_sha512_enabled]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([oauthbearer_enabled]) ->
-    cluster_compat_mode:is_cluster_totoro()
-        orelse (config_profile:get_bool(jwt_enabled)
-                andalso cluster_compat_mode:is_cluster_79());
+    cluster_compat_mode:is_cluster_80();
 is_allowed_on_cluster([argon2id_time]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([argon2id_mem]) ->

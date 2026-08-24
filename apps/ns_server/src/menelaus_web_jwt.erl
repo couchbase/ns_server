@@ -12,6 +12,29 @@
 %% This module provides the REST API for managing JWT settings and issuers via
 %% the /settings/jwt JSON-only endpoint.
 %%
+%% Release history:
+%% JWT shipped on two lines with different gating, which is the reason for
+%% several compat checks in this area. On Couchbase Server, /settings/jwt was
+%% developer preview in 8.0 and generally available in Totoro. Enterprise
+%% Analytics shipped it supported from its 2.2 release, built on ns_server
+%% 8.0.1, by setting jwt_enabled in its config profile (MB-70613), which
+%% bypassed the developer preview requirement. So a pre-Totoro cluster with
+%% JWT configured is either a Server cluster in developer preview, which
+%% cannot be upgraded, or an Enterprise Analytics cluster, which can.
+%% MB-73362 removed jwt_enabled once Enterprise Analytics moved to Totoro, so
+%% this endpoint now requires Totoro compat unconditionally. Settings written
+%% by the older line are read natively, which pre_totoro_settings_format_test
+%% in cluster_tests/testsets/jwt_tests.py pins. The same distinction is why
+%% the memcached OAUTHBEARER mechanism is gated on oauthbearer_enabled alone
+%% rather than on cluster compat.
+%%
+%% The consequence for an Enterprise Analytics cluster upgrading to Totoro is
+%% deliberate and covers every method, so an upgraded node can neither read
+%% nor change JWT settings until cluster compat reaches Totoro. Nodes still
+%% to be upgraded keep serving the endpoint meanwhile. Authentication against
+%% the settings already stored proceeds throughout the upgrade, over REST and
+%% over the memcached path alike.
+%%
 %% Storage Format:
 %% Settings are stored in chronicle_kv as an Erlang map with snake_case atom
 %% keys. Issuers are stored as a map keyed by issuer name for efficient lookup.
@@ -348,10 +371,7 @@ encode_response(Value) ->
 handle_settings(Method, Req) ->
     try
         menelaus_util:assert_is_enterprise(),
-        case config_profile:get_bool(jwt_enabled) of
-            true -> menelaus_util:assert_is_79();
-            false -> menelaus_util:assert_is_totoro()
-        end,
+        menelaus_util:assert_is_totoro(),
         case Method of
             'GET' -> handle_settings_get(Req);
             'PUT' -> handle_settings_put(Req);
