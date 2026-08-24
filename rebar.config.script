@@ -4,17 +4,26 @@ CoverageEnabled = case os:getenv("CB_CODE_COVERAGE_ENABLED") of
                       _ -> true
                   end,
 
+ExtraErlOpts = case os:getenv("EXTRA_ERL_OPTS") of
+                   false -> [];
+                   "" -> [];
+                   Other ->
+                       {ok, Tokens, _} = erl_scan:string(Other ++ "."),
+                       {ok, Term} = erl_parse:parse_term(Tokens),
+                       Term
+               end,
+
 lists:map(
   fun ({erl_opts, Opts}) ->
           NewOpts = case CoverageEnabled of
                         true -> [line_coverage, force_line_counters];
                         false -> []
                     end ++
-                    %% Extra purpose of this option is to guarantee that
-                    %% all files are re-compiled when CB_CODE_COVERAGE_ENABLED
-                    %% env variable is changed.
-                    [{d, 'CB_CODE_COVERAGE_ENABLED', CoverageEnabled}],
-          {erl_opts, NewOpts ++ Opts};
+              %% Extra purpose of this option is to guarantee that
+              %% all files are re-compiled when CB_CODE_COVERAGE_ENABLED
+              %% env variable is changed.
+              [{d, 'CB_CODE_COVERAGE_ENABLED', CoverageEnabled}],
+          {erl_opts, NewOpts ++ Opts ++ ExtraErlOpts};
       (E) ->
           E
   end, CONFIG).
