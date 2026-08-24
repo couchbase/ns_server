@@ -1,6 +1,6 @@
 module github.com/couchbase/ns_server/deps/gocode
 
-go 1.21
+go 1.24.0
 
 require (
 	github.com/akeylesslabs/go-kmip v0.2.14
@@ -10,7 +10,7 @@ require (
 	github.com/evanw/esbuild v0.13.13
 	github.com/google/uuid v1.6.0
 	gocloud.dev v0.37.0
-	golang.org/x/crypto v0.24.0
+	golang.org/x/crypto v0.48.0
 )
 
 replace github.com/akeylesslabs/go-kmip => ./go-kmip
@@ -37,9 +37,9 @@ require (
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	golang.org/x/net v0.22.0 // indirect
-	golang.org/x/sys v0.21.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/api v0.169.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240311173647-c811ad7063a7 // indirect
