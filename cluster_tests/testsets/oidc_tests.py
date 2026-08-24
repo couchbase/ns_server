@@ -458,6 +458,9 @@ class OIDCTests(testlib.BaseTestSet):
             edition="Enterprise",
             num_vbuckets=16,
             include_services=[Service.KV],
+            # oidcSettings.clientSecret is an issuer secret, so the encryption
+            # prerequisites apply to every issuer these tests configure.
+            encryption=True,
         )
 
     def setup(self):

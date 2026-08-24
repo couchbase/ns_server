@@ -139,6 +139,10 @@ class JWTTests(testlib.BaseTestSet):
             num_vbuckets=16,
             buckets=[{"name": JWTTests.test_bucket, "ramQuota": 100}],
             include_services=[Service.KV, Service.QUERY],
+            # Storing an issuer secret requires config encryption at rest and
+            # n2n encryption. Config encryption is on by default on
+            # Enterprise; n2n is not, so ask for it here.
+            encryption=True,
         )
 
     def setup(self):
@@ -2229,3 +2233,178 @@ class JWTTests(testlib.BaseTestSet):
             auth=None,
             headers=headers,
         )
+
+
+JWT_ENDPOINT = "/settings/jwt"
+ENCR_AT_REST_CONFIG = "/settings/security/encryptionAtRest/config"
+
+CONFIG_ENCRYPTION_WARNING = (
+    "Secrets stored for the following issuers are not protected by "
+    "configuration encryption at rest"
+)
+N2N_WARNING = (
+    "Secrets stored for the following issuers risk being sent unencrypted"
+)
+
+
+def hmac_issuer(name="encr-issuer", secret="s" * 64):
+    return {
+        "name": name,
+        "audienceHandling": "any",
+        "subClaim": "sub",
+        "audClaim": "aud",
+        "audiences": ["test-audience"],
+        "signingAlgorithm": "HS256",
+        "sharedSecret": secret,
+    }
+
+
+def settings_with_secret(**extra):
+    body = {"enabled": True, "issuers": [hmac_issuer()]}
+    body.update(extra)
+    return body
+
+
+def enable_config_encryption(cluster):
+    testlib.post_succ(cluster, ENCR_AT_REST_CONFIG,
+                      json={"encryptionMethod": "nodeSecretManager",
+                            "encryptionKeyId": -1,
+                            "skipEncryptionKeyTest": False})
+
+
+class JWTEncryptionInterlockTests(testlib.BaseTestSet):
+    """Interlock between stored issuer secrets and the config-encryption /
+    n2n-encryption settings, plus the warnings they produce.
+
+    An issuer secret is recoverable in cleartext by anything that can read the
+    stored configuration, so storing one is refused unless the cluster can
+    protect it, in both directions: the PUT is rejected while encryption is
+    off, and turning encryption off is rejected while a secret is stored.
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition="Enterprise",
+                                           encryption=True)
+
+    def setup(self):
+        # A previous testset on the same shared cluster may have disabled
+        # config encryption, so re-enable it rather than assuming the default.
+        enable_config_encryption(self.cluster)
+        self.node = self.cluster.connected_nodes[0]
+
+    def teardown(self):
+        enable_config_encryption(self.cluster)
+
+    def test_teardown(self):
+        # Clear the settings first: leaving a secret stored would block the
+        # encryption changes the next test makes.
+        testlib.put_succ(self.cluster, JWT_ENDPOINT,
+                         json={"enabled": False, "issuers": []})
+        enable_config_encryption(self.cluster)
+
+    def _warnings(self):
+        return testlib.get_succ(self.cluster, JWT_ENDPOINT).json().get(
+            "warnings", [])
+
+    def store_without_config_encryption_test(self):
+        """PUT carrying a secret is rejected while config encryption is off,
+        and the override lifts it in that same PUT."""
+        testlib.post_succ(self.cluster, ENCR_AT_REST_CONFIG,
+                          json={"encryptionMethod": "disabled",
+                                "encryptionKeyId": -1})
+
+        r = testlib.put_fail(self.cluster, JWT_ENDPOINT, 400,
+                             json=settings_with_secret())
+        err = r.json().get("error", "")
+        assert "encr-issuer" in err, f"Expected issuer name in error: {err}"
+        assert "configEncryptionOverride" in err, \
+            f"Expected override hint in error: {err}"
+
+        # The override travels in the same full-replace PUT that was rejected.
+        testlib.put_succ(self.cluster, JWT_ENDPOINT,
+                         json=settings_with_secret(
+                             configEncryptionOverride=True))
+
+    def store_without_secret_allowed_test(self):
+        """An issuer with no secret is unaffected by the prerequisites."""
+        testlib.post_succ(self.cluster, ENCR_AT_REST_CONFIG,
+                          json={"encryptionMethod": "disabled",
+                                "encryptionKeyId": -1})
+        testlib.put_succ(self.cluster, JWT_ENDPOINT, json={
+            "enabled": True,
+            "issuers": [{
+                "name": "no-secret-issuer",
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["test-audience"],
+                "signingAlgorithm": "RS256",
+                "publicKeySource": "jwks_uri",
+                "jwksUri": "https://example.com/jwks",
+            }],
+        })
+        assert self._warnings() == [], \
+            "No secret stored, so nothing to warn about"
+
+    def disable_config_encryption_blocked_test(self):
+        """Turning config encryption off is refused while a secret is stored,
+        which closes the direction the PUT guard cannot cover."""
+        testlib.put_succ(self.cluster, JWT_ENDPOINT,
+                         json=settings_with_secret())
+
+        r = testlib.post_fail(self.cluster, ENCR_AT_REST_CONFIG, 400,
+                              json={"encryptionMethod": "disabled",
+                                    "encryptionKeyId": -1})
+        errors = r.json().get("errors", {})
+        err = errors.get("_", "")
+        assert "encr-issuer" in err, f"Expected issuer name in error: {errors}"
+        assert "configEncryptionOverride" in err, \
+            f"Expected override hint in error: {errors}"
+
+        # With the override set, the same change goes through.
+        testlib.put_succ(self.cluster, JWT_ENDPOINT,
+                         json=settings_with_secret(
+                             configEncryptionOverride=True))
+        testlib.post_succ(self.cluster, ENCR_AT_REST_CONFIG,
+                          json={"encryptionMethod": "disabled",
+                                "encryptionKeyId": -1})
+
+    def disable_n2n_blocked_test(self):
+        """The same interlock for node-to-node encryption."""
+        testlib.put_succ(self.cluster, JWT_ENDPOINT,
+                         json=settings_with_secret())
+
+        r = testlib.post_fail(self.node, "/node/controller/setupNetConfig",
+                              400, data={"nodeEncryption": "off"})
+        errors = r.json().get("errors", {})
+        err = errors.get("nodeEncryption", errors.get("_", ""))
+        assert "encr-issuer" in err, f"Expected issuer name in error: {errors}"
+        assert "n2nEncryptionOverride" in err, \
+            f"Expected override hint in error: {errors}"
+
+    def warnings_test(self):
+        """Warnings name the offending issuers and are reported whatever the
+        overrides say: an override suppresses the rejection, not the exposure
+        it describes."""
+        testlib.post_succ(self.cluster, ENCR_AT_REST_CONFIG,
+                          json={"encryptionMethod": "disabled",
+                                "encryptionKeyId": -1})
+        testlib.put_succ(self.cluster, JWT_ENDPOINT,
+                         json=settings_with_secret(
+                             configEncryptionOverride=True))
+
+        warnings = self._warnings()
+        matching = [w for w in warnings if CONFIG_ENCRYPTION_WARNING in w]
+        assert len(matching) == 1, \
+            f"Expected a config encryption warning, got: {warnings}"
+        assert "encr-issuer" in matching[0], \
+            f"Expected issuer name in warning: {matching[0]}"
+
+        # n2n is on for this testset, so only the one warning is reported.
+        assert not [w for w in warnings if N2N_WARNING in w], \
+            f"Unexpected n2n warning while n2n is enabled: {warnings}"
+
+        enable_config_encryption(self.cluster)
+        assert self._warnings() == [], \
+            "Warning must clear once encryption is re-enabled"

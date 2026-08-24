@@ -75,12 +75,16 @@
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 -include_lib("jose/include/jose_jwk.hrl").
+-include("cb_cluster_secrets.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
 -export([handle_settings/2,
          is_enabled/0,
+         issuers_requiring_config_encryption/1,
+         issuers_requiring_n2n_encryption/0,
+         get_jwt_warnings/1,
          sanitize_chronicle_cfg/1]).
 
 -define(JWKS_URI_MIN_TIMEOUT_MS, 5000). % 5 seconds
@@ -100,11 +104,17 @@
 %% issuers - A list of JWT issuers with their respective settings.
 %% jwks_uri_refresh_interval_s - The interval in seconds for refreshing the
 %% JWKS URI.
+%% config_encryption_override - Store issuer secrets even when configuration
+%% encryption at rest is disabled.
+%% n2n_encryption_override - Store issuer secrets even when node-to-node
+%% encryption is not enabled on every node.
 -define(MAIN_PARAMS_WITH_FORMATTERS,
         [
+         {config_encryption_override, undefined},
          {enabled, undefined},
          {issuers, fun storage_to_rest_format_issuers/1},
-         {jwks_uri_refresh_interval_s, undefined}
+         {jwks_uri_refresh_interval_s, undefined},
+         {n2n_encryption_override, undefined}
         ]).
 
 -define(MAIN_REST_TO_STORAGE,
@@ -354,12 +364,20 @@ handle_settings(Method, Req) ->
     end.
 
 handle_settings_get(Req) ->
-    RestFormat =
-        case chronicle_kv:get(kv, jwt_settings) of
-            {ok, {Settings, _Rev}} ->
+    {ok, {Snapshot, _}} =
+        chronicle_kv:get_snapshot(kv, [jwt_settings,
+                                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY]),
+    Base =
+        case chronicle_compat:get(Snapshot, jwt_settings, #{}) of
+            {ok, Settings} ->
                 storage_to_rest_format(Settings);
             {error, not_found} ->
                 #{enabled => false, issuers => []}
+        end,
+    RestFormat =
+        case get_jwt_warnings(Snapshot) of
+            [] -> Base;
+            Warnings -> Base#{warnings => Warnings}
         end,
     JsonBin = encode_response(RestFormat),
     menelaus_util:reply(Req, JsonBin, 200,
@@ -400,6 +418,10 @@ main_validators() ->
                        ?JWKS_URI_REFRESH_MIN_S,
                        ?JWKS_URI_REFRESH_MAX_S, _),
      validator:default(jwksUriRefreshIntervalS, ?JWKS_URI_REFRESH_DEFAULT_S, _),
+     validator:boolean(configEncryptionOverride, _),
+     validator:default(configEncryptionOverride, false, _),
+     validator:boolean(n2nEncryptionOverride, _),
+     validator:default(n2nEncryptionOverride, false, _),
      validator:json_array(issuers, issuer_validators(), _),
      validator:default(issuers, [], _),
      validator:validate_relative(
@@ -736,14 +758,18 @@ validate_and_store_settings(Props, Req) ->
                         {ok, {S, _Rev}} -> S;
                         error -> #{}
                     end,
-                case resolve_kept_secrets(Settings, OldSettings) of
-                    {ok, Resolved} ->
-                        {commit, [{set, jwt_settings, Resolved}], Resolved};
+                maybe
+                    {ok, Resolved} ?= resolve_kept_secrets(Settings,
+                                                           OldSettings),
+                    ok ?= ensure_encryption_prerequisites(Resolved, Snapshot),
+                    {commit, [{set, jwt_settings, Resolved}], Resolved}
+                else
                     {error, Reason} ->
                         {abort, {bad_request, Reason}}
                 end
         end,
-    case chronicle_kv:transaction(kv, [jwt_settings], Fun, #{}) of
+    TxnKeys = [jwt_settings, ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY],
+    case chronicle_kv:transaction(kv, TxnKeys, Fun, #{}) of
         {ok, _, FinalSettings} ->
             RestFormat = storage_to_rest_format(FinalSettings),
             EncodedSettings = encode_response(RestFormat),
@@ -814,6 +840,118 @@ resolve_kept_secret_field(IssuerName, Key, RestPath, NewProps, OldProps) ->
             end;
         _ ->
             NewProps
+    end.
+
+%% @doc Issuers holding a secret: shared_secret for the HMAC signing
+%% algorithms, and oidc_settings.client_secret, which is required for every
+%% issuer configured for single sign-on regardless of signing algorithm.
+-spec issuers_with_secrets(map()) -> [string()].
+issuers_with_secrets(Settings) ->
+    Issuers = maps:get(issuers, Settings, #{}),
+    lists:sort([Name || {Name, Props} <- maps:to_list(Issuers),
+                        has_secret(Props)]).
+
+has_secret(IssuerProps) ->
+    maps:get(shared_secret, IssuerProps, undefined) =/= undefined orelse
+        maps:get(client_secret, maps:get(oidc_settings, IssuerProps, #{}),
+                 undefined) =/= undefined.
+
+settings_from_snapshot(Snapshot) ->
+    chronicle_compat:get(Snapshot, jwt_settings, #{default => #{}}).
+
+-spec ensure_encryption_prerequisites(map(), map()) -> ok | {error, iolist()}.
+ensure_encryption_prerequisites(Settings, Snapshot) ->
+    case issuers_with_secrets(Settings) of
+        [] ->
+            ok;
+        Names ->
+            maybe
+                ok ?= ensure_config_encryption(Settings, Names, Snapshot),
+                ensure_n2n_encryption(Settings, Names)
+            end
+    end.
+
+ensure_config_encryption(Settings, Names, Snapshot) ->
+    case maps:get(config_encryption_override, Settings, false) orelse
+        menelaus_web_encr_at_rest:is_encryption_enabled(config_encryption,
+                                                        Snapshot) of
+        true ->
+            ok;
+        false ->
+            {error,
+             ["Cannot store a secret for the following issuers because "
+              "configuration encryption at rest is disabled: [",
+              lists:join(", ", Names),
+              "]. To override this, set 'configEncryptionOverride' to true."]}
+    end.
+
+ensure_n2n_encryption(Settings, Names) ->
+    case maps:get(n2n_encryption_override, Settings, false) orelse
+        misc:is_cluster_encryption_fully_enabled() of
+        true ->
+            ok;
+        false ->
+            {error,
+             ["Cannot store a secret for the following issuers because "
+              "node-to-node encryption is not enabled on every node in the "
+              "cluster: [", lists:join(", ", Names),
+              "]. To override this, set 'n2nEncryptionOverride' to true."]}
+    end.
+
+%% @doc Issuers that would be left unprotected if configuration encryption at
+%% rest were disabled. Called from menelaus_web_encr_at_rest to refuse that
+%% change, which closes the direction the PUT guard above cannot cover.
+-spec issuers_requiring_config_encryption(map()) -> [string()].
+issuers_requiring_config_encryption(Snapshot) ->
+    issuers_requiring(config_encryption_override,
+                      settings_from_snapshot(Snapshot)).
+
+%% @doc The same for node-to-node encryption, called from menelaus_web_node.
+-spec issuers_requiring_n2n_encryption() -> [string()].
+issuers_requiring_n2n_encryption() ->
+    {ok, {Snapshot, _}} = chronicle_kv:get_snapshot(kv, [jwt_settings]),
+    issuers_requiring(n2n_encryption_override,
+                      settings_from_snapshot(Snapshot)).
+
+issuers_requiring(OverrideFlag, Settings) ->
+    case maps:get(OverrideFlag, Settings, false) of
+        true -> [];
+        false -> issuers_with_secrets(Settings)
+    end.
+
+-spec get_jwt_warnings(map()) -> [binary()].
+get_jwt_warnings(Snapshot) ->
+    Settings = settings_from_snapshot(Snapshot),
+    case issuers_with_secrets(Settings) of
+        [] ->
+            [];
+        Names ->
+            [W || {ok, W} <- [config_encryption_warning(Names, Snapshot),
+                              n2n_encryption_warning(Names)]]
+    end.
+
+config_encryption_warning(Names, Snapshot) ->
+    case menelaus_web_encr_at_rest:is_encryption_enabled(config_encryption,
+                                                         Snapshot) of
+        true ->
+            undefined;
+        false ->
+            {ok, iolist_to_binary(
+                   ["Secrets stored for the following issuers are not "
+                    "protected by configuration encryption at rest: [",
+                    lists:join(", ", Names), "]"])}
+    end.
+
+n2n_encryption_warning(Names) ->
+    case misc:is_cluster_encryption_fully_enabled() of
+        true ->
+            undefined;
+        false ->
+            {ok, iolist_to_binary(
+                   ["Secrets stored for the following issuers risk being sent "
+                    "unencrypted unless node-to-node encryption is enabled on "
+                    "every node in the cluster: [",
+                    lists:join(", ", Names), "]"])}
     end.
 
 %% @doc Converts storage format (map with snake_case atom keys) to REST format
@@ -1674,4 +1812,46 @@ shared_secret_masking_test_() ->
                    maps:find(sharedSecret,
                              RestIssuer(#{signing_algorithm => "ES256"})))
     ].
+
+issuers_with_secrets_test_() ->
+    Hmac = #{signing_algorithm => "HS256", shared_secret => "sekrit"},
+    Rsa = #{signing_algorithm => "RS256", jwks_uri => "https://idp/jwks"},
+    RsaSso = Rsa#{oidc_settings => #{client_id => "cb",
+                                     client_secret => "sekrit"}},
+    HmacNoSecretYet = #{signing_algorithm => "HS256"},
+    RsaEmptyOidc = Rsa#{oidc_settings => #{client_id => "cb"}},
+    [?_assertEqual([], issuers_with_secrets(#{})),
+     ?_assertEqual([], issuers_with_secrets(#{issuers => #{}})),
+     ?_assertEqual([], issuers_with_secrets(#{issuers => #{"a" => Rsa}})),
+     ?_assertEqual(["a"], issuers_with_secrets(#{issuers => #{"a" => Hmac}})),
+     %% An RS256 issuer still holds a secret once SSO is configured on it.
+     ?_assertEqual(["a"],
+                   issuers_with_secrets(#{issuers => #{"a" => RsaSso}})),
+     ?_assertEqual([], issuers_with_secrets(#{issuers => #{"a" => RsaEmptyOidc,
+                                                           "b" => Rsa}})),
+     ?_assertEqual([],
+                   issuers_with_secrets(#{issuers =>
+                                              #{"a" => HmacNoSecretYet}})),
+     %% Reported sorted so the message does not depend on map iteration order.
+     ?_assertEqual(["a", "c"],
+                   issuers_with_secrets(#{issuers => #{"c" => RsaSso,
+                                                       "b" => Rsa,
+                                                       "a" => Hmac}}))].
+
+issuers_requiring_test_() ->
+    Hmac = #{signing_algorithm => "HS256", shared_secret => "sekrit"},
+    Settings = #{issuers => #{"a" => Hmac}},
+    [?_assertEqual(["a"], issuers_requiring(config_encryption_override,
+                                            Settings)),
+     ?_assertEqual([], issuers_requiring(
+                         config_encryption_override,
+                         Settings#{config_encryption_override => true})),
+     %% The two overrides are independent.
+     ?_assertEqual(["a"], issuers_requiring(
+                            config_encryption_override,
+                            Settings#{n2n_encryption_override => true})),
+     ?_assertEqual([], issuers_requiring(
+                         n2n_encryption_override,
+                         Settings#{n2n_encryption_override => true}))].
+
 -endif.

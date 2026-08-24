@@ -317,7 +317,8 @@ handle_post(Path, Req) ->
                  kv, [?CHRONICLE_SECRETS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY,
                       ?CREDENTIAL_IDS_KEY,
-                      ?CREDENTIAL_STORE_SETTINGS_KEY],
+                      ?CREDENTIAL_STORE_SETTINGS_KEY,
+                      jwt_settings],
                  fun (Snapshot) ->
                      CurrentSettings = get_settings(Snapshot),
                      MergedNewSettings = get_settings(Snapshot, NewSettings3),
@@ -569,6 +570,7 @@ validate_all_settings_txn([{Usage, Cfg} | Tail], Snapshot) ->
         ok ?= validate_sec_settings(Usage, Cfg, Snapshot),
         ok ?= validate_no_unencrypted_secrets(Usage, Cfg, Snapshot),
         ok ?= validate_no_stored_credentials(Usage, Cfg, Snapshot),
+        ok ?= validate_no_jwt_secrets(Usage, Cfg, Snapshot),
         validate_all_settings_txn(Tail, Snapshot)
     end.
 
@@ -638,6 +640,22 @@ validate_no_stored_credentials(config_encryption,
              "/settings/credentialStore."}
     end;
 validate_no_stored_credentials(_, #{}, _Snapshot) ->
+    ok.
+
+validate_no_jwt_secrets(config_encryption,
+                        #{encryption := disabled,
+                          secret_id := ?SECRET_ID_NOT_SET}, Snapshot) ->
+    case menelaus_web_jwt:issuers_requiring_config_encryption(Snapshot) of
+        [] -> ok;
+        [_ | _] = Names ->
+            NamesStr = lists:join(", ", Names),
+            {error,
+             "Encryption cannot be disabled because secrets stored for the "
+             "following JWT issuers would be left unencrypted: [" ++
+             NamesStr ++ "]. To override this, set 'configEncryptionOverride' "
+             "to true in /settings/jwt."}
+    end;
+validate_no_jwt_secrets(_, #{}, _Snapshot) ->
     ok.
 
 validate_sec_settings(_, #{encryption := disabled,

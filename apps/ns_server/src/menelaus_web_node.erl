@@ -1336,6 +1336,26 @@ verify_n2n_credentials(State) ->
             State
     end.
 
+verify_n2n_jwt_secrets(State) ->
+    case validator:get_value(nodeEncryption, State) of
+        false ->
+            case menelaus_web_jwt:issuers_requiring_n2n_encryption() of
+                [] ->
+                    State;
+                [_ | _] = Names ->
+                    NamesStr = lists:join(", ", Names),
+                    M = "Cannot disable node-to-node encryption because "
+                        "secrets stored for the following JWT issuers would "
+                        "lose n2n encryption protection: [" ++ NamesStr ++
+                        "]. To override, set 'n2nEncryptionOverride' to true "
+                        "in /settings/jwt.",
+                    validator:return_error(nodeEncryption, iolist_to_binary(M),
+                                           State)
+            end;
+        _ ->
+            State
+    end.
+
 net_config_validators(SafeAction) ->
     afamily_validators() ++
     node_encryption_validators() ++
@@ -1346,6 +1366,7 @@ net_config_validators(SafeAction) ->
          false ->
              [verify_net_config_allowed(_),
               verify_n2n_credentials(_),
+              verify_n2n_jwt_secrets(_),
               validator:validate(fun check_for_raw_addr/1, afamily, _)]
      end.
 
