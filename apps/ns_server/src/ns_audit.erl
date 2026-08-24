@@ -718,14 +718,24 @@ maybe_reply(false, _Response) ->
 stats() ->
     {ok, gen_server:call(?MODULE, stats)}.
 
+%% Carry whatever the authentication path stashed on the request, so a
+%% successful OIDC or JWT login says which issuer and which claims produced
+%% the session rather than only the roles it ended up with. The roles field
+%% stays the effective grant and the claim arrives beside it as token_roles.
 login_success(Req) ->
     AuthnRes = menelaus_auth:get_authn_res(Req),
     Roles = menelaus_roles:get_roles(AuthnRes),
     put(login_success, Req,
-        [{roles, {list, [menelaus_web_rbac:role_to_string(Role) || Role <- Roles]}}]).
+        [{roles, {list, [menelaus_web_rbac:role_to_string(Role) ||
+                            Role <- Roles]}} | get_auth_audit_props(Req)]).
 
+%% A failed login often has no identity to report: the request may carry no
+%% username, or the token it carried may not have survived validation. The
+%% event's real_userid is optional for that reason. Carry whatever the
+%% authentication path stashed on the request, which is where the failure
+%% reason comes from.
 login_failure(Req) ->
-    put(login_failure, Req, []).
+    put(login_failure, Req, get_auth_audit_props(Req)).
 
 %% This audit event doesn't have a "Req" because it's not caused by an HTTP
 %% request.

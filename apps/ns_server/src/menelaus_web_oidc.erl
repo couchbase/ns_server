@@ -564,7 +564,8 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
             handle_oidc_login_success(Req, IssuerName, Token);
         {error, Reason} ->
             ?log_debug("OIDC token exchange failed: ~p", [Reason]),
-            ns_audit:login_failure(Req),
+            ns_audit:login_failure(
+              audit_props(Req, <<"token exchange failed">>)),
             redirect_to_ui_with_error(Req, login_failed)
     end.
 
@@ -577,7 +578,7 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
         {oidcc_token, {oidcc_token_id, IdTokenBin, _Claims}, _Access, _Refresh,
          _Scope} when is_binary(IdTokenBin) ->
             case jwt_auth:authenticate(binary_to_list(IdTokenBin)) of
-                {ok, AuthnResJWT, _Audit} ->
+                {ok, AuthnResJWT, Audit} ->
                     SessionId = menelaus_auth:new_session_id(),
                     %% Store the original ID token in the authn result so that
                     %% it can be used later as id_token_hint during RP-initiated
@@ -587,7 +588,14 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
                                                      session_id = SessionId,
                                                      id_token =
                                                          ?HIDE(IdTokenBin)},
-                    case menelaus_auth:uilogin_phase2(Req, oidc,
+                    %% uilogin_phase2/4 audits the outcome, whichever way it
+                    %% goes, so stash the term jwt_auth built for the token
+                    %% before calling it. The success, access_denied and
+                    %% failure records then all say which issuer and which
+                    %% claims the attempt carried.
+                    Req1 = menelaus_auth:maybe_set_auth_audit_props(Req,
+                                                                    Audit),
+                    case menelaus_auth:uilogin_phase2(Req1, oidc,
                                                       SessionName, AuthnRes) of
                         {ok, Headers} ->
                             menelaus_util:reply_text(Req, <<"Redirecting...">>,
@@ -606,16 +614,25 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
                             ?log_debug("OIDC UI login failed: ~p", [Reason]),
                             redirect_to_ui_with_error(Req, login_failed)
                     end;
-                {error, _Audit} ->
+                {error, Audit} ->
                     ?log_debug("OIDC ID token failed validation", []),
-                    ns_audit:login_failure(Req),
+                    ns_audit:login_failure(
+                      menelaus_auth:maybe_set_auth_audit_props(Req, Audit)),
                     redirect_to_ui_with_error(Req, login_failed)
             end;
         _ ->
             ?log_debug("OIDC token response contained no ID token", []),
-            ns_audit:login_failure(Req),
+            ns_audit:login_failure(
+              audit_props(Req, <<"no ID token in token response">>)),
             redirect_to_ui_with_error(Req, login_failed)
     end.
+
+%% Failures before an ID token has been validated have no claims to report, so
+%% the audit record carries only what went wrong. jwt_auth builds the richer
+%% term for failures after that point.
+audit_props(Req, Reason) ->
+    menelaus_auth:maybe_set_auth_audit_props(
+      Req, [{<<"type">>, <<"oidc">>}, {<<"reason">>, Reason}]).
 
 %% Bounce the browser back to the UI login screen with a generic, PII-free
 %% error code. The UI maps the code to a localized message. We deliberately do

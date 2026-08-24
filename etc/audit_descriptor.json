@@ -19,7 +19,21 @@
           "optional_fields" : {
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
-              "token_roles": ""
+              "type": "",
+              "iss": "",
+              "alg": "",
+              "sub": "",
+              "aud": "",
+              "exp": 0,
+              "kid": "",
+              "nbf": 0,
+              "iat": 0,
+              "jti": "",
+              "groups": "",
+              "token_roles": "",
+              "mapped_groups": "",
+              "mapped_roles": "",
+              "expiry_with_leeway": 0
           }
       },
       {
@@ -31,11 +45,24 @@
           "filtering_permitted" : false,
           "mandatory_fields" : {
               "timestamp" : "",
-              "real_userid" : "",
               "remote" : {"ip" : "", "port" : 1},
               "local" : {"ip" : "", "port" : 1}
           },
           "optional_fields" : {
+              "real_userid" : {"domain" : "", "user" : ""},
+              "type": "",
+              "reason": "",
+              "iss": "",
+              "alg": "",
+              "sub": "",
+              "aud": "",
+              "exp": 0,
+              "kid": "",
+              "nbf": 0,
+              "iat": 0,
+              "jti": "",
+              "groups": "",
+              "token_roles": ""
           }
       },
       {

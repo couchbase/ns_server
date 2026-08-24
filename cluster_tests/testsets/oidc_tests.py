@@ -548,7 +548,8 @@ class OIDCTests(testlib.BaseTestSet):
 
     def _configure_with_provider(
         self, node, provider, *, use_discovery=False, tls=None,
-        issuer_overrides=None, post_logout_redirect_uris=_UNSET
+        issuer_overrides=None, post_logout_redirect_uris=_UNSET,
+        oidc_overrides=None
     ):
         """Configure JWT/OIDC for a MockOIDCProvider instance.
 
@@ -584,6 +585,8 @@ class OIDCTests(testlib.BaseTestSet):
             oidc_settings["endSessionEndpoint"] = provider.logout_url
         if tls:
             oidc_settings.update(tls)
+        if oidc_overrides:
+            oidc_settings.update(oidc_overrides)
         self._configure_jwt_with_oidc(
             issuer_name=provider.issuer,
             public_key_source="jwks_uri" if use_discovery else "jwks",
@@ -710,7 +713,8 @@ class OIDCTests(testlib.BaseTestSet):
             auth=None,
         )
 
-    def _oidc_ui_login_expect_denied(self, node, issuer_name, session):
+    def _oidc_ui_login_expect_denied(self, node, issuer_name, session,
+                                     expected_error="access_denied"):
         r1 = testlib.get_succ(
             node,
             "/oidc/auth",
@@ -744,8 +748,8 @@ class OIDCTests(testlib.BaseTestSet):
             session=session,
         )
         loc = r3.headers.get("Location", "")
-        assert "oidcError=access_denied" in loc, \
-            f"Expected oidcError=access_denied in redirect Location: {loc}"
+        assert f"oidcError={expected_error}" in loc, \
+            f"Expected oidcError={expected_error} in Location: {loc}"
 
         testlib.get_fail(
             node,
@@ -906,6 +910,119 @@ class OIDCTests(testlib.BaseTestSet):
     # =========================================================================
     # Tests: Positive login flows
     # =========================================================================
+
+    def login_failure_audit_test(self):
+        """A failed OIDC login produces an audit record naming the reason.
+
+        Event 8193 used to declare real_userid mandatory, and these paths have
+        no identity to report, so memcached rejected every record and a failed
+        SSO login left no audit trail at all (MB-73162).
+        """
+        node = self.cluster.connected_nodes[0]
+        jwks = self._load_jwks()
+        testlib.post_succ(self.cluster, "/settings/audit",
+                          data={"auditdEnabled": "true"})
+        try:
+            with MockOIDCProvider(jwks, "oidc-client",
+                                  "oidc-secret") as provider:
+                # ns_server holds a secret the provider does not accept, so
+                # the token exchange is refused and the login fails before any
+                # ID token exists.
+                self._configure_with_provider(
+                    node, provider,
+                    oidc_overrides={"clientSecret": "wrong-secret"})
+                session = requests.Session()
+                offset = testlib.audit_log_offset(node)
+                self._oidc_ui_login_expect_denied(
+                    node, provider.issuer, session,
+                    expected_error="login_failed")
+                event = testlib.wait_for_audit_event(node, 8193,
+                                                     since_offset=offset)
+                testlib.assert_eq(event.get("reason"),
+                                  "token exchange failed", name="reason")
+                testlib.assert_eq(event.get("type"), "oidc", name="type")
+        finally:
+            testlib.post_succ(self.cluster, "/settings/audit",
+                              data={"auditdEnabled": "false"})
+
+    def login_success_audit_test(self):
+        """A successful OIDC login names the issuer and the claims.
+
+        The callback used to discard the term jwt_auth built for a token that
+        validated, so event 8192 carried only the roles the session ended up
+        with and said nothing about where the session came from (MB-73162).
+
+        The type is "jwt" rather than "oidc" because jwt_auth builds the term,
+        for a browser login as much as for a bearer token.
+        """
+        node = self.cluster.connected_nodes[0]
+        jwks = self._load_jwks()
+        testlib.post_succ(self.cluster, "/settings/audit",
+                          data={"auditdEnabled": "true"})
+        try:
+            with MockOIDCProvider(jwks, "oidc-client",
+                                  "oidc-secret") as provider:
+                self._configure_with_provider(node, provider)
+                session = requests.Session()
+                offset = testlib.audit_log_offset(node)
+                self._oidc_ui_login(node, provider.issuer, session)
+                event = testlib.wait_for_audit_event(node, 8192,
+                                                     since_offset=offset)
+
+                testlib.assert_eq(event.get("type"), "jwt", name="type")
+                testlib.assert_eq(event.get("sub"), "testuser", name="sub")
+                testlib.assert_eq(event.get("iss"), provider.issuer,
+                                  name="iss")
+
+                # The groups claim stays an array (MB-73360); mapped_groups is
+                # the comma joined list get_authn_res_audit_props/1 builds.
+                testlib.assert_eq(event.get("groups"), ["oidc_admins"],
+                                  name="groups")
+                testlib.assert_eq(event.get("mapped_groups"), "oidc_admins",
+                                  name="mapped_groups")
+
+                # roles is the mandatory field holding what RBAC granted, not
+                # the claim the token carried, so login_success/1 must not
+                # have overwritten it with the props.
+                assert "admin" in event.get("roles", []), \
+                    f"Expected admin in granted roles: {event.get('roles')}"
+
+                self._oidc_ui_logout(node, session, provider)
+        finally:
+            testlib.post_succ(self.cluster, "/settings/audit",
+                              data={"auditdEnabled": "false"})
+
+    def access_denied_audit_test(self):
+        """A login denied for want of privileges is audited with its claims.
+
+        The token validates, so jwt_auth has built the full term by the time
+        uilogin_phase2/4 rejects the session. That record is a login failure
+        and should say which identity was refused, which is the question an
+        operator has when an SSO user cannot get in (MB-73162).
+        """
+        node = self.cluster.connected_nodes[0]
+        jwks = self._load_jwks()
+        testlib.post_succ(self.cluster, "/settings/audit",
+                          data={"auditdEnabled": "true"})
+        try:
+            with MockOIDCProvider(
+                jwks, "oidc-client", "oidc-secret",
+                token_groups=["oidc_nonadmins"],
+            ) as provider:
+                self._configure_with_provider(node, provider)
+                session = requests.Session()
+                offset = testlib.audit_log_offset(node)
+                self._oidc_ui_login_expect_denied(node, provider.issuer,
+                                                  session)
+                event = testlib.wait_for_audit_event(node, 8193,
+                                                     since_offset=offset)
+                testlib.assert_eq(event.get("type"), "jwt", name="type")
+                testlib.assert_eq(event.get("sub"), "testuser", name="sub")
+                testlib.assert_eq(event.get("groups"), ["oidc_nonadmins"],
+                                  name="groups")
+        finally:
+            testlib.post_succ(self.cluster, "/settings/audit",
+                              data={"auditdEnabled": "false"})
 
     def oidc_login_basic_test(self):
         """Basic OIDC login with manually configured endpoints (air-gapped,
