@@ -353,19 +353,20 @@ update_with_vclocks(Fun, Acc) ->
 -spec update_key(term(), fun((term()) -> term())) ->
                         ok | {error | exit | throw, any(), any()}.
 update_key(Key, Fun) ->
-    update_with_changes(fun (Config, UUID) ->
-                                case update_key_inner(Config, UUID, Key, Fun) of
-                                    false ->
-                                        erlang:throw({config_key_not_found, Key});
-                                    V ->
-                                        V
-                                end
-                        end).
+    update_with_changes(
+      fun (Config, UUID) ->
+              case update_key_inner(maps:from_list(Config), UUID, Key, Fun) of
+                  false ->
+                      erlang:throw({config_key_not_found, Key});
+                  V ->
+                      V
+              end
+      end).
 
 update_key(Key, Fun, Default) ->
     update_with_changes(
       fun (Config, UUID) ->
-              case update_key_inner(Config, UUID, Key, Fun) of
+              case update_key_inner(maps:from_list(Config), UUID, Key, Fun) of
                   false ->
                       case Default of
                           ?DELETED_MARKER ->
@@ -383,23 +384,21 @@ update_key(Key, Fun, Default) ->
               end
       end).
 
-update_key_inner(Config, UUID, Key, Fun) ->
-    case lists:keyfind(Key, 1, Config) of
-        false ->
+update_key_inner(Config, UUID, Key, Fun) when is_map(Config) ->
+    case maps:find(Key, Config) of
+        error ->
             false;
-        {_, OldValue} ->
+        {ok, OldValue} ->
             case strip_metadata(OldValue) of
                 ?DELETED_MARKER ->
                     false;
                 StrippedValue ->
                     case Fun(StrippedValue) of
                         StrippedValue ->
-                            {[], Config};
+                            {[], maps:to_list(Config)};
                         NewValue ->
-                            NewConfig =
-                                update_config_key(Key, NewValue,
-                                                  maps:from_list(Config),
-                                                  UUID),
+                            NewConfig = update_config_key(Key, NewValue,
+                                                          Config, UUID),
                             {[{Key, maps:get(Key, NewConfig)}],
                              maps:to_list(NewConfig)}
                     end
