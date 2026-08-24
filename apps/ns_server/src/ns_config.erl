@@ -974,7 +974,7 @@ handle_call(resave, From, State) ->
 
 handle_call(reannounce, _From, State) ->
     %% we have to assume those are all genuine just made local changes
-    announce_locally_made_changes(get_kv_list_with_config(State)),
+    announce_locally_made_changes(get_kv_map(State)),
     {reply, ok, State};
 
 handle_call(get, _From, State) ->
@@ -1001,24 +1001,20 @@ handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
                 {[], []} ->
                     {reply, Reply, State};
                 {_, _} ->
+                    NewMap = maps:from_list(NewPairs),
                     NewState = set_config_dynamic(
                                  State, kvlist_to_dynamic(NewConfig)),
 
                     {FinalState, FinalPairs} =
-                        case NewPairs =/= [] of
+                        case maps:size(NewMap) =/= 0 of
                             true ->
                                 %% Bump the counter only if there are real
                                 %% (non-erase changes).
-                                {NewState1, {CounterKey, _} = CounterPair} =
+                                {NewState1, {CounterK, CounterV}} =
                                     bump_local_changes_counter_full(NewState),
-                                %% Fun may have set the counter itself and the
-                                %% bumped pair supersedes it, so drop the stale
-                                %% one rather than announce the key twice
-                                {NewState1,
-                                 [CounterPair |
-                                  lists:keydelete(CounterKey, 1, NewPairs)]};
+                                {NewState1, NewMap#{CounterK => CounterV}};
                             false ->
-                                {NewState, NewPairs}
+                                {NewState, NewMap}
                         end,
 
                     erase_ets_dup(Erased),
@@ -1179,16 +1175,16 @@ diff_kvlists(New, Old) ->
     [Pair || {Key, Value} = Pair <- New,
              maps:find(Key, OldMap) =/= {ok, Value}].
 
--spec diff_dynamic_config(map(), map()) -> kvlist().
+-spec diff_dynamic_config(map(), map()) -> map().
 diff_dynamic_config(New, Old) ->
     maps:fold(
       fun(Key, Value, Acc) ->
               case maps:find(Key, Old) of
                   %% Note the match against "Value" which is the new value
                   {ok, Value} -> Acc;
-                  _ -> [{Key, Value} | Acc]
+                  _ -> Acc#{Key => Value}
               end
-      end, [], New).
+      end, #{}, New).
 
 diff_config(NewConfig, OldConfig) ->
     diff_dynamic_config(config_dynamic(NewConfig),
@@ -1227,9 +1223,9 @@ cas_config_inner(Type, ExtraLocalChanges, State, NewState0) ->
     {LocalDiff, RemoteDiff} =
         case {Type, HaveExtraLocalChanges} of
             {local, _} ->
-                {Diff, []};
+                {Diff, #{}};
             {remote, false} ->
-                {[], Diff};
+                {#{}, Diff};
             {remote, true} ->
                 %% if we reach here, we definitely bumped local change
                 %% counter, so we need to make sure it's replicated
@@ -1238,10 +1234,15 @@ cas_config_inner(Type, ExtraLocalChanges, State, NewState0) ->
                     [{local_changes_count, uuid(State)} |
                      ExtraLocalChanges],
 
-                lists:partition(
-                  fun ({K, _}) ->
-                          lists:member(K, ToReplicate)
-                  end, Diff)
+                maps:fold(
+                    fun(Key, Value, {Local, Remote}) ->
+                            case lists:member(Key, ToReplicate) of
+                                true ->
+                                    {Local#{Key => Value}, Remote};
+                                false ->
+                                    {Local, Remote#{Key => Value}}
+                            end
+                    end, {#{}, #{}}, Diff)
         end,
 
     announce_locally_made_changes(LocalDiff),
@@ -1387,19 +1388,19 @@ initiate_save_config(Config, NewContinuation) ->
             end
     end.
 
-announce_locally_made_changes([]) ->
+announce_locally_made_changes(KVMap) when is_map(KVMap) andalso
+                                          map_size(KVMap) =:= 0 ->
     ok;
-announce_locally_made_changes(KVList) ->
-    announce_changes(KVList),
-    gen_event:notify(ns_config_events_local, [K || {K, _} <- KVList]).
+announce_locally_made_changes(KVMap) when is_map(KVMap) ->
+    announce_changes(KVMap),
+    gen_event:notify(ns_config_events_local, maps:keys(KVMap)).
 
-announce_changes([]) -> ok;
-announce_changes(KVList) ->
+announce_changes(KVMap) when is_map(KVMap) andalso map_size(KVMap) =:= 0 ->
+    ok;
+announce_changes(KVMap) when is_map(KVMap) ->
     ets:update_counter(ns_config_announces_counter, changes_counter, 1),
-    do_announce_changes(KVList).
+    do_announce_changes(KVMap).
 
-do_announce_changes(KVList) when is_list(KVList) ->
-    do_announce_changes(maps:from_list(KVList));
 do_announce_changes(KVMap) when is_map(KVMap) ->
     %% Fire an event per changed key.
     maps:foreach(fun (Key, Value) ->
@@ -1410,8 +1411,13 @@ do_announce_changes(KVMap) when is_map(KVMap) ->
     %% Fire a generic event that 'something changed'.
     gen_event:notify(ns_config_events, KVMap).
 
-update_ets_dup(KVList) ->
+update_ets_dup(KVList) when is_list(KVList) ->
     KVs = [{K, strip_metadata(V)} || {K, V} <- KVList],
+    ets:insert(ns_config_ets_dup, KVs);
+update_ets_dup(KVMap) when is_map(KVMap) ->
+    KVs = maps:fold(fun(K, V, Acc) ->
+                            [{K, strip_metadata(V)} | Acc]
+                    end, [], KVMap),
     ets:insert(ns_config_ets_dup, KVs).
 
 erase_ets_dup(Keys) ->

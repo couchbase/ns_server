@@ -333,10 +333,13 @@ store_ets_snapshot(Snapshot) ->
     OldSnapshot = get_ets_snapshot(),
     ets:insert(?TABLE_NAME, {snapshot, Snapshot}),
 
-    Diff = lists:filter(
-             fun ({Key, NewValue}) ->
-                     proplists:get_value(Key, OldSnapshot) =/= NewValue
-             end, Snapshot),
+    Diff = lists:foldl(
+             fun ({Key, NewValue}, Acc) ->
+                     case proplists:get_value(Key, OldSnapshot) =:= NewValue of
+                         true -> Acc;
+                         false -> Acc#{Key => NewValue}
+                     end
+             end, #{}, Snapshot),
 
     ns_config:do_announce_changes(Diff).
 
