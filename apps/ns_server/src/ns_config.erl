@@ -136,28 +136,18 @@ set_initial(Key, Value) ->
                                      {[NewPair], [NewPair | lists:keydelete(Key, 1, Config)]}
                              end).
 
-update_config_key_rec(Key, Value, Rest, UUID, AccList) ->
-    case Rest of
-        [{Key, OldValue} = OldPair | XX] ->
-            NewPair = case strip_metadata(OldValue) =:= strip_metadata(Value) of
-                          true ->
-                              OldPair;
-                          _ ->
-                              {Key, increment_vclock(Value, OldValue, UUID)}
-                      end,
-            [NewPair | lists:reverse(AccList, XX)];
-        [Pair | XX2] ->
-            update_config_key_rec(Key, Value, XX2, UUID, [Pair | AccList]);
-        [] ->
-            none
-    end.
-
-%% updates KVList with {Key, Value}. Places new tuple at the beginning
-%% of list and removes old version for rest of list
-update_config_key(Key, Value, KVList, UUID) ->
-    case update_config_key_rec(Key, Value, KVList, UUID, []) of
-        none -> [{Key, attach_vclock(Value, UUID)} | KVList];
-        NewList -> NewList
+%% updates KVMap with {Key, Value}
+update_config_key(Key, Value, KVMap, UUID) when is_map(KVMap) ->
+    case maps:find(Key, KVMap) of
+        error ->
+            KVMap#{Key => attach_vclock(Value, UUID)};
+        {ok, OldValue} ->
+            case strip_metadata(OldValue) =:= strip_metadata(Value) of
+                true ->
+                    KVMap;
+                false ->
+                    KVMap#{Key => increment_vclock(Value, OldValue, UUID)}
+            end
     end.
 
 %% Replaces config key-value pairs by NewConfig if they're still equal
@@ -169,10 +159,12 @@ cas_local_config(NewConfig, OldConfig) ->
     gen_server:call(?MODULE, {cas_config, NewConfig, [], OldConfig, local}).
 
 set(Key, Value) ->
-    ok = update_with_changes(fun (Config, UUID) ->
-                                     NewList = update_config_key(Key, Value, Config, UUID),
-                                     {[hd(NewList)], NewList}
-                             end).
+    ok = update_with_changes(
+        fun (Config, UUID) ->
+             NewMap =
+                 update_config_key(Key, Value, maps:from_list(Config), UUID),
+             {[{Key, maps:get(Key, NewMap)}], maps:to_list(NewMap)}
+        end).
 
 %% gets current config. Runs Body on it to get new config, then tries
 %% to cas new config returning retry_needed if it fails
@@ -222,25 +214,26 @@ run_txn_loop(Body, RetriesLeft) ->
     end.
 
 run_txn_set(Key, Value, [KVList], UUID) ->
-    [update_config_key(Key, Value, KVList, UUID)].
+    [maps:to_list(update_config_key(Key, Value, maps:from_list(KVList), UUID))].
 
-%% Updates Config with list of {Key, Value} pairs. Places new pairs at
-%% the beginning of new list and removes old occurences of that keys.
+%% Updates Config with list of {Key, Value} pairs.
 %% Returns pair: {NewPairs, NewConfig}, where NewPairs is list of
 %% updated KV pairs (with updated vclocks, if needed).
 %%
-%% Last parameter is accumulator. It's appended to NewPairs list.
-set_kvlist([], Config, _UUID, NewPairs) ->
-    {NewPairs, Config};
-set_kvlist([{Key, Value} | Rest], Config, UUID, NewPairs) ->
-    NewList = update_config_key(Key, Value, Config, UUID),
-    set_kvlist(Rest, NewList, UUID, [hd(NewList) | NewPairs]).
+%% Last parameter is accumulator. It's appended to NewPairs list
+set_kvlist([], KVMap, _UUID, PairsAcc) ->
+    {PairsAcc, maps:to_list(KVMap)};
+set_kvlist([{Key, Value} | Rest], KVMap, UUID, PairsAcc) ->
+    NewMap = update_config_key(Key, Value, KVMap, UUID),
+    set_kvlist(Rest, NewMap, UUID, [{Key, maps:get(Key, NewMap)} | PairsAcc]).
 
 set([]) ->
     ok;
 set(KVList) when is_list(KVList) ->
     ok = update_with_changes(fun (Config, UUID) ->
-                                     set_kvlist(KVList, Config, UUID, [])
+                                         set_kvlist(KVList,
+                                                    maps:from_list(Config),
+                                                    UUID, [])
                              end).
 
 delete(Keys) when is_list(Keys) ->
@@ -378,8 +371,12 @@ update_key(Key, Fun, Default) ->
                           ?DELETED_MARKER ->
                               {[], Config};
                           _ ->
-                              NewConfig = update_config_key(Key, Default, Config, UUID),
-                              {[hd(NewConfig)], NewConfig}
+                              NewConfig =
+                                  update_config_key(Key, Default,
+                                                    maps:from_list(Config),
+                                                    UUID),
+                              {[{Key, maps:get(Key, NewConfig)}],
+                               maps:to_list(NewConfig)}
                       end;
                   V ->
                       V
@@ -399,9 +396,12 @@ update_key_inner(Config, UUID, Key, Fun) ->
                         StrippedValue ->
                             {[], Config};
                         NewValue ->
-                            NewConfig = update_config_key(Key, NewValue, Config,
-                                                          UUID),
-                            {[hd(NewConfig)], NewConfig}
+                            NewConfig =
+                                update_config_key(Key, NewValue,
+                                                  maps:from_list(Config),
+                                                  UUID),
+                            {[{Key, maps:get(Key, NewConfig)}],
+                             maps:to_list(NewConfig)}
                     end
             end
     end.
@@ -1884,8 +1884,14 @@ all_test_() ->
       {spawn, make_upgrade_config_test_spec()}
      ]}.
 
--define(assertConfigEquals(A, B), ?assertEqual(lists:sort([{K, strip_metadata(V)} || {K,V} <- A]),
-                                               lists:sort([{K, strip_metadata(V)} || {K,V} <- B]))).
+
+-define(assertConfigEqualsMap(A, B),
+        ?assertEqual(#{K => strip_metadata(V) || K := V <- A},
+                     #{K => strip_metadata(V) || K := V <- B})).
+
+-define(assertConfigEqualsList(A, B),
+        ?assertEqual(lists:sort([{K, strip_metadata(V)} || {K,V} <- A]),
+                     lists:sort([{K, strip_metadata(V)} || {K,V} <- B]))).
 
 %% #config{} holding the given dynamic KVList, without naming the
 %% representation
@@ -1896,15 +1902,16 @@ mk_config(KVList, Config) ->
     set_config_dynamic(Config, kvlist_to_dynamic(KVList)).
 
 test_update_config() ->
-    ?assertConfigEquals([{test, 1}], update_config_key(test, 1, [], <<"uuid">>)),
-    ?assertConfigEquals([{test, 1},
-                         {foo, [{k, 1}, {v, 2}]},
-                         {xar, true}],
-                        update_config_key(test, 1,
-                                          [{foo, [{k, 1}, {v, 2}]},
-                                           {xar, true},
-                                           {test, [{a, b}, {c, d}]}],
-                                          <<"uuid">>)).
+    ?assertConfigEqualsMap(#{test => 1},
+                           update_config_key(test, 1, #{}, <<"uuid">>)),
+    ?assertConfigEqualsMap(#{test => 1,
+                             foo => [{k, 1}, {v, 2}],
+                             xar => true},
+                           update_config_key(test, 1,
+                                             #{foo => [{k, 1}, {v, 2}],
+                                               xar => true,
+                                               test => [{a, b}, {c, d}]},
+                                             <<"uuid">>)).
 
 test_set_kvlist() ->
     {NewPairs, [{foo, FooVal},
@@ -1912,10 +1919,10 @@ test_set_kvlist() ->
                 {baz, [{nothing, false}]}]} =
         set_kvlist([{bar, false},
                     {foo, [{suba, a}, {subb, b}]}],
-                   [{baz, [{nothing, false}]},
-                    {foo, [{suba, undefined}, {subb, unlimited}]}],
+                   #{baz => [{nothing, false}],
+                     foo => [{suba, undefined}, {subb, unlimited}]},
                    <<"uuid">>, []),
-    ?assertConfigEquals(NewPairs, [{foo, FooVal}, {bar, false}]),
+    ?assertConfigEqualsList(NewPairs, [{foo, FooVal}, {bar, false}]),
     ?assertMatch([{'_vclock', [{<<"uuid">>, _}]}, {suba, a}, {subb, b}],
                  FooVal).
 
