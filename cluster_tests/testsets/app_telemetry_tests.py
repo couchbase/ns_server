@@ -133,20 +133,14 @@ class AppTelemetryTests(testlib.BaseTestSet):
         try:
             # nodeServices is served from an asynchronously invalidated cache,
             # so poll until /_appTelemetry is no longer advertised
-            def path_not_advertised():
-                info = testlib.get_succ(
-                    self.cluster, "/pools/default/nodeServices").json()
-                node0_ext = info.get('nodesExt')[0]
-                return node0_ext.get('appTelemetryPath') is None
             testlib.poll_for_condition(
-                path_not_advertised, sleep_time=0.5, timeout=15,
+                self.path_not_advertised, sleep_time=0.5, timeout=15,
                 msg="wait for /_appTelemetry to stop being advertised")
 
             testlib.get_fail(self.cluster, "/_appTelemetry", 404)
         finally:
             # Re-enable app telemetry
-            testlib.post_succ(self.cluster, "/settings/appTelemetry",
-                              json={"enabled": "true"})
+            self.enable_app_telemetry()
 
     def max_clients_reached_test(self):
         info = testlib.get_succ(self.cluster,
@@ -218,9 +212,21 @@ class AppTelemetryTests(testlib.BaseTestSet):
                     pass
         finally:
             # Re-enable app telemetry
-            testlib.post_succ(self.cluster, "/settings/appTelemetry",
-                              json={"enabled": "true"})
+            self.enable_app_telemetry()
 
+    def enable_app_telemetry(self):
+        testlib.post_succ(self.cluster, "/settings/appTelemetry",
+                          json={"enabled": "true"})
+        testlib.poll_for_condition(
+            lambda: not self.path_not_advertised(),
+            sleep_time=0.5, timeout=15,
+            msg="wait for /_appTelemetry to start being advertised")
+
+    def path_not_advertised(self):
+        info = testlib.get_succ(
+            self.cluster, "/pools/default/nodeServices").json()
+        node0_ext = info.get('nodesExt')[0]
+        return node0_ext.get('appTelemetryPath') is None
 
 def make_metric(metric, uuid, value):
     return (f"{metric}{{le=\"0.001\","
