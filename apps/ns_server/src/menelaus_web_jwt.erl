@@ -576,8 +576,8 @@ format_jwks(Value) -> Value.
 format_public_key({PemBin, _Key}) when is_binary(PemBin) -> PemBin;
 format_public_key(Value) -> Value.
 
-format_secret({_Secret, _JWK}) -> <<"********">>;
-format_secret(Value) -> Value.
+format_secret(undefined) -> undefined;
+format_secret(_) -> chronicle_kv_log:masked().
 
 format_string(undefined) -> undefined;
 format_string(Value) ->
@@ -651,7 +651,7 @@ proplist_to_map_test_() ->
         proplist_to_map(<<"simple">>))
     ].
 
-snake_to_camel_test() ->
+snake_to_camel_test_() ->
     [
      ?_assertEqual('audClaim', snake_to_camel_atom(aud_claim)),
      ?_assertEqual('jwksUriHttpTimeoutMs',
@@ -664,7 +664,7 @@ snake_to_camel_test() ->
 %% snake case, and ensuring that in the response, the keys are converted back
 %% to their original form. Additionally, it checks that values containing
 %% lists are converted to binary format so that jiffy can encode them properly.
-format_conversion_test() ->
+format_conversion_test_() ->
     [
      ?_assertEqual(
         #{enabled => true,
@@ -699,5 +699,29 @@ format_conversion_test() ->
                                                   {audiences, ["aud3"]}]}
                                                ]}
                                     ]))
+    ].
+
+shared_secret_masking_test_() ->
+    RestIssuer =
+        fun (Props) ->
+                #{issuers := [Issuer]} =
+                    storage_to_rest_format(#{issuers => #{"issuer1" => Props}}),
+                Issuer
+        end,
+    Secret = <<"0123456789abcdef0123456789abcdef">>,
+    [
+     %% A configured secret is reported as the mask, never echoed.
+     ?_assertEqual(chronicle_kv_log:masked(),
+                   maps:get(sharedSecret,
+                            RestIssuer(#{shared_secret => Secret}))),
+     %% The cleartext value must not survive under any other key.
+     ?_assertNot(lists:member(Secret,
+                              maps:values(
+                                RestIssuer(#{shared_secret => Secret})))),
+     %% An asymmetric issuer holds no secret, so the key is omitted rather
+     %% than reporting a mask for something that does not exist.
+     ?_assertEqual(error,
+                   maps:find(sharedSecret,
+                             RestIssuer(#{signing_algorithm => "ES256"})))
     ].
 -endif.
