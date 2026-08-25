@@ -15,6 +15,8 @@
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
 
+-define(CONT_BACKUP_CBAUTH_LABEL, "cbcontbk-cbauth").
+
 -export([get_encryption_method/3,
          update_deks/2,
          get_required_usage/1,
@@ -93,9 +95,8 @@ update_deks({bucketDek, BucketUUID} = Kind, Snapshot) ->
         %% not it will be handled via retries.
         ok ?= case ns_ports_setup:should_run(cont_backup, Snapshot) of
                   true ->
-                      cb_deks_cbauth:call_update_keys_db(Kind,
-                                                         ["cbcontbk-cbauth"],
-                                                         true);
+                      cb_deks_cbauth:call_update_keys_db(
+                        Kind, [?CONT_BACKUP_CBAUTH_LABEL], true);
                   false ->
                       ok
               end,
@@ -105,8 +106,16 @@ update_deks({bucketDek, BucketUUID} = Kind, Snapshot) ->
 
 -spec dek_consumers(cb_deks:dek_kind(),
                     cb_cluster_secrets:chronicle_snapshot()) -> [term()].
-dek_consumers(_Kind, _Snapshot) ->
-    [].
+dek_consumers(_Kind, Snapshot) ->
+    %% Continuous backup is the only bucket dek consumer that has no other
+    %% channel for receiving keys (memcached gets them as a part of the bucket
+    %% config), so it must be reported here. Otherwise cb_cluster_secrets
+    %% doesn't notice that cbcontbk has (re)started, and can skip pushing
+    %% keys to it (see call_set_active_cb).
+    case ns_ports_setup:should_run(cont_backup, Snapshot) of
+        true -> [json_rpc_connection:get_pid(?CONT_BACKUP_CBAUTH_LABEL)];
+        false -> []
+    end.
 
 -spec get_required_usage(cb_deks:dek_kind()) ->
           cb_cluster_secrets:secret_usage().
