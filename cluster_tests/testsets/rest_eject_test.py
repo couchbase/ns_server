@@ -84,6 +84,11 @@ class RestEjectTest(testlib.BaseTestSet):
             node,
             "ns_config:compute_global_rev(ns_config:get()).").text)
 
+    def _ns_config_rep_pid(self, node):
+        # ns_config_rep's pid, so we can tell whether it was restarted
+        return testlib.diag_eval(
+            node, "erlang:pid_to_list(erlang:whereis(ns_config_rep)).").text
+
     def _lcc_count(self, node, uuid_term):
         # count_changes of the {local_changes_count, <uuid>} counter as seen by
         # `node`, or -1 if that counter isn't present.
@@ -128,9 +133,16 @@ class RestEjectTest(testlib.BaseTestSet):
             sleep_time=0.3, attempts=60,
             msg="ejected node's local_changes_count to replicate before eject")
         rev_before = self._cfg_rev(orchestrator)
+        rep_pid_before = self._ns_config_rep_pid(orchestrator)
 
         # Rebalance the node out.
         self.cluster.rebalance(ejected_nodes=[eject_node], wait=True)
+
+        # A restart means ns_config_rep died on the keys the eject announced,
+        # which also fails the eject with shun_failed when it loses the race
+        # with ns_cluster:shun/1
+        assert self._ns_config_rep_pid(orchestrator) == rep_pid_before, \
+            "ns_config_rep restarted during the eject"
 
         # Its counter must now be gone from the surviving orchestrator's config.
         testlib.poll_for_condition(

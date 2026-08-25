@@ -987,9 +987,14 @@ handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
                             true ->
                                 %% Bump the counter only if there are real
                                 %% (non-erase changes).
-                                {NewState1, CounterPair} =
+                                {NewState1, {CounterKey, _} = CounterPair} =
                                     bump_local_changes_counter_full(NewState),
-                                {NewState1, [CounterPair | NewPairs]};
+                                %% Fun may have set the counter itself and the
+                                %% bumped pair supersedes it, so drop the stale
+                                %% one rather than announce the key twice
+                                {NewState1,
+                                 [CounterPair |
+                                  lists:keydelete(CounterKey, 1, NewPairs)]};
                             false ->
                                 {NewState, NewPairs}
                         end,
@@ -1721,7 +1726,9 @@ all_test_() ->
          {"test_upgrade_config_explicitly",
           fun test_upgrade_config_explicitly/0},
          {"test_config_upgrade_to_totoro",
-          fun test_config_upgrade_to_totoro/0}]}},
+          fun test_config_upgrade_to_totoro/0},
+         {"test_remove_nodes_config_keys_announces_unique_keys",
+          fun test_remove_nodes_config_keys_announces_unique_keys/0}]}},
 
       {spawn, ?_test(test_upgrade_config_with_many_upgrades())},
       {spawn, ?_test(test_upgrade_config_vclocks())},
@@ -2102,6 +2109,52 @@ test_config_upgrade_to_totoro() ->
         ?assertMatch([{testuuid, _}], MyVC)
     after
         meck:unload(ns_node_disco)
+    end,
+
+    ok.
+
+%% Ejecting a node sets this node's own counter in the same transaction that
+%% bumps it, so the key must still be announced once, as ns_config_rep dies on
+%% a key it is handed twice
+test_remove_nodes_config_keys_announces_unique_keys() ->
+    true = erlang:register(save_config_target, self()),
+    Ack = fun () -> receive {saving, R, _C, P} -> P ! {R, ok} end end,
+
+    Departed = 'other@host',
+    DepartedUuid = <<"departed-uuid">>,
+
+    set_initial({node, Departed, rest}, [{port, 8091}]),
+    Ack(),
+    %% A non-trivial count under the departed node's own uuid, so it is stale
+    %% and gets folded into ours rather than skipped
+    set_initial({local_changes_count, DepartedUuid},
+                [{?METADATA_VCLOCK, [{DepartedUuid, {50, 0}}]}]),
+    Ack(),
+
+    Self = self(),
+    Subscription =
+        ns_pubsub:subscribe_link(ns_config_events_local,
+                                 fun (Keys) -> Self ! {announced, Keys} end),
+    try
+        ok = remove_nodes_config_keys([Departed], [testuuid], testuuid),
+        Ack(),
+
+        Announced =
+            receive
+                {announced, Keys} -> Keys
+            after 1000 ->
+                    exit(no_announcement)
+            end,
+
+        ?assertEqual([], Announced -- lists:usort(Announced)),
+
+        %% Check the transaction set our counter and deleted the departed
+        %% node's keys, so the assertion above is about the right key list
+        ?assert(lists:member({local_changes_count, testuuid}, Announced)),
+        ?assert(lists:member({local_changes_count, DepartedUuid}, Announced)),
+        ?assert(lists:member({node, Departed, rest}, Announced))
+    after
+        ok = ns_pubsub:unsubscribe(Subscription)
     end,
 
     ok.
