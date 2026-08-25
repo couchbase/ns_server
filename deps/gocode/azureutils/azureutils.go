@@ -30,29 +30,72 @@ type OperationArgs struct {
 	TimeoutDuration  time.Duration
 }
 
-func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, string, error) {
+// EncryptedData is everything that must be persisted alongside the cipher text
+// in order to be able to decrypt it later. KeyVersion is always set. IV and
+// AuthTag are only set for the algorithms that use them, see
+// AlgorithmUsesIVAndAuthTag
+type EncryptedData struct {
+	CipherText []byte
+	KeyVersion string
+	IV         []byte
+	AuthTag    []byte
+}
+
+var supportedAlgorithms = map[string]struct {
+	azureAlgorithm azkeys.EncryptionAlgorithm
+	// Whether Key Vault generates an initialization vector and an
+	// authentication tag on encrypt. Both have to be stored next to the
+	// cipher text and sent back on decrypt. Supplying our own IV is not
+	// allowed for these, and sending an IV for an algorithm that does not
+	// take one makes the operation fail
+	usesIVAndAuthTag bool
+	// Whether the algorithm can bind additional authenticated data. Passing
+	// AD for an algorithm that cannot bind it is treated as a caller error
+	// rather than quietly ignoring the argument internally
+	supportsAD bool
+}{
+	"A128GCM":    {azkeys.EncryptionAlgorithmA128GCM, true, true},
+	"A192GCM":    {azkeys.EncryptionAlgorithmA192GCM, true, true},
+	"A256GCM":    {azkeys.EncryptionAlgorithmA256GCM, true, true},
+	"RSAOAEP256": {azkeys.EncryptionAlgorithmRSAOAEP256, false, false},
+}
+
+// AlgorithmUsesIVAndAuthTag reports whether Key Vault returns an
+// initialization vector and an authentication tag for the algorithm on
+// encrypt, and expects both of them back on decrypt
+func AlgorithmUsesIVAndAuthTag(algorithm string) bool {
+	return supportedAlgorithms[algorithm].usesIVAndAuthTag
+}
+
+// AlgorithmSupportsAD reports whether the algorithm can bind additional
+// authenticated data
+func AlgorithmSupportsAD(algorithm string) bool {
+	return supportedAlgorithms[algorithm].supportsAD
+}
+
+func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) (*EncryptedData, error) {
 	if len(plainText) == 0 {
-		return nil, "", fmt.Errorf("no data to encrypt")
+		return nil, fmt.Errorf("no data to encrypt")
 	}
 
-	if err := validateArgs(opArgs); err != nil {
-		return nil, "", err
+	if err := validateArgs(opArgs, AD); err != nil {
+		return nil, err
 	}
 
 	toEncrypt := []byte(base64.URLEncoding.EncodeToString(plainText))
 	options, err := getEncrOptions(toEncrypt, AD, opArgs.Algorithm)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	client, err := getAzureClient(baseURL, opArgs.CredentialsChain)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 
 	ctx, cancel := getContextWithTimeout(opArgs.TimeoutDuration)
@@ -60,36 +103,65 @@ func KmsEncrypt(opArgs OperationArgs, plainText, AD []byte) ([]byte, string, err
 
 	res, err := client.Encrypt(ctx, keyName, "", *options, nil)
 	if err != nil {
-		return nil, "", fmt.Errorf("could not encrypt data: %w", err)
+		return nil, fmt.Errorf("could not encrypt data: %w", err)
 	}
 
 	if res.Result == nil {
-		return nil, "", fmt.Errorf("empty cipher text returned")
+		return nil, fmt.Errorf("empty cipher text returned")
 	}
 
 	if res.KID == nil {
-		return nil, "", fmt.Errorf("no key ID returned")
+		return nil, fmt.Errorf("no key ID returned")
 	}
 
-	if version := res.KID.Version(); version == "" {
-		return nil, "", fmt.Errorf("no key version returned")
-	} else {
-		return res.Result, version, nil
+	version := res.KID.Version()
+	if version == "" {
+		return nil, fmt.Errorf("no key version returned")
 	}
+
+	encrData := &EncryptedData{CipherText: res.Result, KeyVersion: version}
+
+	if AlgorithmUsesIVAndAuthTag(opArgs.Algorithm) {
+		if len(res.IV) == 0 {
+			return nil, fmt.Errorf("no initialization vector returned for algorithm %s", opArgs.Algorithm)
+		}
+		if len(res.AuthenticationTag) == 0 {
+			return nil, fmt.Errorf("no authentication tag returned for algorithm %s", opArgs.Algorithm)
+		}
+		encrData.IV = res.IV
+		encrData.AuthTag = res.AuthenticationTag
+	}
+
+	return encrData, nil
 }
 
-func KmsDecrypt(opArgs OperationArgs, keyVersion string, cipherText, AD []byte) ([]byte, error) {
-	if len(cipherText) == 0 {
+func KmsDecrypt(opArgs OperationArgs, encrData EncryptedData, AD []byte) ([]byte, error) {
+	if len(encrData.CipherText) == 0 {
 		return nil, fmt.Errorf("no data to decrypt")
 	}
 
-	if err := validateArgs(opArgs); err != nil {
+	if err := validateArgs(opArgs, AD); err != nil {
 		return nil, err
 	}
 
-	options, err := getEncrOptions(cipherText, AD, opArgs.Algorithm)
+	needsIVAndAuthTag := AlgorithmUsesIVAndAuthTag(opArgs.Algorithm)
+	if needsIVAndAuthTag {
+		if len(encrData.IV) == 0 {
+			return nil, fmt.Errorf("missing initialization vector required by algorithm %s", opArgs.Algorithm)
+		}
+		if len(encrData.AuthTag) == 0 {
+			return nil, fmt.Errorf("missing authentication tag required by algorithm %s", opArgs.Algorithm)
+		}
+	}
+
+	options, err := getEncrOptions(encrData.CipherText, AD, opArgs.Algorithm)
 	if err != nil {
 		return nil, err
+	}
+
+	if needsIVAndAuthTag {
+		options.IV = encrData.IV
+		options.AuthenticationTag = encrData.AuthTag
 	}
 
 	baseURL, keyName, err := parseAzureURL(opArgs.KeyURL)
@@ -105,7 +177,7 @@ func KmsDecrypt(opArgs OperationArgs, keyVersion string, cipherText, AD []byte) 
 	ctx, cancel := getContextWithTimeout(opArgs.TimeoutDuration)
 	defer cancel()
 
-	res, err := client.Decrypt(ctx, keyName, keyVersion, *options, nil)
+	res, err := client.Decrypt(ctx, keyName, encrData.KeyVersion, *options, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not decrypt data: %w", err)
 	}
@@ -122,7 +194,7 @@ func KmsDecrypt(opArgs OperationArgs, keyVersion string, cipherText, AD []byte) 
 	return plain, nil
 }
 
-func validateArgs(opArgs OperationArgs) error {
+func validateArgs(opArgs OperationArgs, AD []byte) error {
 	if opArgs.KeyURL == "" {
 		return fmt.Errorf("no Azure Key Vault URL")
 	}
@@ -143,6 +215,17 @@ func validateArgs(opArgs OperationArgs) error {
 		if strings.TrimSpace(part) == "" {
 			return fmt.Errorf("credentials chain contains an empty value")
 		}
+	}
+
+	// Checked here, and not where the request parameters are built, so that an
+	// unknown algorithm is reported as such instead of as an AD mismatch.
+	if _, err := getAzureKeysEncryptionAlgorithm(opArgs.Algorithm); err != nil {
+		return err
+	}
+
+	if len(AD) > 0 && !AlgorithmSupportsAD(opArgs.Algorithm) {
+		return fmt.Errorf("additional authenticated data cannot be used with "+
+			"algorithm %s, it must not be passed", opArgs.Algorithm)
 	}
 
 	return nil
@@ -236,44 +319,12 @@ func getAzureKeysEncryptionAlgorithm(algorithm string) (azkeys.EncryptionAlgorit
 		return "", fmt.Errorf("empty encryption algorithm")
 	}
 
-	switch algorithm {
-	case "A128CBC":
-		return azkeys.EncryptionAlgorithmA128CBC, nil
-	case "A128CBCPAD":
-		return azkeys.EncryptionAlgorithmA128CBCPAD, nil
-	case "A128GCM":
-		return azkeys.EncryptionAlgorithmA128GCM, nil
-	case "A128KW":
-		return azkeys.EncryptionAlgorithmA128KW, nil
-	case "A192CBC":
-		return azkeys.EncryptionAlgorithmA192CBC, nil
-	case "A192CBCPAD":
-		return azkeys.EncryptionAlgorithmA192CBCPAD, nil
-	case "A192GCM":
-		return azkeys.EncryptionAlgorithmA192GCM, nil
-	case "A192KW":
-		return azkeys.EncryptionAlgorithmA192KW, nil
-	case "A256CBC":
-		return azkeys.EncryptionAlgorithmA256CBC, nil
-	case "A256CBCPAD":
-		return azkeys.EncryptionAlgorithmA256CBCPAD, nil
-	case "A256GCM":
-		return azkeys.EncryptionAlgorithmA256GCM, nil
-	case "A256KW":
-		return azkeys.EncryptionAlgorithmA256KW, nil
-	case "CKMAESKEYWRAP":
-		return azkeys.EncryptionAlgorithmCKMAESKEYWRAP, nil
-	case "CKMAESKEYWRAPPAD":
-		return azkeys.EncryptionAlgorithmCKMAESKEYWRAPPAD, nil
-	case "RSA15":
-		return azkeys.EncryptionAlgorithmRSA15, nil
-	case "RSAOAEP":
-		return azkeys.EncryptionAlgorithmRSAOAEP, nil
-	case "RSAOAEP256":
-		return azkeys.EncryptionAlgorithmRSAOAEP256, nil
-	default:
+	properties, ok := supportedAlgorithms[algorithm]
+	if !ok {
 		return "", fmt.Errorf("unsupported encryption algorithm: %s", algorithm)
 	}
+
+	return properties.azureAlgorithm, nil
 }
 
 func checkForVaultOrHsm(host string) error {

@@ -38,6 +38,17 @@ const KMIP_USE_ENCR_DECR = uint8(0x01)
 
 const KMIP_MAX_IV_SIZE = 128
 
+// Version byte for the envelope that Azure encrypted data is stored in.
+// See encodeAzureEnvelope.
+const AZURE_ENVELOPE_VSN = uint8(0x01)
+
+// Generous upper bound on the length-prefixed fields of that envelope. Key
+// versions are 32 characters, IVs are generally 12 bytes in practice and
+// authentication tags are 16 bytes. These are all fields that AZURE sends as
+// response to the encrypt request,  so good to have an upper bound on it for
+// extra protection
+const AZURE_MAX_ENVELOPE_FIELD_SIZE = 1024
+
 // Stored keys structs and interfaces:
 
 // Configuration for stored keys, describes where to store keys, and what
