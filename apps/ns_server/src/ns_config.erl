@@ -730,9 +730,9 @@ attach_vclock(Value, Node) ->
 compute_global_rev_pre_85(?NS_CONFIG_LATEST_MARKER) ->
     compute_global_rev_pre_85(ns_config:get());
 compute_global_rev_pre_85(Config) ->
-    KVList = get_kv_list_with_config(Config),
-    lists:foldl(
-      fun ({{local_changes_count, _}, Value}, Acc) ->
+    KVList = get_kv_map(Config),
+    maps:fold(
+      fun ({local_changes_count, _}, Value, Acc) ->
               %% local_changes_count never gets deleted, so it should be safe
               %% to ignore the purge timestamp
               %%
@@ -741,7 +741,7 @@ compute_global_rev_pre_85(Config) ->
               %% `compute_global_rev/1` below.
               {_, VC} = extract_vclock(Value),
               Acc + vclock:count_changes(VC);
-          (_, Acc) ->
+          (_, _, Acc) ->
               Acc
       end, 0, KVList).
 
@@ -753,19 +753,19 @@ compute_global_rev_pre_85(Config) ->
 compute_global_rev(?NS_CONFIG_LATEST_MARKER) ->
     compute_global_rev(ns_config:get());
 compute_global_rev(Config) ->
-    KVList = get_kv_list_with_config(Config),
-    lists:foldl(
-        fun ({{local_changes_count, _}, Value}, Acc) ->
-                case strip_metadata(Value) of
-                    ?DELETED_MARKER ->
-                        Acc;
-                    _ ->
-                        {_, VC} = extract_vclock(Value),
-                        Acc + vclock:count_changes(VC)
-                end;
-            (_, Acc) ->
-                Acc
-        end, 0, KVList).
+    KVList = get_kv_map(Config),
+    maps:fold(
+      fun ({local_changes_count, _}, Value, Acc) ->
+              case strip_metadata(Value) of
+                  ?DELETED_MARKER ->
+                      Acc;
+                  _ ->
+                      {_, VC} = extract_vclock(Value),
+                      Acc + vclock:count_changes(VC)
+              end;
+          (_, _, Acc) ->
+              Acc
+      end, 0, KVList).
 
 %% gen_server callbacks
 
