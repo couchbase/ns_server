@@ -876,7 +876,7 @@ do_init(Config) ->
             true ->
                 UpgradedConfig
         end,
-    update_ets_dup(get_kv_list_with_config(InitialState)),
+    update_ets_dup(get_kv_map(InitialState)),
     {ok, update_keys_in_use(InitialState)}.
 
 init({with_state, LoadedConfig} = Init) ->
@@ -1066,6 +1066,7 @@ handle_call({clear, Keep}, From, State) ->
     ?log_debug("Full result of clear:~n~p", [ns_config_log:sanitize(RV)]),
     RV;
 
+%% Can be removed once min-compat is Totoro
 handle_call({merge_ns_couchdb_config, NewKVList0, FromNode}, From, State)
   when is_list(NewKVList0) ->
     handle_call({merge_ns_couchdb_config, maps:from_list(NewKVList0), FromNode},
@@ -1101,10 +1102,10 @@ handle_call({cas_config, NewKV, ExtraLocalChanges, OldKV, Type},
             {reply, false, State}
     end;
 handle_call({upgrade_config_explicitly, Upgrader}, _From, State) ->
-    OldKVList = get_kv_list_with_config(State),
+    OldKVMap = get_kv_map(State),
     NewConfig0 = upgrade_config(State, Upgrader),
 
-    case OldKVList =:= get_kv_list_with_config(NewConfig0) of
+    case OldKVMap =:= get_kv_map(NewConfig0) of
         true ->
             {reply, ok, State};
         false ->
@@ -1401,9 +1402,6 @@ do_announce_changes(KVMap) when is_map(KVMap) ->
     %% Fire a generic event that 'something changed'.
     gen_event:notify(ns_config_events, KVMap).
 
-update_ets_dup(KVList) when is_list(KVList) ->
-    KVs = [{K, strip_metadata(V)} || {K, V} <- KVList],
-    ets:insert(ns_config_ets_dup, KVs);
 update_ets_dup(KVMap) when is_map(KVMap) ->
     KVs = maps:fold(fun(K, V, Acc) ->
                             [{K, strip_metadata(V)} | Acc]
@@ -1453,14 +1451,7 @@ with_touched_keys(Body) ->
         erlang:erase(?TOUCHED_KEYS)
     end.
 
--spec merge_kv_pairs(kvlist() | map(), kvlist() | map(), uuid()) ->
-    {kvlist() | map(), [key()]}.
-merge_kv_pairs(RemoteKVList, LocalKVList, UUID)
-  when is_list(RemoteKVList) andalso is_list(LocalKVList) ->
-    with_touched_keys(
-      fun () ->
-              do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID)
-      end);
+-spec merge_kv_pairs(map(), map(), uuid()) -> {map(), [key()]}.
 merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
   when is_map(RemoteKVMap) andalso is_map(LocalKVMap) ->
     with_touched_keys(
@@ -1468,15 +1459,10 @@ merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
               do_merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
       end).
 
--spec do_merge_kv_pairs(kvlist() | map(), kvlist() | map(), uuid()) ->
-    kvlist() | map().
-do_merge_kv_pairs(RemoteKVList, LocalKVList, _UUID)
-  when RemoteKVList =:= LocalKVList ->
-    LocalKVList;
-do_merge_kv_pairs(RemoteKVList, LocalKVList, UUID)
-  when is_list(RemoteKVList) andalso is_list(LocalKVList) ->
-    do_merge_kv_pairs(maps:from_list(RemoteKVList),
-                      maps:from_list(LocalKVList), UUID);
+-spec do_merge_kv_pairs(map(), map(), uuid()) -> map().
+do_merge_kv_pairs(RemoteKVMap, LocalKVMap, _UUID)
+  when RemoteKVMap =:= LocalKVMap ->
+    LocalKVMap;
 do_merge_kv_pairs(RemoteKVMap, LocalKVMap, UUID)
   when is_map(RemoteKVMap) andalso is_map(LocalKVMap) ->
     Merger =
@@ -1851,10 +1837,10 @@ unmock_tombstone_agent() ->
     ok = meck:unload(tombstone_agent).
 
 %% used in test/ns_config_tests.erl
-test_setup(KVPairs) ->
+test_setup(KVMap) ->
     (catch ets:new(ns_config_ets_dup, [public, set, named_table])),
     ets:delete_all_objects(ns_config_ets_dup),
-    update_ets_dup(KVPairs).
+    update_ets_dup(KVMap).
 
 all_test_() ->
     {setup,
