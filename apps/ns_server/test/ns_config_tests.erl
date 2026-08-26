@@ -423,8 +423,8 @@ data_file(Name) -> filename:join([test_dir(), Name]).
 decrypt(Config) ->
     Config.
 
-%% Every case must agree with New -- Old, which diff_kvlists replaces.
-diff_kvlists_cases() ->
+%% Every case must agree with New -- Old, which diff_dynamic_config replaces.
+diff_dynamic_config_cases() ->
     [{[], []},
      {[], [{a, 1}]},
      {[{a, 1}], []},
@@ -435,8 +435,12 @@ diff_kvlists_cases() ->
      {[{a, 1}], [{a, 1.0}]},
      {[{a, [{'_vclock', v1}, x]}], [{a, [{'_vclock', v0}, x]}]}].
 
-diff_kvlists_test() ->
+diff_dynamic_config_test() ->
     lists:foreach(
       fun ({New, Old}) ->
-              ?assertEqual(New -- Old, ns_config:diff_kvlists(New, Old))
-      end, diff_kvlists_cases()).
+              ?assertEqual(New -- Old,
+                           maps:to_list(
+                             ns_config:diff_dynamic_config(
+                               maps:from_list(New),
+                               maps:from_list(Old))))
+      end, diff_dynamic_config_cases()).

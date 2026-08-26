@@ -46,7 +46,7 @@
          run_txn/1, run_txn_with_config/2,
          clear/1,
          merge_kv_pairs/3,
-         diff_kvlists/2,
+         diff_dynamic_config/2,
          sync_announcements/0,
          get_kv_list/0, get_kv_list/1, get_kv_list_with_config/1,
          get_kv_map/0, get_kv_map/1,
@@ -1168,16 +1168,6 @@ search_dynamic_with_vclock(Dynamic, Key) ->
 
 fold_dynamic(Fun, Acc, Dynamic) ->
     maps:fold(fun (K, V, A) -> fold_kvpair(Fun, K, V, A) end, Acc, Dynamic).
-
-%% Pairs of New that are absent from Old or whose value has changed, in New's
-%% order. Equivalent to New -- Old, as config keys are unique, but `--` is a
-%% O(n^2) and should not be used on large lists. As we migrate to maps here
-%% we can further improve this.
--spec diff_kvlists(kvlist(), kvlist()) -> kvlist().
-diff_kvlists(New, Old) ->
-    OldMap = maps:from_list(Old),
-    [Pair || {Key, Value} = Pair <- New,
-             maps:find(Key, OldMap) =/= {ok, Value}].
 
 -spec diff_dynamic_config(map(), map()) -> map().
 diff_dynamic_config(New, Old) ->

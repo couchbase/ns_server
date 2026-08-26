@@ -518,8 +518,9 @@ merge_remote_configs(Fun, Payloads) ->
                 true ->
                     do_push_local(
                       misc:compress(
-                        ns_config:diff_kvlists(maps:to_list(NewKVMap),
-                                               maps:to_list(LocalKVMap)))),
+                        maps:to_list(
+                          ns_config:diff_dynamic_config(NewKVMap,
+                                                        LocalKVMap)))),
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
