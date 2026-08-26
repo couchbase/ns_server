@@ -667,7 +667,8 @@ test_all_upgrades() ->
     Default = default(?LATEST_VERSION_NUM),
     KVs = misc:update_proplist(Default, [{{node, node(), config_version},
                                           get_min_supported_version()}]),
-    Cfg = ns_config:mk_config(KVs, #config{uuid = <<"uuid">>}),
+    Cfg = ns_config:set_config_dynamic(#config{uuid = <<"uuid">>},
+                                       maps:from_list(KVs)),
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 
     UpgradedKVs = [{K, ns_config:strip_metadata(V)} ||

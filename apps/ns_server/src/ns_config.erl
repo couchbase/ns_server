@@ -79,8 +79,6 @@
          load_file/3, send_config/3,
          test_setup/1, upgrade_config/2,
          do_announce_changes/1,
-         kvlist_to_dynamic/1,
-         mk_config/1, mk_config/2,
          set_config_dynamic/2]).
 -export([mock_tombstone_agent/0, unmock_tombstone_agent/0]).
 -endif.
@@ -1152,14 +1150,6 @@ empty_dynamic() -> #{}.
 %% defined.
 dynamic_to_kvlist(Dynamic) -> maps:to_list(maps:iterator(Dynamic, ordered)).
 
--ifdef(TEST).
-%% Folded from the right so that the earliest pair wins, matching the
-%% lists:keysearch this replaced.
-kvlist_to_dynamic(KVList) ->
-    lists:foldr(fun ({Key, Value}, Acc) -> Acc#{Key => Value} end, #{},
-                KVList).
--endif.
-
 search_dynamic(Dynamic, Key) ->
     case maps:find(Key, Dynamic) of
         {ok, V} -> {value, V};
@@ -1907,7 +1897,7 @@ mk_config(KVList) ->
     mk_config(KVList, #config{}).
 
 mk_config(KVList, Config) ->
-    set_config_dynamic(Config, kvlist_to_dynamic(KVList)).
+    set_config_dynamic(Config, maps:from_list(KVList)).
 
 test_update_config() ->
     ?assertConfigEqualsMap(#{test => 1},

@@ -628,7 +628,9 @@ sanitize_test() ->
     %% Whichever of the two ns_config holds is also the same
     SanitizedConfig =
         ns_config:get_kv_list_with_config(
-          sanitize(ns_config:mk_config(KVList))),
+          sanitize(
+            ns_config:set_config_dynamic(
+              #config{static = [[], []]}, maps:from_list(KVList)))),
     ?assertListsEqual(SanitizedList, SanitizedConfig),
 
     %% diag_handler asks for user tagging on top, which reaches the props in

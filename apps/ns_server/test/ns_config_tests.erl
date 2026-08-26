@@ -73,7 +73,9 @@ mk_config(DynamicKVList) ->
     mk_config(DynamicKVList, []).
 
 mk_config(DynamicKVList, Static) ->
-    ns_config:mk_config(DynamicKVList, #config{static = Static}).
+    ns_config:set_config_dynamic(
+      #config{static = Static},
+      maps:from_list(DynamicKVList)).
 
 %% load_config merges static and the defaults into dynamic, so a bare static
 %% {x,1} plus the generated node uuid is all that should be there.
@@ -305,8 +307,9 @@ test_save_config() ->
     assert_loaded_config(R),
     {ok, E} = R,
     Dynamic = ns_config:get_kv_list_with_config(E),
-    X = ns_config:mk_config(misc:update_proplist(Dynamic, [{x,2},{y,3}]),
-                            E#config{policy_mod = ?MODULE}),
+    X = ns_config:set_config_dynamic(
+          E#config{policy_mod = ?MODULE},
+          maps:from_list(misc:update_proplist(Dynamic, [{x,2},{y,3}]))),
     ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), undefined)),
     R2 = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, X}, R2),

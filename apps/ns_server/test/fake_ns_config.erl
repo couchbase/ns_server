@@ -268,7 +268,6 @@ meck_setup_getters() ->
                 fun () ->
                         maps:to_list(maps:iterator(get_ets_snapshot(), ordered))
                 end),
-    meck:expect(ns_config, kvlist_to_dynamic, 1, meck:passthrough()),
     meck:expect(ns_config, get_kv_map,
                 fun() ->
                         get_ets_snapshot()

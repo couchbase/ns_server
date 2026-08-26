@@ -476,8 +476,9 @@ config_upgrade_special_metakv_key_test_() ->
                                    {{metakv, ?SHARD_AFFINITY_SECRET_KEY},
                                     ?SHARD_AFFINITY_JSON_BLOB(true)},
                                Config =
-                                   ns_config:mk_config(
-                                     [Metakv], #config{static = [[], []]}),
+                                   ns_config:set_config_dynamic(
+                                     #config{static = [[], []]},
+                                     maps:from_list([Metakv])),
                                config_upgrade_test_generic(Config, Expected)
                        end))
         end,
@@ -497,8 +498,9 @@ config_upgrade_special_metakv_key_false_test_() ->
                                    {{metakv, ?SHARD_AFFINITY_SECRET_KEY},
                                     ?SHARD_AFFINITY_JSON_BLOB(false)},
                                Config =
-                                   ns_config:mk_config(
-                                     [Metakv], #config{static = [[], []]}),
+                                   ns_config:set_config_dynamic(
+                                     #config{static = [[], []]},
+                                     maps:from_list([Metakv])),
                                config_upgrade_test_generic(Config, Expected)
                        end))
         end,

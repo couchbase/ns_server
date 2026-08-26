@@ -76,11 +76,11 @@ test_basic() ->
 
 test_multiple_saves() ->
     Self = self(),
-    Cfg0 = ns_config:mk_config(
-             [{a,1},{b,1}],
+    Cfg0 = ns_config:set_config_dynamic(
              #config{saver_mfa = {ns_config, send_config, [Self]},
                      saver_pid = undefined,
-                     pending_more_save = false}),
+                     pending_more_save = false},
+             #{a => 1, b => 1}),
 
     AssertNoCallResponses = fun () ->
                                 receive
