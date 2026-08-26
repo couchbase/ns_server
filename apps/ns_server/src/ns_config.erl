@@ -80,7 +80,8 @@
          test_setup/1, upgrade_config/2,
          do_announce_changes/1,
          kvlist_to_dynamic/1,
-         mk_config/1, mk_config/2]).
+         mk_config/1, mk_config/2,
+         set_config_dynamic/2]).
 -export([mock_tombstone_agent/0, unmock_tombstone_agent/0]).
 -endif.
 
@@ -170,10 +171,12 @@ set(Key, Value) ->
 
 %% gets current config. Runs Body on it to get new config, then tries
 %% to cas new config returning retry_needed if it fails
--spec run_txn(fun((ConfigKVList :: [[term()]],
-                   UpdateFn :: fun((Key :: term(), Value :: term(), Cfg :: [term()]) -> NewConfig :: [[term()]]))
-                  -> {commit, ConfigKVList :: [[term()]]} |
-                     {commit, ConfigKVList :: [[term()]], term()} | {abort, any()})) ->
+-spec run_txn(fun((ConfigKVMap :: [#{}],
+                   UpdateFn :: fun((Key :: term(), Value :: term(),
+                                    Cfg :: [#{}]) -> NewConfig :: [#{}]))
+                  -> {commit, ConfigKVMap :: [#{}]} |
+                     {commit, ConfigKVMap :: [#{}], term()} |
+                     {abort, any()})) ->
                      run_txn_return().
 run_txn(Body) ->
     run_txn_loop(Body, 10).
@@ -183,7 +186,7 @@ run_txn_with_config(Config, Body) ->
 
 run_txn_iter(FullConfig, Body) ->
     UUID = uuid(FullConfig),
-    Cfg = [get_kv_list_with_config(FullConfig)],
+    Cfg = [get_kv_map(FullConfig)],
 
     SetFun = fun (Key, Value, Config) ->
                      run_txn_set(Key, Value, Config, UUID)
@@ -215,8 +218,8 @@ run_txn_loop(Body, RetriesLeft) ->
             Other
     end.
 
-run_txn_set(Key, Value, [KVList], UUID) ->
-    [maps:to_list(update_config_key(Key, Value, maps:from_list(KVList), UUID))].
+run_txn_set(Key, Value, [KVMap], UUID) ->
+    [update_config_key(Key, Value, KVMap, UUID)].
 
 %% Updates Config with list of {Key, Value} pairs.
 %% Returns pair: {NewPairs, NewConfig}, where NewPairs is list of
@@ -545,6 +548,8 @@ search_with_vclock(#config{static = SL} = Config, Key) ->
         false -> search_with_vclock_kvlist(SL, Key);
         R     -> R
     end;
+search_with_vclock([DL], Key) when is_map(DL) ->
+    search_dynamic_with_vclock(DL, Key);
 search_with_vclock([DL], Key) ->
     search_with_vclock_kvlist([DL], Key).
 
@@ -1079,16 +1084,6 @@ handle_call(merge_dynamic_and_static, _From, State) ->
     C = {cas_config, NewKVMap, [], OldDynamic, remote},
     {reply, true, NewState} = handle_call(C, [], State),
     {reply, ok, NewState};
-handle_call({cas_config, NewKVList, ExtraLocalChanges, OldKVList, Type},
-            _From, State) when is_list(NewKVList) andalso is_list(OldKVList) ->
-    case OldKVList =:= get_kv_list_with_config(State) of
-        true ->
-            NewState = set_config_dynamic(State,
-                                          kvlist_to_dynamic(NewKVList)),
-            cas_config_inner(Type, ExtraLocalChanges, State, NewState);
-        _ ->
-            {reply, false, State}
-    end;
 handle_call({cas_config, NewKV, ExtraLocalChanges, OldKV, Type},
             _From, State) when is_map(NewKV) andalso is_map(OldKV) ->
     case OldKV =:= config_dynamic(State) of
@@ -1143,16 +1138,18 @@ set_config_dynamic(#config{} = Config, Dynamic) when is_map(Dynamic) ->
 empty_dynamic() -> #{}.
 
 %% Conversions for the boundaries that must stay list shaped: the replication
-%% wire format, config.dat, and the get_kv_list/run_txn APIs.
+%% wire format, config.dat, and the get_kv_list APIs.
 %% Uses an ordered iterator to ensure that the resulting list order is well
 %% defined.
 dynamic_to_kvlist(Dynamic) -> maps:to_list(maps:iterator(Dynamic, ordered)).
 
+-ifdef(TEST).
 %% Folded from the right so that the earliest pair wins, matching the
 %% lists:keysearch this replaced.
 kvlist_to_dynamic(KVList) ->
     lists:foldr(fun ({Key, Value}, Acc) -> Acc#{Key => Value} end, #{},
                 KVList).
+-endif.
 
 search_dynamic(Dynamic, Key) ->
     case maps:find(Key, Dynamic) of

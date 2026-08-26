@@ -267,8 +267,9 @@ ns_config_delete_matching(Key) ->
     Filter = mk_config_filter(Key),
     RV = ns_config:run_txn(
            fun (Cfg, SetFn) ->
-                   KeysToDelete = [K || {K, V} <- hd(Cfg), Filter(K),
-                                        ns_config:strip_metadata(V) =/= ?DELETED_MARKER],
+                   KeysToDelete =
+                       [K || K := V <- hd(Cfg), Filter(K),
+                             ns_config:strip_metadata(V) =/= ?DELETED_MARKER],
                    NewCfg = lists:foldl(
                               fun (K, AccCfg) ->
                                       SetFn(K, ?DELETED_MARKER, AccCfg)
