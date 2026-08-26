@@ -235,14 +235,32 @@ post(URL, Port, Body, Timeout) ->
     end.
 
 build_product() ->
-    #{name => build_name(),
+    #{prod => build_prod(),
+      name => build_name(),
       version => build_version()}.
 
-build_name() ->
-    <<"Couchbase Server">>.
+%% The stable product identifier, as opposed to the display name returned by
+%% build_name/0.  Reported so a consumer can key on an id that survives a
+%% product rename.
+build_prod() ->
+    list_to_binary(cluster_compat_mode:prod()).
 
+build_name() ->
+    list_to_binary(cluster_compat_mode:prod_name()).
+
+%% A product's effective compatibility version is composite -- the cluster
+%% compat version plus the product compat version -- but a product compat
+%% version is expected to be unique across cluster compat versions, so the
+%% product compat version alone identifies it.  A product with no product
+%% compat version -- Couchbase Server -- reports the cluster compat version.
 build_version() ->
-    misc:compat_version_to_binary(cluster_compat_mode:get_compat_version()).
+    case cluster_compat_mode:current_prod_compat_version() of
+        undefined ->
+            misc:compat_version_to_binary(
+              cluster_compat_mode:get_compat_version());
+        ProdCompatVersion ->
+            ProdCompatVersion
+    end.
 
 build_edition(Node, Config) ->
     case cluster_compat_mode:is_node_enterprise(Node, Config) of
