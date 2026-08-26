@@ -1708,7 +1708,7 @@ config_upgrade_to_totoro(Config) ->
     MyUuid = uuid(Config),
     {{MyKey, MyVal}, StaleCount, Deletes} =
         process_config_to_delete_stale_local_changes_counters(
-          get_kv_list_with_config(Config), MyUuid, ValidUuids),
+          get_kv_map(Config), MyUuid, ValidUuids),
 
     case StaleCount of
         0 ->
@@ -1738,12 +1738,12 @@ bump_vclock_by_counter(Val, Uuid, StaleCount) ->
 %% down any readers. As such, we iterate over this in one pass rather than 2
 %% or 3.
 -spec process_config_to_delete_stale_local_changes_counters(
-        [{term(), term()}], uuid(), [uuid()]) ->
+        map(), uuid(), [uuid()]) ->
           {{term(), term()} | [], non_neg_integer(), [{delete, term()}]}.
-process_config_to_delete_stale_local_changes_counters(KVList, MyUuid,
+process_config_to_delete_stale_local_changes_counters(KVMap, MyUuid,
                                                       ValidUuids) ->
-    lists:foldl(
-      fun ({{local_changes_count, U} = K, RawVal},
+    maps:fold(
+      fun ({local_changes_count, U} = K, RawVal,
            {MyVal, Counter, Deletes} = Acc) ->
               case lists:member(U, ValidUuids) of
                   true when U =:= MyUuid ->
@@ -1765,9 +1765,9 @@ process_config_to_delete_stale_local_changes_counters(KVList, MyUuid,
                                [{delete, K} | Deletes]}
                       end
               end;
-          (_, Acc) ->
+          (_, _, Acc) ->
               Acc
-      end, {[], 0, []}, KVList).
+      end, {[], 0, []}, KVMap).
 
 %% We can't merge vclocks here, we'd track a value for every node that had ever
 %% been ejected in the cluster in it which would bloat space. Given that the
@@ -1802,9 +1802,10 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
     {ok, _} =
         update_with_changes(
           fun (KVList, UUID) ->
+                  KVMap = maps:from_list(KVList),
                   {{MyKey, MyVal}, StaleCount, Deletes} =
                       process_config_to_delete_stale_local_changes_counters(
-                        KVList, MyUuid, ValidUuids),
+                        KVMap, MyUuid, ValidUuids),
                   StaleKeys = [K || {delete, K} <- Deletes],
                   MyNewVal =
                       case StaleCount of
@@ -1818,7 +1819,7 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
                                                      StaleKeys, MyKey,
                                                      MyNewVal),
                                  Acc}
-                        end, unused, maps:from_list(KVList), UUID),
+                        end, unused, KVMap, UUID),
                   {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
           end),
     ok.
