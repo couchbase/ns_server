@@ -281,9 +281,11 @@
 %% certificate generation. See cluster_compat_mode:get_prod[_name]/0
 -define(DEFAULT_PROD, "server").
 -define(DEFAULT_PROD_NAME, "Couchbase Server").
-%% These need to be kept in sync with 'prod[_name]' in the analytics profiles
+%% This needs to be kept in sync with 'prod' in the analytics profiles.
+%% 'prod' is frozen: it is what compatibility checks compare when a node
+%% joins, so it does not follow a rebrand of the product.  Only
+%% 'prod_name' does.
 -define(ANALYTICS_PROD, "analytics").
--define(ANALYTICS_PROD_NAME, "Enterprise Analytics").
 
 -define(MIN_OF_MAX_MOVES_PER_NODE, 1).
 -define(MAX_OF_MAX_MOVES_PER_NODE, 64).
@@ -368,7 +370,8 @@
 -define(SERVERLESS_PROFILE, serverless).
 -define(SERVERLESS_PROFILE_STR, "serverless").
 -define(PROVISIONED_PROFILE_STR, "provisioned").
--define(ANALYTICS_PROFILE_STR, "analytics").
+%% The analytics profiles are not named here.  Only their tests name them, and
+%% those define the name themselves.
 
 %% Default profile macros/constants
 %% DEFAULT_PROFILE_STR is provided by rebar.config at build time

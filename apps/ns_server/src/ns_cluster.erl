@@ -2164,6 +2164,12 @@ community_allowed_topologies_test() ->
         config_profile:unload_profile_for_test()
     end.
 
+%% The synthetic profile these tests install mirrors the analytics profiles in
+%% cbas-core.  Only the tests need these, so they are defined here rather than
+%% in ns_common.hrl; keep them in sync with the analytics profiles.
+-define(ANALYTICS_PROFILE_STR, "analytics").
+-define(ANALYTICS_PROD_NAME, "Operational Insights").
+
 -define(ANALYTICS_COMPAT_VERSION, "1.2.3").
 -define(ANALYTICS_MIN_COMPAT_VERSION, "1.0.0").
 
