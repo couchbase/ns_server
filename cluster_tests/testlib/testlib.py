@@ -701,6 +701,16 @@ def diag_eval(cluster, code, **kwargs):
     return post_succ(cluster, '/diag/eval', data=code, **kwargs)
 
 
+def testconditions_set(cluster, key, value, **kwargs):
+    return diag_eval(cluster,
+                     f'testconditions:set({key}, {value}).',
+                     **kwargs)
+
+
+def testconditions_delete(cluster, key, **kwargs):
+    return diag_eval(cluster, f'testconditions:delete({key}).', **kwargs)
+
+
 @contextlib.contextmanager
 def no_output(name, verbose=None, extra_context=contextlib.nullcontext()):
     """
