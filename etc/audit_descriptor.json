@@ -18,7 +18,8 @@
           },
           "optional_fields" : {
               "authenticated_userid" : {"domain" : "", "user" : ""},
-              "sessionid" : ""
+              "sessionid" : "",
+              "token_roles": ""
           }
       },
       {
@@ -1365,7 +1366,7 @@
             "iat": 0,
             "jti": "",
             "groups": "",
-            "roles": ""
+            "token_roles": ""
         }
       },
       {
@@ -1585,7 +1586,7 @@
             "iat": 0,
             "jti": "",
             "groups": "",
-            "roles": "",
+            "token_roles": "",
             "mapped_groups": "",
             "mapped_roles": "",
             "expiry_with_leeway": ""
@@ -2526,7 +2527,7 @@
             "iat": 0,
             "jti": "",
             "groups": "",
-            "roles": "",
+            "token_roles": "",
             "mapped_groups": "",
             "mapped_roles": "",
             "expiry_with_leeway": ""

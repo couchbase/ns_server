@@ -299,6 +299,19 @@ normalize_claim(Claim) when is_list(Claim) -> list_to_binary(Claim).
 %% JSON keys must be strings (binaries).
 normalize_key(K) when is_binary(K) -> K.
 
+%% The roles claim is audited as token_roles. Event 8192 has a mandatory
+%% roles field of its own holding menelaus_roles:get_roles/1 - the effective
+%% grant. A body carrying both would emit the name twice.
+%%
+%% The claim is the raw list at the operator-configured path, unvalidated, so
+%% name it for where it came from and leave roles to mean what RBAC decided.
+-spec audit_claim_name(Claim :: claims()) -> binary().
+audit_claim_name(Claim) ->
+    case normalize_claim(Claim) of
+        <<"roles">> -> <<"token_roles">>;
+        Name -> Name
+    end.
+
 %% The audit map holds two kinds of values. A standard or mapped claim has been
 %% through get_claim_value/2, so it is a string, a list of strings or an
 %% integer, and get_claim_value_type/1 says which. A custom claim is keyed by
@@ -326,7 +339,7 @@ normalize_decoded(V) when is_map(V) ->
 audit_map_to_proplist(AuditMap) ->
     lists:sort(maps:fold(
                  fun(Claim, Value, Acc) ->
-                         [{normalize_claim(Claim),
+                         [{audit_claim_name(Claim),
                            normalize_val(audit_value_type(Claim), Value)} | Acc]
                  end, [], AuditMap)).
 
@@ -974,8 +987,10 @@ audit_map_to_proplist_test() ->
                         "query_select[default:scope1.collection1]"
                        ]
              },
+    %% Audited as token_roles, not roles, so that event 8192 can carry the
+    %% claim alongside its own mandatory roles field.
     ?assertEqual([
-                  {<<"roles">>, [
+                  {<<"token_roles">>, [
                                  <<"admin">>,
                                  <<"bucket_admin[default]">>,
                                  <<"data_writer[default:scope1]">>,
