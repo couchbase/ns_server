@@ -586,6 +586,7 @@ class AlertTests(testlib.BaseTestSet):
             data = {'name': bucket_name,
                     'continuousBackupEnabled': 'true',
                     'continuousBackupLocation': data_path,
+                    'continuousBackupRetentionPeriod': '1',
                     'historyRetentionSeconds': '2342424'}
             self.cluster.update_bucket(data=data)
 
