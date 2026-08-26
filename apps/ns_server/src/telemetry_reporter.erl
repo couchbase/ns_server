@@ -273,7 +273,7 @@ create_report() ->
                   Os = iolist_to_binary(
                          proplists:get_value(system_arch, Props, "unknown")),
                   Hostname = iolist_to_binary(misc:extract_node_address(Node)),
-                  IsEnterprise = build_edition(Node, Config),
+                  Edition = build_edition(Node, Config),
                   UptimeSeconds = proplists:get_value(wall_clock, Props, 0),
                   CoresLogical = proplists:get_value(cpu_count, Props, 0),
                   SystemStats = proplists:get_value(system_stats, Props, []),
@@ -294,7 +294,7 @@ create_report() ->
                   Services = build_services(Node),
                   #{os => Os,
                     hostname => Hostname,
-                    edition => IsEnterprise,
+                    edition => Edition,
                     uptimeSeconds => UptimeSeconds,
                     cpuLogicalCores => CoresLogical,
                     cpuPhysicalCores => CoresPhysical,
