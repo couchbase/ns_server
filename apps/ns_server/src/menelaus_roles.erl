@@ -823,7 +823,26 @@ roles() ->
                          DefaultRoles),
     FilteredDefaults ++ ConfigRoles.
 
+%% Config profiles may relabel UI folders, e.g. Enterprise Analytics presents
+%% the analytics folder as "Operational Insights":
+%%
+%%   {ui_folder_labels, [{analytics, "Operational Insights"}]}.
+%%
+%% Only the label changes.  The folder atom is what a role names through
+%% {folder, ...} and what menelaus_web_rbac:build_ui_folder/2 matches on, so a
+%% relabel cannot detach a role from its folder.  A label for a folder that
+%% does not exist is ignored: folders are not added this way.
 ui_folders() ->
+    Folders = default_ui_folders(),
+    case config_profile:search(ui_folder_labels, []) of
+        [] ->
+            Folders;
+        Labels ->
+            [{Folder, proplists:get_value(Folder, Labels, Label)}
+             || {Folder, Label} <- Folders]
+    end.
+
+default_ui_folders() ->
     [{admin, "Administrative"},
      {bucket, "Bucket"},
      {data, "Data"},
@@ -1592,6 +1611,39 @@ filter_out_invalid_roles_test() ->
     Snapshot = ns_bucket:toy_buckets([{"bucket1", [{uuid, <<"id1">>}]}]),
     ?assertEqual([{role1, [{"bucket1", <<"id1">>}]}],
                  filter_out_invalid_roles(Roles, Definitions, Snapshot)).
+
+ui_folders_test() ->
+    %% ui_folders/0 reads the profile through config_profile:search/2, which in
+    %% turn calls config_profile:get/0, so a synthetic profile is installed by
+    %% mocking get/0 - as menelaus_web's alias_path_test/0 does.
+    SetProfile =
+        fun (Extra) ->
+                meck:expect(config_profile, get,
+                            fun () ->
+                                    ?DEFAULT_EMPTY_PROFILE_FOR_TESTS ++ Extra
+                            end)
+        end,
+    try
+        meck:new(config_profile, [passthrough]),
+
+        %% Declaring no labels leaves the shared list alone.
+        SetProfile([]),
+        ?assertEqual(default_ui_folders(), ui_folders()),
+
+        %% A declared label replaces that folder's label and no other.
+        SetProfile([{ui_folder_labels,
+                     [{analytics, "Operational Insights"}]}]),
+        ?assertEqual({analytics, "Operational Insights"},
+                     lists:keyfind(analytics, 1, ui_folders())),
+        ?assertEqual(lists:keydelete(analytics, 1, default_ui_folders()),
+                     lists:keydelete(analytics, 1, ui_folders())),
+
+        %% A label for a folder that does not exist adds nothing.
+        SetProfile([{ui_folder_labels, [{no_such_folder, "Nope"}]}]),
+        ?assertEqual(default_ui_folders(), ui_folders())
+    after
+        meck:unload(config_profile)
+    end.
 
 %% assertEqual is used instead of assert and assertNot to avoid
 %% dialyzer warnings
