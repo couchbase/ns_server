@@ -1047,8 +1047,24 @@ initialized_bucket_needs_rebalance(Bucket, BucketConfig, Nodes, Servers) ->
               not are_servers_balanced(BucketConfig, Servers, Nodes),
               servers_not_balanced, Bucket)),
        ?cut(needs_rebalance_with_reason(
+              fusion_uploaders_not_set(Bucket, BucketConfig),
+              fusion_uploaders_not_set, Bucket)),
+       ?cut(needs_rebalance_with_reason(
               map_needs_rebalance(Bucket, Servers, BucketConfig),
               map_needs_rebalance, Bucket))]).
+
+fusion_uploaders_not_set(Bucket, BucketConfig) ->
+    ns_bucket:is_fusion(BucketConfig) andalso
+        case ns_bucket:get_fusion_uploaders(Bucket) of
+            not_found ->
+                true;
+            Uploaders ->
+                lists:any(fun ({undefined, _Term}) ->
+                                  true;
+                              ({_Node, _Term}) ->
+                                  false
+                          end, Uploaders)
+        end.
 
 are_servers_balanced(BucketConfig, Servers, Nodes) ->
     case ns_bucket:get_desired_servers(BucketConfig) of
@@ -1984,6 +2000,8 @@ to_human_readable_reason(servers_not_balanced) ->
     <<"Servers of bucket are not balanced.">>;
 to_human_readable_reason(map_needs_rebalance) ->
     <<"Bucket map needs rebalance.">>;
+to_human_readable_reason(fusion_uploaders_not_set) ->
+    <<"Some fusion uploaders of bucket are not set.">>;
 to_human_readable_reason(servers_changed) ->
     <<"Servers of bucket have changed.">>.
 

@@ -26,10 +26,13 @@ from testlib import ClusterRequirements
 from testlib.util import Service
 
 from testsets.config_remap_tests import ConfigRemapTest
+from testsets.hard_reset_test import wait_hard_reset_node_up
 
 class FusionTests(testlib.BaseTestSet):
 
     def setup(self):
+        self.unsafe_failed_node = None
+
         node = self.cluster.connected_nodes[0]
         logstore_dir = node.tmp_path() + '/logstore'
         backup_dir = node.tmp_path() + '/backup'
@@ -59,6 +62,15 @@ class FusionTests(testlib.BaseTestSet):
             shutil.rmtree(self.cluster.logstore_dir)
 
     def test_teardown(self):
+        # an unsafely failed over node is not notified about its ejection and
+        # still considers itself a cluster member, so it has to be reset before
+        # it can be used by other tests
+        if self.unsafe_failed_node is not None:
+            testlib.post_succ(self.unsafe_failed_node,
+                              '/controller/hardResetNode')
+            wait_hard_reset_node_up(self.unsafe_failed_node)
+            self.unsafe_failed_node = None
+
         testlib.delete_all_buckets(self.cluster)
 
         # Rebalance the cluster and remove all but one node
@@ -722,6 +734,19 @@ class FusionTests(testlib.BaseTestSet):
             testlib.assert_not_eq(None, chain[0])
             testlib.assert_eq(uploaders[vbucket]['node'], chain[0])
 
+    def unsafe_failover_node(self, node):
+        self.cluster.failover_node(node, graceful=False, allow_unsafe=True)
+        self.unsafe_failed_node = node
+
+    def wait_for_active_vbuckets(self, bucket):
+        def map_is_fixed():
+            vbucket_map = self.cluster.get_vbucket_map(bucket)
+            return all(chain[0] != 'undefined' for chain in vbucket_map)
+
+        testlib.poll_for_condition(
+            map_is_fixed, 1, attempts=60,
+            msg=f"Wait for the janitor to fix the vbucket map of {bucket}")
+
     def snapshot_management_test(self):
         self.init_fusion()
         testlib.post_succ(self.cluster, '/fusion/enable')
@@ -835,6 +860,33 @@ class FusionTests(testlib.BaseTestSet):
         self.cluster.failover_node(second_node, graceful=True)
         self.cluster.eject_node(second_node, second_node)
         self.cluster.rebalance(wait = True)
+        self.check_uploaders('test')
+
+    def unsafe_failover_test(self):
+        first_node, second_node = self.prepare_2_nodes_one_bucket()
+
+        self.assert_balanced()
+        self.check_uploaders('test')
+
+        self.unsafe_failover_node(second_node)
+
+        # the janitor promotes the replicas of the vbuckets that were active
+        # on the failed over node
+        self.wait_for_active_vbuckets('test')
+
+        self.assert_balanced(expected=False)
+
+        # the vbuckets that were active on the failed over node lose their
+        # uploaders until the next rebalance
+        uploader_nodes = set(u['node'] for u in self.get_uploaders('test'))
+        testlib.assert_eq(uploader_nodes,
+                          {first_node.otp_node(), 'undefined'},
+                          'uploader nodes')
+
+        # rebalance ejects the failed over node, leaving just the first one
+        self.cluster.rebalance(wait=True)
+
+        self.assert_balanced()
         self.check_uploaders('test')
 
     def disable_fusion_via_config_remap_test(self):
@@ -1014,13 +1066,7 @@ class FusionTests(testlib.BaseTestSet):
 
         # check that cluster is balanced -- no rebalance pending after
         # restore.
-        pool = testlib.get_succ(self.cluster, '/pools/default').json()
-        assert pool.get('balanced') == True, (
-            f"Expected cluster to be balanced after restore, got: "
-            f"balanced={pool.get('balanced')}, "
-            f"servicesNeedRebalance={pool.get('servicesNeedRebalance')}, "
-            f"bucketsNeedRebalance={pool.get('bucketsNeedRebalance')}"
-        )
+        self.assert_balanced()
 
     def restore_failure_test(self):
         (restore_body, restore_plan_uuid,
@@ -1044,6 +1090,15 @@ class FusionTests(testlib.BaseTestSet):
         testlib.poll_for_condition(
             create_bucket, 1, attempts=60,
             msg=f"Wait for bucket name to become available")
+
+    def assert_balanced(self, expected=True):
+        pool = testlib.get_succ(self.cluster, '/pools/default').json()
+        assert pool.get('balanced') == expected, (
+            f"Expected cluster balanced={expected}, got: "
+            f"balanced={pool.get('balanced')}, "
+            f"servicesNeedRebalance={pool.get('servicesNeedRebalance')}, "
+            f"bucketsNeedRebalance={pool.get('bucketsNeedRebalance')}"
+        )
 
     def get_curr_items_tot(self, nodes, bucket):
         total = 0
