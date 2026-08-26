@@ -276,42 +276,48 @@ update_with_changes(Fun) ->
 %%
 %% Function returns a pair {NewPairs, NewConfig} where NewConfig is
 %% new config and NewPairs is list of changed pairs.
-do_update_rec(_Fun, Acc, [], _UUID, NewConfig, NewPairs, Erased) ->
-    {NewPairs, Erased, lists:reverse(NewConfig), Acc};
-do_update_rec(Fun, Acc, [Pair | Rest], UUID, NewConfig, NewPairs, Erased) ->
-    {Key, Value} = Pair,
+do_update_rec(Fun, Acc, KVMap, UUID) when is_map(KVMap) ->
+    do_update_rec(Fun, Acc, maps:keys(KVMap), KVMap, UUID, #{}, [], []).
+
+do_update_rec(_Fun, Acc, [], _Rest, _UUID, NewConfig, NewPairs, Erased) ->
+    {NewPairs, Erased, NewConfig, Acc};
+do_update_rec(Fun, Acc, [Key | Keys], Rest, UUID, NewConfig, NewPairs, Erased)
+  when not is_map_key(Key, Rest) ->
+    %% key was renamed over by an earlier pair, so Fun must not see it
+    do_update_rec(Fun, Acc, Keys, Rest, UUID, NewConfig, NewPairs, Erased);
+do_update_rec(Fun, Acc, [Key | Keys], Rest, UUID, NewConfig, NewPairs,
+              Erased) ->
+    Value = maps:get(Key, Rest),
     {Action, NewAcc} =
         Fun(Key, strip_metadata(Value), extract_vclock(Value), Acc),
 
     case Action of
         skip ->
-            do_update_rec(Fun, NewAcc, Rest, UUID,
-                          [Pair | NewConfig], NewPairs, Erased);
+            do_update_rec(Fun, NewAcc, Keys, Rest, UUID,
+                          NewConfig#{Key => Value}, NewPairs, Erased);
         erase ->
-            do_update_rec(Fun, NewAcc, Rest, UUID,
+            do_update_rec(Fun, NewAcc, Keys, Rest, UUID,
                           NewConfig, NewPairs, [Key | Erased]);
         delete ->
-            NewPair = {Key, increment_vclock(?DELETED_MARKER, Value, UUID)},
-            do_update_rec(Fun, NewAcc, Rest, UUID,
-                          [NewPair | NewConfig], [NewPair | NewPairs], Erased);
+            NewValue = increment_vclock(?DELETED_MARKER, Value, UUID),
+            do_update_rec(Fun, NewAcc, Keys, Rest, UUID,
+                          NewConfig#{Key => NewValue},
+                          [{Key, NewValue} | NewPairs], Erased);
         {update, {NewKey, NewValue}} ->
             NewPair = {NewKey, increment_vclock(NewValue, Value, UUID)},
-            do_update(Fun, NewAcc, Rest, UUID,
-                      NewConfig, NewPairs, Erased, Pair, NewPair);
+            do_update(Fun, NewAcc, Keys, Rest, UUID,
+                      NewConfig, NewPairs, Erased, Key, NewPair);
         {set_initial, NewPair} ->
-            do_update(Fun, NewAcc, Rest, UUID,
-                      NewConfig, NewPairs, Erased, Pair, NewPair);
+            do_update(Fun, NewAcc, Keys, Rest, UUID,
+                      NewConfig, NewPairs, Erased, Key, NewPair);
         {set_fresh, {NewKey, NewValue}} ->
             NewPair = {NewKey, attach_vclock(NewValue, UUID)},
-            do_update(Fun, NewAcc, Rest, UUID,
-                      NewConfig, NewPairs, Erased, Pair, NewPair)
+            do_update(Fun, NewAcc, Keys, Rest, UUID,
+                      NewConfig, NewPairs, Erased, Key, NewPair)
     end.
 
-do_update(Fun, Acc, Rest, UUID,
-          NewConfig, NewPairs, Erased, OldPair, NewPair) ->
-    {OldKey, _} = OldPair,
-    {NewKey, _} = NewPair,
-
+do_update(Fun, Acc, Keys, Rest, UUID, NewConfig, NewPairs, Erased, OldKey,
+          {NewKey, NewValue} = NewPair) ->
     {Rest1, NewConfig1, NewPairs1} =
         case NewKey =:= OldKey of
             true ->
@@ -320,13 +326,13 @@ do_update(Fun, Acc, Rest, UUID,
                 %% key has changed; so we need to remove potential
                 %% duplicates from rest of the config or from already
                 %% processed part of it
-                {lists:keydelete(NewKey, 1, Rest),
-                 lists:keydelete(NewKey, 1, NewConfig),
+                {maps:remove(NewKey, Rest),
+                 maps:remove(NewKey, NewConfig),
                  lists:keydelete(NewKey, 1, NewPairs)}
         end,
 
-    do_update_rec(Fun, Acc, Rest1, UUID,
-                  [NewPair | NewConfig1], [NewPair | NewPairs1], Erased).
+    do_update_rec(Fun, Acc, Keys, Rest1, UUID, NewConfig1#{NewKey => NewValue},
+                  [NewPair | NewPairs1], Erased).
 
 update(Fun) ->
     update_with_vclocks(
@@ -346,7 +352,9 @@ update_with_vclocks(Fun) ->
 update_with_vclocks(Fun, Acc) ->
     update_with_changes(
       fun (Config, UUID) ->
-              do_update_rec(Fun, Acc, Config, UUID, [], [], [])
+              {NewPairs, Erased, NewConfig, NewAcc} =
+                  do_update_rec(Fun, Acc, maps:from_list(Config), UUID),
+              {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
       end).
 
 %% Applies given Fun to value of given Key. The Key must exist.
@@ -1783,7 +1791,7 @@ bump_node_count(Node, VClock, N) ->
 %%
 %% Doing (b) and (c) in one update_with_changes transaction is what makes the
 %% rev safe: process_config_to_delete_stale_local_changes_counters/3 and the
-%% subsequent do_update_rec/7 both fold the SAME config snapshot (the KVList
+%% subsequent do_update_rec/4 both fold the SAME config snapshot (the KVList
 %% handed to us by update_with_changes), so the count we compensate is exactly
 %% the count we delete - no read-vs-delete skew. Computing the sum from a
 %% separate ns_config:get() snapshot and deleting in a later transaction would
@@ -1803,12 +1811,15 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
                           0 -> undefined;
                           _ -> bump_vclock_by_counter(MyVal, MyUuid, StaleCount)
                       end,
-                  do_update_rec(
-                    fun (Key, _StrippedVal, _VClock, Acc) ->
-                            {node_removal_action(Key, RemoteNodes, StaleKeys,
-                                                 MyKey, MyNewVal),
-                             Acc}
-                    end, unused, KVList, UUID, [], [], [])
+                  {NewPairs, Erased, NewConfig, NewAcc} =
+                      do_update_rec(
+                        fun (Key, _StrippedVal, _VClock, Acc) ->
+                                {node_removal_action(Key, RemoteNodes,
+                                                     StaleKeys, MyKey,
+                                                     MyNewVal),
+                                 Acc}
+                        end, unused, maps:from_list(KVList), UUID),
+                  {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
           end),
     ok.
 
