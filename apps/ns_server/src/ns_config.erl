@@ -19,6 +19,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include("ns_test.hrl").
 -endif.
 
 -define(DEFAULT_TIMEOUT, 15000).
@@ -131,10 +132,11 @@ sync() ->
 
 %% Set a value that will be overridden by any merged config
 set_initial(Key, Value) ->
-    ok = update_with_changes(fun (Config, _) ->
-                                     NewPair = {Key, Value},
-                                     {[NewPair], [NewPair | lists:keydelete(Key, 1, Config)]}
-                             end).
+    ok = update_with_changes(
+        fun (Config, _) ->
+                NewPair = {Key, Value},
+                {[NewPair], Config#{Key => Value}}
+        end).
 
 %% updates KVMap with {Key, Value}
 update_config_key(Key, Value, KVMap, UUID) when is_map(KVMap) ->
@@ -162,8 +164,8 @@ set(Key, Value) ->
     ok = update_with_changes(
         fun (Config, UUID) ->
              NewMap =
-                 update_config_key(Key, Value, maps:from_list(Config), UUID),
-             {[{Key, maps:get(Key, NewMap)}], maps:to_list(NewMap)}
+                 update_config_key(Key, Value, Config, UUID),
+             {[{Key, maps:get(Key, NewMap)}], NewMap}
         end).
 
 %% gets current config. Runs Body on it to get new config, then tries
@@ -222,7 +224,7 @@ run_txn_set(Key, Value, [KVList], UUID) ->
 %%
 %% Last parameter is accumulator. It's appended to NewPairs list
 set_kvlist([], KVMap, _UUID, PairsAcc) ->
-    {PairsAcc, maps:to_list(KVMap)};
+    {PairsAcc, KVMap};
 set_kvlist([{Key, Value} | Rest], KVMap, UUID, PairsAcc) ->
     NewMap = update_config_key(Key, Value, KVMap, UUID),
     set_kvlist(Rest, NewMap, UUID, [{Key, maps:get(Key, NewMap)} | PairsAcc]).
@@ -230,11 +232,10 @@ set_kvlist([{Key, Value} | Rest], KVMap, UUID, PairsAcc) ->
 set([]) ->
     ok;
 set(KVList) when is_list(KVList) ->
-    ok = update_with_changes(fun (Config, UUID) ->
-                                         set_kvlist(KVList,
-                                                    maps:from_list(Config),
-                                                    UUID, [])
-                             end).
+    ok = update_with_changes(
+        fun (Config, UUID) ->
+                set_kvlist(KVList, Config, UUID, [])
+        end).
 
 delete(Keys) when is_list(Keys) ->
     set([{K, ?DELETED_MARKER} || K <- Keys]);
@@ -352,9 +353,7 @@ update_with_vclocks(Fun) ->
 update_with_vclocks(Fun, Acc) ->
     update_with_changes(
       fun (Config, UUID) ->
-              {NewPairs, Erased, NewConfig, NewAcc} =
-                  do_update_rec(Fun, Acc, maps:from_list(Config), UUID),
-              {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
+              do_update_rec(Fun, Acc, Config, UUID)
       end).
 
 %% Applies given Fun to value of given Key. The Key must exist.
@@ -363,7 +362,7 @@ update_with_vclocks(Fun, Acc) ->
 update_key(Key, Fun) ->
     update_with_changes(
       fun (Config, UUID) ->
-              case update_key_inner(maps:from_list(Config), UUID, Key, Fun) of
+              case update_key_inner(Config, UUID, Key, Fun) of
                   false ->
                       erlang:throw({config_key_not_found, Key});
                   V ->
@@ -374,7 +373,7 @@ update_key(Key, Fun) ->
 update_key(Key, Fun, Default) ->
     update_with_changes(
       fun (Config, UUID) ->
-              case update_key_inner(maps:from_list(Config), UUID, Key, Fun) of
+              case update_key_inner(Config, UUID, Key, Fun) of
                   false ->
                       case Default of
                           ?DELETED_MARKER ->
@@ -382,10 +381,9 @@ update_key(Key, Fun, Default) ->
                           _ ->
                               NewConfig =
                                   update_config_key(Key, Default,
-                                                    maps:from_list(Config),
+                                                    Config,
                                                     UUID),
-                              {[{Key, maps:get(Key, NewConfig)}],
-                               maps:to_list(NewConfig)}
+                              {[{Key, maps:get(Key, NewConfig)}], NewConfig}
                       end;
                   V ->
                       V
@@ -403,12 +401,11 @@ update_key_inner(Config, UUID, Key, Fun) when is_map(Config) ->
                 StrippedValue ->
                     case Fun(StrippedValue) of
                         StrippedValue ->
-                            {[], maps:to_list(Config)};
+                            {[], Config};
                         NewValue ->
                             NewConfig = update_config_key(Key, NewValue,
                                                           Config, UUID),
-                            {[{Key, maps:get(Key, NewConfig)}],
-                             maps:to_list(NewConfig)}
+                            {[{Key, maps:get(Key, NewConfig)}], NewConfig}
                     end
             end
     end.
@@ -990,27 +987,27 @@ handle_call(get, _From, State) ->
 handle_call(regenerate_node_uuid, From, State) ->
     NewUUID = couch_uuids:random(),
     Key = {node, node(), uuid},
-    NewPair = {Key, attach_vclock(NewUUID, NewUUID)},
+    Value = attach_vclock(NewUUID, NewUUID),
+    NewPair = {Key, Value},
     ?log_debug("Regenerated node UUID: ~p ~n", [NewUUID]),
     Fun =
         fun (Config, _) ->
-                {[NewPair], [NewPair | lists:keydelete(Key, 1, Config)]}
+                {[NewPair], Config#{Key => Value}}
         end,
     {reply, ok, NewState} = handle_call({update_with_changes, Fun}, From,
                                         State),
     {reply, ok, NewState#config{uuid=NewUUID}};
 
 handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
-    OldList = get_kv_list_with_config(State),
-    case do_update_with_changes(Fun, OldList, UUID) of
+    OldKVMap = config_dynamic(State),
+    case do_update_with_changes(Fun, OldKVMap, UUID) of
         {ok, NewPairs, Erased, NewConfig, Reply} ->
             case {NewPairs, Erased} of
                 {[], []} ->
                     {reply, Reply, State};
                 {_, _} ->
                     NewMap = maps:from_list(NewPairs),
-                    NewState = set_config_dynamic(
-                                 State, kvlist_to_dynamic(NewConfig)),
+                    NewState = set_config_dynamic(State, NewConfig),
 
                     {FinalState, FinalPairs} =
                         case maps:size(NewMap) =/= 0 of
@@ -1140,7 +1137,7 @@ handle_call(get_key_ids_in_use, _From,
 config_dynamic(#config{dynamic = [X | _]}) -> X;
 config_dynamic(#config{dynamic = []})      -> empty_dynamic().
 
-set_config_dynamic(#config{} = Config, Dynamic) ->
+set_config_dynamic(#config{} = Config, Dynamic) when is_map(Dynamic) ->
     Config#config{dynamic = [Dynamic]}.
 
 empty_dynamic() -> #{}.
@@ -1802,8 +1799,7 @@ bump_node_count(Node, VClock, N) ->
 remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
     {ok, _} =
         update_with_changes(
-          fun (KVList, UUID) ->
-                  KVMap = maps:from_list(KVList),
+          fun (KVMap, UUID) ->
                   {{MyKey, MyVal}, StaleCount, Deletes} =
                       process_config_to_delete_stale_local_changes_counters(
                         KVMap, MyUuid, ValidUuids),
@@ -1813,7 +1809,7 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
                           0 -> undefined;
                           _ -> bump_vclock_by_counter(MyVal, MyUuid, StaleCount)
                       end,
-                  {NewPairs, Erased, NewConfig, NewAcc} =
+                  Result =
                       do_update_rec(
                         fun (Key, _StrippedVal, _VClock, Acc) ->
                                 {node_removal_action(Key, RemoteNodes,
@@ -1827,11 +1823,12 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
                   case MyNewVal =/= undefined andalso
                       not is_map_key(MyKey, KVMap) of
                       true ->
+                          {NewPairs, Erased, NewConfig, NewAcc} = Result,
                           {[{MyKey, MyNewVal} | NewPairs], Erased,
-                           maps:to_list(NewConfig#{MyKey => MyNewVal}),
+                           NewConfig#{MyKey => MyNewVal},
                            NewAcc};
                       false ->
-                          {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
+                          Result
                   end
           end),
     ok.
@@ -1908,14 +1905,6 @@ all_test_() ->
      ]}.
 
 
--define(assertConfigEqualsMap(A, B),
-        ?assertEqual(#{K => strip_metadata(V) || K := V <- A},
-                     #{K => strip_metadata(V) || K := V <- B})).
-
--define(assertConfigEqualsList(A, B),
-        ?assertEqual(lists:sort([{K, strip_metadata(V)} || {K,V} <- A]),
-                     lists:sort([{K, strip_metadata(V)} || {K,V} <- B]))).
-
 %% #config{} holding the given dynamic KVList, without naming the
 %% representation
 mk_config(KVList) ->
@@ -1937,17 +1926,20 @@ test_update_config() ->
                                              <<"uuid">>)).
 
 test_set_kvlist() ->
-    {NewPairs, [{foo, FooVal},
-                {bar, [{'_vclock', _} | false]},
-                {baz, [{nothing, false}]}]} =
+    {NewPairs, #{foo := FooVal,
+                 bar := BarVal,
+                 baz := BazVal} = Map} =
         set_kvlist([{bar, false},
                     {foo, [{suba, a}, {subb, b}]}],
                    #{baz => [{nothing, false}],
                      foo => [{suba, undefined}, {subb, unlimited}]},
                    <<"uuid">>, []),
+    ?assertEqual(3, maps:size(Map)),
     ?assertConfigEqualsList(NewPairs, [{foo, FooVal}, {bar, false}]),
     ?assertMatch([{'_vclock', [{<<"uuid">>, _}]}, {suba, a}, {subb, b}],
-                 FooVal).
+                 FooVal),
+    ?assertMatch([{'_vclock', _} | false], BarVal),
+    ?assertMatch([{nothing, false}], BazVal).
 
 send_config(Config, _DekSnapshot, Pid) ->
     Ref = erlang:make_ref(),
@@ -2674,8 +2666,8 @@ merge_values_test_iter() ->
     ?assertEqual(R0, R2).
 -endif.
 
-do_update_with_changes(Fun, OldList, UUID) ->
-    try Fun(OldList, UUID) of
+do_update_with_changes(Fun, OldMap, UUID) ->
+    try Fun(OldMap, UUID) of
         {Changed, Config} ->
             {ok, Changed, [], Config, ok};
         {Changed, Erased, Config} ->
