@@ -80,8 +80,6 @@ params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
       ns_bucket:warmup_behavior(BucketConfig)},
      {"continuous_backup_enabled", [{reload, flush}],
       ns_bucket:get_continuous_backup_enabled(BucketConfig)},
-     {"continuous_backup_interval", [{reload, flush}],
-      get_continuous_backup_interval(BucketConfig)},
      {"hlc_drift_ahead_threshold_us", [no_param, {reload, vbucket}],
       DriftAheadThreshold},
      {"hlc_drift_behind_threshold_us", [no_param, {reload, vbucket}],
@@ -170,14 +168,6 @@ maybe_restart() ->
             [restart];
         true ->
             []
-    end.
-
-get_continuous_backup_interval(BucketConfig) ->
-    case ns_bucket:get_continuous_backup_interval(BucketConfig) of
-        undefined ->
-            undefined;
-        Minutes ->
-            Minutes * 60
     end.
 
 get_eviction_policy(Persistent, BucketConfig) ->

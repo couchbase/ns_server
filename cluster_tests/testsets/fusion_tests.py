@@ -474,6 +474,7 @@ class FusionTests(testlib.BaseTestSet):
     def get_backup_bucket_params(self):
         return {'continuousBackupEnabled': 'true',
                 'continuousBackupLocation': self.cluster.backup_dir,
+                'continuousBackupInterval': 2,
                 'continuousBackupRetentionPeriod': 1,
                 'historyRetentionSeconds': 900,
                 'historyRetentionBytes': 2147483649}

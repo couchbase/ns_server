@@ -566,9 +566,7 @@ build_continuous_backup_info(BucketConfig) ->
     case cluster_compat_mode:is_cluster_79() of
         true ->
             [{continuousBackupEnabled,
-              ns_bucket:get_continuous_backup_enabled(BucketConfig)},
-             {continuousBackupInterval,
-              ns_bucket:get_continuous_backup_interval(BucketConfig)}];
+              ns_bucket:get_continuous_backup_enabled(BucketConfig)}];
         false ->
             []
     end.
@@ -2321,9 +2319,6 @@ validate_membase_bucket_params(CommonParams, Params, Name,
          parse_validate_continuous_backup_enabled(Params, BucketConfig, IsNew,
                                                   Is79,
                                                   IsStorageModeMigration),
-         parse_validate_continuous_backup_interval(Params, BucketConfig, IsNew,
-                                                   Is79,
-                                                   IsStorageModeMigration),
          parse_validate_invalid_hlc_strategy(Params, IsNew, Is79),
          parse_validate_hlc_max_future_threshold(Params, IsNew, Is79),
          parse_validate_storage_quota_percentage(
@@ -2443,28 +2438,6 @@ parse_validate_continuous_backup_enabled_inner(Params, IsNew,
                "continuousBackupEnabled", '_', Params),
     process_boolean_param_validation(continuousBackupEnabled,
                                      continuous_backup_enabled, Result, IsNew).
-
-parse_validate_continuous_backup_interval(Params, BucketConfig, IsNew,
-                                          Is79, IsStorageModeMigration) ->
-    IsMagma = is_magma(Params, BucketConfig, IsNew, IsStorageModeMigration),
-    parse_validate_continuous_backup_interval_inner(Params, IsNew, Is79,
-                                                    IsMagma).
-
-parse_validate_continuous_backup_interval_inner(Params, _IsNew, _Is79,
-                                                false = _IsMagma) ->
-    parse_validate_param_not_supported(
-      "continuousBackupInterval", Params, fun only_supported_on_magma/1);
-parse_validate_continuous_backup_interval_inner(Params, _IsNew,
-                                                false = _Is79,
-                                                _IsMagma) ->
-    parse_validate_param_not_supported(
-      "continuousBackupInterval", Params,
-      fun not_supported_until_79_error/1);
-parse_validate_continuous_backup_interval_inner(Params, IsNew,
-                                                true = _Is79,
-                                                true = _IsMagma) ->
-    parse_validate_numeric_param(Params, continuousBackupInterval,
-                                 continuous_backup_interval, IsNew).
 
 validate_unknown_bucket_params(Params) ->
     [{error, bucketType, <<"invalid bucket type">>}
@@ -4697,7 +4670,6 @@ basic_bucket_params_screening_t() ->
 
     % Only supported on magma
     ?assertNot(proplists:is_defined(continuousBackupEnabled, OK1)),
-    ?assertNot(proplists:is_defined(continuousBackupInterval, OK1)),
 
     %% it is not possible to create bucket with duplicate name
     {_OK2, E2} = basic_bucket_params_screening(true, "mcd",
@@ -5224,8 +5196,7 @@ basic_bucket_params_screening_t() ->
                       {"memoryLowWatermark", "68"},
                       {"memoryHighWatermark", "70"},
                       {"continuousBackupEnabled", "true"},
-                      {"historyRetentionSeconds", "10"},
-                      {"continuousBackupInterval", "123"}],
+                      {"historyRetentionSeconds", "10"}],
                     AllBuckets),
     ?assertEqual([], E37),
     ?assertEqual(false, proplists:get_value(access_scanner_enabled, OK37)),
@@ -5233,7 +5204,6 @@ basic_bucket_params_screening_t() ->
     ?assertEqual(68, proplists:get_value(memory_low_watermark, OK37)),
     ?assertEqual(70, proplists:get_value(memory_high_watermark, OK37)),
     ?assertEqual(true, proplists:get_value(continuous_backup_enabled, OK37)),
-    ?assertEqual(123, proplists:get_value(continuous_backup_interval, OK37)),
 
     %% Back to default action
     meck:expect(ns_config, read_key_fast,

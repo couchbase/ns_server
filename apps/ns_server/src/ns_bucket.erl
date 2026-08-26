@@ -174,7 +174,6 @@
          get_max_buckets/0,
          get_min_replicas/0,
          get_continuous_backup_enabled/1,
-         get_continuous_backup_interval/1,
          get_invalid_hlc_strategy/1,
          get_hlc_max_future_threshold/1,
          get_num_dcp_connections/1,
@@ -724,7 +723,6 @@ attribute_default(Name) ->
             false;
         access_scanner_enabled -> true;     % boolean
         continuous_backup_enabled -> false; % boolean
-        continuous_backup_interval -> 2;    % minutes
         invalid_hlc_strategy -> error;      % atom
         hlc_max_future_threshold -> 3900;   % seconds (65 minutes)
         dcp_connections_between_nodes -> 1; % pos_integer
@@ -744,7 +742,6 @@ attribute_min(Name) ->
         expiry_pager_sleep_time -> 0;       % unit seconds
         memory_low_watermark -> 50;         % percentage
         memory_high_watermark -> 51;        % percentage
-        continuous_backup_interval -> 2;    % minutes
         hlc_max_future_threshold -> 10;     % seconds
         dcp_connections_between_nodes -> 1; % pos_integer
         dcp_backfill_idle_limit_seconds ->  % seconds
@@ -764,8 +761,6 @@ attribute_max(Name) ->
             ?MAX_64BIT_UNSIGNED_INT;                  % unit seconds
         memory_low_watermark -> 89;                   % percentage
         memory_high_watermark -> 90;                  % percentage
-        continuous_backup_interval ->
-            ?MAX_32BIT_SIGNED_INT;                    % minutes
         hlc_max_future_threshold ->
             ?MAX_32BIT_SIGNED_INT;                    % seconds
         dcp_connections_between_nodes -> 64;          % pos_integer
@@ -808,16 +803,6 @@ get_continuous_backup_enabled(BucketConfig) ->
             undefined;
         true ->
             membase_bucket_config_value_getter(continuous_backup_enabled,
-                                               BucketConfig)
-    end.
-
--spec get_continuous_backup_interval(config()) -> undefined | non_neg_integer().
-get_continuous_backup_interval(BucketConfig) ->
-    case is_magma(BucketConfig) of
-        false ->
-            undefined;
-        true ->
-            membase_bucket_config_value_getter(continuous_backup_interval,
                                                BucketConfig)
     end.
 
@@ -3152,9 +3137,7 @@ props_to_add_for_79(BucketConfig) ->
             case ns_bucket:is_magma(BucketConfig) of
                 true ->
                     [{continuous_backup_enabled,
-                      attribute_default(continuous_backup_enabled)},
-                     {continuous_backup_interval,
-                      attribute_default(continuous_backup_interval)}];
+                      attribute_default(continuous_backup_enabled)}];
                 false ->
                     []
             end
@@ -3337,7 +3320,6 @@ extract_bucket_props(Props) ->
                          encryption_dek_rotation_interval,
                          encryption_dek_lifetime,
                          continuous_backup_enabled,
-                         continuous_backup_interval,
                          dcp_connections_between_nodes,
                          dcp_backfill_idle_limit_seconds,
                          dcp_backfill_idle_disk_threshold,
