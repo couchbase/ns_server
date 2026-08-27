@@ -565,7 +565,7 @@ assert_not_developer_preview(CurrentVsn, ConfigVsn, Config) ->
 
 upgrade_key(Key, DefaultConfig) ->
     WholeKey = {node, node(), Key},
-    {value, Value} = ns_config:search([DefaultConfig], WholeKey),
+    {value, Value} = ns_config:search(DefaultConfig, WholeKey),
     {set, WholeKey, Value}.
 
 -compile([{nowarn_unused_function, [{upgrade_sub_keys, 4},
@@ -574,7 +574,7 @@ upgrade_key(Key, DefaultConfig) ->
 %% need to upgrade this key in latest upgrades
 upgrade_sub_keys(Key, SubKeys, Config, DefaultConfig) ->
     WholeKey = {node, node(), Key},
-    {value, DefaultVal} = ns_config:search([DefaultConfig], WholeKey),
+    {value, DefaultVal} = ns_config:search(DefaultConfig, WholeKey),
     {value, CurrentVal} = ns_config:search(Config, WholeKey),
     {set, WholeKey, do_upgrade_sub_keys(SubKeys, CurrentVal, DefaultVal)}.
 
@@ -590,7 +590,7 @@ do_upgrade_sub_keys(SubKeys, Props, DefaultProps) ->
       end, Props, SubKeys).
 
 upgrade_config_from_7_2_to_76(Config) ->
-    DefaultConfig = default(?VERSION_76),
+    DefaultConfig = maps:from_list(default(?VERSION_76)),
     do_upgrade_config_from_7_2_to_76(Config, DefaultConfig).
 
 do_upgrade_config_from_7_2_to_76(_Config, DefaultConfig) ->
@@ -598,7 +598,7 @@ do_upgrade_config_from_7_2_to_76(_Config, DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig)].
 
 upgrade_config_from_76_to_79(Config) ->
-    DefaultConfig = default(?VERSION_79),
+    DefaultConfig = maps:from_list(default(?VERSION_79)),
     do_upgrade_config_from_76_to_79(Config, DefaultConfig).
 
 do_upgrade_config_from_76_to_79(_Config, DefaultConfig) ->
@@ -606,7 +606,7 @@ do_upgrade_config_from_76_to_79(_Config, DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig)].
 
 upgrade_config_from_80_to_85() ->
-    DefaultConfig = default(?VERSION_85),
+    DefaultConfig = maps:from_list(default(?VERSION_85)),
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 
@@ -631,7 +631,9 @@ generate_internal_pass() ->
 
 -ifdef(TEST).
 no_upgrade_on_current_version_test() ->
-    ?assertEqual([], upgrade_config([[{{node, node(), config_version}, get_current_version()}]])).
+    ?assertEqual([], upgrade_config(
+                       [#{{node, node(), config_version} =>
+                              get_current_version()}])).
 
 ns_config_default_mock_setup() ->
     ns_config:mock_tombstone_agent(),

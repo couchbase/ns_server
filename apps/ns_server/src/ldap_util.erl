@@ -525,15 +525,15 @@ upgrade_to_76_test() ->
     ?assertEqual(Expected1, config_upgrade_to_76(Config1)),
 
     %% true inside extra_tls_opts case
-    Config2 = [[{ldap_settings, [{extra_tls_opts,
-                                  [{middlebox_comp_mode, true}]}]}]],
+    Config2 = [#{ldap_settings => [{extra_tls_opts,
+                                    [{middlebox_comp_mode, true}]}]}],
     Expected2 = [{set, ldap_settings, [{extra_tls_opts, []},
                                        {middlebox_comp_mode, true}]}],
     ?assertEqual(Expected2, config_upgrade_to_76(Config2)),
 
     %% false inside extra_tls_opts case
-    Config3 = [[{ldap_settings, [{extra_tls_opts,
-                                  [{middlebox_comp_mode, false}]}]}]],
+    Config3 = [#{ldap_settings => [{extra_tls_opts,
+                                    [{middlebox_comp_mode, false}]}]}],
     Expected3 = [{set, ldap_settings, [{extra_tls_opts, []},
                                        {middlebox_comp_mode, false}]}],
     ?assertEqual(Expected3, config_upgrade_to_76(Config3)).

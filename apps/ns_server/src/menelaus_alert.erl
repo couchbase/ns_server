@@ -890,9 +890,9 @@ config_upgrade_to_76_test() ->
     ns_config:test_setup(#{email_alerts => []}),
 
     Config =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk]}, {enabled, false},
-            {alerts, [ip, time_out_of_sync, communication_issue]}]}]],
+        [#{email_alerts => [{pop_up_alerts, [ip, disk]}, {enabled, false},
+                            {alerts,
+                             [ip, time_out_of_sync, communication_issue]}]}],
     Expected =
         [{set, email_alerts,
           [{pop_up_alerts,
@@ -912,9 +912,8 @@ config_upgrade_to_76_test() ->
 
 config_upgrade_to_79_test() ->
     Config1 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk]},
-            {alerts, [ip, time_out_of_sync]}]}]],
+        [#{email_alerts => [{pop_up_alerts, [ip, disk]},
+                            {alerts, [ip, time_out_of_sync]}]}],
     Expected1 = [{set, email_alerts,
                   [{pop_up_alerts,
                     [disk, disk_guardrail, ip]},
@@ -924,9 +923,9 @@ config_upgrade_to_79_test() ->
     ?assertEqual(Expected1, config_upgrade_to_79(Config1)),
 
     Config2 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
-            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]}]],
+        [#{email_alerts => [{pop_up_alerts, [ip, disk, stuck_rebalance]},
+                            {alerts,
+                             [ip, time_out_of_sync, stuck_rebalance]}]}],
     Expected2 = [{set, email_alerts,
                   [{pop_up_alerts,
                     [disk, disk_guardrail, ip]},
@@ -936,11 +935,10 @@ config_upgrade_to_79_test() ->
     ?assertEqual(Expected2, config_upgrade_to_79(Config2)),
 
     Config3 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
-            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
-          {alert_limits,
-           [{{{stuck_rebalance_threshold_secs, kv}, undefined}}]}]],
+        [#{email_alerts => [{pop_up_alerts, [ip, disk, stuck_rebalance]},
+                            {alerts, [ip, time_out_of_sync, stuck_rebalance]}],
+           alert_limits =>
+               [{{{stuck_rebalance_threshold_secs, kv}, undefined}}]}],
     Expected3 =[{set, email_alerts,
                  [{pop_up_alerts,
                    [disk, disk_guardrail, ip]},
@@ -950,11 +948,9 @@ config_upgrade_to_79_test() ->
     ?assertEqual(Expected3, config_upgrade_to_79(Config3)),
 
     Config4 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk, stuck_rebalance]},
-            {alerts, [ip, time_out_of_sync, stuck_rebalance]}]},
-          {alert_limits,
-           [{{stuck_rebalance_threshold_secs, kv}, 100}]}]],
+        [#{email_alerts => [{pop_up_alerts, [ip, disk, stuck_rebalance]},
+                            {alerts, [ip, time_out_of_sync, stuck_rebalance]}],
+           alert_limits => [{{stuck_rebalance_threshold_secs, kv}, 100}]}],
     Expected4 = [{set, email_alerts,
                   [{pop_up_alerts,
                     [disk, disk_guardrail, ip, stuck_rebalance]},
@@ -965,9 +961,8 @@ config_upgrade_to_79_test() ->
 
 config_upgrade_to_85_test() ->
     Config1 =
-        [[{email_alerts,
-           [{pop_up_alerts, [ip, disk]},
-            {alerts, [ip, time_out_of_sync]}]}]],
+        [#{email_alerts => [{pop_up_alerts, [ip, disk]},
+                            {alerts, [ip, time_out_of_sync]}]}],
     Expected1 = [{set, email_alerts,
                   [{pop_up_alerts,
                     [backup_failure, cm_bucket_autoreprovision_total,

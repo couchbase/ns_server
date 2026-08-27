@@ -7,8 +7,8 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 -record(config, {init,         % Initialization parameters.
-                 static = [] :: [kvlist()],
-                 dynamic = [] :: [map()],
+                 static = [] :: [config_map()],
+                 dynamic = [] :: [config_map()],
                  policy_mod,
                  saver_mfa,
                  saver_pid,
@@ -36,10 +36,9 @@
 -type key() :: term().
 -type raw_value() :: term().
 -type value() :: [{?METADATA_VCLOCK, vclock()} | raw_value()] | raw_value().
--type kvpair() :: {key(), value()}.
--type kvlist() :: [kvpair()].
+-type config_map() :: #{key() => value()}.
 
--type ns_config() :: #config{} | [kvlist()] | ?NS_CONFIG_LATEST_MARKER.
+-type ns_config() :: #config{} | [config_map()] | ?NS_CONFIG_LATEST_MARKER.
 
 -type run_txn_return() :: {commit, map()}
                         | {commit, map(), any()}

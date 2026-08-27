@@ -525,27 +525,13 @@ search(Config, Key, Default) ->
             Default
     end.
 
-vclock_result(RawValue) ->
-    {value, strip_metadata(RawValue), extract_vclock(RawValue)}.
-
-search_with_vclock_kvlist([], _Key) -> false;
-search_with_vclock_kvlist([KVList | Rest], Key) ->
-    case lists:keyfind(Key, 1, KVList) of
-        {_, RawValue} ->
-            vclock_result(RawValue);
+search_with_vclock(Config, Key) ->
+    case search_raw(Config, Key) of
+        {value, RawValue} ->
+            {value, strip_metadata(RawValue), extract_vclock(RawValue)};
         false ->
-            search_with_vclock_kvlist(Rest, Key)
+            false
     end.
-
-search_with_vclock(#config{static = SL} = Config, Key) ->
-    case search_dynamic_with_vclock(config_dynamic(Config), Key) of
-        false -> search_with_vclock_kvlist(SL, Key);
-        R     -> R
-    end;
-search_with_vclock(DL, Key) when is_map(DL) ->
-    search_dynamic_with_vclock(DL, Key);
-search_with_vclock([DL], Key) ->
-    search_with_vclock_kvlist([DL], Key).
 
 search_node(Config, Key) ->
     search_node(node(), Config, Key).
@@ -618,30 +604,15 @@ search_node_prop(Node, Config, Key, SubKey, DefaultSubVal) ->
 
 search_raw(undefined, _Key) -> false;
 search_raw([], _Key)        -> false;
-search_raw([KVList | Rest], Key) when is_list(KVList) ->
-    case lists:keysearch(Key, 1, KVList) of
-        {value, {Key, V}} -> {value, V};
-        _                 -> search_raw(Rest, Key)
-    end;
 search_raw([KVMap | Rest], Key) when is_map(KVMap) ->
-    case maps:find(Key, KVMap) of
-        {ok, Value} ->
-            {value, Value};
-        error ->
-            search_raw(Rest, Key)
+    case search_map(KVMap, Key) of
+        {value, _} = R -> R;
+        false          -> search_raw(Rest, Key)
     end;
 search_raw(KVMap, Key) when is_map(KVMap) ->
-    case maps:find(Key, KVMap) of
-        {ok, Value} ->
-            {value, Value};
-        error ->
-            false
-    end;
+    search_map(KVMap, Key);
 search_raw(#config{static = SL} = Config, Key) ->
-    case search_dynamic(config_dynamic(Config), Key) of
-        {value, _} = R -> R;
-        false          -> search_raw(SL, Key)
-    end.
+    search_raw([config_dynamic(Config) | SL], Key).
 
 upgrade_config_explicitly(Upgrader) ->
     gen_server:call(?MODULE, {upgrade_config_explicitly, Upgrader},
@@ -662,10 +633,8 @@ fold(_Fun, Acc, undefined) ->
     Acc;
 fold(_Fun, Acc, []) ->
     Acc;
-fold(Fun, Acc0, [KVList | Rest]) ->
-    Acc = lists:foldl(fun ({K, V}, A) -> fold_kvpair(Fun, K, V, A) end,
-                      Acc0, KVList),
-    fold(Fun, Acc, Rest);
+fold(Fun, Acc0, [KVMap | Rest]) ->
+    fold(Fun, fold_dynamic(Fun, Acc0, KVMap), Rest);
 fold(Fun, Acc, KVMap) when is_map(KVMap) ->
     fold_dynamic(Fun, Acc, KVMap);
 fold(Fun, Acc, #config{static = SL} = Config) ->
@@ -1145,16 +1114,10 @@ empty_dynamic() -> #{}.
 %% defined.
 dynamic_to_kvlist(Dynamic) -> maps:to_list(maps:iterator(Dynamic, ordered)).
 
-search_dynamic(Dynamic, Key) ->
+search_map(Dynamic, Key) ->
     case maps:find(Key, Dynamic) of
         {ok, V} -> {value, V};
         error   -> false
-    end.
-
-search_dynamic_with_vclock(Dynamic, Key) ->
-    case maps:find(Key, Dynamic) of
-        {ok, RawValue} -> vclock_result(RawValue);
-        error          -> false
     end.
 
 fold_dynamic(Fun, Acc, Dynamic) ->
@@ -1247,14 +1210,12 @@ do_merge_dynamic_and_static(DynamicList,
                             #config{static = [S, DefaultConfig],
                                     uuid = UUID}) ->
     DefaultConfigWithVClocks =
-        lists:foldl(
-          fun ({{node, Node, _} = K, V}, Acc) when Node =:= node() ->
+        maps:fold(
+          fun ({node, Node, _} = K, V, Acc) when Node =:= node() ->
                   Acc#{K => attach_vclock(V, UUID)};
-              ({K, V}, Acc) ->
+              (K, V, Acc) ->
                   Acc#{K => V}
           end, #{}, DefaultConfig),
-
-    Static = maps:from_list(S),
 
     %% Foremost list takes precedence, so we foldr
     MergedDynamic =
@@ -1265,7 +1226,7 @@ do_merge_dynamic_and_static(DynamicList,
     %% Order of precedence:
     %% Dynamic > Static > Default
     MergedAll =
-        maps:merge(maps:merge(DefaultConfigWithVClocks, Static), MergedDynamic),
+        maps:merge(maps:merge(DefaultConfigWithVClocks, S), MergedDynamic),
 
     maps:remove(directory, MergedAll).
 
@@ -1275,11 +1236,14 @@ load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
     ?log_info("Loading static config from ~p", [ConfigPath]),
     case load_file(txt, ConfigPath, DekSnapshot) of
         {ok, S} ->
-            % Dynamic data directory.
+            StaticMap = maps:from_list(S),
+            DefaultMap = maps:from_list(DefaultConfig),
+            %% Dynamic data directory.
             DirPath2 =
                 case DirPath of
                     undefined ->
-                        {value, DP} = search([S, DefaultConfig], directory),
+                        {value, DP} = search([StaticMap, DefaultMap],
+                                             directory),
                         DP;
                     _ -> DirPath
                 end,
@@ -1315,7 +1279,7 @@ load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
                         {UUID0, Dynamic1}
                 end,
 
-            Config1 = #config{static = [S, DefaultConfig],
+            Config1 = #config{static = [StaticMap, DefaultMap],
                               policy_mod = PolicyMod,
                               uuid = UUID},
             DynamicMap = PolicyMod:fixup(

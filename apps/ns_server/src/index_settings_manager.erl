@@ -457,7 +457,7 @@ config_upgrade_test_() ->
                        Profile,
                        fun () ->
                                config_upgrade_test_generic(
-                                 #config{static = [[], []]}, Expected)
+                                 #config{static = [#{}, #{}]}, Expected)
 
                        end))
         end,
@@ -477,7 +477,7 @@ config_upgrade_special_metakv_key_test_() ->
                                     ?SHARD_AFFINITY_JSON_BLOB(true)},
                                Config =
                                    ns_config:set_config_dynamic(
-                                     #config{static = [[], []]},
+                                     #config{static = [#{}, #{}]},
                                      maps:from_list([Metakv])),
                                config_upgrade_test_generic(Config, Expected)
                        end))
@@ -499,7 +499,7 @@ config_upgrade_special_metakv_key_false_test_() ->
                                     ?SHARD_AFFINITY_JSON_BLOB(false)},
                                Config =
                                    ns_config:set_config_dynamic(
-                                     #config{static = [[], []]},
+                                     #config{static = [#{}, #{}]},
                                      maps:from_list([Metakv])),
                                config_upgrade_test_generic(Config, Expected)
                        end))

@@ -1906,7 +1906,8 @@ teardown_test_env() ->
 
 generate_prometheus_test_config(ExtraConfig, Services) ->
     BaseConfig = service_ports:default_config(true, ?NODE),
-    NsConfig = [misc:update_proplist(BaseConfig, ExtraConfig)],
+    NsConfig = [maps:from_list(misc:update_proplist(BaseConfig,
+        ExtraConfig))],
     Snapshot = #{{node, ?NODE, services} => {Services, no_rev},
                  {node, ?NODE, membership} => {active, no_rev}},
     CredsFun = fun () -> {"user", "pass"} end,
@@ -2159,14 +2160,14 @@ prometheus_config_afamily_test() ->
 %%               {medium, 4 * ?SECS_IN_DAY, 60},
 %%               {large, 359 * ?SECS_IN_DAY, 6 * 60 * 60}],
 %%     LastDecimationTime = Now - 60,
-%% 
+%%
 %%     ExpectedDeletions = [{large,
 %%                           Now - 7 * ?SECS_IN_DAY - 60,
 %%                           Now - 7 * ?SECS_IN_DAY},
 %%                          {medium,
 %%                           Now - 3 * ?SECS_IN_DAY - 60 + 10,
 %%                           Now - 3 * ?SECS_IN_DAY}],
-%% 
+%%
 %%     Deletions = decimate_stats(Levels, LastDecimationTime, Now, 10),
 %%     ?assertMatch(Deletions, ExpectedDeletions).
 
@@ -2192,7 +2193,7 @@ run_level(Val) ->
       fun ({_, Start, End}) ->
               ?assert(Start =< End),
               ?assert(Start >= Now - LowDuration - MediumDuration -
-                      LargeDuration),
+                          LargeDuration),
               ?assert(End =< Now - LowDuration)
       end, Results),
 

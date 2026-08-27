@@ -602,9 +602,8 @@ config_upgrade_to_79_test__() ->
     %% Old max disk_usage gets updated
     [{set, resource_management, Cfg1}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{disk_usage,
-               [{maximum, 96}]}]}]]),
+          [#{resource_management => [{disk_usage,
+                                      [{maximum, 96}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{enabled, false},
@@ -616,9 +615,8 @@ config_upgrade_to_79_test__() ->
     %% Custom max disk_usage retained
     [{set, resource_management, Cfg3}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{disk_usage,
-               [{maximum, 90}]}]}]]),
+          [#{resource_management => [{disk_usage,
+                                      [{maximum, 90}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{maximum, 90}]},
@@ -629,9 +627,8 @@ config_upgrade_to_79_test__() ->
     %% Old min cores_per_bucket updated
     [{set, resource_management, Cfg4}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{cores_per_bucket,
-               [{minimum, 0.4}]}]}]]),
+          [#{resource_management => [{cores_per_bucket,
+                                      [{minimum, 0.4}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{enabled, false},
@@ -642,9 +639,8 @@ config_upgrade_to_79_test__() ->
     %% Custom min cores_per_bucket retained
     [{set, resource_management, Cfg5}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{cores_per_bucket,
-               [{minimum, 0.3}]}]}]]),
+          [#{resource_management => [{cores_per_bucket,
+                                      [{minimum, 0.3}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{enabled, false},
@@ -655,9 +651,8 @@ config_upgrade_to_79_test__() ->
     %% New min cores_per_bucket not modified
     [{set, resource_management, Cfg6}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{cores_per_bucket,
-               [{minimum, 0.2}]}]}]]),
+          [#{resource_management => [{cores_per_bucket,
+                                      [{minimum, 0.2}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{enabled, false},
@@ -675,9 +670,8 @@ config_upgrade_to_79_test__() ->
     %% provisioned profile
     [{set, resource_management, Cfg7}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{disk_usage,
-               [{maximum, 96}]}]}]]),
+          [#{resource_management => [{disk_usage,
+                                      [{maximum, 96}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{enabled, false},
@@ -689,9 +683,8 @@ config_upgrade_to_79_test__() ->
     %% Custom max disk_usage also gets retained for provisioned profile
     [{set, resource_management, Cfg8}] =
         config_upgrade_to_79(
-          [[{resource_management,
-             [{disk_usage,
-               [{maximum, 90}]}]}]]),
+          [#{resource_management => [{disk_usage,
+                                      [{maximum, 90}]}]}]),
     ?assertProplistsEqualRecursively(
        [{disk_usage,
          [{maximum, 90}]},

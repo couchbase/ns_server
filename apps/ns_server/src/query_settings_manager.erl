@@ -256,7 +256,7 @@ create_test_config_n1ql_quotas(NodeQuotaValue) when is_number(NodeQuotaValue) ->
                      maps:new(),
                      known_settings(?VERSION_76)),
     ns_config:set_config_dynamic(
-      #config{static = [[], []]},
+      #config{static = [#{}, #{}]},
       #{cfg_key() => SettingsBlob}).
 
 quota_test_fun(Number) when is_number(Number) ->

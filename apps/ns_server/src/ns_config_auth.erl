@@ -281,15 +281,14 @@ config_upgrade_to_76(Config) ->
 -ifdef(TEST).
 
 upgrade_null_admin_auth_to_76_test() ->
-    ?assertEqual([], config_upgrade_to_76([[{rest_creds, null}]])).
+    ?assertEqual([], config_upgrade_to_76([#{rest_creds => null}])).
 
 upgrade_legacy_admin_auth_to_76_test() ->
     LegacyAuth = {password,
                   {<<97,38,90,8,100,179,170,77,6,75,118,147,14,129,30,211>>,
                    <<191,201,210,9,232,187,214,20,247,75,45,50,157,66,102,
                      243,228,31,167,175>>}},
-    [Upgrade] = config_upgrade_to_76([[{rest_creds,
-                                             {"admin", LegacyAuth}}]]),
+    [Upgrade] = config_upgrade_to_76([#{rest_creds => {"admin", LegacyAuth}}]),
     {set, rest_creds, {"admin", NewAuth}} = Upgrade,
     check_hash(get_salt_and_mac(LegacyAuth), "asdasd"),
     check_hash(get_salt_and_mac(NewAuth), "asdasd").
@@ -315,8 +314,7 @@ upgrade_7_2_admin_auth_to_76_test() ->
                 {[{<<"h">>, <<"Lg8O+6gckoGI6BgaIyaaVbqbR7U=">>},
                   {<<"s">>, <<"jvqilB34e2UAw6QXdIFGhKtYxuQ=">>},
                   {<<"i">>, 4000}]}}]},
-    [Upgrade] = config_upgrade_to_76([[{rest_creds,
-                                             {"admin", Auth72}}]]),
+    [Upgrade] = config_upgrade_to_76([#{rest_creds => {"admin", Auth72}}]),
     {set, rest_creds, {"admin", NewAuth}} = Upgrade,
     check_hash(get_salt_and_mac(Auth72), "asdasd"),
     check_hash(get_salt_and_mac(NewAuth), "asdasd").
