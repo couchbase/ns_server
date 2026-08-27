@@ -1258,11 +1258,19 @@ load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
                                PolicyMod:decrypt(DRead);
                            not_found ->
                                ?log_info("No dynamic config file found. Assuming we're brand new node"),
-                               [[]]
+                               #{}
                        end,
             ?log_debug("Here's full dynamic config we loaded:~n~p", [ns_config_log:sanitize(Dynamic0)]),
 
-            Dynamic1 = lists:map(fun maps:from_list/1, Dynamic0),
+            Dynamic1 =
+                case Dynamic0 of
+                    KVMap when is_map(KVMap) ->
+                        [KVMap];
+                    %% config.dat written before the dynamic config became
+                    %% a map
+                    KVLists when is_list(KVLists) ->
+                        lists:map(fun maps:from_list/1, KVLists)
+                end,
 
             {UUID, Dynamic2} =
                 case search(Dynamic1, {node, node(), uuid}) of
@@ -1295,11 +1303,11 @@ load_config(ConfigPath, DirPath, PolicyMod, DekSnapshot) ->
     end.
 
 save_config_sync(#config{} = Config, DirPath, DS) ->
-    save_config_sync([get_kv_list_with_config(Config)], DirPath, DS);
+    save_config_sync(get_kv_map(Config), DirPath, DS);
 
-save_config_sync(Dynamic, DirPath, DS) when is_list(Dynamic) ->
+save_config_sync(KVMap, DirPath, DS) when is_map(KVMap) ->
     C = dynamic_config_path(DirPath),
-    ok = save_file(C, Dynamic, DS).
+    ok = save_file(C, KVMap, DS).
 
 do_not_save_config(_Config, _DekSnapshot) ->
     ok.

@@ -612,8 +612,8 @@ upgrade_config_from_80_to_85() ->
 
 encrypt_and_save(Config, DekSnapshot) ->
     {value, DirPath} = ns_config:search(Config, directory),
-    Dynamic = ns_config:get_kv_list_with_config(Config),
-    ns_config:save_config_sync([Dynamic], DirPath, DekSnapshot).
+    ns_config:save_config_sync(ns_config:get_kv_map(Config), DirPath,
+                               DekSnapshot).
 
 decrypt(Config) ->
     misc:rewrite_tuples(fun ({encrypted, Val}) when is_binary(Val) ->

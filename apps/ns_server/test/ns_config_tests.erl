@@ -59,6 +59,8 @@ all_test_() ->
        ?_test(test_load_config())},
       {"test_save_config",
        ?_test(test_save_config())},
+      {"test_load_legacy_config",
+       ?_test(test_load_legacy_config())},
       {"test_include_config",
        ?_test(test_include_config())},
       {"test_include_missing_config",
@@ -292,6 +294,21 @@ test_load_config() ->
     ok = file:close(F),
     R = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     assert_loaded_config(R),
+    ok.
+
+%% config.dat written before the dynamic config became a map must still load
+test_load_legacy_config() ->
+    CP = data_file(),
+    {ok, F} = file:open(CP, [write, raw]),
+    ok = file:write(F, <<"{x,1}.">>),
+    ok = file:close(F),
+
+    DynPath = filename:join(test_dir(), "config.dat"),
+    ok = ns_config:save_file(DynPath, [[{y, 2}]], undefined),
+
+    {ok, Config} = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
+    ?assertEqual({value, 2}, ns_config:search(Config, y)),
+    ?assertEqual({value, 1}, ns_config:search(Config, x)),
     ok.
 
 test_save_config() ->
