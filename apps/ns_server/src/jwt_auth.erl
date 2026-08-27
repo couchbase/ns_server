@@ -70,7 +70,14 @@ authenticate(Token) ->
             _ ->
                 #{}
         end,
-    validate_token(Token, maps:merge(jwt_issuer:settings(), Persisted)).
+    TokenBin = list_to_binary(Token),
+    Settings = maps:merge(jwt_issuer:settings(), Persisted),
+    case extract_claims(TokenBin, Settings) of
+        {ok, Claims, IssProps} ->
+            validate_token(TokenBin, Claims, IssProps);
+        {error, Reason} ->
+            {error, audit_failure(#{}, Reason)}
+    end.
 
 %%%===================================================================
 %%% JWT validation
@@ -220,13 +227,17 @@ get_standard_claim_names() ->
 %% Keys are atoms, claim values are converted to standard formats (integer, list
 %% of strings, string). Type validation is done and only valid claims are
 %% included in the parsed claims.
+%% Returns the claims alongside the props of the issuer named by the iss
+%% claim, so that nothing below this point is handed the settings of every
+%% other issuer.
 -spec extract_claims(TokenBin :: binary(),
                      Issuers :: map()) ->
           {ok,
            ParsedPlusCustomClaims :: #{claims() => string() | [string()] |
                                        integer() |
                                        binary() | number() |
-                                       boolean() | map() | list()}} |
+                                       boolean() | map() | list()},
+           IssProps :: map()} |
           {error, Msg :: binary()}.
 extract_claims(TokenBin, Issuers) ->
     try
@@ -239,7 +250,8 @@ extract_claims(TokenBin, Issuers) ->
                          Name -> Name
                      end,
         IssProps = case maps:find(IssuerName, Issuers) of
-                       {ok, Props} -> Props;
+                       {ok, Props} ->
+                           hide_shared_secret(Props#{name => IssuerName});
                        error ->
                            IssuerBin = list_to_binary(IssuerName),
                            throw({error, <<"Unknown issuer: ",
@@ -282,7 +294,7 @@ extract_claims(TokenBin, Issuers) ->
                       true -> ok
                   end
           end, required_claims()),
-        {ok, Claims}
+        {ok, Claims, IssProps}
     catch
         throw:Error -> Error;
         _:_ -> {error, <<"Invalid token format">>}
@@ -356,31 +368,22 @@ audit_failure(Claims, Reason) ->
     [{<<"type">>, <<"jwt">>}, {<<"reason">>, Reason} |
      audit_map_to_proplist(Claims)].
 
--spec validate_token(Token :: string(), Issuers :: map()) ->
+-spec validate_token(TokenBin :: binary(), Claims :: map(),
+                     IssProps :: map()) ->
           {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
-validate_token(Token, Issuers) ->
-    TokenBin = list_to_binary(Token),
-    case extract_claims(TokenBin, Issuers) of
-        {ok, Claims} ->
-            IssuerName = maps:get(iss, Claims),
-            RawProps = maps:get(IssuerName, Issuers),
-            IssuerProps = RawProps#{name => IssuerName},
-            case validate_signature(TokenBin, Claims, IssuerProps) of
-                ok ->
-                    case validate_payload(Claims, IssuerProps) of
-                        {ok, AuthnRes} ->
-                            AuditProps = audit_success(Claims, AuthnRes),
-                            {ok, AuthnRes, AuditProps};
-                        {error, Reason} ->
-                            AuditProps = audit_failure(Claims, Reason),
-                            {error, AuditProps}
-                    end;
+validate_token(TokenBin, Claims, IssProps) ->
+    case validate_signature(TokenBin, Claims, IssProps) of
+        ok ->
+            case validate_payload(Claims, IssProps) of
+                {ok, AuthnRes} ->
+                    AuditProps = audit_success(Claims, AuthnRes),
+                    {ok, AuthnRes, AuditProps};
                 {error, Reason} ->
                     AuditProps = audit_failure(Claims, Reason),
                     {error, AuditProps}
             end;
         {error, Reason} ->
-            AuditProps = audit_failure(#{}, Reason),
+            AuditProps = audit_failure(Claims, Reason),
             {error, AuditProps}
     end.
 
@@ -405,13 +408,25 @@ validate_signature(TokenBin, Claims, IssProps) ->
             end
     end.
 
+%% @doc Wrap an HMAC issuer's shared secret for the length of the validation.
+%%
+%% The props travel the whole validation as an argument, so the secret is
+%% wrapped on read and unwrapped in lookup_jwk/3, where the key is built,
+%% following menelaus_web_secrets. Asymmetric issuers have no shared_secret
+%% and are left alone.
+hide_shared_secret(#{shared_secret := Secret} = IssProps) ->
+    IssProps#{shared_secret => ?HIDE(Secret)};
+hide_shared_secret(IssProps) ->
+    IssProps.
+
 -spec lookup_jwk(Claims :: map(), IssuerProps :: map(),
                  Algorithm :: jwt_algorithm()) ->
           {ok, jose_jwk()} | {error, binary()}.
 lookup_jwk(Claims, IssuerProps, Algorithm) ->
     case menelaus_web_jwt_key:is_symmetric_algorithm(Algorithm) of
         true ->
-            JWK = jose_jwk:from_oct(maps:get(shared_secret, IssuerProps)),
+            HiddenSecret = maps:get(shared_secret, IssuerProps),
+            JWK = jose_jwk:from_oct(?UNHIDE(HiddenSecret)),
             {ok, JWK};
         false ->
             KidBin =
@@ -787,6 +802,14 @@ get_nested_value_test() ->
     ?assertEqual(undefined, get_nested_value(<<"nested.deep.key.missing">>,
         Map)).
 
+%% The wrapped secret has to be usable where the key is actually built: a fun
+%% reaching jose_jwk:from_oct/1 would yield a key that verifies nothing.
+lookup_jwk_hidden_secret_test() ->
+    Secret = <<"sekrit">>,
+    Hidden = #{shared_secret => ?HIDE(Secret)},
+    ?assertEqual({ok, jose_jwk:from_oct(Secret)},
+                 lookup_jwk(#{}, Hidden, 'HS256')).
+
 extract_claims_test_() ->
     {setup,
      fun() -> meck:new([jose_jwt, jose_jws], [passthrough]) end,
@@ -821,7 +844,7 @@ extract_claims_test_() ->
                        meck:expect(jose_jwt, peek_payload,
                                    fun(_) -> {ok, PayloadMap} end),
 
-                       {ok, Claims} = extract_claims(<<"token">>, Issuers),
+                       {ok, Claims, _} = extract_claims(<<"token">>, Issuers),
                        ?assertEqual("test-issuer", maps:get(iss, Claims)),
                        ?assertEqual("test-user", maps:get(sub, Claims)),
                        ?assertEqual(["test-aud"], maps:get(aud, Claims)),
@@ -870,13 +893,52 @@ extract_claims_test_() ->
                        meck:expect(jose_jwt, peek_payload,
                                    fun(_) -> {ok, PayloadMap} end),
 
-                       {ok, Claims} = extract_claims(<<"token">>, Issuers3),
+                       {ok, Claims, _} = extract_claims(<<"token">>, Issuers3),
                        ?assertEqual("test-issuer", maps:get(iss, Claims)),
                        ?assertEqual("nested-user", maps:get(sub, Claims)),
                        ?assertEqual(["test-client"], maps:get(aud, Claims)),
                        ?assertEqual(["role1", "role2"],
                                     maps:get(roles, Claims)),
                        ?assertEqual(1234567890, maps:get(exp, Claims))
+               end},
+              {"only the matched issuer, with the secret hidden",
+               fun() ->
+                       Secret = "sekrit",
+                       OtherSecret = "othersekrit",
+                       Issuers4 =
+                           #{"test-issuer" =>
+                                 #{signing_algorithm => hs256,
+                                   aud_claim => "aud",
+                                   sub_claim => "sub",
+                                   shared_secret => Secret},
+                             "other-issuer" =>
+                                 #{signing_algorithm => hs256,
+                                   shared_secret => OtherSecret}},
+                       HeaderMap = #{<<"alg">> => <<"HS256">>},
+                       PayloadMap = #{<<"iss">> => <<"test-issuer">>,
+                                      <<"sub">> => <<"test-user">>,
+                                      <<"aud">> => <<"test-aud">>,
+                                      <<"exp">> => 1234567890},
+
+                       meck:expect(jose_jwt, peek_protected,
+                                   fun(_) -> {ok, HeaderMap} end),
+                       meck:expect(jose_jws, to_map,
+                                   fun({ok, Map}) -> {ok, Map} end),
+                       meck:expect(jose_jwt, peek_payload,
+                                   fun(_) -> {ok, PayloadMap} end),
+
+                       {ok, _, IssProps} = extract_claims(<<"token">>,
+                                                          Issuers4),
+                       ?assertEqual("test-issuer", maps:get(name, IssProps)),
+                       Hidden = maps:get(shared_secret, IssProps),
+                       ?assert(is_function(Hidden, 0)),
+                       ?assertEqual(Secret, ?UNHIDE(Hidden)),
+                       %% Neither this issuer's secret nor any other issuer's
+                       %% survives a ~p of what validation is handed.
+                       Printed = lists:flatten(io_lib:format("~p",
+                                                             [IssProps])),
+                       ?assertEqual(nomatch, string:find(Printed, Secret)),
+                       ?assertEqual(nomatch, string:find(Printed, OtherSecret))
                end},
 
               {"missing issuer",
