@@ -133,8 +133,7 @@ sync() ->
 set_initial(Key, Value) ->
     ok = update_with_changes(
         fun (Config, _) ->
-                NewPair = {Key, Value},
-                {[NewPair], Config#{Key => Value}}
+                {#{Key => Value}, Config#{Key => Value}}
         end).
 
 %% updates KVMap with {Key, Value}
@@ -164,7 +163,7 @@ set(Key, Value) ->
         fun (Config, UUID) ->
              NewMap =
                  update_config_key(Key, Value, Config, UUID),
-             {[{Key, maps:get(Key, NewMap)}], NewMap}
+             {#{Key => maps:get(Key, NewMap)}, NewMap}
         end).
 
 %% gets current config. Runs Body on it to get new config, then tries
@@ -220,22 +219,22 @@ run_txn_set(Key, Value, KVMap, UUID) ->
     update_config_key(Key, Value, KVMap, UUID).
 
 %% Updates Config with list of {Key, Value} pairs.
-%% Returns pair: {NewPairs, NewConfig}, where NewPairs is list of
+%% Returns pair: {NewPairs, NewConfig}, where NewPairs is a map of
 %% updated KV pairs (with updated vclocks, if needed).
 %%
-%% Last parameter is accumulator. It's appended to NewPairs list
+%% Last parameter is the accumulator for NewPairs
 set_kvlist([], KVMap, _UUID, PairsAcc) ->
     {PairsAcc, KVMap};
 set_kvlist([{Key, Value} | Rest], KVMap, UUID, PairsAcc) ->
     NewMap = update_config_key(Key, Value, KVMap, UUID),
-    set_kvlist(Rest, NewMap, UUID, [{Key, maps:get(Key, NewMap)} | PairsAcc]).
+    set_kvlist(Rest, NewMap, UUID, PairsAcc#{Key => maps:get(Key, NewMap)}).
 
 set([]) ->
     ok;
 set(KVList) when is_list(KVList) ->
     ok = update_with_changes(
         fun (Config, UUID) ->
-                set_kvlist(KVList, Config, UUID, [])
+                set_kvlist(KVList, Config, UUID, #{})
         end).
 
 delete(Keys) when is_list(Keys) ->
@@ -260,7 +259,7 @@ get_node_uuid_map(Config) ->
 
 %% update config by applying Fun to it. Fun should return a pair
 %% {NewPairs, NewConfig} where NewConfig is new config and NewPairs is
-%% list of changed pairs. That list of changed pairs is announced via
+%% map of changed pairs. That map of changed pairs is announced via
 %% ns_config_events.
 update_with_changes(Fun) ->
     gen_server:call(?MODULE, {update_with_changes, Fun}).
@@ -277,9 +276,9 @@ update_with_changes(Fun) ->
 %% things like swapping two values using this primitive.
 %%
 %% Function returns a pair {NewPairs, NewConfig} where NewConfig is
-%% new config and NewPairs is list of changed pairs.
+%% new config and NewPairs is a map of changed pairs.
 do_update_rec(Fun, Acc, KVMap, UUID) when is_map(KVMap) ->
-    do_update_rec(Fun, Acc, maps:keys(KVMap), KVMap, UUID, #{}, [], []).
+    do_update_rec(Fun, Acc, maps:keys(KVMap), KVMap, UUID, #{}, #{}, []).
 
 do_update_rec(_Fun, Acc, [], _Rest, _UUID, NewConfig, NewPairs, Erased) ->
     {NewPairs, Erased, NewConfig, Acc};
@@ -304,7 +303,7 @@ do_update_rec(Fun, Acc, [Key | Keys], Rest, UUID, NewConfig, NewPairs,
             NewValue = increment_vclock(?DELETED_MARKER, Value, UUID),
             do_update_rec(Fun, NewAcc, Keys, Rest, UUID,
                           NewConfig#{Key => NewValue},
-                          [{Key, NewValue} | NewPairs], Erased);
+                          NewPairs#{Key => NewValue}, Erased);
         {update, {NewKey, NewValue}} ->
             NewPair = {NewKey, increment_vclock(NewValue, Value, UUID)},
             do_update(Fun, NewAcc, Keys, Rest, UUID,
@@ -319,22 +318,19 @@ do_update_rec(Fun, Acc, [Key | Keys], Rest, UUID, NewConfig, NewPairs,
     end.
 
 do_update(Fun, Acc, Keys, Rest, UUID, NewConfig, NewPairs, Erased, OldKey,
-          {NewKey, NewValue} = NewPair) ->
-    {Rest1, NewConfig1, NewPairs1} =
+          {NewKey, NewValue}) ->
+    Rest1 =
         case NewKey =:= OldKey of
             true ->
-                {Rest, NewConfig, NewPairs};
+                Rest;
             false ->
-                %% key has changed; so we need to remove potential
-                %% duplicates from rest of the config or from already
-                %% processed part of it
-                {maps:remove(NewKey, Rest),
-                 maps:remove(NewKey, NewConfig),
-                 lists:keydelete(NewKey, 1, NewPairs)}
+                %% key has changed, so drop the pair it displaces from the
+                %% part of the config we have not processed yet
+                maps:remove(NewKey, Rest)
         end,
 
-    do_update_rec(Fun, Acc, Keys, Rest1, UUID, NewConfig1#{NewKey => NewValue},
-                  [NewPair | NewPairs1], Erased).
+    do_update_rec(Fun, Acc, Keys, Rest1, UUID, NewConfig#{NewKey => NewValue},
+                  NewPairs#{NewKey => NewValue}, Erased).
 
 update(Fun) ->
     update_with_vclocks(
@@ -378,13 +374,13 @@ update_key(Key, Fun, Default) ->
                   false ->
                       case Default of
                           ?DELETED_MARKER ->
-                              {[], Config};
+                              {#{}, Config};
                           _ ->
                               NewConfig =
                                   update_config_key(Key, Default,
                                                     Config,
                                                     UUID),
-                              {[{Key, maps:get(Key, NewConfig)}], NewConfig}
+                              {#{Key => maps:get(Key, NewConfig)}, NewConfig}
                       end;
                   V ->
                       V
@@ -402,11 +398,11 @@ update_key_inner(Config, UUID, Key, Fun) when is_map(Config) ->
                 StrippedValue ->
                     case Fun(StrippedValue) of
                         StrippedValue ->
-                            {[], Config};
+                            {#{}, Config};
                         NewValue ->
                             NewConfig = update_config_key(Key, NewValue,
                                                           Config, UUID),
-                            {[{Key, maps:get(Key, NewConfig)}], NewConfig}
+                            {#{Key => maps:get(Key, NewConfig)}, NewConfig}
                     end
             end
     end.
@@ -1000,11 +996,10 @@ handle_call(regenerate_node_uuid, From, State) ->
     NewUUID = couch_uuids:random(),
     Key = {node, node(), uuid},
     Value = attach_vclock(NewUUID, NewUUID),
-    NewPair = {Key, Value},
     ?log_debug("Regenerated node UUID: ~p ~n", [NewUUID]),
     Fun =
         fun (Config, _) ->
-                {[NewPair], Config#{Key => Value}}
+                {#{Key => Value}, Config#{Key => Value}}
         end,
     {reply, ok, NewState} = handle_call({update_with_changes, Fun}, From,
                                         State),
@@ -1014,23 +1009,22 @@ handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
     OldKVMap = config_dynamic(State),
     case do_update_with_changes(Fun, OldKVMap, UUID) of
         {ok, NewPairs, Erased, NewConfig, Reply} ->
-            case {NewPairs, Erased} of
-                {[], []} ->
+            case {maps:size(NewPairs), Erased} of
+                {0, []} ->
                     {reply, Reply, State};
                 {_, _} ->
-                    NewMap = maps:from_list(NewPairs),
                     NewState = set_config_dynamic(State, NewConfig),
 
                     {FinalState, FinalPairs} =
-                        case maps:size(NewMap) =/= 0 of
+                        case maps:size(NewPairs) =/= 0 of
                             true ->
                                 %% Bump the counter only if there are real
                                 %% (non-erase changes).
                                 {NewState1, {CounterK, CounterV}} =
                                     bump_local_changes_counter_full(NewState),
-                                {NewState1, NewMap#{CounterK => CounterV}};
+                                {NewState1, NewPairs#{CounterK => CounterV}};
                             false ->
-                                {NewState, NewMap}
+                                {NewState, NewPairs}
                         end,
 
                     erase_ets_dup(Erased),
@@ -1796,7 +1790,7 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
                       not is_map_key(MyKey, KVMap) of
                       true ->
                           {NewPairs, Erased, NewConfig, NewAcc} = Result,
-                          {[{MyKey, MyNewVal} | NewPairs], Erased,
+                          {NewPairs#{MyKey => MyNewVal}, Erased,
                            NewConfig#{MyKey => MyNewVal},
                            NewAcc};
                       false ->
@@ -1905,9 +1899,10 @@ test_set_kvlist() ->
                     {foo, [{suba, a}, {subb, b}]}],
                    #{baz => [{nothing, false}],
                      foo => [{suba, undefined}, {subb, unlimited}]},
-                   <<"uuid">>, []),
+                   <<"uuid">>, #{}),
+    ?assertEqual(2, maps:size(NewPairs)),
     ?assertEqual(3, maps:size(Map)),
-    ?assertConfigEqualsList(NewPairs, [{foo, FooVal}, {bar, false}]),
+    ?assertConfigEqualsMap(NewPairs, #{foo => FooVal, bar => false}),
     ?assertMatch([{'_vclock', [{<<"uuid">>, _}]}, {suba, a}, {subb, b}],
                  FooVal),
     ?assertMatch([{'_vclock', _} | false], BarVal),

@@ -146,14 +146,16 @@ test_set() ->
     Updater0 = (fun () -> receive {update_with_changes, F} -> F end end)(),
 
     ?assertConfigEqualsMap(#{test => 1}, element(2, Updater0(#{}, <<"uuid">>))),
-    {[{test, [{'_vclock', _} | 1]}], Val2} = Updater0(#{foo => 2}, <<"uuid">>),
+    {#{test := TestVal2}, Val2} = Updater0(#{foo => 2}, <<"uuid">>),
+    ?assertMatch([{'_vclock', _} | 1], TestVal2),
     ?assertConfigEqualsMap(#{test => 1, foo => 2}, Val2),
 
     %% and here we're changing value, so expecting vclock
-    {[{test, [{'_vclock', [_]} | 1]}], Val3} =
+    {#{test := TestVal3}, Val3} =
         Updater0(#{foo => [{k, 1}, {v, 2}],
                    xar => true,
                    test => [{a, b}, {c, d}]}, <<"uuid">>),
+    ?assertMatch([{'_vclock', [_]} | 1], TestVal3),
 
     ?assertConfigEqualsMap(#{foo => [{k, 1}, {v, 2}],
                              xar => true,
@@ -163,7 +165,7 @@ test_set() ->
     ns_config:set(test, SetVal1),
     Updater1 = (fun () -> receive {update_with_changes, F} -> F end end)(),
 
-    {[{test, SetVal1Actual1}], Val4} =
+    {#{test := SetVal1Actual1}, Val4} =
         Updater1(#{test => [{suba, false}, {subb, true}]}, <<"uuid2">>),
     ?assertMatch([{'_vclock', [{<<"uuid2">>, _}]} | SetVal1], SetVal1Actual1),
     ?assertEqual(SetVal1, ns_config:strip_metadata(SetVal1Actual1)),
@@ -258,9 +260,8 @@ test_update() ->
     {Changes, Erased, NewConfig, _} = Updater(OldConfig, <<"uuid">>),
 
     ?assertEqual(Erased, [erase]),
-    ?assertConfigEqualsMap(maps:from_list([{dont_change, 1} | Changes]),
-                           NewConfig),
-    ?assertEqual(lists:keyfind(dont_change, 1, Changes), false),
+    ?assertConfigEqualsMap(Changes#{dont_change => 1}, NewConfig),
+    ?assertNot(maps:is_key(dont_change, Changes)),
 
     ?assertEqual(lists:sort([dont_change, list_value, a, b, delete]), lists:sort(maps:keys(NewConfig))),
 
@@ -286,7 +287,8 @@ test_update() ->
 
     ns_config:update_key(a, fun (3) -> 10 end),
     Updater2 = RecvUpdater(),
-    {[{a, [{'_vclock', [_]} | 10]}], NewConfig2} = Updater2(OldConfig, <<"uuid">>),
+    {#{a := AVal}, NewConfig2} = Updater2(OldConfig, <<"uuid">>),
+    ?assertMatch([{'_vclock', [_]} | 10], AVal),
 
     ?assertConfigEqualsMap(OldConfig#{a => 10}, NewConfig2),
     ok.
