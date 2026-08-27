@@ -671,7 +671,7 @@ shared_secret_validators() ->
           (Secret, Algorithm) ->
                case menelaus_web_jwt_key:validate_shared_secret(
                       Secret, Algorithm) of
-                   {ok, {value, SecretBin}} -> {value, SecretBin};
+                   {ok, {value, SecretBin}} -> {value, ?HIDE(SecretBin)};
                    {error, Reason} -> {error, Reason}
                end
        end, sharedSecret, signingAlgorithm, _)].
@@ -762,7 +762,8 @@ validate_and_store_settings(Props, Req) ->
                     {ok, Resolved} ?= resolve_kept_secrets(Settings,
                                                            OldSettings),
                     ok ?= ensure_encryption_prerequisites(Resolved, Snapshot),
-                    {commit, [{set, jwt_settings, Resolved}], Resolved}
+                    {commit, [{set, jwt_settings, unhide_secrets(Resolved)}],
+                     Resolved}
                 else
                     {error, Reason} ->
                         {abort, {bad_request, Reason}}
@@ -787,6 +788,40 @@ validate_and_store_settings(Props, Req) ->
                                      {[{error,
                                         <<"Failed to store settings">>}]},
                                      500)
+    end.
+
+%% @doc Unwrap the ?HIDE-ed issuer secrets for the chronicle write.
+%%
+%% Both sharedSecret and oidcSettings.clientSecret are wrapped as they leave
+%% the validators, so that a crash anywhere between there and the write
+%% cannot print the value into a log. A fun cannot be persisted, so the
+%% unwrapped copy goes into the set term only. What the transaction returns
+%% stays wrapped: the reply and audit path masks by key and never reads the
+%% value.
+%%
+%% resolve_kept_secrets/2 may have substituted a secret from the stored
+%% settings, which is already a plain binary, so both shapes are accepted.
+unhide_secrets(#{issuers := Issuers} = Settings) ->
+    Settings#{issuers => maps:map(fun (_Name, Props) ->
+                                          unhide_issuer_secrets(Props)
+                                  end, Issuers)};
+unhide_secrets(Settings) ->
+    Settings.
+
+unhide_issuer_secrets(Props) ->
+    unhide_oidc_secret(unhide(shared_secret, Props)).
+
+unhide_oidc_secret(#{oidc_settings := Oidc} = Props) ->
+    Props#{oidc_settings => unhide(client_secret, Oidc)};
+unhide_oidc_secret(Props) ->
+    Props.
+
+unhide(Key, Map) ->
+    case Map of
+        #{Key := Secret} when is_function(Secret, 0) ->
+            Map#{Key => ?UNHIDE(Secret)};
+        #{} ->
+            Map
     end.
 
 %% Substitute keep_existing sentinels (left by the validators when the client
@@ -1249,6 +1284,10 @@ oidc_provider_validators() ->
                    true -> {value, keep_existing};
                    false -> ok
                end
+       end, clientSecret, _),
+     validator:validate(
+       fun(keep_existing) -> ok;
+          (Secret) -> {value, ?HIDE(Secret)}
        end, clientSecret, _),
      validator:required(baseRedirectUris, _),
      validator:string_array(baseRedirectUris,
@@ -1837,6 +1876,32 @@ issuers_with_secrets_test_() ->
                    issuers_with_secrets(#{issuers => #{"c" => RsaSso,
                                                        "b" => Rsa,
                                                        "a" => Hmac}}))].
+
+%% The secret must not survive a ~p of the settings map anywhere on the PUT
+%% path, and must come back out for storage whether it arrived wrapped from
+%% the validator or unwrapped from the stored settings.
+unhide_secrets_test_() ->
+    Secret = <<"sekrit">>,
+    Client = <<"clientsekrit">>,
+    Bare = #{issuers =>
+                 #{"a" => #{shared_secret => Secret},
+                   "b" => #{oidc_settings => #{client_id => "cb",
+                                               client_secret => Client}}}},
+    Hidden = #{issuers =>
+                   #{"a" => #{shared_secret => ?HIDE(Secret)},
+                     "b" => #{oidc_settings =>
+                                  #{client_id => "cb",
+                                    client_secret => ?HIDE(Client)}}}},
+    Printed = lists:flatten(io_lib:format("~p", [Hidden])),
+    [?_assertEqual(nomatch, string:find(Printed, "sekrit")),
+     ?_assertEqual(nomatch, string:find(Printed, "clientsekrit")),
+     ?_assertEqual(Bare, unhide_secrets(Hidden)),
+     %% A secret carried over from storage is already a plain binary.
+     ?_assertEqual(Bare, unhide_secrets(Bare)),
+     %% An issuer with no oidc_settings at all is left alone.
+     ?_assertEqual(#{issuers => #{"c" => #{}}},
+                   unhide_secrets(#{issuers => #{"c" => #{}}})),
+     ?_assertEqual(#{}, unhide_secrets(#{}))].
 
 issuers_requiring_test_() ->
     Hmac = #{signing_algorithm => "HS256", shared_secret => "sekrit"},

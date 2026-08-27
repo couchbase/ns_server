@@ -1005,8 +1005,23 @@ validated_url_whitelist_to_store(Props) ->
 %% Convert validated fields proplist from decoded_json (camelCase list keys,
 %% list string values) to the store's internal map (snake_case atom keys).
 %% Delegates to the central type registry.
+%% The sensitive values are wrapped as they leave validation, so that a crash
+%% on the way to the store cannot print them into a log. cb_credentials_store
+%% unwraps them at the chronicle write. POST and PUT are the only paths
+%% carrying field values; PATCH never touches them.
 validated_fields_to_store(Type, FieldsProplist) ->
-    cb_credential_types:validated_fields_to_store(Type, FieldsProplist).
+    Fields = cb_credential_types:validated_fields_to_store(Type,
+                                                           FieldsProplist),
+    hide_sensitive_fields(Type, Fields).
+
+hide_sensitive_fields(Type, Fields) ->
+    lists:foldl(
+      fun (Key, Acc) ->
+              case Acc of
+                  #{Key := Value} -> Acc#{Key => ?HIDE(Value)};
+                  #{} -> Acc
+              end
+      end, Fields, cb_credential_types:sensitive_fields(Type)).
 
 %% Store internal map -> wire JSON map (camelCase, secrets already stripped
 %% by store).  Output uses maps with binary keys for json:encode.
@@ -1306,4 +1321,19 @@ sanitize_chronicle_cfg_test() ->
                                chronicle_kv_log:masked(),
                            region => <<"us-east-1">>}},
     ?assertEqual(Expected, Sanitized).
+
+%% Only the fields the schema declares sensitive are wrapped; the rest must
+%% stay readable for validation and for the response.
+hide_sensitive_fields_test() ->
+    Fields = #{access_key_id => "AKIA", region => "us-east-1",
+               secret_access_key => "sekrit"},
+    Hidden = hide_sensitive_fields(aws, Fields),
+    ?assertEqual("AKIA", maps:get(access_key_id, Hidden)),
+    ?assertEqual("us-east-1", maps:get(region, Hidden)),
+    Wrapped = maps:get(secret_access_key, Hidden),
+    ?assert(is_function(Wrapped, 0)),
+    ?assertEqual("sekrit", ?UNHIDE(Wrapped)),
+    %% A type with no sensitive fields is left alone.
+    ?assertEqual(Fields, hide_sensitive_fields(aws_instance_metadata, Fields)).
+
 -endif.

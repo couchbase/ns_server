@@ -312,6 +312,17 @@ redact_credential(#{id := Id, schema_version := SV, type := Type,
     %% must re-supply via PUT; carry it through to the public view.
     maps:merge(Base, maps:with([missing_sensitive_fields], Cred)).
 
+%% Sensitive field values arrive ?HIDE-ed from menelaus_web_credentials, so
+%% that a crash between validation and the write cannot print them into a
+%% log. A fun cannot be persisted, so the unwrapped copy goes into the set
+%% term only; the public view the caller gets back masks by key and never
+%% reads the value. A value that arrives bare passes through unchanged, which
+%% covers every caller that does not come through the REST validators.
+unhide_fields(Fields) ->
+    maps:map(fun (_Key, Value) when is_function(Value, 0) -> ?UNHIDE(Value);
+                 (_Key, Value) -> Value
+             end, Fields).
+
 create_impl(Id, Type, Fields, MetaExtra, Author) ->
     Key  = build_key(Id),
     Now  = os:system_time(millisecond),
@@ -336,8 +347,10 @@ create_impl(Id, Type, Fields, MetaExtra, Author) ->
                               error ->
                                   Ids = get_index(Snapshot),
                                   NewIds = ordsets:add_element(Id, Ids),
+                                  Stored = Cred#{fields =>
+                                                     unhide_fields(Fields)},
                                   {commit,
-                                   [{set, Key, Cred},
+                                   [{set, Key, Stored},
                                     {set, ?CREDENTIAL_IDS_KEY, NewIds}]}
                           end;
                       {error, Reason} ->
@@ -433,6 +446,9 @@ update_meta_impl(Id, MetaExtra, Author, ExpectedRev) ->
 %% The update fn is `fun(Current, Now) -> {commit, Updated} | {abort, Reason}`.
 %% Aborts are propagated as txn results: `not_found`, `invalid_type`,
 %% `rev_mismatch`, `{prereq_failed, _}`, etc.
+%%
+%% Any ?HIDE-ed sensitive field in Updated is unwrapped for the set term here,
+%% so the value the transaction returns to the caller stays wrapped.
 update_existing(Id, ExpectedRev, Update) ->
     Key = build_key(Id),
     Now = os:system_time(millisecond),
@@ -449,7 +465,11 @@ update_existing(Id, ExpectedRev, Update) ->
                               {ok, {Current, _Rev}} ->
                                   case Update(Current, Now) of
                                       {commit, Updated} ->
-                                          {commit, [{set, Key, Updated}],
+                                          Stored =
+                                              maps:update_with(
+                                                fields, fun unhide_fields/1,
+                                                Updated),
+                                          {commit, [{set, Key, Stored}],
                                            Updated};
                                       {abort, _} = Abort ->
                                           Abort
@@ -770,5 +790,18 @@ matches_prefix_test() ->
     ?assert(matches_prefix("backup/aws/prod", "backup")),
     ?assert(matches_prefix("backup/aws/prod", "backup/aws")),
     ?assertNot(matches_prefix("backup/aws/prod", "backup/other")).
+
+%% A sensitive value must not survive a ~p anywhere between validation and
+%% the chronicle write, and must come back out for storage whether it arrived
+%% wrapped from the REST path or bare from an internal caller.
+unhide_fields_test() ->
+    Secret = "sekrit",
+    Wrapped = #{access_key_id => "AKIA", secret_access_key => ?HIDE(Secret)},
+    Bare = #{access_key_id => "AKIA", secret_access_key => Secret},
+    Printed = lists:flatten(io_lib:format("~p", [Wrapped])),
+    ?assertEqual(nomatch, string:find(Printed, Secret)),
+    ?assertEqual(Bare, unhide_fields(Wrapped)),
+    ?assertEqual(Bare, unhide_fields(Bare)),
+    ?assertEqual(#{}, unhide_fields(#{})).
 
 -endif.
