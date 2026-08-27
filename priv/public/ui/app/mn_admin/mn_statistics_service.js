@@ -126,7 +126,7 @@ function mnStatisticsNewServiceFactory($http, mnServersService, mnPoller, $rootS
   // for charts showing an hour or more, need to tweak the settings
   function fixLongChartConfig(config) {
     // for > 1-minute zoom levels, set timeWindow to step
-    config.timeWindow = config.step;
+    config.timeWindow = Math.max(config.step, 180);
     // need to adjust applyFunctions configurations. Possible applyFunctions are:
     // - []                -> ['avg_over_time']
     // - ['irate']         -> ['rate']
