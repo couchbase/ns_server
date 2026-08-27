@@ -1534,7 +1534,7 @@ time_left_to_client_cert_regen() ->
                 undefined -> infinity;
                 NotAfterGregSec ->
                     Window = ?get_timeout(client_cert_regen_window_sec,
-                                          60*60*24*7),
+                                          60*60*24*60),
                     RegenGregSec = NotAfterGregSec - Window,
                     GMTDateTime = calendar:universal_time(),
                     CurGregSec =
