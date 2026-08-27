@@ -215,10 +215,19 @@ ADD_CUSTOM_TARGET (ns_dataclean
 
 IF (BUILD_COLUMNAR)
   SET (DEFAULT_PROFILE "analytics")
-  SET (PACKAGE_NAME "enterprise-analytics")
+  # The rest of the identity comes from the manifest too, the same way.
+  # LAUNCHER_NAME is its own annotation rather than derived from either of the
+  # others: a product's command need not match its package name or its product
+  # key.  voltron's systemd unit reads the same annotation, so the unit and the
+  # command it starts cannot disagree.
+  READ_PRODUCT_ANNOTATION (PRODUCT_PACKAGE_NAME PACKAGE_NAME)
+  READ_PRODUCT_ANNOTATION (PRODUCT_LAUNCHER_NAME LAUNCHER_NAME)
+  READ_PRODUCT_ANNOTATION (PRODUCT_DISPLAY_NAME PRODUCT_DISPLAY_NAME)
 ELSE (BUILD_COLUMNAR)
   SET (DEFAULT_PROFILE "default")
   SET (PACKAGE_NAME "couchbase-server")
+  SET (LAUNCHER_NAME "couchbase-server")
+  SET (PRODUCT_DISPLAY_NAME "Couchbase Server")
 ENDIF (BUILD_COLUMNAR)
 
 SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/apps/ns_server/src/ns_server.app.src")
@@ -461,8 +470,8 @@ INSTALL (PROGRAMS scripts/escript-wrapper DESTINATION bin)
 SET (PREFIX "${CMAKE_INSTALL_PREFIX}")
 SET (_instdir "${PROJECT_BINARY_DIR}/instfiles")
 FILE (REMOVE_RECURSE "${_instdir}")
-CONFIGURE_FILE (couchbase-server.sh.in "${_instdir}/couchbase-server" @ONLY)
-INSTALL (PROGRAMS "${_instdir}/couchbase-server" DESTINATION bin)
+CONFIGURE_FILE (couchbase-server.sh.in "${_instdir}/${LAUNCHER_NAME}" @ONLY)
+INSTALL (PROGRAMS "${_instdir}/${LAUNCHER_NAME}" DESTINATION bin)
 INSTALL (FILES "validate-cpu-microarchitecture.sh" DESTINATION bin)
 
 SET (_etcdir "${_instdir}/etc")
