@@ -119,6 +119,9 @@ format_error({validate_assertion, Reason}) ->
                 "synchronized";
             duplicate_assertion ->
                 "assertion replay protection";
+            dupe_check_failed ->
+                "assertion replay protection check failed, please check logs "
+                "for details, you can retry";
             {dupe_check_bad_nodes, Nodes} ->
                 BuildHostname = menelaus_web_node:build_node_hostname(
                                  ns_config:latest(), _, misc:localhost(),
@@ -228,23 +231,35 @@ try_parse_idp_metadata(XmlBin, Verify) ->
     end.
 
 check_dupe_global(Assertion, Digest) ->
-    {Res, BadNodes} =
-        rpc:multicall(?MODULE, check_dupe, [Assertion, Digest], 5000),
-    case BadNodes of
+    %% Only live nodes, because otherwise SAML stops working as soon as any
+    %% node is down. At the same time we can't simply take all connected
+    %% nodes, because utility nodes (remsh, for example) can be connected
+    %% as well, and they should not participate in the dupe check.
+    Nodes = ns_node_disco:nodes_actual(),
+    {Results, RPCErrors, DownNodes} =
+        misc:rpc_multicall_with_plist_result(Nodes, ?MODULE, check_dupe,
+                                             [Assertion, Digest], 5000),
+    case lists:usort([N || {N, _} <- RPCErrors] ++ DownNodes) of
         [] ->
-            case lists:usort(Res) of
-                [ok] -> ok;
-                [_ | _] = Responses ->
-                    Reasons = [R || {error, R} <- Responses],
-                    {error, hd(Reasons)}
+            %% Any response that is not 'ok' means the assertion must be
+            %% rejected.
+            case lists:usort([R || {_, R} <- Results]) -- [ok] of
+                [] -> ok;
+                [{error, Reason} | _] -> {error, Reason};
+                [_ | _] = Unexpected ->
+                    ?log_warning("Unexpected dupe assertion check responses: "
+                                 "~n~p", [Unexpected]),
+                    {error, dupe_check_failed}
             end;
-        _ ->
-            ?log_warning("Dupe assertion check failed on nodes: ~p",
-                         [BadNodes]),
+        BadNodes ->
+            ?log_warning("Dupe assertion check failed on nodes: ~p, "
+                         "rpc errors: ~p", [BadNodes, RPCErrors]),
             {error, {dupe_check_bad_nodes, BadNodes}}
     end.
 
 check_dupe(Assertion, _Digest) ->
+    %% Lets tests break the dupe check on a specific node
+    ok = testconditions:check_test_condition(saml_dupe_check),
     ID = Assertion#esaml_assertion.id,
     ExpirationTimestamp = esaml:stale_time(Assertion), %% in gregorian seconds
     %% We assume that security is more important than RAM, so we are

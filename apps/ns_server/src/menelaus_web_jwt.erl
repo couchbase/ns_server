@@ -1651,4 +1651,27 @@ validate_redirect_uri_test_() ->
         validate_redirect_uri("https://example.com/path"))
     ].
 
+shared_secret_masking_test_() ->
+    RestIssuer =
+        fun (Props) ->
+                #{issuers := [Issuer]} =
+                    storage_to_rest_format(#{issuers => #{"issuer1" => Props}}),
+                Issuer
+        end,
+    Secret = <<"0123456789abcdef0123456789abcdef">>,
+    [
+     %% A configured secret is reported as the mask, never echoed.
+     ?_assertEqual(chronicle_kv_log:masked(),
+                   maps:get(sharedSecret,
+                            RestIssuer(#{shared_secret => Secret}))),
+     %% The cleartext value must not survive under any other key.
+     ?_assertNot(lists:member(Secret,
+                              maps:values(
+                                RestIssuer(#{shared_secret => Secret})))),
+     %% An asymmetric issuer holds no secret, so the key is omitted rather
+     %% than reporting a mask for something that does not exist.
+     ?_assertEqual(error,
+                   maps:find(sharedSecret,
+                             RestIssuer(#{signing_algorithm => "ES256"})))
+    ].
 -endif.

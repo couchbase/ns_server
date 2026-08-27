@@ -430,6 +430,31 @@ class SamlTests(testlib.BaseTestSet):
                        '/pools/default', session4, expected_code=401)
 
 
+    def dupe_check_failure_on_other_node_test(self):
+        node = self.cluster.connected_nodes[0]
+        other_node = self.cluster.connected_nodes[1]
+        # Dupe check is global, so it is performed on all nodes. Break it on
+        # the other node and make sure that the assertion is rejected with a
+        # meaningful error, and that the node in question is named in it.
+        with saml_configured(node) as IDP:
+            destination, response, _ = generate_unsolicited_authn_response(IDP)
+            testlib.testconditions_set(other_node, 'saml_dupe_check', 'fail')
+            try:
+                session = requests.Session()
+                r = post_saml_response(destination, response, session)
+                error_msg = catch_error_after_redirect(node, session, r)
+                assert_in('assertion replay protection check failed at '
+                          'some nodes', error_msg)
+                assert_in(other_node.hostname(), error_msg)
+
+                ui_request('get', node, '/pools/default', session,
+                           expected_code=401)
+            finally:
+                # the condition is removed when it fires, this is needed
+                # only in case the assertion never got to the dupe check
+                testlib.testconditions_delete(other_node, 'saml_dupe_check')
+
+
     def expired_assertion_test(self):
         with saml_configured(self.cluster.connected_nodes[0],
                              # Moving NotOnOrAfter back to one minute
