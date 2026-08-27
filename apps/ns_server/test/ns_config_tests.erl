@@ -67,15 +67,12 @@ all_test_() ->
                ?_test(test_svc())}}
      ]}.
 
-%% Most of these tests care about the static config too, so wrap
-%% ns_config:mk_config/2 to take it directly
-mk_config(DynamicKVList) ->
-    mk_config(DynamicKVList, []).
+%% Builds a #config{} from a dynamic KVMap
+mk_config(DynamicKVMap) ->
+    mk_config(DynamicKVMap, []).
 
-mk_config(DynamicKVList, Static) ->
-    ns_config:set_config_dynamic(
-      #config{static = Static},
-      maps:from_list(DynamicKVList)).
+mk_config(DynamicKVMap, Static) ->
+    ns_config:set_config_dynamic(#config{static = Static}, DynamicKVMap).
 
 %% load_config merges static and the defaults into dynamic, so a bare static
 %% {x,1} plus the generated node uuid is all that should be there.
@@ -103,71 +100,71 @@ test_search_list() ->
 
 test_search_config() ->
     ?assertMatch(false, ns_config:search(#config{}, x)),
-    ?assertMatch(false, ns_config:search(mk_config([], [#{}, #{}]), x)),
-    ?assertMatch({value, 1}, ns_config:search(mk_config([{x, 1}]), x)),
+    ?assertMatch(false, ns_config:search(mk_config(#{}, [#{}, #{}]), x)),
+    ?assertMatch({value, 1}, ns_config:search(mk_config(#{x => 1}), x)),
     ?assertMatch({value, 2},
-                 ns_config:search(mk_config([{y, 1}, {x, 2}], [#{}, #{}]), x)),
+                 ns_config:search(mk_config(#{y => 1, x => 2}, [#{}, #{}]), x)),
     ?assertMatch({value, 3},
-                 ns_config:search(mk_config([{y, 1}, {x, 2}],
+                 ns_config:search(mk_config(#{y => 1, x => 2},
                                             [#{w => 4}, #{z => 3}]), z)),
     ?assertMatch({value, 2},
-                 ns_config:search(mk_config([{y, 1}, {z, 2}],
+                 ns_config:search(mk_config(#{y => 1, z => 2},
                                             [#{w => 4}, #{z => 3}]), z)),
     ?assertMatch({value, [{hi, there}]},
-                 ns_config:search(mk_config([{y, 1}, {z, [{hi, there}]}],
+                 ns_config:search(mk_config(#{y => 1, z => [{hi, there}]},
                                             [#{w => 4}, #{z => 3}]), z)),
     ?assertMatch({value, [{hi, there}]},
-                 ns_config:search(mk_config([{y, 1},
-                                             {z, [{'_vclock', stripped},
-                                                  {hi, there}]}],
+                 ns_config:search(mk_config(#{y => 1,
+                                              z => [{'_vclock', stripped},
+                                                    {hi, there}]},
                                             [#{w => 4}, #{z => 3}]), z)),
     ok.
 
 test_search_prop_config() ->
     ?assertMatch(foo, ns_config:search_prop(#config{}, x, a, foo)),
     ?assertMatch(foo,
-                 ns_config:search_prop(mk_config([], [#{}, #{}]), x, a, foo)),
+                 ns_config:search_prop(mk_config(#{}, [#{}, #{}]), x, a, foo)),
     ?assertMatch(foo,
-                 ns_config:search_prop(mk_config([{x, []}]), x, a, foo)),
+                 ns_config:search_prop(mk_config(#{x => []}), x, a, foo)),
     ?assertMatch(foo,
-                 ns_config:search_prop(mk_config([{x, [{b, bar}]}]),
+                 ns_config:search_prop(mk_config(#{x => [{b, bar}]}),
                                        x, a, foo)),
     ?assertMatch(baz,
-                 ns_config:search_prop(mk_config([{x, [{b, bar},
-                                                       {a, baz}]}]),
+                 ns_config:search_prop(mk_config(#{x => [{b, bar},
+                                                        {a, baz}]}),
                                        x, a, foo)),
     ok.
 
 test_search_node() ->
     N = node(),
     ?assertMatch(false, ns_config:search_node(#config{}, x)),
-    ?assertMatch(false, ns_config:search_node(mk_config([], [#{}, #{}]), x)),
+    ?assertMatch(false, ns_config:search_node(mk_config(#{}, [#{}, #{}]), x)),
     ?assertMatch({value, 1},
                  ns_config:search_node(
-                   mk_config([{x, 11}, {{node, N, x}, 1}]), x)),
+                   mk_config(#{x => 11, {node, N, x} => 1}), x)),
     ?assertMatch({value, 2},
                  ns_config:search_node(
-                   mk_config([{y, 1}, {x, 22}, {{node, N, x}, 2}],
+                   mk_config(#{y => 1, x => 22, {node, N, x} => 2},
                              [#{}, #{}]), x)),
     ?assertMatch({value, 3},
                  ns_config:search_node(
-                   mk_config([{y, 1}, {x, 2}],
+                   mk_config(#{y => 1, x => 2},
                              [#{w => 4}, #{z => 33, {node, N, z} => 3}]), z)),
     ?assertMatch({value, 2},
                  ns_config:search_node(
-                   mk_config([{y, 1}, {z, 22}, {{node, N, z}, 2}],
+                   mk_config(#{y => 1, z => 22, {node, N, z} => 2},
                              [#{w => 4}, #{z => 3}]), z)),
     ?assertMatch({value, [{hi, there}]},
                  ns_config:search_node(
-                   mk_config([{y, 1}, {z, [{bye, there}]},
-                              {{node, N, z}, [{hi, there}]}],
+                   mk_config(#{y => 1, z => [{bye, there}],
+                               {node, N, z} => [{hi, there}]},
                              [#{w => 4}, #{z => 3}]), z)),
     ?assertMatch({value, [{hi, there}]},
                  ns_config:search_node(
-                   mk_config([{y, 1},
-                              {z, [{'_vclock', stripped}, {bye, there}]},
-                              {{node, N, z}, [{'_vclock', stripped},
-                                              {hi, there}]}],
+                   mk_config(#{y => 1,
+                               z => [{'_vclock', stripped}, {bye, there}],
+                               {node, N, z} => [{'_vclock', stripped},
+                                                {hi, there}]},
                              [#{w => 4}, #{z => 3}]), z)),
     ok.
 

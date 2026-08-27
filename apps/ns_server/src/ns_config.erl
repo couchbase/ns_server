@@ -1835,13 +1835,12 @@ all_test_() ->
      ]}.
 
 
-%% #config{} holding the given dynamic KVList, without naming the
-%% representation
-mk_config(KVList) ->
-    mk_config(KVList, #config{}).
+%% #config{} holding the given dynamic KVMap
+mk_config(KVMap) ->
+    mk_config(KVMap, #config{}).
 
-mk_config(KVList, Config) ->
-    set_config_dynamic(Config, maps:from_list(KVList)).
+mk_config(KVMap, Config) ->
+    set_config_dynamic(Config, KVMap).
 
 test_update_config() ->
     ?assertConfigEqualsMap(#{test => 1},
@@ -1896,11 +1895,11 @@ setup_with_saver() ->
                          upgrade_config_fun = fun upgrade_config/1,
                          uuid = testuuid},
                Cfg = mk_config(
-                       [{config_version,
-                         ns_config_default:get_current_version()},
-                        {a, [{b, 1}, {c, 2}]},
-                        {d, 3},
-                        {{local_changes_count, testuuid}, []}], Cfg0),
+                       #{config_version =>
+                             ns_config_default:get_current_version(),
+                         a => [{b, 1}, {c, 2}],
+                         d => 3,
+                         {local_changes_count, testuuid} => []}, Cfg0),
                {ok, _} = start_link({with_state, Cfg}),
                MRef = erlang:monitor(process, Parent),
 
@@ -2338,7 +2337,7 @@ test_upgrade_config_vclock_descends() ->
           end,
 
     OldV = WithVClock([{setting, old}], OldClock),
-    Config = mk_config([{k, OldV}], #config{uuid = UUID}),
+    Config = mk_config(#{k => OldV}, #config{uuid = UUID}),
 
     %% The three shapes an upgrader can hand back: the value carrying the clock
     %% already in the config, carrying one 8 changes behind it as it would if
@@ -2365,7 +2364,7 @@ test_upgrade_config_vclock_descends() ->
     %% The purge timestamp has to come from the value being replaced too, as
     %% merge_values/2 compares vclocks only where the two purge timestamps match
     PurgedV = [{?METADATA_VCLOCK, 5, OldClock} | [{setting, old}]],
-    PurgedCfg = mk_config([{k, PurgedV}], #config{uuid = UUID}),
+    PurgedCfg = mk_config(#{k => PurgedV}, #config{uuid = UUID}),
     PurgedStored = Run(PurgedCfg, [{setting, new}]),
     ?assertEqual({5, [{UUID, {11, 0}}]}, extract_vclock(PurgedStored)),
     ?assertEqual(PurgedStored,
@@ -2379,7 +2378,7 @@ test_upgrade_config_delete_not_resurrected() ->
     OldClock = [{UUID, {10, 0}}],
 
     OldV = [{?METADATA_VCLOCK, OldClock}, {setting, old}],
-    Config = mk_config([{k, OldV}], #config{uuid = UUID}),
+    Config = mk_config(#{k => OldV}, #config{uuid = UUID}),
 
     U = fun (Cfg) ->
                 case search(Cfg, k) of
@@ -2423,26 +2422,28 @@ test_compute_global_rev_deleted_keys() ->
     ?assertEqual(2, vclock:count_changes(DeletedVC)),
 
     Cfg = mk_config(_),
-    LiveKV = {{local_changes_count, U1}, Live},
-    DeletedKV = {{local_changes_count, U2}, Deleted},
+    LiveKV = #{{local_changes_count, U1} => Live},
+    DeletedKV = #{{local_changes_count, U2} => Deleted},
 
     %% No deleted keys present: both versions agree.
-    ?assertEqual(1, compute_global_rev_pre_85(Cfg([LiveKV]))),
-    ?assertEqual(1, compute_global_rev(Cfg([LiveKV]))),
+    ?assertEqual(1, compute_global_rev_pre_85(Cfg(LiveKV))),
+    ?assertEqual(1, compute_global_rev(Cfg(LiveKV))),
 
     %% Only a deleted key: pre-8.5 counts it (2), the current version
     %% skips it (0).
-    ?assertEqual(2, compute_global_rev_pre_85(Cfg([DeletedKV]))),
-    ?assertEqual(0, compute_global_rev(Cfg([DeletedKV]))),
+    ?assertEqual(2, compute_global_rev_pre_85(Cfg(DeletedKV))),
+    ?assertEqual(0, compute_global_rev(Cfg(DeletedKV))),
 
     %% Mixed: pre-8.5 counts both (1 + 2), the current version counts only
     %% the live key (1).
-    ?assertEqual(3, compute_global_rev_pre_85(Cfg([LiveKV, DeletedKV]))),
-    ?assertEqual(1, compute_global_rev(Cfg([LiveKV, DeletedKV]))),
+    ?assertEqual(3,
+                 compute_global_rev_pre_85(Cfg(maps:merge(LiveKV, DeletedKV)))),
+    ?assertEqual(1,
+                 compute_global_rev(Cfg(maps:merge(LiveKV, DeletedKV)))),
 
     %% Empty config: both are 0.
-    ?assertEqual(0, compute_global_rev_pre_85(Cfg([]))),
-    ?assertEqual(0, compute_global_rev(Cfg([]))),
+    ?assertEqual(0, compute_global_rev_pre_85(Cfg(#{}))),
+    ?assertEqual(0, compute_global_rev(Cfg(#{}))),
 
     ok.
 
@@ -2451,7 +2452,7 @@ upgrade_config_case(InitialList, Changes, ExpectedList) ->
     upgrade_config_case(InitialList, Changes, ExpectedList, Upgrader).
 
 upgrade_config_case(InitialList, Changes, ExpectedList, Upgrader) ->
-    Config = mk_config(InitialList),
+    Config = mk_config(maps:from_list(InitialList)),
     UpgradedConfig = do_upgrade_config(Config,
                                        Changes,
                                        Upgrader),
@@ -2478,10 +2479,10 @@ make_upgrade_config_test_spec() ->
     [upgrade_config_testgen(I, C, E) || {I,C,E} <- T].
 
 test_upgrade_config_vclocks() ->
-    Config = mk_config([{{node, node(), a}, 1},
-                        {unchanged, 2},
-                        {b, 2},
-                        {{node, node(), c}, attach_vclock(1, <<"uuid">>)}],
+    Config = mk_config(#{{node, node(), a} => 1,
+                         unchanged => 2,
+                         b => 2,
+                         {node, node(), c} => attach_vclock(1, <<"uuid">>)},
                        #config{uuid = <<"uuid">>}),
     Changes = [{set, {node, node(), a}, 2},
                {set, b, 4},
