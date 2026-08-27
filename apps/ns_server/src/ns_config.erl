@@ -171,11 +171,11 @@ set(Key, Value) ->
 
 %% gets current config. Runs Body on it to get new config, then tries
 %% to cas new config returning retry_needed if it fails
--spec run_txn(fun((ConfigKVMap :: [#{}],
+-spec run_txn(fun((ConfigKVMap :: map(),
                    UpdateFn :: fun((Key :: term(), Value :: term(),
-                                    Cfg :: [#{}]) -> NewConfig :: [#{}]))
-                  -> {commit, ConfigKVMap :: [#{}]} |
-                     {commit, ConfigKVMap :: [#{}], term()} |
+                                    Cfg :: map()) -> NewConfig :: map()))
+                  -> {commit, ConfigKVMap :: map()} |
+                     {commit, ConfigKVMap :: map(), term()} |
                      {abort, any()})) ->
                      run_txn_return().
 run_txn(Body) ->
@@ -186,21 +186,21 @@ run_txn_with_config(Config, Body) ->
 
 run_txn_iter(FullConfig, Body) ->
     UUID = uuid(FullConfig),
-    Cfg = [get_kv_map(FullConfig)],
+    Cfg = get_kv_map(FullConfig),
 
     SetFun = fun (Key, Value, Config) ->
                      run_txn_set(Key, Value, Config, UUID)
              end,
 
     case Body(Cfg, SetFun) of
-        {commit, [NewCfg]} ->
-            case cas_local_config(NewCfg, hd(Cfg)) of
-                true -> {commit, [NewCfg]};
+        {commit, NewCfg} when is_map(NewCfg) ->
+            case cas_local_config(NewCfg, Cfg) of
+                true -> {commit, NewCfg};
                 false -> retry_needed
             end;
-        {commit, [NewCfg], Extra} ->
-            case cas_local_config(NewCfg, hd(Cfg)) of
-                true -> {commit, [NewCfg], Extra};
+        {commit, NewCfg, Extra} when is_map(NewCfg) ->
+            case cas_local_config(NewCfg, Cfg) of
+                true -> {commit, NewCfg, Extra};
                 false -> retry_needed
             end;
         {abort, _} = AbortRV ->
@@ -218,8 +218,8 @@ run_txn_loop(Body, RetriesLeft) ->
             Other
     end.
 
-run_txn_set(Key, Value, [KVMap], UUID) ->
-    [update_config_key(Key, Value, KVMap, UUID)].
+run_txn_set(Key, Value, KVMap, UUID) ->
+    update_config_key(Key, Value, KVMap, UUID).
 
 %% Updates Config with list of {Key, Value} pairs.
 %% Returns pair: {NewPairs, NewConfig}, where NewPairs is list of
@@ -548,7 +548,7 @@ search_with_vclock(#config{static = SL} = Config, Key) ->
         false -> search_with_vclock_kvlist(SL, Key);
         R     -> R
     end;
-search_with_vclock([DL], Key) when is_map(DL) ->
+search_with_vclock(DL, Key) when is_map(DL) ->
     search_dynamic_with_vclock(DL, Key);
 search_with_vclock([DL], Key) ->
     search_with_vclock_kvlist([DL], Key).
@@ -636,6 +636,13 @@ search_raw([KVMap | Rest], Key) when is_map(KVMap) ->
         error ->
             search_raw(Rest, Key)
     end;
+search_raw(KVMap, Key) when is_map(KVMap) ->
+    case maps:find(Key, KVMap) of
+        {ok, Value} ->
+            {value, Value};
+        error ->
+            false
+    end;
 search_raw(#config{static = SL} = Config, Key) ->
     case search_dynamic(config_dynamic(Config), Key) of
         {value, _} = R -> R;
@@ -665,6 +672,8 @@ fold(Fun, Acc0, [KVList | Rest]) ->
     Acc = lists:foldl(fun ({K, V}, A) -> fold_kvpair(Fun, K, V, A) end,
                       Acc0, KVList),
     fold(Fun, Acc, Rest);
+fold(Fun, Acc, KVMap) when is_map(KVMap) ->
+    fold_dynamic(Fun, Acc, KVMap);
 fold(Fun, Acc, #config{static = SL} = Config) ->
     fold_dynamic(Fun, fold(Fun, Acc, SL), config_dynamic(Config));
 fold(Fun, Acc, ?NS_CONFIG_LATEST_MARKER) ->
