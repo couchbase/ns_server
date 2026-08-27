@@ -25,8 +25,37 @@ ELSE ("${PRODUCT_VERSION}" STREQUAL "")
   SET(_product_version "${PRODUCT_VERSION}")
 ENDIF ("${PRODUCT_VERSION}" STREQUAL "")
 
+# Read a product-identity value from the manifest.  -D on the cmake command
+# line wins; otherwise the annotation has to be declared.  There is no default:
+# a default would be one product's name living in a repository shared by all of
+# them, correct only until that product's name moved.
+MACRO (READ_PRODUCT_ANNOTATION _annot _var)
+  IF (NOT DEFINED ${_var})
+    SET (_annot_value)
+    IF (NOT PYTHON_EXECUTABLE)
+      SET (PYTHON_EXECUTABLE python3)
+    ENDIF ()
+    EXECUTE_PROCESS (
+      COMMAND ${PYTHON_EXECUTABLE} tlm/scripts/get_manifest_annot.py ${_annot}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      OUTPUT_VARIABLE _annot_value
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    IF (NOT _annot_value)
+      MESSAGE (FATAL_ERROR
+               "${_annot} is not declared in the manifest.  A columnar build "
+               "takes its product identity from manifest annotations; declare "
+               "${_annot} on the manifest's build project, or pass "
+               "-D${_var} for a build without a manifest.")
+    ENDIF ()
+    SET (${_var} "${_annot_value}")
+  ENDIF ()
+ENDMACRO ()
+
 IF (BUILD_COLUMNAR)
-  SET (_ns_version "${COLUMNAR_PRODUCT_VERSION}-enterprise-analytics")
+  # Take the suffix from the manifest rather than naming a product here.
+  READ_PRODUCT_ANNOTATION (PRODUCT_VERSION_SUFFIX _version_suffix)
+  SET (_ns_version "${COLUMNAR_PRODUCT_VERSION}-${_version_suffix}")
   SET (_ns_is_enterprise true)
 ELSEIF (BUILD_ENTERPRISE)
   SET (_ns_version "${_product_version}-enterprise")
