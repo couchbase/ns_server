@@ -1716,7 +1716,19 @@ settings_web_post_validators() ->
          end
        end, port, _),
      validate_cred(username, username, _),
-     validate_cred(password, password, _)].
+     validate_password(_)].
+
+%% The policy is looked up once so the password is validated against the
+%% same policy that handle_settings_web_post/2 applies.
+validate_password(State) ->
+    Policy = menelaus_web_rbac:effective_password_policy(),
+    validator:validate(
+      fun (Password) ->
+              case menelaus_web_rbac:validate_password(Password, Policy) of
+                  true -> ok;
+                  Error -> {error, Error}
+              end
+      end, password, validator:return_value(password_policy, Policy, State)).
 
 validate_cred(Name, Type, State) ->
     validator:validate(
@@ -1848,6 +1860,9 @@ handle_settings_web_post(Req, Args) ->
         true ->
             menelaus_web_buckets:maybe_cleanup_old_buckets(),
             ns_config:set(rest, [{port, PortInt}]),
+            ns_config_auth:is_system_provisioned() orelse
+                menelaus_web_rbac:maybe_set_initial_password_policy(
+                  Req, proplists:get_value(password_policy, Args)),
             ns_config_auth:set_admin_credentials(U, P),
             case ns_config:search(uuid) of
                 false ->
@@ -2201,5 +2216,40 @@ non_negative_integer_or_max_test() ->
        {error,
         "Value '\"abcd\"' must be equal to or above 0 or the string 'max'."},
        non_negative_integer_or_max("abcd")).
+
+initial_password_policy_test_() ->
+    Validate =
+        fun (Password, LegacyEnv, Explicit) ->
+                case LegacyEnv of
+                    true -> os:putenv("CB_LEGACY_PW_POLICY", "1");
+                    false -> os:unsetenv("CB_LEGACY_PW_POLICY")
+                end,
+                meck:expect(ns_config, read_key_fast,
+                            fun (password_policy_explicit, _) -> Explicit;
+                                (password_policy, _) ->
+                                    [{min_length, 6}, {must_present, []}]
+                            end),
+                Args = [{"port", "SAME"}, {"username", "Administrator"},
+                        {"password", Password}],
+                case validator:handle_proplist(
+                       Args, settings_web_post_validators()) of
+                    {ok, _} -> ok;
+                    {error, Errors} -> Errors
+                end
+        end,
+    {setup,
+     fun () ->
+             meck:new([ns_config_auth, ns_config], [passthrough]),
+             meck:expect(ns_config_auth, is_system_provisioned,
+                         fun () -> false end)
+     end,
+     fun (_) ->
+             os:unsetenv("CB_LEGACY_PW_POLICY"),
+             meck:unload([ns_config_auth, ns_config])
+     end,
+     [?_assertEqual(ok, Validate("Asdasd123456789", false, false)),
+      ?_assertMatch([{"password", _}], Validate("asdasd", false, false)),
+      ?_assertEqual(ok, Validate("asdasd", true, false)),
+      ?_assertEqual(ok, Validate("asdasd", false, true))]}.
 
 -endif.

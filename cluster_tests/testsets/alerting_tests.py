@@ -832,8 +832,10 @@ class AlertTests(testlib.BaseTestSet):
         testlib.post_succ(self.to_node(), "/pools/default/buckets",
                           expected_code=202, data=data)
 
-        cluster_run_lib.wait_for_rebalance(self.from_node().url)
-        cluster_run_lib.wait_for_rebalance(self.to_node().url)
+        cluster_run_lib.wait_for_rebalance(self.from_node().url,
+                                           auth=self.from_node().auth)
+        cluster_run_lib.wait_for_rebalance(self.to_node().url,
+                                           auth=self.to_node().auth)
 
         testlib.post_succ(self.from_node(), "/pools/default/remoteClusters",
                           data={"name": "n_1",

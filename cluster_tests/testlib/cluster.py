@@ -30,7 +30,7 @@ import cluster_run_lib
 
 clusters_to_kill = {}
 
-def kill_nodes(processes, urls, terminal_attrs):
+def kill_nodes(processes, urls, terminal_attrs, auth):
     # Here we assume that processes and urls are parallel lists
     # Basically if p[i] is i's process, then urls[i] is the url for i's node
     new_procs = []
@@ -42,17 +42,17 @@ def kill_nodes(processes, urls, terminal_attrs):
             new_urls.append(urls[i])
 
     with testlib.no_output("kill nodes"):
-        cluster_run_lib.kill_nodes(new_procs, terminal_attrs, new_urls)
+        cluster_run_lib.kill_nodes(new_procs, terminal_attrs, new_urls, auth)
 
 def auto_kill_clusters(clusters_to_kill, terminal_attrs):
-    for (processes, urls) in clusters_to_kill.values():
-        kill_nodes(processes, urls, terminal_attrs)
+    for (processes, urls, auth) in clusters_to_kill.values():
+        kill_nodes(processes, urls, terminal_attrs, auth)
 
-def add_cluster_to_auto_kill(cluster_index, processes, urls):
+def add_cluster_to_auto_kill(cluster_index, processes, urls, auth):
     if cluster_index in clusters_to_kill:
         raise RuntimeError(f'Cluster {cluster_index} already in list of ' \
                             'clusters to kill. Same index used twice?')
-    clusters_to_kill[cluster_index] = (processes, urls)
+    clusters_to_kill[cluster_index] = (processes, urls, auth)
 
 def remove_cluster_from_auto_kill(cluster_index):
     if cluster_index in clusters_to_kill:
@@ -141,7 +141,7 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
         cluster = get_cluster(cluster_index, port, auth, processes, nodes,
                               start_args, address=address,
                               protocol=disconnected_args['protocol'])
-        add_cluster_to_auto_kill(cluster_index, processes, urls)
+        add_cluster_to_auto_kill(cluster_index, processes, urls, auth)
         return cluster
     except StartClusterError:
         # Already reported and cleaned up by the code that raised it.
@@ -150,7 +150,7 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
         # this exception can be caught later, so we should kill the nodes
         # here to avoid leaving them running
         if processes:
-            kill_nodes(processes, urls, get_terminal_attrs())
+            kill_nodes(processes, urls, get_terminal_attrs(), auth)
         raise StartClusterError(e, cluster_index)
 
 
@@ -330,7 +330,7 @@ class Cluster:
             "Can't destroy pre-existing cluster"
 
         kill_nodes(self.processes, get_node_urls(self._nodes),
-                   get_terminal_attrs())
+                   get_terminal_attrs(), self.auth)
         remove_cluster_from_auto_kill(self.index)
         self.processes = None
 
@@ -395,7 +395,7 @@ class Cluster:
             # Only tear down what this call started; the cluster it was
             # called on is the caller's to deal with.
             if processes:
-                kill_nodes(processes, urls, get_terminal_attrs())
+                kill_nodes(processes, urls, get_terminal_attrs(), self.auth)
             raise
 
         # Track them in _nodes so smog_check and process management see them,
@@ -407,7 +407,7 @@ class Cluster:
         remove_cluster_from_auto_kill(self.index)
         self.processes += processes
         add_cluster_to_auto_kill(self.index, self.processes,
-                                 get_node_urls(self._nodes))
+                                 get_node_urls(self._nodes), self.auth)
         return nodes
 
     def stop_all_nodes(self):
@@ -536,7 +536,7 @@ class Cluster:
         idx = self._nodes.index(node)
         processes = [self.processes[idx]]
         urls = [self._nodes[idx].url]
-        kill_nodes(processes, urls, get_terminal_attrs())
+        kill_nodes(processes, urls, get_terminal_attrs(), self.auth)
         self.processes[idx] = None
 
     def restart_node(self, node, master_passwords=None):
@@ -576,7 +576,8 @@ class Cluster:
                                                   wait_balanced,
                                                   balanced_timeout,
                                                   balanced_interval,
-                                                  verbose)
+                                                  verbose,
+                                                  auth=node.auth)
 
     # Rebalance the cluster, and possibly eject nodes at the same time.
     # Can optionally wait for the rebalance to finish.
@@ -848,7 +849,8 @@ class Cluster:
         cluster_run_lib.wait_nodes_up(
             timeout_s=timeout_s,
             node_urls=get_node_urls(self._nodes),
-            verbose=verbose)
+            verbose=verbose,
+            auth=self.auth)
 
     def create_bucket(self, data, verbose=False, expected_code=202, sync=False):
         """

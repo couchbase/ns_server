@@ -51,6 +51,9 @@
          validate_cred/2,
          handle_get_password_policy/1,
          handle_post_password_policy/1,
+         effective_password_policy/0,
+         validate_password/2,
+         maybe_set_initial_password_policy/2,
          assert_no_users_upgrade/0,
          handle_put_group/2,
          handle_delete_group/2,
@@ -78,6 +81,15 @@
 
 -define(SECURITY_READ, {[admin, security, admin], read}).
 -define(SECURITY_WRITE, {[admin, security, admin], write}).
+
+%% Applied when a cluster is provisioned, so existing clusters keep their
+%% policy across upgrades.
+-define(NEW_CLUSTER_PASSWORD_POLICY,
+        [{min_length, 15}, {must_present, [uppercase, lowercase, digits]}]).
+
+-type password_policy() ::
+        [{min_length, non_neg_integer()} |
+         {must_present, [uppercase | lowercase | digits | special]}].
 
 -define(EXTERNAL_READ_PRE_80, {[admin, security, external], read}).
 -define(EXTERNAL_WRITE_PRE_80, {[admin, security, external], write}).
@@ -1031,7 +1043,9 @@ execute_verifiers(Verifiers) ->
       end, Verifiers).
 
 get_password_policy() ->
-    {value, Policy} = ns_config:search(password_policy),
+    password_policy_tuple(effective_password_policy()).
+
+password_policy_tuple(Policy) ->
     MinLength = proplists:get_value(min_length, Policy),
     true = (MinLength =/= undefined),
     MustPresent = proplists:get_value(must_present, Policy),
@@ -1043,6 +1057,10 @@ validate_cred(P, password) ->
     is_valid_password(P, get_password_policy());
 validate_cred(Username, username) ->
     validate_id(Username, <<"Username">>).
+
+-spec validate_password(string(), password_policy()) -> true | binary().
+validate_password(P, Policy) ->
+    is_valid_password(P, password_policy_tuple(Policy)).
 
 validate_id([], Fieldname) ->
     <<Fieldname/binary, " must not be empty">>;
@@ -1943,7 +1961,8 @@ forbidden_response(Permissions) ->
       {permissions, FormattedList}]}.
 
 handle_get_password_policy(Req) ->
-    {MinLength, MustPresent} = get_password_policy(),
+    {MinLength, MustPresent} =
+        password_policy_tuple(effective_password_policy()),
     menelaus_util:reply_json(
       Req,
       {[{minLength, MinLength},
@@ -1961,6 +1980,26 @@ post_password_policy_validators() ->
      validator:boolean(enforceSpecialChars, _),
      validator:unsupported(_)].
 
+%% A policy set via /settings/passwordPolicy before provisioning is kept.
+%% CB_LEGACY_PW_POLICY lets dev/test tooling keep the default one.
+initial_password_policy() ->
+    case ns_config:read_key_fast(password_policy_explicit, false) orelse
+        os:getenv("CB_LEGACY_PW_POLICY") =/= false of
+        true ->
+            ns_config:read_key_fast(password_policy, undefined);
+        false ->
+            ?NEW_CLUSTER_PASSWORD_POLICY
+    end.
+
+%% Before provisioning, all password checks use the policy that provisioning
+%% will apply rather than the one in ns_config.
+-spec effective_password_policy() -> password_policy().
+effective_password_policy() ->
+    case ns_config_auth:is_system_provisioned() of
+        true -> ns_config:read_key_fast(password_policy, undefined);
+        false -> initial_password_policy()
+    end.
+
 must_present_value(JsonField, MustPresentAtom, Args) ->
     case proplists:get_value(JsonField, Args) of
         true ->
@@ -1968,6 +2007,21 @@ must_present_value(JsonField, MustPresentAtom, Args) ->
         _ ->
             []
     end.
+
+-spec maybe_set_initial_password_policy(mochiweb_request(),
+                                        password_policy()) -> ok.
+maybe_set_initial_password_policy(Req, Policy) ->
+    case ns_config:read_key_fast(password_policy, undefined) of
+        Policy -> ok;
+        _ -> set_password_policy(Req, Policy)
+    end.
+
+set_password_policy(Req, Policy) ->
+    OldSettings = ns_config:read_key_fast(password_policy, []),
+    ns_config:set(password_policy, Policy),
+    event_log:maybe_add_log_settings_changed(password_policy_changed,
+                                             OldSettings, Policy, []),
+    ns_audit:password_policy(Req, Policy).
 
 handle_post_password_policy(Req) ->
     validator:handle(
@@ -1981,11 +2035,9 @@ handle_post_password_policy(Req) ->
                         must_present_value(enforceDigits, digits, Values) ++
                         must_present_value(enforceSpecialChars, special,
                                            Values)}],
-              OldSettings = ns_config:read_key_fast(password_policy, []),
-              ns_config:set(password_policy, Policy),
-              event_log:maybe_add_log_settings_changed(password_policy_changed,
-                                                       OldSettings, Policy, []),
-              ns_audit:password_policy(Req, Policy),
+              ns_config_auth:is_system_provisioned() orelse
+                  ns_config:set(password_policy_explicit, true),
+              set_password_policy(Req, Policy),
               menelaus_util:reply(Req, 200)
       end, Req, form, post_password_policy_validators()).
 
@@ -4011,6 +4063,28 @@ validate_cred_username_test() ->
     %% ?assertEqual(true, validate_cred(Utf8, username)),                  % "ξ" is codepoint 958
     %% ?assertEqual(true, validate_cred(LongButValid ++ Utf8, username)),  % 128 code points
     ok.
+
+validate_cred_password_test_() ->
+    Validate =
+        fun (Password, Provisioned) ->
+                meck:expect(ns_config_auth, is_system_provisioned,
+                            fun () -> Provisioned end),
+                validate_cred(Password, password)
+        end,
+    {setup,
+     fun () ->
+             os:unsetenv("CB_LEGACY_PW_POLICY"),
+             meck:new([ns_config_auth, ns_config], [passthrough]),
+             meck:expect(ns_config, read_key_fast,
+                         fun (password_policy_explicit, _) -> false;
+                             (password_policy, _) ->
+                                 [{min_length, 6}, {must_present, []}]
+                         end)
+     end,
+     fun (_) -> meck:unload([ns_config_auth, ns_config]) end,
+     [?_assertEqual(true, Validate("asdasd", true)),
+      ?_assertNotEqual(true, Validate("asdasd", false)),
+      ?_assertEqual(true, Validate("Asdasd123456789", false))]}.
 
 gen_password_test() ->
     meck:new(cluster_compat_mode, [passthrough]),

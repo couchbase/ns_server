@@ -220,7 +220,7 @@ class RogueNodeEjectionTests(testlib.BaseTestSet):
         if self.pretend_cluster is not None:
             kill_nodes(self.pretend_processes,
                        get_node_urls([self.pretend_node]),
-                       get_terminal_attrs())
+                       get_terminal_attrs(), self.pretend_node.auth)
             self.pretend_cluster = None
             self.pretend_processes = None
             self.pretend_node = None

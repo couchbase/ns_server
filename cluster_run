@@ -188,6 +188,13 @@ def argument_parser():
         action='store_true',
         default=False,
         help="Poll for nodes to start and log when they're up")
+    arg_parser.add_argument(
+        '--strict-pw-policy',
+        action='store_true',
+        default=False,
+        help="Boot nodes with the stricter default password policy used for "
+             "new clusters instead of the legacy policy, which cluster_run "
+             "uses by default so short passwords keep working.")
 
     args = arg_parser.parse_args()
 
@@ -215,7 +222,8 @@ def argument_parser():
               "args": args.additional_args,
               "code_watchdog": args.code_watchdog,
               "nooutput": args.no_output,
-              "wait_for_start": args.wait_for_start}
+              "wait_for_start": args.wait_for_start,
+              "legacy_pw_policy": not args.strict_pw_policy}
 
     # Removes the keys when value is None, therefore start_cluster uses
     # the default values.
@@ -248,7 +256,9 @@ def main():
     if code_watchdog:
         observer = cluster_run_lib.start_code_watchdog(
                        params.get("num_nodes", 1),
-                       params.get("start_index", 0))
+                       params.get("start_index", 0),
+                       cluster_run_lib.default_auth(
+                           params.get("legacy_pw_policy", True)))
 
     try:
         for node in nodes:

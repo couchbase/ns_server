@@ -40,8 +40,17 @@ base_cont_backup_stats_port = 7300
 node_start_timeout_s = 60
 default_username = "Administrator"
 default_pass = "asdasd"
+# Used instead of default_pass with --strict-pw-policy, which default_pass
+# doesn't satisfy.
+strict_default_password = "Asdasd123456789"
 default_idx_storage_mode_ep = "plasma"
 default_idx_storage_mode_ce = "forestdb"
+
+
+def default_auth(legacy_pw_policy):
+    return (default_username,
+            default_pass if legacy_pw_policy else strict_default_password)
+
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 ns_server_dir = os.path.dirname(script_dir)
@@ -247,6 +256,16 @@ def abs_path_join(*args):
     return os.path.abspath(os.path.join(*args))
 
 
+# Records how cluster_run started the node so that cluster_connect, a separate
+# invocation, picks the matching password.
+def strict_pw_policy_marker(root_dir, node_idx):
+    return abs_path_join(root_dir, "data", f"n_{node_idx}", "strict_pw_policy")
+
+
+def started_with_strict_pw_policy(node_idx, root_dir=ns_server_dir):
+    return os.path.exists(strict_pw_policy_marker(root_dir, node_idx))
+
+
 def erlang_args_for_node(i, ebin_path, extra_args, args_prefix, root_dir):
     logdir = abs_path_join(root_dir, "logs", f"n_{i}")
 
@@ -383,6 +402,7 @@ def start_cluster(num_nodes=1,
                   nooutput=False,
                   master_passwords=None,
                   env={},
+                  legacy_pw_policy=True,
                   stderr_log_filename='cluster_run_stderr.log'):
 
     extra_args = []
@@ -453,6 +473,13 @@ def start_cluster(num_nodes=1,
         args = erlang_args_for_node(node_num, ebin_path, extra_args,
                                     prepend_args, root_dir)
 
+        marker = strict_pw_policy_marker(root_dir, node_num)
+        if legacy_pw_policy:
+            if os.path.exists(marker):
+                os.remove(marker)
+        else:
+            open(marker, 'w').close()
+
         params = {}
 
         os_specific(args, params)
@@ -472,6 +499,9 @@ def start_cluster(num_nodes=1,
 
         if num_vbuckets:
             params['env']['COUCHBASE_NUM_VBUCKETS'] = f"{num_vbuckets}"
+
+        if legacy_pw_policy:
+            params['env']['CB_LEGACY_PW_POLICY'] = "1"
 
         path = params['env']['PATH']
         path = (PREFIX + "/bin") + os.pathsep + path
@@ -540,7 +570,8 @@ def start_cluster(num_nodes=1,
 
         if wait_for_start:
             wait_nodes_up(num_nodes, start_index, master_passwords, root_dir,
-                          node_start_timeout_s)
+                          node_start_timeout_s,
+                          auth=default_auth(legacy_pw_policy))
 
         return processes
     except Exception:
@@ -556,7 +587,7 @@ def start_cluster(num_nodes=1,
         raise
 
 
-def start_code_watchdog(num_nodes, start_index):
+def start_code_watchdog(num_nodes, start_index, auth):
     # This is a workaround to avoid importing watchdog if it's not installed.
     # Otherwise, we will need to install watchdog on all test machines, where
     # it will never be actually used.
@@ -593,7 +624,7 @@ def start_code_watchdog(num_nodes, start_index):
 
                 try:
                     response = requests.post(url,
-                                            auth=(default_username, default_pass),
+                                            auth=auth,
                                             data=erlang_code)
                     if response.status_code == 200:
                         print(f"*** reloaded {module_name} on {node}")
@@ -621,7 +652,7 @@ def stop_code_watchdog(observer):
 
 def wait_nodes_up(num_nodes=1, start_index=0, master_passwords=None,
                   root_dir=None, timeout_s=node_start_timeout_s,
-                  node_urls=None, verbose=True):
+                  node_urls=None, verbose=True, *, auth):
     def print_if_verbose(*args, **kwargs):
         if verbose:
             print(*args, **kwargs)
@@ -635,7 +666,7 @@ def wait_nodes_up(num_nodes=1, start_index=0, master_passwords=None,
         sys.stdout.flush()
         while time.time() < deadline:
             try:
-                http_get_json(url + "/pools")
+                http_get_json(url + "/pools", auth)
                 time_delta = time.time() - start
                 print_if_verbose(f"UP [took: {time_delta:.2f}s timeout:{timeout_s}s]")
                 return
@@ -700,9 +731,9 @@ def try_to_pass_master_password(root_dir, node_idx, password):
     print("SUCCESS: Password accepted. Node started booting.")
 
 
-def kill_nodes(nodes, terminal_attrs=None, urls=None):
+def kill_nodes(nodes, terminal_attrs=None, urls=None, auth=None):
     if urls is not None:
-        sync_loggers(urls)
+        sync_loggers(urls, auth)
     for n in nodes:
         if n.write_side is not None:
             print("Closing %d\n" % n.write_side)
@@ -732,10 +763,10 @@ def kill_nodes(nodes, terminal_attrs=None, urls=None):
 
 
 # Wait for final errors to be logged
-def sync_loggers(urls):
+def sync_loggers(urls, auth):
     try:
         for url in urls:
-            http_post(url + "/diag/eval", "ale:sync_all_sinks().")
+            http_post(url + "/diag/eval", "ale:sync_all_sinks().", auth)
     except Exception as e:
         print(f"Error encountered syncing loggers: {e}\n"
               f"Sleeping for 1 second to give the cluster the opportunity "
@@ -751,18 +782,16 @@ def do_encode(input_string):
     return input_string.encode()
 
 
-def http_get_json(url):
-    return http_get(url).json()
+def http_get_json(url, auth):
+    return http_get(url, auth).json()
 
 
-def http_get(url, timeout=60):
-    return requests.get(url, auth=(default_username, default_pass),
-                        timeout=timeout)
+def http_get(url, auth, timeout=60):
+    return requests.get(url, auth=auth, timeout=timeout)
 
 
-def http_post(url, data, timeout=60):
-    return requests.post(url, auth=(default_username, default_pass),
-                         timeout=timeout, data=data)
+def http_post(url, data, auth, timeout=60):
+    return requests.post(url, auth=auth, timeout=timeout, data=data)
 
 
 def connect(num_nodes=0,
@@ -779,7 +808,8 @@ def connect(num_nodes=0,
             create_bucket=True,
             bucket=None,
             bucket_weight=50,
-            bucket_width=1):
+            bucket_width=1,
+            password=None):
     if isinstance(deploy, list):
         services = deploy
         deploy = dict(("n%d" % i, services[:]) for i in range(num_nodes))
@@ -795,12 +825,16 @@ def connect(num_nodes=0,
             valid_service_types:
         return 1
 
+    if password is None:
+        password = default_auth(
+            not started_with_strict_pw_policy(start_index))[1]
+
     print(f"Connecting {num_nodes} nodes, "
-          f"mem size {memsize}, password {default_pass}. "
+          f"mem size {memsize}, password {password}. "
           f"Deployment plan: {deploy}\n")
 
     session = requests.Session()
-    session.auth = (default_username, default_pass)
+    session.auth = (default_username, password)
 
     if create_bucket:
         if bucket is None:
@@ -853,7 +887,7 @@ def connect(num_nodes=0,
             'indexMemoryQuota': indexmemsize,
             'port': "SAME",
             'username': default_username,
-            'password': default_pass,
+            'password': password,
             'indexerStorageMode': indStorageMode,
             'services': ",".join(services)}
     r = session.post(f'http://{addr}:{base_port}/clusterInit', data)
@@ -902,7 +936,7 @@ def connect(num_nodes=0,
             # If using serverless, add the node to a group,
             # otherwise joinCluster
             data = {'user': default_username,
-                    'password': default_pass,
+                    'password': password,
                     'hostname': f"{addr}:{port + 10000}",
                     'services': ','.join(services)}
             group_uri = \
@@ -912,7 +946,7 @@ def connect(num_nodes=0,
             assert r.status_code == 200,  (r.status_code, r.text)
         else:
             data = {'user': default_username,
-                    'password': default_pass,
+                    'password': password,
                     'clusterMemberHostIp': addr,
                     'clusterMemberPort': cluster_member_port,
                     'services': ",".join(services)}
@@ -935,7 +969,7 @@ def connect(num_nodes=0,
 
         if do_wait_for_rebalance:
             err = wait_for_rebalance("http://{0}:{1}".format(addr, base_port),
-                                     wait_balanced=True)
+                                     wait_balanced=True, auth=session.auth)
             if err is not None:
                 print(err)
                 return 1
@@ -950,9 +984,9 @@ def connect(num_nodes=0,
 
 # Query the tasks endpoint for the rebalance task, and check if it is
 # running
-def is_rebalance_running(url):
+def is_rebalance_running(url, auth):
     rebalance_running = False
-    tasks = http_get_json(url + "/pools/default/tasks")
+    tasks = http_get_json(url + "/pools/default/tasks", auth)
 
     for task in tasks:
         if task.get("type") == "rebalance" and \
@@ -961,8 +995,8 @@ def is_rebalance_running(url):
     return rebalance_running
 
 
-def rebalance_error(url):
-    tasks = http_get_json(url + "/pools/default/tasks")
+def rebalance_error(url, auth):
+    tasks = http_get_json(url + "/pools/default/tasks", auth)
     for task in tasks:
         if task.get("type") == "rebalance":
             return task.get("errorMessage")
@@ -971,9 +1005,9 @@ def rebalance_error(url):
 
 # Poll for the cluster to be balanced, up until a timeout, returning whether the
 # cluster became balanced within that timeout.
-def wait_for_balanced(url, timeout_s, interval_s):
+def wait_for_balanced(url, timeout_s, interval_s, auth):
     def is_balanced():
-        info = http_get_json(url + "/pools/default")
+        info = http_get_json(url + "/pools/default", auth)
         return info.get("balanced", False)
 
     timeout_time = time.time() + timeout_s
@@ -988,15 +1022,15 @@ def wait_for_balanced(url, timeout_s, interval_s):
 # 60s, and returning whether or not the rebalance completed in that time
 def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=False,
                        balanced_timeout=10, balanced_interval=0.5,
-                       verbose=False):
+                       verbose=False, *, auth):
     def print_if_verbose(*args, **kwargs):
         if verbose:
             print(*args, **kwargs)
 
-    if is_rebalance_running(url):
+    if is_rebalance_running(url, auth):
         print_if_verbose(f"Waiting up to {timeout_s}s for rebalance to finish")
         timeout_time = time.time() + timeout_s
-        while is_rebalance_running(url):
+        while is_rebalance_running(url, auth):
             if time.time() > timeout_time:
                 print_if_verbose("Timed out waiting for rebalance")
                 return "timeout"
@@ -1005,8 +1039,9 @@ def wait_for_rebalance(url, timeout_s=60, interval_s=0.5, wait_balanced=False,
 
         print_if_verbose("Finished.")
 
-    err = rebalance_error(url)
+    err = rebalance_error(url, auth)
     if (err is None and wait_balanced and
-            not wait_for_balanced(url, balanced_timeout, balanced_interval)):
+            not wait_for_balanced(url, balanced_timeout, balanced_interval,
+                                  auth)):
         return f"Unbalanced after {balanced_timeout}s"
     return err

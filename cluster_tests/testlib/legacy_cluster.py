@@ -98,9 +98,9 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                               # release, so restarting one keeps it there
                               # until something upgrades it on purpose.
                               node_versions=[version] * num_nodes)
-        add_cluster_to_auto_kill(cluster_index, processes, urls)
+        add_cluster_to_auto_kill(cluster_index, processes, urls, auth)
         return cluster, urls
     except Exception:
         if processes:
-            kill_nodes(processes, urls, get_terminal_attrs())
+            kill_nodes(processes, urls, get_terminal_attrs(), auth)
         raise

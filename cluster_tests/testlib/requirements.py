@@ -172,7 +172,8 @@ class ClusterRequirements:
             start_args['env']['CB_CODE_COVERAGE_MODULES'] = cb_code_coverage
             start_args['env']['CB_CODE_COVERAGE_DIR'] = coverage_dir
 
-        connect_args = {'start_index': first_node_index}
+        connect_args = {'start_index': first_node_index,
+                        'password': auth[1]}
         connect_args.update(self.get_default_connect_args(start_args))
         for requirement in self.as_list():
             connect_args.update(requirement.connect_args)
