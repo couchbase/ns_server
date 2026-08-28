@@ -585,6 +585,7 @@ class AlertTests(testlib.BaseTestSet):
             # Enable continuous backup
             data = {'name': bucket_name,
                     'continuousBackupEnabled': 'true',
+                    'continuousBackupInterval': '2',
                     'continuousBackupLocation': data_path,
                     'continuousBackupRetentionPeriod': '1',
                     'historyRetentionSeconds': '2342424'}
