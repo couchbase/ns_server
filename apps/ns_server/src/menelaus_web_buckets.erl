@@ -330,13 +330,22 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
                     Id, BucketConfig, NsServerParams)),
 
             %% Keys that are present in both BucketInfo and ExtraParams.
-            ConflictMap = maps:intersect(BucketInfo, ExtraParams),
+            ConflictMap =
+                maps:intersect_with(
+                  fun (_K, NsServerValue, ServiceValue) ->
+                          {NsServerValue, ServiceValue}
+                  end, BucketInfo, ExtraParams),
             case maps:size(ConflictMap) of
                 0 -> ok;
                 _ ->
                     %% Shouldn't happen - this would mean that the param is
                     %% public in the KV config and implemented in the ns_server
                     %% REST API.
+                    ?log_error(
+                       "Bucket ~p: parameters returned by the services "
+                       "conflict with the ns_server bucket info. Conflicts "
+                       "(ns_server value, service value): ~p",
+                       [Id, ConflictMap]),
                     erlang:exit(conflicting_override_params)
             end,
             %% Merge the extra params into the bucket info, but keep the bucket
