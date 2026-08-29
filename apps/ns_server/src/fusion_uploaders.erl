@@ -800,7 +800,7 @@ maybe_grab_heartbeat_info() ->
     end.
 
 add_stat_value(Key, Value, Acc) ->
-    maps:update_with(Key, fun(V) -> V + Value end, 0, Acc).
+    maps:update_with(Key, fun(V) -> V + Value end, Value, Acc).
 
 add_stat_value_from(Key, VBStats, Acc) ->
     Value = proplists:get_value(list_to_binary(atom_to_list(Key)), VBStats),
