@@ -23,6 +23,11 @@
 
 -define(ETS_LOG_INTVL, 180).
 
+%% Separate table for stats reported via notify_counter_raw (e.g. SDK
+%% stats), so they can be sorted and reported independently of the other
+%% ns_server stats as "special" processing is needed.
+-define(RAW_TABLE, list_to_atom(atom_to_list(?MODULE) ++ "-raw")).
+
 -define(DEFAULT_HIST_MAX, 10000). %%  10^4, 4 buckets
 -define(DEFAULT_HIST_UNIT, millisecond).
 -define(METRIC_PREFIX, <<"cm_">>).
@@ -130,7 +135,7 @@ notify_counter_raw(Metric) ->
 -spec notify_counter_raw(metric(), non_neg_integer()) -> ok.
 notify_counter_raw(Metric, Val) when is_integer(Val) ->
     Key = {c_raw, normalized_metric(Metric)},
-    catch ets:update_counter(?MODULE, Key, Val, {Key, 0}),
+    catch ets:update_counter(?RAW_TABLE, Key, Val, {Key, 0}),
     ok.
 
 -spec notify_gauge(metric(), gauge_value()) -> ok.
@@ -237,6 +242,10 @@ report_prom_stats(ReportMetricFun, ReportMetaFun, IsHighCard) ->
                                        ReportMetricFun,
                                        ReportMetaFun)
                            end),
+            Try(ns_server_raw, fun () -> report_raw_stats(
+                                           ReportMetricFun,
+                                           ReportMetaFun)
+                               end),
             Try(cluster, fun () -> report_cluster_stats(
                                      ReportMetricFun,
                                      ReportMetaFun)
@@ -666,6 +675,60 @@ report_ns_server_stats_helper(Stats, ReportMetricFun, ReportMetaFun) ->
                 end, false, StatInfo)
       end, Ordered).
 
+report_raw_stats(ReportMetricFun, ReportMetaFun) ->
+    Stats = lists:sort(fun raw_stat_lte/2, ets:tab2list(?RAW_TABLE)),
+    lists:foldl(
+      fun ({{c_raw, {BinName, _Labels}}, _Value} = M, PrevName) ->
+              GroupName = strip_c_raw_suffix(BinName),
+              Skip = PrevName =:= GroupName,
+              report_stat(M, ReportMetricFun, ReportMetaFun, Skip),
+              GroupName
+      end, undefined, Stats),
+    ok.
+
+%% Orders raw stats by name (so a group's "_bucket" stats sort before its
+%% "_count", which sorts before its "_sum"), and, for "_bucket" stats, by
+%% increasing numerical order of their "le" label (with "+Inf" sorting
+%% last).
+raw_stat_lte({{c_raw, {BinNameA, LabelsA}}, _},
+             {{c_raw, {BinNameB, LabelsB}}, _}) ->
+    case BinNameA =:= BinNameB of
+        false -> BinNameA =< BinNameB;
+        true -> le_value(LabelsA) =< le_value(LabelsB)
+    end.
+
+%% Erlang term order sorts numbers before atoms, so 'infinity' naturally
+%% sorts after any numeric "le" value.
+le_value(Labels) ->
+    case lists:keyfind(<<"le">>, 1, Labels) of
+        {<<"le">>, <<"+Inf">>} -> infinity;
+        {<<"le">>, Bin} -> le_number(Bin);
+        false -> 0
+    end.
+
+le_number(Bin) ->
+    Str = binary_to_list(Bin),
+    try list_to_integer(Str)
+    catch _:_ ->
+              try list_to_float(Str)
+              catch _:_ -> 0
+              end
+    end.
+
+%% Each histogram group reports "_bucket", "_count" and "_sum" stats;
+%% this returns the group's base name (i.e. without the suffix), or
+%% BinName unchanged if none of the suffixes match.
+strip_c_raw_suffix(BinName) ->
+    CountSize = byte_size(BinName) - byte_size(<<"_count">>),
+    BucketSize = byte_size(BinName) - byte_size(<<"_bucket">>),
+    SumSize = byte_size(BinName) - byte_size(<<"_sum">>),
+    case BinName of
+        <<N:CountSize/binary, "_count">> -> N;
+        <<N:BucketSize/binary, "_bucket">> -> N;
+        <<N:SumSize/binary, "_sum">> -> N;
+        _ -> BinName
+    end.
+
 extract_name_and_type({g, {BinName, _Labels}}) ->
     {g, BinName};
 extract_name_and_type({c, {BinName, _Labels}}) ->
@@ -817,7 +880,9 @@ report_stat({{c, {BinName, Labels}}, Value}, ReportMetricFun,
     ReportMetricFun({FullName, Labels, Value});
 report_stat({{c_raw, {BinName, Labels}}, Value}, ReportMetricFun,
            ReportMetaFun, SkipMeta) ->
-    SkipMeta orelse ReportMetaFun(BinName),
+    %% Special case histograms which have been recorded as raw stats (SDK).
+    %% Use the group's base name (i.e. without the suffix) for the meta.
+    SkipMeta orelse ReportMetaFun(strip_c_raw_suffix(BinName)),
     ReportMetricFun({BinName, Labels, Value});
 report_stat({{mw, F, Window, {BinName, Labels}}, BucketsQ}, ReportMetricFun,
            ReportMetaFun, SkipMeta) ->
@@ -871,6 +936,7 @@ init([]) ->
 
 init_stats() ->
     ets:new(?MODULE, [public, named_table, set]),
+    ets:new(?RAW_TABLE, [public, named_table, set]),
     %% Deprecated table, will be removed:
     ets:new(ns_server_system_stats, [public, named_table, set]).
 
@@ -1514,6 +1580,7 @@ stats_type_and_help_test_() ->
      fun () ->
              cb_stats_info:init_info(),
              ets:new(?MODULE, [public, named_table, ordered_set]),
+             ets:new(?RAW_TABLE, [public, named_table, set]),
              %% Rather than respond to the non-existent request we save
              %% the response into a process dictionary; preserving the
              %% ordering. After all the responses have been done we can
@@ -1533,6 +1600,7 @@ stats_type_and_help_test_() ->
              erase(log),
              cb_stats_info:delete_info(),
              ets:delete(?MODULE),
+             ets:delete(?RAW_TABLE),
              meck:unload()
      end,
      [{"system stats", fun () -> test_system_stats() end},
@@ -1540,7 +1608,8 @@ stats_type_and_help_test_() ->
       {"hc stats", fun () -> test_hc_stats() end},
       {"cbauth stats", fun () -> test_cbauth_stats() end},
       {"empty system stats", fun () -> test_empty_system_stats() end},
-      {"missing stat info", fun () -> test_missing_stat_info() end}
+      {"missing stat info", fun () -> test_missing_stat_info() end},
+      {"raw stats (SDK)", fun () -> test_raw_stats() end}
      ]}.
 
 test_system_stats() ->
@@ -2033,5 +2102,61 @@ test_missing_stat_info() ->
               "# HELP sys_disk_read_time_seconds Amount of time that the "
               "disk spent reading\n">>,
             <<"sys_disk_read_time_seconds{disk=\"xvda\"} 15.0\n">>], Results).
+
+%% This tests that HELP/TYPE are returned for "raw" stats. This is used to
+%% handle SDK stats.
+test_raw_stats() ->
+    ReportMetric =
+        fun (Info) ->
+                menelaus_web_prometheus:report_metric(Info, not_used)
+        end,
+    ReportMeta =
+        fun (FullName) ->
+            menelaus_web_prometheus:report_metric_meta(FullName, not_used)
+        end,
+
+    Bucket = <<"sdk_kv_retrieval_duration_milliseconds_bucket">>,
+    Sum = <<"sdk_kv_retrieval_duration_milliseconds_sum">>,
+    Count = <<"sdk_kv_retrieval_duration_milliseconds_count">>,
+
+    lists:foreach(
+      fun ({Metric, Value}) ->
+              ns_server_stats:notify_counter_raw(Metric, Value)
+      end,
+      [{{Bucket, [{<<"le">>, <<"1">>}]}, 978074},
+       {{Bucket, [{<<"le">>, <<"1000">>}]}, 984914},
+       {{Bucket, [{<<"le">>, <<"+Inf">>}]}, 984914},
+       {{Bucket, [{<<"le">>, <<"100">>}]}, 984914},
+       {{Bucket, [{<<"le">>, <<"10">>}]}, 984914},
+       {{Bucket, [{<<"le">>, <<"500">>}]}, 984914},
+       {{Bucket, [{<<"le">>, <<"25000">>}]}, 984914},
+       {{Sum, []}, 984914},
+       {{Count, []}, 984914}]),
+
+    report_raw_stats(ReportMetric, ReportMeta),
+    Results = get(log),
+
+    ?assertEqual(
+       [<<"# TYPE sdk_kv_retrieval_duration_milliseconds histogram\n"
+          "# HELP sdk_kv_retrieval_duration_milliseconds Latency of "
+          "Key-Value requests that do not write data, measured by the "
+          "client from dispatch to response.\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"1\"} "
+          "978074\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"10\"} "
+          "984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"100\"} "
+          "984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"500\"} "
+          "984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"1000\"} "
+          "984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"25000\"} "
+          "984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_bucket{le=\"+Inf\"} "
+          "984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_count{} 984914\n">>,
+        <<"sdk_kv_retrieval_duration_milliseconds_sum{} 984914\n">>],
+       Results).
 
 -endif.

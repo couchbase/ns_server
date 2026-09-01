@@ -1,0 +1,356 @@
+{
+  "sdk_analytics_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Analytics service requests, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 100, 1000, 10000, 30000 and 75000 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_analytics_r_canceled": {
+    "type": "counter",
+    "help": "Number of Analytics requests that were canceled after being dispatched.",
+    "notes": "A request is canceled when it was dispatched but its outcome can no longer be delivered, most often because the connection was severed. Client shutdown and explicit cancellation by the application also count.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_analytics_r_timedout": {
+    "type": "counter",
+    "help": "Number of Analytics requests that timed out before a response was received.",
+    "notes": "A response that arrives after the deadline is discarded as an orphan and the request is still counted here.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_analytics_r_total": {
+    "type": "counter",
+    "help": "Total number of Analytics requests dispatched by the client.",
+    "notes": "Counts requests written to the network, not application operations: each transmission attempt of a retried request is counted separately, and a compound operation such as a read from all replicas is counted once per sub-request. This can exceed the _count of the corresponding latency histogram, because a request whose response never arrives is counted here but contributes no latency observation.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_eventing_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Eventing service requests, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 100, 1000, 10000, 30000 and 75000 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_eventing_r_canceled": {
+    "type": "counter",
+    "help": "Number of Eventing requests that were canceled after being dispatched.",
+    "notes": "A request is canceled when it was dispatched but its outcome can no longer be delivered, most often because the connection was severed. Client shutdown and explicit cancellation by the application also count.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_eventing_r_timedout": {
+    "type": "counter",
+    "help": "Number of Eventing requests that timed out before a response was received.",
+    "notes": "A response that arrives after the deadline is discarded as an orphan and the request is still counted here.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_eventing_r_total": {
+    "type": "counter",
+    "help": "Total number of Eventing requests dispatched by the client.",
+    "notes": "Counts requests written to the network, not application operations: each transmission attempt of a retried request is counted separately, and a compound operation such as a read from all replicas is counted once per sub-request. This can exceed the _count of the corresponding latency histogram, because a request whose response never arrives is counted here but contributes no latency observation.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_kv_mutation_durable_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Key-Value mutations that request synchronous replication, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 10, 100, 500, 1000, 2000 and 10000 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt. Key-Value latency is split across three metrics: sdk_kv_mutation_durable_duration_milliseconds for mutations that request synchronous replication, sdk_kv_mutation_nondurable_duration_milliseconds for all other mutations, and sdk_kv_retrieval_duration_milliseconds for everything else.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_kv_mutation_nondurable_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Key-Value mutations that do not request synchronous replication, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 1, 10, 100, 500, 1000 and 2500 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt. Key-Value latency is split across three metrics: sdk_kv_mutation_durable_duration_milliseconds for mutations that request synchronous replication, sdk_kv_mutation_nondurable_duration_milliseconds for all other mutations, and sdk_kv_retrieval_duration_milliseconds for everything else.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_kv_r_canceled": {
+    "type": "counter",
+    "help": "Number of Key-Value requests that were canceled after being dispatched.",
+    "notes": "A request is canceled when it was dispatched but its outcome can no longer be delivered, most often because the connection was severed. Client shutdown and explicit cancellation by the application also count.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_kv_r_timedout": {
+    "type": "counter",
+    "help": "Number of Key-Value requests that timed out before a response was received.",
+    "notes": "A response that arrives after the deadline is discarded as an orphan and the request is still counted here.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_kv_r_total": {
+    "type": "counter",
+    "help": "Total number of Key-Value requests dispatched by the client.",
+    "notes": "Counts requests written to the network, not application operations: each transmission attempt of a retried request is counted separately, and a compound operation such as a read from all replicas is counted once per sub-request. This can exceed the _count of the corresponding latency histogram, because a request whose response never arrives is counted here but contributes no latency observation.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_kv_retrieval_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Key-Value requests that do not write data, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 1, 10, 100, 500, 1000 and 2500 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt. Key-Value latency is split across three metrics: sdk_kv_mutation_durable_duration_milliseconds for mutations that request synchronous replication, sdk_kv_mutation_nondurable_duration_milliseconds for all other mutations, and sdk_kv_retrieval_duration_milliseconds for everything else.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_management_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of management service requests, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 100, 1000, 10000, 30000 and 75000 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_management_r_canceled": {
+    "type": "counter",
+    "help": "Number of management requests that were canceled after being dispatched.",
+    "notes": "A request is canceled when it was dispatched but its outcome can no longer be delivered, most often because the connection was severed. Client shutdown and explicit cancellation by the application also count.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_management_r_timedout": {
+    "type": "counter",
+    "help": "Number of management requests that timed out before a response was received.",
+    "notes": "A response that arrives after the deadline is discarded as an orphan and the request is still counted here.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_management_r_total": {
+    "type": "counter",
+    "help": "Total number of management requests dispatched by the client.",
+    "notes": "Counts requests written to the network, not application operations: each transmission attempt of a retried request is counted separately, and a compound operation such as a read from all replicas is counted once per sub-request. This can exceed the _count of the corresponding latency histogram, because a request whose response never arrives is counted here but contributes no latency observation.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_query_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Query service requests, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 100, 1000, 10000, 30000 and 75000 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_query_r_canceled": {
+    "type": "counter",
+    "help": "Number of Query requests that were canceled after being dispatched.",
+    "notes": "A request is canceled when it was dispatched but its outcome can no longer be delivered, most often because the connection was severed. Client shutdown and explicit cancellation by the application also count.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_query_r_timedout": {
+    "type": "counter",
+    "help": "Number of Query requests that timed out before a response was received.",
+    "notes": "A response that arrives after the deadline is discarded as an orphan and the request is still counted here.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_query_r_total": {
+    "type": "counter",
+    "help": "Total number of Query requests dispatched by the client.",
+    "notes": "Counts requests written to the network, not application operations: each transmission attempt of a retried request is counted separately, and a compound operation such as a read from all replicas is counted once per sub-request. This can exceed the _count of the corresponding latency histogram, because a request whose response never arrives is counted here but contributes no latency observation.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_search_duration_milliseconds": {
+    "type": "histogram",
+    "unit": "milliseconds",
+    "help": "Latency of Search service requests, measured by the client from dispatch to response.",
+    "notes": "Bucket bounds are fixed at 100, 1000, 10000, 30000 and 75000 milliseconds, plus +Inf. Latency is recorded per transmission attempt rather than per application operation, so an operation that is retried contributes one observation per attempt.",
+    "labels": [
+      "le",
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_search_r_canceled": {
+    "type": "counter",
+    "help": "Number of Search requests that were canceled after being dispatched.",
+    "notes": "A request is canceled when it was dispatched but its outcome can no longer be delivered, most often because the connection was severed. Client shutdown and explicit cancellation by the application also count.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_search_r_timedout": {
+    "type": "counter",
+    "help": "Number of Search requests that timed out before a response was received.",
+    "notes": "A response that arrives after the deadline is discarded as an orphan and the request is still counted here.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  },
+  "sdk_search_r_total": {
+    "type": "counter",
+    "help": "Total number of Search requests dispatched by the client.",
+    "notes": "Counts requests written to the network, not application operations: each transmission attempt of a retried request is counted separately, and a compound operation such as a read from all replicas is counted once per sub-request. This can exceed the _count of the corresponding latency histogram, because a request whose response never arrives is counted here but contributes no latency observation.",
+    "labels": [
+      {
+        "name": "alt_node",
+        "help": "Alternate-address hostname of the node the requests were sent to, present when the client reached the cluster over an alternate address."
+      }
+    ],
+    "added": "8.0.0",
+    "stability": "committed"
+  }
+}

@@ -32,11 +32,16 @@ init_info() ->
 delete_info() ->
     ets:delete(?MODULE).
 
-%% Read the ns_server metrics_metadata.json file which contains information
-%% such as the TYPE and HELP for stats.
+%% Read the metrics_metadata.json files (one per component) which contain
+%% information such as the TYPE and HELP for stats. All components' stats
+%% are kept in the same ets table so their names must be unique across
+%% components.
 process_metrics_metadata() ->
-    CmPath = path_config:component_path(etc, "cm"),
-    MetaPath0 = filename:join(CmPath, "metrics_metadata.json"),
+    lists:foreach(fun process_metrics_metadata/1, ["cm", "sdk"]).
+
+process_metrics_metadata(Component) ->
+    CompPath = path_config:component_path(etc, Component),
+    MetaPath0 = filename:join(CompPath, "metrics_metadata.json"),
     MetaPath = case filelib:is_regular(MetaPath0) of
                    true ->
                        MetaPath0;
@@ -44,7 +49,7 @@ process_metrics_metadata() ->
                        %% cluster_run configurations
                        BinPath = path_config:component_path(bin),
                        filename:join([filename:dirname(BinPath),
-                                      "etc", "couchbase", "cm",
+                                      "etc", "couchbase", Component,
                                       "metrics_metadata.json"])
                end,
     ?log_debug("Reading metrics metadata from ~p", [MetaPath]),

@@ -481,5 +481,8 @@ INSTALL (DIRECTORY "${_instdir}/var/" DESTINATION var/lib/couchbase/logs
   GROUP_READ GROUP_WRITE GROUP_EXECUTE)
 
 AddMetricsMetadata (JSON etc/metrics_metadata.json COMPONENT cm)
+# ns_server is the conduit for getting the SDK's stats metadata into
+# a Couchbase release.
+AddMetricsMetadata (JSON etc/sdk_metrics_metadata.json COMPONENT sdk)
 
 ADD_SUBDIRECTORY(cluster_tests)
