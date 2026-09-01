@@ -881,12 +881,20 @@ validate_chain_signatures([CAProps | Tail], Chain) ->
     State = #verify_state{root_cert = RootCertDer,
                           chain_len = length(Chain)},
     Options = [{verify_fun, {fun verify_fun/3, State}}],
-    case public_key:pkix_path_validation(RootCertDer, DerChain, Options) of
+    %% pkix_path_validation decodes every cert in the chain and crashes on a
+    %% malformed extension. It is not CA-specific, so there is no point retrying
+    %% the remaining CAs
+    try public_key:pkix_path_validation(RootCertDer, DerChain, Options) of
         {ok, _} -> {ok, CA};
         {error, Reason} ->
             ?log_warning("Chain validation failed with root cert #~p: ~p",
                          [CAId, Reason]),
             validate_chain_signatures(Tail, Chain)
+    catch
+        error:E:S ->
+            ?log_error("Chain validation crashed, treating chain as malformed "
+                       "~p:~n~p", [E, S]),
+            {error, {bad_chain, malformed_cert}}
     end.
 
 decode_and_validate_chain(CAs, Chain) ->
