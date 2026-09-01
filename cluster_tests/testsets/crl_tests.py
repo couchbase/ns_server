@@ -24,7 +24,8 @@ import requests
 
 import testlib
 from testsets.cert_load_tests import generate_and_load_node_cert, \
-                                     generate_and_load_internal_client_cert
+                                     generate_and_load_internal_client_cert, \
+                                     wait_any_node_unhealthy
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
@@ -2401,15 +2402,30 @@ def crl_test_validate(cluster, policy=None, certs=None):
         cluster, '/settings/crl/diagnostics/validate', json=body).json()
 
 
-def get_crl_status(cluster):
+def get_crl_status(cluster, nodes=None):
     """POST /settings/crl/diagnostics/status to get CRL status from all nodes.
+
+    nodes: explicit list of "host:port" strings, or None for the default
+           (every node in the cluster).
 
     Returns a dict keyed by node hostname, each holding that node's status
     response (see reload_crl below for its shape) or, for a node that did not
     answer, {"error": "..."}.
     """
+    body = {} if nodes is None else {'nodes': nodes}
     return testlib.post_succ(cluster, '/settings/crl/diagnostics/status',
-                             json={}).json()
+                             json=body).json()
+
+
+def get_crl_status_via_get(cluster, nodes=None):
+    """GET /settings/crl/diagnostics/status, the query-string call style.
+
+    Same response shape as get_crl_status above; nodes is passed as a single
+    comma-separated ?nodes= parameter.
+    """
+    params = {} if nodes is None else {'nodes': ','.join(nodes)}
+    return testlib.get_succ(cluster, '/settings/crl/diagnostics/status',
+                            params=params).json()
 
 
 def _generated_crls(cluster):
@@ -3299,6 +3315,51 @@ class CRLNodeToNodeTests(testlib.BaseTestSet):
             testlib.delete(self.cluster,
                            f'/pools/default/trustedCAs/{ca_id}')
         self.ca_ids = []
+
+    # ------------------------------------------------------------------
+    # Cluster-wide status endpoint
+    # ------------------------------------------------------------------
+
+    def unreachable_node_reported_test(self):
+        """Make sure an unreachable node is reported, not dropped.
+
+        /settings/crl/diagnostics/status has two call styles - with an
+        explicit nodes= list, or without one (defaulting to every node in
+        the cluster).  The default one used to ask only the nodes that were
+        currently reachable, so a node that was down vanished from the
+        response instead of being reported as an error, leaving an admin (or
+        a polling script) unable to tell "this node has no CRL problem" from
+        "this node was never asked".  Both call styles must agree, on the
+        node set as well as on the per-node answer.
+        """
+        master = self.cluster.connected_nodes[0]
+        victim = self.cluster.connected_nodes[-1]
+        assert victim != master, 'need a second connected node to stop'
+        hostnames = [n.hostname() for n in self.cluster.connected_nodes]
+        try:
+            self.cluster.stop_node(victim)
+            wait_any_node_unhealthy(master)
+
+            for name, status in [
+                    ('POST default', get_crl_status(master)),
+                    ('GET default', get_crl_status_via_get(master)),
+                    ('POST explicit nodes=',
+                     get_crl_status(master, nodes=hostnames)),
+                    ('GET explicit nodes=',
+                     get_crl_status_via_get(master, nodes=hostnames))]:
+                testlib.assert_eq(sorted(status), sorted(hostnames),
+                                  name=f'{name}: nodes in the response')
+                assert 'error' in status[victim.hostname()], \
+                    f'{name}: expected an error entry for the down node, ' \
+                    f'got {status[victim.hostname()]}'
+                assert 'crlFiles' in status[master.hostname()], \
+                    f'{name}: the reachable node must still report its ' \
+                    f'CRLs, got {status[master.hostname()]}'
+                print(f'{name}: down node reported as '
+                      f'{status[victim.hostname()]}')
+        finally:
+            self.cluster.restart_node(victim)
+            self.cluster.wait_for_nodes_to_be_healthy()
 
     # ------------------------------------------------------------------
     # OOTB cert tests — cluster-generated certs are always exempt

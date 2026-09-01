@@ -217,10 +217,9 @@ do_diagnostics_status(Req, ParseMode, Validators) ->
               NodePairs =
                   case proplists:get_value(nodes, Values) of
                       undefined ->
-                          %% Default: every active node in the cluster.
+                          %% Default: every node in the cluster.
                           %% get_hostnames/2 returns [{ErlNode, HostnameBin}].
-                          Nodes = ns_node_disco:nodes_actual(),
-                          menelaus_web_node:get_hostnames(Req, Nodes);
+                          menelaus_web_node:get_hostnames(Req, any);
                       Pairs when is_list(Pairs) ->
                           %% Already resolved to {ErlNode, HostnameBin}
                           %% by the respective validator.
