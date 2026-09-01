@@ -369,7 +369,7 @@ crl_check(OtpCert, Policy) when Policy == permissive; Policy == require ->
     end.
 
 %% Report one crl_status_checks tick, labelled with the check's verdict.
--spec notify_verdict(valid | revoked | undetermined | internal_error,
+-spec notify_verdict(good | revoked | undetermined | internal_error,
                      hit | miss) -> ok.
 notify_verdict(Verdict, CacheStatus) ->
     ns_server_stats:notify_counter(
@@ -379,8 +379,8 @@ notify_verdict(Verdict, CacheStatus) ->
 %% produced, independent of policy (an 'undetermined' cert is reported as
 %% undetermined even when a permissive policy lets it through as valid).
 -spec verdict_label(pkix_crls_validate_verdict()) ->
-          valid | revoked | undetermined | internal_error.
-verdict_label(valid) -> valid;
+          good | revoked | undetermined | internal_error.
+verdict_label(valid) -> good;
 verdict_label({bad_cert, {revoked, _}}) -> revoked;
 verdict_label({bad_cert, {revocation_status_undetermined, _}}) -> undetermined;
 verdict_label({bad_cert, _}) -> internal_error.

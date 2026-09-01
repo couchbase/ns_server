@@ -148,7 +148,7 @@
         "labels": [
             {
                 "name": "verdict",
-                "help": "Revocation determination the check produced, independent of policy (valid, revoked, undetermined, internal_error)"
+                "help": "Revocation determination the check produced, independent of policy (good, revoked, undetermined, internal_error)"
             },
             {
                 "name": "cache",

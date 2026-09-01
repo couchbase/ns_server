@@ -810,7 +810,7 @@ class CRLTests(testlib.BaseTestSet):
           * per-cert mode returns one result per supplied cert;
           * certs may be supplied as PEM as well as base64-encoded DER;
           * every cert in a supplied chain is validated, not just the leaf;
-          * a self-signed root is reported valid without a CRL lookup;
+          * a self-signed root is reported good without a CRL lookup;
           * Permissive vs Require differ for an undetermined (no-CRL) cert;
           * an undetermined verdict caused by an expired CRL says so
             (expired_crls) instead of looking like a cert with no usable CRL
@@ -853,15 +853,15 @@ class CRLTests(testlib.BaseTestSet):
             testlib.assert_eq(r['policy'], 'Require')   # defaulted
             results = r['results']
             testlib.assert_eq(len(results), 2)
-            testlib.assert_eq(results[0]['status'], 'valid')
+            testlib.assert_eq(results[0]['status'], 'good')
             testlib.assert_eq(results[1]['status'], 'revoked')
-            print("Per-cert Require: good=valid, revoked=revoked (config "
-                  "Disabled was correctly ignored)")
+            print("Per-cert Require: good cert=good, revoked cert=revoked "
+                  "(config Disabled was correctly ignored)")
 
             # --- PEM input is accepted as well as base64-encoded DER. ---
             r = crl_test_validate(self.cluster,
                                   certs=[good_cert_pem, revoked_cert_pem])
-            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            testlib.assert_eq(r['results'][0]['status'], 'good')
             testlib.assert_eq(r['results'][1]['status'], 'revoked')
             print("Per-cert Require: PEM-encoded certs accepted")
 
@@ -869,7 +869,7 @@ class CRLTests(testlib.BaseTestSet):
             # Use a CA with a DISTINCT subject name and no CRL of its own, so
             # the cert's revocation status is genuinely undetermined.  (A CA
             # reusing the root's CN would accidentally match the root's CRL by
-            # issuer name and resolve as 'valid'.)
+            # issuer name and resolve as 'good'.)
             nocrl_ca_pem, nocrl_ca_key_pem = generate_intermediate_ca(
                 root_ca_pem, root_ca_key_pem, cn='Test NoCRL CA')
             ca_ids += load_multiple_cas(node, [nocrl_ca_pem])
@@ -889,9 +889,9 @@ class CRLTests(testlib.BaseTestSet):
 
             r = crl_test_validate(self.cluster,
                                   policy='Permissive', certs=[nocrl_b64])
-            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            testlib.assert_eq(r['results'][0]['status'], 'good')
             print("No-CRL cert: undetermined (no usable CRL, nothing expired) "
-                  "under Require, valid under Permissive")
+                  "under Require, good under Permissive")
 
             # --- MB-73069: a cert whose only CRL has expired reports the
             # expiry, not the same bare "no relevant CRLs" as the case above.
@@ -929,17 +929,17 @@ class CRLTests(testlib.BaseTestSet):
             r = crl_test_validate(self.cluster, certs=[chain_pem])
             results = r['results']
             testlib.assert_eq(len(results), 2)
-            testlib.assert_eq(results[0]['status'], 'valid')
+            testlib.assert_eq(results[0]['status'], 'good')
             testlib.assert_eq(results[1]['status'], 'revoked')
             print("PEM chain: every cert in a single entry is validated")
 
-            # --- A self-signed root is reported valid without a CRL lookup,
+            # --- A self-signed root is reported good without a CRL lookup,
             # even under Require (a root cannot be revoked by a CRL). ---
             root_b64 = cert_pem_to_b64_der(root_ca_pem)
             r = crl_test_validate(self.cluster,
                                   policy='Require', certs=[root_b64])
-            testlib.assert_eq(r['results'][0]['status'], 'valid')
-            print("Self-signed root reported valid without CRL check")
+            testlib.assert_eq(r['results'][0]['status'], 'good')
+            print("Self-signed root reported good without CRL check")
 
             # --- 'Disabled' is not an accepted test policy. ---
             testlib.post_fail(
@@ -1038,9 +1038,9 @@ class CRLTests(testlib.BaseTestSet):
             # determined. ---
             r = crl_test_validate(self.cluster, policy='Require',
                                   certs=[cert_b64])
-            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            testlib.assert_eq(r['results'][0]['status'], 'good')
             print("Two reason-scoped CRLs together cover all revocation "
-                  "reasons: cert valid under Require")
+                  "reasons: cert good under Require")
 
             # --- Re-issue one half expired, uploaded over the same filename.
             # Its reasons drop out of the mask entirely, so coverage is partial
@@ -1084,9 +1084,9 @@ class CRLTests(testlib.BaseTestSet):
             # --- Permissive fails open on it (same verdict, other policy). ---
             r = crl_test_validate(self.cluster, policy='Permissive',
                                   certs=[cert_b64])
-            testlib.assert_eq(r['results'][0]['status'], 'valid')
+            testlib.assert_eq(r['results'][0]['status'], 'good')
             print("One half expired: Permissive treats the undetermined cert "
-                  "as valid")
+                  "as good")
         finally:
             for ca_id in ca_ids:
                 testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
@@ -3711,7 +3711,7 @@ def _crl_cache_counters(node):
     # stat format
     # {'TYPE': 'counter',
     #  'HELP': 'help',
-    #  'VALUES': {(('cache', 'miss'), ('verdict', 'valid')): 1}}
+    #  'VALUES': {(('cache', 'miss'), ('verdict', 'good')): 1}}
     stat = metrics.get('cm_crl_status_checks')
     if stat is None:
         return (0, 0)

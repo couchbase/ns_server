@@ -315,7 +315,7 @@ collect_crl_status(NodePairs) ->
 %% CRLs under the given policy), so there is no scope parameter.
 %%
 %% All certificates in a chain are checked (not just the leaf).
-%% A self-signed root cannot be revoked by a CRL and is reported valid
+%% A self-signed root cannot be revoked by a CRL and is reported good
 %% without a CRL lookup.
 %%
 %% Two modes:
@@ -443,13 +443,13 @@ check_der_cert(Der, Policy) ->
     end.
 
 %% A self-signed root cannot be revoked by a CRL (it would have to revoke
-%% itself), so it is reported valid without a CRL lookup — matching the
+%% itself), so it is reported good without a CRL lookup — matching the
 %% production check_intermediate_certs behaviour in cb_crl, which skips
 %% self-signed certs.  All other certs (leaf and intermediate CAs) are checked.
 check_otp_cert(OtpCert, Policy) ->
     case public_key:pkix_is_self_signed(OtpCert) of
         true ->
-            {true, [{status, <<"valid">>},
+            {true, [{status, <<"good">>},
                     {details, <<"self-signed root; not CRL-checked">>}]};
         false ->
             {Result, _Expiry} = cb_crl:crl_check_safe(OtpCert, Policy),
@@ -457,7 +457,7 @@ check_otp_cert(OtpCert, Policy) ->
     end.
 
 crl_result_to_props(valid) ->
-    {true, [{status, <<"valid">>}]};
+    {true, [{status, <<"good">>}]};
 crl_result_to_props({bad_cert, {revoked, Reason}}) ->
     {false, [{status, <<"revoked">>}, {details, format_crl_term(Reason)}]};
 crl_result_to_props({bad_cert, {revocation_status_undetermined, Info}}) ->
