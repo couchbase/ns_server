@@ -265,7 +265,7 @@ default(Vsn) ->
        {fusion_sync_rate_limit, 1024 * 1024 * 75},
        {fusion_num_uploader_threads, 4},
        {fusion_num_migrator_threads, 4},
-       {fusion_max_pending_upload_bytes, 0},
+       {fusion_max_pending_upload_bytes, 45 * 1024 * 1024 * 1024},
        {fusion_max_pending_upload_bytes_lwm_percentage, 60},
        {dcp_consumer_max_marker_version, <<"2.2">>},
        {dcp_snapshot_marker_hps_enabled, true},
