@@ -98,8 +98,7 @@ jsonify_node(Node, NodesDict) ->
         FS = proplists:get_value(fusion_stats, NodeInfo),
         {no_stats, false} ?= {no_stats, FS =:= undefined},
 
-        [{buckets, jsonify_buckets_status(proplists:get_value(buckets, FS))},
-         {deleting, proplists:get_value(deleting, FS)}]
+        [{buckets, jsonify_buckets_status(proplists:get_value(buckets, FS))}]
     else
         error ->
             [];
