@@ -440,18 +440,14 @@ class SamlTests(testlib.BaseTestSet):
             testlib.testconditions_set(other_node, 'saml_dupe_check', 'fail')
             try:
                 session = requests.Session()
-                r = session.post(destination,
-                                 data={'SAMLResponse': response},
-                                 headers=ui_headers,
-                                 allow_redirects=False)
+                r = post_saml_response(destination, response, session)
                 error_msg = catch_error_after_redirect(node, session, r)
                 assert_in('assertion replay protection check failed at '
                           'some nodes', error_msg)
                 assert_in(other_node.hostname(), error_msg)
 
-                r = session.get(node.url + '/pools/default',
-                                headers=ui_headers)
-                assert_http_code(401, r)
+                ui_request('get', node, '/pools/default', session,
+                           expected_code=401)
             finally:
                 # the condition is removed when it fires, this is needed
                 # only in case the assertion never got to the dupe check
