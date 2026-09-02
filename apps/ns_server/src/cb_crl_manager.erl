@@ -131,7 +131,12 @@
                        this_update := calendar:datetime() | undefined,
                        next_update := calendar:datetime() | undefined,
                        checksum    := binary(),
-                       crl_number  := non_neg_integer() | undefined}.
+                       crl_number  := non_neg_integer() | undefined,
+                       %% Which set of trusted CAs 'status' was decided
+                       %% against, so that a cached entry can say for itself
+                       %% whether it still holds.  Every path that caches an
+                       %% entry verifies it, so this is always set.
+                       cas_version := integer()}.
 
 %% Outcome of the most recent (re)load attempt for one file.  'time' is
 %% 'undefined' when no attempt has been recorded yet.
@@ -717,7 +722,9 @@ maybe_update_uploaded_file(Name, ExpectedChecksum, CurrentlyLoadedMap,
                 %% compared with.
                 {ok, Entries} ?= decode_and_verify_crl(Binary, TrustedCAs,
                                                        true),
-                ok ?= write_uploaded_file_locally(Name, Binary, Entries),
+                ok ?= write_uploaded_file_locally(
+                        Name, Binary, Entries,
+                        trusted_cas_version(TrustedCAs)),
                 ?log_debug("CRL ~p: installed from remote node", [Name]),
                 ok
             else
@@ -825,16 +832,17 @@ do_upload_crl_file(Filename, Binary, TrustedCAs, State) ->
                 [] ->
                     ?log_debug("CRL ~p: ~b entr(y/ies) valid, uploading",
                                [Filename, length(Results)]),
-                    add_uploaded_file(Filename, Binary, TS, Results, State)
+                    add_uploaded_file(Filename, Binary, TS, Results,
+                                      trusted_cas_version(TrustedCAs), State)
             end
     end.
 
 %% Perform the disk write, ns_config update, and chronicle transaction
 %% for a validated upload.
 -spec add_uploaded_file(string(), binary(), calendar:datetime(),
-                        [entry_result()], #state{}) ->
+                        [entry_result()], integer(), #state{}) ->
           {ok, #state{}} | {error, term()}.
-add_uploaded_file(Filename, Binary, TS, EntryResults, State) ->
+add_uploaded_file(Filename, Binary, TS, EntryResults, CasVersion, State) ->
     Checksum = file_checksum(Binary),
     FilenameBin = list_to_binary(Filename),
     EntryMetas = [#{issuer => iolist_to_binary(ns_server_cert:format_name(
@@ -860,7 +868,8 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, State) ->
                          maps:put(FilenameBin, FileInfo, CurrMap)}]}
           end) of
         {ok, _} ->
-            case write_uploaded_file_locally(Filename, Binary, EntryResults) of
+            case write_uploaded_file_locally(Filename, Binary, EntryResults,
+                                             CasVersion) of
                 ok ->
                     ?log_debug("CRL ~p: uploaded and written locally",
                                [Filename]),
@@ -886,10 +895,10 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, State) ->
 
 %% Puts the file on disk and updates the metadata in ns_config, so that other
 %% nodes can find and download it.
-write_uploaded_file_locally(Filename, Binary, VerifiedEntries) ->
+write_uploaded_file_locally(Filename, Binary, VerifiedEntries, CasVersion) ->
     maybe
         {ok, Checksum} ?= add_to_cache(upload, Filename, Binary,
-                                       VerifiedEntries),
+                                       VerifiedEntries, CasVersion),
         %% Update ns_config node advertisement key.
         OldNodeFiles = ns_config:read_key_fast({node, node(), crl_files}, []),
         FilenameBin = list_to_binary(Filename),
@@ -1447,7 +1456,8 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
                     [] -> ok;
                     _  -> {error, {bad_crl_entries, Bad}}
                 end,
-        {ok, Checksum} ?= add_to_cache(local, Name, Binary, Results),
+        {ok, Checksum} ?= add_to_cache(local, Name, Binary, Results,
+                                       trusted_cas_version(TrustedCAs)),
         Status = #crl_reload_status{mtime  = FileMTime,
                                     result = loaded,
                                     time   = CurTS,
@@ -1469,9 +1479,9 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
 %% Copy a fully-valid file verbatim into config/crls and insert its entries
 %% into the cache.
 -spec add_to_cache(local | upload | url | generated, file:filename_all(),
-                   binary(), [entry_result()]) ->
+                   binary(), [entry_result()], integer()) ->
           {ok, binary()} | {error, term()}.
-add_to_cache(CacheType, Name, Binary, VerifiedEntries) ->
+add_to_cache(CacheType, Name, Binary, VerifiedEntries, CasVersion) ->
     Dir = case CacheType of
               local     -> local_crls_dir();
               upload    -> crls_dir();
@@ -1483,7 +1493,8 @@ add_to_cache(CacheType, Name, Binary, VerifiedEntries) ->
     maybe
         ok ?= misc:atomic_write_file(FilePath, Binary),
         CacheEntries = [{E#entry_result.issuer, E#entry_result.der,
-                         entry_meta(E)} || E <- VerifiedEntries],
+                         entry_to_map(E, CasVersion)}
+                        || E <- VerifiedEntries],
         cb_crl_cache:insert_file(FilePath, CacheEntries),
         {ok, file_checksum(Binary)}
     else
@@ -1670,7 +1681,8 @@ load_generated_crl(Name, CrlPem, TrustedCAs,
     TS = calendar:universal_time(),
     maybe
         {ok, Entries} ?= decode_and_verify_crl(CrlPem, TrustedCAs, true),
-        {ok, Checksum} ?= add_to_cache(generated, Name, CrlPem, Entries),
+        {ok, Checksum} ?= add_to_cache(generated, Name, CrlPem, Entries,
+                                       trusted_cas_version(TrustedCAs)),
         Status = #crl_reload_status{result = loaded, time = TS, errors = []},
         State#state{generated = maps:put(Name, Checksum, Generated),
                     generated_file_state = maps:put(Name, Status, GenFS)}
@@ -1710,6 +1722,7 @@ populate_cache_from_dir(Dir, TrustedCAs) ->
                           filename:extension(N) =/= ".etag"];
                 {error, _} -> []
             end,
+    Version = trusted_cas_version(TrustedCAs),
     lists:foldl(
       fun (Name, Acc) ->
               Path = filename:join(Dir, Name),
@@ -1719,7 +1732,8 @@ populate_cache_from_dir(Dir, TrustedCAs) ->
                           {ok, Entries} ->
                               CacheEntries =
                                   [{E#entry_result.issuer, E#entry_result.der,
-                                    entry_meta(E)} || E <- Entries],
+                                    entry_to_map(E, Version)}
+                                   || E <- Entries],
                               cb_crl_cache:insert_file(Path, CacheEntries),
                               ?log_debug("CRL seeded from ~p", [Path]),
                               maps:put(Name, file_checksum(Binary), Acc);
@@ -1925,6 +1939,7 @@ build_expiry_info(#state{loaded_locally   = LoadedLocally,
 -spec current_status(file:filename_all(), [binary()]) ->
           {file_status(), [crl_entry()]}.
 current_status(ConfigPath, TrustedDerCAs) ->
+    Version = trusted_cas_version(TrustedDerCAs),
     case cb_crl_cache:get_file_crls(ConfigPath) of
         [] ->
             {not_loaded, []};
@@ -1933,8 +1948,8 @@ current_status(ConfigPath, TrustedDerCAs) ->
                         fun (Der) ->
                             case decode_and_verify_crl(Der, TrustedDerCAs,
                                                        false) of
-                                {ok, [R]} -> entry_to_map(R);
-                                {error, _} -> invalid_entry_map()
+                                {ok, [R]} -> entry_to_map(R, Version);
+                                {error, _} -> invalid_entry_map(Version)
                             end
                         end, DerCRLs),
             {aggregate_status(Results), Results}
@@ -1985,19 +2000,26 @@ aggregate_status(Results) ->
     end.
 
 %% Convert a per-entry verify result to a plain (RPC-safe) map.
--spec entry_to_map(entry_result()) -> crl_entry().
+-spec entry_to_map(entry_result(), integer()) -> crl_entry().
 entry_to_map(#entry_result{result = Result,
                            issuer      = Issuer,
                            this_update = ThisUpdate,
                            next_update = NextUpdate,
                            der         = Der,
-                           crl_number  = CrlNum}) ->
+                           crl_number  = CrlNum}, CasVersion) ->
     #{issuer      => iolist_to_binary(ns_server_cert:format_name(Issuer)),
       status      => entry_status(Result),
       this_update => ThisUpdate,
       next_update => NextUpdate,
       checksum    => file_checksum(Der),
-      crl_number  => CrlNum}.
+      crl_number  => CrlNum,
+      cas_version => CasVersion}.
+
+%% Identifies the set of trusted CAs a status was decided against; a change to
+%% it is what makes a cached status stop being an answer.
+-spec trusted_cas_version([binary()]) -> integer().
+trusted_cas_version(TrustedDerCAs) ->
+    erlang:phash2(lists:sort(TrustedDerCAs)).
 
 %% Map a per-entry verify result to the reported status.  A usable entry is
 %% 'active', not 'ok': entries use the same vocabulary as the file-level status
@@ -2010,32 +2032,16 @@ entry_status({error, crl_not_yet_valid})      -> not_yet_valid;
 entry_status({error, crl_issuer_not_trusted}) -> untrusted;
 entry_status({error, _})                      -> invalid.
 
-%% Per-entry metadata handed to cb_crl_cache:insert_file/2 so that expiry
-%% information can be read back later (see build_expiry_info/1) without
-%% decoding the CRL again.  Field values match entry_to_map/1 where the two
-%% overlap; there is no status field because status depends on the current
-%% time and trusted-CA set, not on the entry itself.
--spec entry_meta(entry_result()) -> map().
-entry_meta(#entry_result{issuer      = Issuer,
-                         this_update = ThisUpdate,
-                         next_update = NextUpdate,
-                         der         = Der,
-                         crl_number  = CrlNum}) ->
-    #{issuer      => iolist_to_binary(ns_server_cert:format_name(Issuer)),
-      this_update => ThisUpdate,
-      next_update => NextUpdate,
-      checksum    => file_checksum(Der),
-      crl_number  => CrlNum}.
-
 %% Stand-in entry for a cached CRL that no longer decodes.
--spec invalid_entry_map() -> crl_entry().
-invalid_entry_map() ->
+-spec invalid_entry_map(integer()) -> crl_entry().
+invalid_entry_map(CasVersion) ->
     #{issuer      => <<"unknown">>,
       status      => invalid,
       this_update => undefined,
       next_update => undefined,
       checksum    => <<>>,
-      crl_number  => undefined}.
+      crl_number  => undefined,
+      cas_version => CasVersion}.
 
 %% Convert a stored #crl_reload_status{} to a plain (RPC-safe) map.
 %% 'undefined' (no attempt recorded yet) maps to a not_attempted result.
@@ -2234,7 +2240,8 @@ install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS, TrustedCAs,
                   [] -> ok;
                   [_ | _] -> {error, {bad_crl_entries, Bad}}
               end,
-        {ok, Checksum} ?= add_to_cache(url, Name, Body, Results),
+        {ok, Checksum} ?= add_to_cache(url, Name, Body, Results,
+                                       trusted_cas_version(TrustedCAs)),
         Errors = case write_etag(CrlPath, NewETag) of
                      ok -> [];
                      {error, R} -> format_load_errors({etag_save, R})
