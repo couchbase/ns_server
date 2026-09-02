@@ -161,8 +161,8 @@ short_description(cert_expired) ->
     "certificate has expired";
 short_description(crl_expires_soon) ->
     "certificate revocation list will expire soon";
-short_description(crl_expired) ->
-    "certificate revocation list has expired";
+short_description(crl_unusable) ->
+    "certificate revocation list can no longer be used";
 short_description(memory_threshold) ->
     "system memory usage threshold exceeded";
 short_description(history_size_warning) ->
@@ -258,9 +258,9 @@ errors(xdcr_ca_expired) ->
 errors(crl_expires_soon) ->
     "Certificate Revocation List (CRL) issued by '~s' (CRL number: ~s, "
     "file(s): ~s) will expire at ~s (present on node(s): ~s).";
-errors(crl_expired) ->
+errors(crl_unusable) ->
     "Certificate Revocation List (CRL) issued by '~s' (CRL number: ~s, "
-    "file(s): ~s) has expired (present on node(s): ~s).";
+    "file(s): ~s) can no longer be used: ~s (present on node(s): ~s).";
 errors(memory_critical) ->
     "CRITICAL: On node ~s ~p memory use is ~.2f% of total available "
     "memory, above the critical threshold of ~b%.";
@@ -590,8 +590,8 @@ alert_keys_added_in_totoro() ->
      cont_backup_event_failed,
      cont_backup_gaps,
      cm_bucket_autoreprovision_total,
-     crl_expired,
-     crl_expires_soon].
+     crl_expires_soon,
+     crl_unusable].
 
 -spec alert_keys_disabled_by_default() -> [atom()].
 alert_keys_disabled_by_default() ->
@@ -1455,12 +1455,40 @@ add_crl_entry(_Node, _Filename, _Entry, Map) ->
 %% own clock and already answered in the entry.  Comparing our clock with
 %% another node's nextUpdate would go wrong in both directions once the two
 %% drift apart.
-crl_alert_state(#{status := expired}) ->
-    expired;
-crl_alert_state(#{expires_soon := true}) ->
+%%
+%% 'active' is the only status that means nothing is wrong; anything else is a
+%% reason the CRL cannot be used.  Written that way round on purpose: matching
+%% a list of known-bad values instead would go quiet the day cb_crl_manager
+%% grows a status, which is the bug this alert exists to catch.
+crl_alert_state(#{status := active, expires_soon := true}) ->
     expires_soon;
-crl_alert_state(_Entry) ->
-    none.
+crl_alert_state(#{status := active}) ->
+    none;
+crl_alert_state(#{status := Status}) ->
+    {unusable, Status}.
+
+%% Worst-first, so that one alert per CRL describes the most serious thing
+%% wrong with it on any node, and says the same thing on every run.  An
+%% unfamiliar reason still ranks, rather than being dropped or crashed on.
+crl_state_rank({unusable, Reason}) ->
+    Known = [expired, not_yet_valid, untrusted, invalid],
+    {0, length(lists:takewhile(fun (R) -> R =/= Reason end, Known))};
+crl_state_rank(expires_soon) ->
+    {1, 0}.
+
+worse_crl_state(A, B) ->
+    case crl_state_rank(A) =< crl_state_rank(B) of
+        true  -> A;
+        false -> B
+    end.
+
+%% Why a CRL can no longer be used, as it appears in the alert message.
+crl_unusable_reason(expired)       -> "it has expired";
+crl_unusable_reason(untrusted)     -> "its issuing CA is no longer trusted";
+crl_unusable_reason(not_yet_valid) -> "it is not yet valid";
+crl_unusable_reason(invalid)       -> "it is invalid";
+%% A reason newer than this list still produces a usable message.
+crl_unusable_reason(Other)         -> io_lib:format("it is ~s", [Other]).
 
 merge_crl_alert(_Entry, _Filename, none=_State, _Node, Map) ->
     Map;
@@ -1470,12 +1498,8 @@ merge_crl_alert(#{checksum := Checksum,
                   crl_number := CrlNum}, Filename, State, Node, Map) ->
     case maps:find(Checksum, Map) of
         {ok, #{state := Existing, nodes := Nodes, files := Files} = Info} ->
-            NewState = case Existing =:= expired orelse State =:= expired of
-                           true  -> expired;
-                           false -> expires_soon
-                       end,
             Map#{Checksum =>
-                     Info#{state => NewState,
+                     Info#{state => worse_crl_state(Existing, State),
                            nodes => ordsets:add_element(Node, Nodes),
                            files => ordsets:add_element(Filename, Files)}};
         error ->
@@ -1499,11 +1523,12 @@ fire_crl_alerts(Aggregated) ->
               FilesStr = format_crl_files(Files),
               CrlNumStr = format_crl_number(CrlNum),
               case State of
-                  expired ->
-                      Error = fmt_to_bin(errors(crl_expired),
+                  {unusable, Reason} ->
+                      Error = fmt_to_bin(errors(crl_unusable),
                                          [Issuer, CrlNumStr, FilesStr,
+                                          crl_unusable_reason(Reason),
                                           NodesStr]),
-                      global_alert({crl_expired, {checksum, Checksum}}, Error);
+                      global_alert({crl_unusable, {checksum, Checksum}}, Error);
                   expires_soon ->
                       Secs = calendar:datetime_to_gregorian_seconds(NextUpdate),
                       Date = menelaus_web_cert:format_time(Secs),
@@ -2100,6 +2125,7 @@ all_test_() ->
       fun check_kv_rebalance_progress_test__/0,
       fun check_index_rebalance_progress_test__/0,
       fun crl_aggregation_test__/0,
+      fun crl_unusable_alert_test__/0,
       fun crl_format_test__/0]}.
 
 test_setup() ->
@@ -2289,12 +2315,12 @@ crl_aggregation_test__() ->
     Acc1 = aggregate_node_crls('n1@host', StatusA, #{}),
     Map = aggregate_node_crls('n2@host', StatusB, Acc1),
 
-    %% Only expired and expiring CRLs yield alert entries; the healthy one
+    %% Only unusable and expiring CRLs yield alert entries; the healthy one
     %% does not.
     ?assertEqual([<<"c1">>, <<"c2">>], lists:sort(maps:keys(Map))),
 
     #{<<"c1">> := C1, <<"c2">> := C2} = Map,
-    ?assertMatch(#{state := expired, crl_number := 7,
+    ?assertMatch(#{state := {unusable, expired}, crl_number := 7,
                    issuer := <<"CN=CA1">>}, C1),
     %% The expired CRL is aggregated across both nodes but a single filename.
     ?assertEqual(['n1@host', 'n2@host'], maps:get(nodes, C1)),
@@ -2303,6 +2329,59 @@ crl_aggregation_test__() ->
     ?assertMatch(#{state := expires_soon, crl_number := 3}, C2),
     ?assertEqual(['n1@host'], maps:get(nodes, C2)),
     ?assertEqual([<<"soon.crl">>], maps:get(files, C2)).
+
+crl_unusable_alert_test__() ->
+    Day = 24 * 60 * 60,
+    Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
+    DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
+    Entry = fun (Status, Soon) ->
+                    #{issuer       => <<"CN=CA">>,
+                      status       => Status,
+                      next_update  => DT(Now + 30 * Day),
+                      checksum     => <<"c">>,
+                      crl_number   => 1,
+                      expires_soon => Soon}
+            end,
+    Add = fun (E, Acc) -> add_crl_entry('n1@host', <<"f.crl">>, E, Acc) end,
+    State = fun (Map) -> maps:get(state, maps:get(<<"c">>, Map)) end,
+
+    %% Healthy and not near its nextUpdate: no alert.
+    ?assertEqual(#{}, Add(Entry(active, false), #{})),
+
+    %% The node's answers are used as they arrive.
+    ?assertEqual(expires_soon, State(Add(Entry(active, true), #{}))),
+    ?assertEqual({unusable, untrusted},
+                 State(Add(Entry(untrusted, false), #{}))),
+
+    %% Any status the node reports alerts, including one this module has never
+    %% heard of.
+    lists:foreach(
+      fun (Status) ->
+              ?assertEqual({unusable, Status},
+                           State(Add(Entry(Status, false), #{})))
+      end, [expired, invalid, not_yet_valid, some_status_from_the_future]),
+
+    %% Same CRL seen as untrusted on one node and expiring soon on another:
+    %% the worse state wins, in either merge order.
+    Untrusted = Entry(untrusted, false),
+    Soon      = Entry(active, true),
+    M1 = Add(Soon, Add(Untrusted, #{})),
+    M2 = Add(Untrusted, Add(Soon, #{})),
+    ?assertEqual({unusable, untrusted}, State(M1)),
+    ?assertEqual({unusable, untrusted}, State(M2)),
+
+    ?assertEqual({unusable, expired},
+                 worse_crl_state({unusable, expired}, {unusable, untrusted})),
+    ?assertEqual({unusable, untrusted},
+                 worse_crl_state({unusable, untrusted}, expires_soon)),
+    %% An unfamiliar reason still ranks, below the ones we know.
+    ?assertEqual({unusable, untrusted},
+                 worse_crl_state({unusable, untrusted}, {unusable, whatever})),
+
+    ?assertEqual("its issuing CA is no longer trusted",
+                 crl_unusable_reason(untrusted)),
+    ?assertEqual("it is whatever",
+                 lists:flatten(crl_unusable_reason(whatever))).
 
 crl_format_test__() ->
     ?assertEqual("unknown", format_crl_number(undefined)),

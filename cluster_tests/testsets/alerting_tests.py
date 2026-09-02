@@ -432,15 +432,17 @@ class AlertTests(testlib.BaseTestSet):
                 data={"crlWarningValidityFraction": str(prev_fraction)})
             self._cleanup_crl(node, ca_ids)
 
-    # An uploaded CRL whose nextUpdate is in the past must raise a crl_expired
-    # alert (pop-up + email).
+    # An uploaded CRL whose nextUpdate is in the past can no longer be used, so
+    # it must raise a crl_unusable alert (pop-up + email) naming expiry as the
+    # reason.
     def crl_expired_alert_test(self):
         node, ca_pem, ca_key_pem, ca_ids = self._setup_crl_ca()
         filename = f'alert_{testlib.random_str(8)}.pem'
         expired_re = (
             r"Certificate Revocation List \(CRL\) issued by 'CN=Test Root CA' "
             r"\(CRL number: \d+, file\(s\): " + re.escape(filename) +
-            r"\) has expired \(present on node\(s\): .+\)\.")
+            r"\) can no longer be used: it has expired "
+            r"\(present on node\(s\): .+\)\.")
         any_crl_re = (r"Certificate Revocation List \(CRL\) issued by "
                       r"'CN=Test Root CA' ")
         try:

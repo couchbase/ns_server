@@ -74,7 +74,7 @@ class AlertsUpgradeChecks(UpgradeCheckSuite):
                     'disk_guardrail',
                     'stuck_rebalance',
                     'crl_expires_soon',
-                    'crl_expired']
+                    'crl_unusable']
                 assert sorted(mismatches) == sorted(expected)
             elif self.prior_compat_mode == '8.0':
                 expected = [
@@ -86,7 +86,7 @@ class AlertsUpgradeChecks(UpgradeCheckSuite):
                     'cont_backup_event_failed',
                     'cont_backup_gaps',
                     'crl_expires_soon',
-                    'crl_expired']
+                    'crl_unusable']
                 assert sorted(mismatches) == sorted(expected)
             else:
                 raise AssertionError(
