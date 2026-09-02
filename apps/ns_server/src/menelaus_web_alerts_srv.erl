@@ -1402,17 +1402,12 @@ calculate_xdcr_cert_alerts(#{trusted_certs := TrustedCerts,
 %% until then, and a CRL stops being usable for reasons no schedule predicts:
 %% its issuing CA is no longer trusted, or a node loaded a bad one.
 check_crls() ->
-    Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
-    WarningDays = cb_crl_manager:crl_expiration_warning_days(),
-    Fraction = cb_crl_manager:crl_warning_validity_fraction(),
-    fire_crl_alerts(gather_crl_alerts(Now, WarningDays, Fraction)).
+    fire_crl_alerts(gather_crl_alerts()).
 
 %% Gather CRL status from every node and aggregate by CRL content (checksum).
 %% Asks for the cached status, so no node decodes a CRL for this check; each
 %% one re-verifies only when the trusted CAs have changed under it.
-gather_crl_alerts(Now, WarningDays, Fraction) ->
-    WarningSeconds = WarningDays * 24 * 60 * 60,
-
+gather_crl_alerts() ->
     Nodes = ns_node_disco:nodes_actual(),
     case ns_node_disco:nodes_wanted() -- Nodes of
         [] ->
@@ -1431,8 +1426,7 @@ gather_crl_alerts(Now, WarningDays, Fraction) ->
 
     lists:foldl(
       fun ({Node, #{files := Files}}, Acc) ->
-              aggregate_node_crls(Node, Files, Now, WarningSeconds,
-                                  Fraction, Acc);
+              aggregate_node_crls(Node, Files, Acc);
           ({Node, Error}, Acc) ->
               ?log_debug("Skipping CRL alerts for node ~p: ~p",
                          [Node, Error]),
@@ -1440,67 +1434,33 @@ gather_crl_alerts(Now, WarningDays, Fraction) ->
       end, #{}, lists:zip(Nodes, Results)).
 
 %% Fold one node's per-file CRL status into the by-checksum map
-aggregate_node_crls(Node, Files, Now, WarningSeconds, Fraction, Acc) ->
+aggregate_node_crls(Node, Files, Acc) ->
     lists:foldl(
       fun (#{filename := Filename, entries := Entries}, Acc1) ->
               lists:foldl(
                 fun (Entry, Acc2) ->
-                        add_crl_entry(Node, Filename, Entry, Now,
-                                      WarningSeconds, Fraction, Acc2)
+                        add_crl_entry(Node, Filename, Entry, Acc2)
                 end, Acc1, Entries);
           (_, Acc1) ->
               Acc1
       end, Acc, Files).
 
-add_crl_entry(Node, Filename,
-              #{checksum := Checksum,
-                next_update := NextUpdate} = Entry,
-              Now, WarningSeconds, Fraction, Map)
+add_crl_entry(Node, Filename, #{checksum := Checksum} = Entry, Map)
   when Checksum =/= <<>> ->
-    NextUpdateSecs =
-        case NextUpdate of
-            undefined -> undefined;
-            _ -> calendar:datetime_to_gregorian_seconds(NextUpdate)
-        end,
-    EffectiveWarning = effective_crl_warning(Entry, NextUpdateSecs,
-                                             WarningSeconds, Fraction),
-
-    State =
-        case NextUpdateSecs of
-            undefined ->
-                none;
-            _ when NextUpdateSecs =< Now ->
-                expired;
-            _ when NextUpdateSecs =< Now + EffectiveWarning ->
-                expires_soon;
-            _ ->
-                none
-        end,
-
-    merge_crl_alert(Entry, Filename, State, Node, Map);
-add_crl_entry(_Node, _Filename, _Entry, _Now, _WarningSeconds, _Fraction,
-              Map) ->
+    merge_crl_alert(Entry, Filename, crl_alert_state(Entry), Node, Map);
+add_crl_entry(_Node, _Filename, _Entry, Map) ->
     Map.
 
-%% The warning window applied to a single CRL entry: the configured window,
-%% capped at 1/Fraction of the entry's own validity period
-%% (thisUpdate..nextUpdate).  Without the cap a CRL that is re-issued more
-%% often than the configured window — e.g. a delta CRL published every 24h,
-%% against the default 3-day window — would spend its entire life inside the
-%% window and alert continuously; with it, such a CRL alerts only once its
-%% routine replacement is overdue.  A Fraction of 0 disables the cap, and
-%% entries without a thisUpdate (or without a nextUpdate, where no time-based
-%% state applies anyway) use the configured window as is.
-effective_crl_warning(_Entry, _NextUpdateSecs, WarningSeconds, 0) ->
-    WarningSeconds;
-effective_crl_warning(#{this_update := ThisUpdate}, NextUpdateSecs,
-                      WarningSeconds, Fraction)
-  when ThisUpdate =/= undefined, is_integer(NextUpdateSecs) ->
-    ThisUpdateSecs = calendar:datetime_to_gregorian_seconds(ThisUpdate),
-    ValiditySeconds = max(0, NextUpdateSecs - ThisUpdateSecs),
-    min(WarningSeconds, ValiditySeconds div Fraction);
-effective_crl_warning(_Entry, _NextUpdateSecs, WarningSeconds, _Fraction) ->
-    WarningSeconds.
+%% Every judgement about a CRL is the holding node's, made against that node's
+%% own clock and already answered in the entry.  Comparing our clock with
+%% another node's nextUpdate would go wrong in both directions once the two
+%% drift apart.
+crl_alert_state(#{status := expired}) ->
+    expired;
+crl_alert_state(#{expires_soon := true}) ->
+    expires_soon;
+crl_alert_state(_Entry) ->
+    none.
 
 merge_crl_alert(_Entry, _Filename, none=_State, _Node, Map) ->
     Map;
@@ -2140,7 +2100,6 @@ all_test_() ->
       fun check_kv_rebalance_progress_test__/0,
       fun check_index_rebalance_progress_test__/0,
       fun crl_aggregation_test__/0,
-      fun crl_short_lived_warning_test__/0,
       fun crl_format_test__/0]}.
 
 test_setup() ->
@@ -2298,38 +2257,28 @@ check_index_rebalance_progress_test__() ->
                 5, {<<>>, 0},
                 4, Opaque6).
 
-%% Aggregation dedups by checksum across nodes/files, keeps only expired and
-%% expiring CRLs, and reports the soonest possible transition as the recheck.
 crl_aggregation_test__() ->
     Day = 24 * 60 * 60,
-    Warn = 3 * Day,
-    Fraction = 4,
     Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
     DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
-    %% Entries have the shape produced by cb_crl_manager:entry_meta/1 and
-    %% files the shape produced by cb_crl_manager:build_expiry_info/1.
-    %% Long-lived (30-day-old) CRLs, so the validity-period cap leaves the
-    %% configured warning window untouched (short-lived CRLs are covered by
-    %% crl_short_lived_warning_test__).
+    %% Entries have the shape cb_crl_manager reports: every judgement is
+    %% already made, on the node holding the CRL.
     Entry =
-        fun (Checksum, Issuer, CrlNum, NUSecs) ->
-                #{issuer      => Issuer,
-                  this_update => DT(Now - 30 * Day),
-                  next_update => case NUSecs of
-                                     undefined -> undefined;
-                                     _         -> DT(NUSecs)
-                                 end,
-                  checksum    => Checksum,
-                  crl_number  => CrlNum}
+        fun (Checksum, Issuer, CrlNum, NUSecs, Status, Soon) ->
+                #{issuer       => Issuer,
+                  status       => Status,
+                  next_update  => DT(NUSecs),
+                  checksum     => Checksum,
+                  crl_number   => CrlNum,
+                  expires_soon => Soon}
         end,
     File = fun (Name, Entries) ->
-                   #{filename => Name,
-                     entries  => Entries}
+                   #{filename => Name, entries => Entries}
            end,
 
-    Expired = Entry(<<"c1">>, <<"CN=CA1">>, 7, Now - Day),
-    Soon    = Entry(<<"c2">>, <<"CN=CA2">>, 3, Now + Day),
-    Healthy = Entry(<<"c3">>, <<"CN=CA3">>, 9, Now + 30 * Day),
+    Expired = Entry(<<"c1">>, <<"CN=CA1">>, 7, Now - Day, expired, false),
+    Soon    = Entry(<<"c2">>, <<"CN=CA2">>, 3, Now + Day, active, true),
+    Healthy = Entry(<<"c3">>, <<"CN=CA3">>, 9, Now + 30 * Day, active, false),
 
     StatusA = [File(<<"expired.crl">>, [Expired]),
                File(<<"soon.crl">>,    [Soon]),
@@ -2337,16 +2286,16 @@ crl_aggregation_test__() ->
     %% Same expired CRL (checksum c1) present on a second node.
     StatusB = [File(<<"expired.crl">>, [Expired])],
 
-    Acc1 = aggregate_node_crls('n1@host', StatusA, Now, Warn, Fraction, #{}),
-    Map = aggregate_node_crls('n2@host', StatusB, Now, Warn, Fraction, Acc1),
+    Acc1 = aggregate_node_crls('n1@host', StatusA, #{}),
+    Map = aggregate_node_crls('n2@host', StatusB, Acc1),
 
-    %% Only expired and expiring CRLs yield alert entries; the healthy one does
-    %% not.
+    %% Only expired and expiring CRLs yield alert entries; the healthy one
+    %% does not.
     ?assertEqual([<<"c1">>, <<"c2">>], lists:sort(maps:keys(Map))),
 
     #{<<"c1">> := C1, <<"c2">> := C2} = Map,
-    ?assertMatch(#{state := expired, crl_number := 7, issuer := <<"CN=CA1">>},
-                 C1),
+    ?assertMatch(#{state := expired, crl_number := 7,
+                   issuer := <<"CN=CA1">>}, C1),
     %% The expired CRL is aggregated across both nodes but a single filename.
     ?assertEqual(['n1@host', 'n2@host'], maps:get(nodes, C1)),
     ?assertEqual([<<"expired.crl">>], maps:get(files, C1)),
@@ -2355,63 +2304,10 @@ crl_aggregation_test__() ->
     ?assertEqual(['n1@host'], maps:get(nodes, C2)),
     ?assertEqual([<<"soon.crl">>], maps:get(files, C2)).
 
-%% A CRL whose validity period is shorter than the configured warning window
-%% (e.g. a delta CRL re-issued every 24h) must not warn for its entire life:
-%% the window applied to it is capped at 1/Fraction of its validity period, so
-%% it warns only once its replacement is overdue.  A Fraction of 0 disables the
-%% cap.
-crl_short_lived_warning_test__() ->
-    Day = 24 * 60 * 60,
-    Hour = 60 * 60,
-    Warn = 3 * Day,
-    Now = calendar:datetime_to_gregorian_seconds({{2026, 7, 15}, {0, 0, 0}}),
-    DT = fun (Secs) -> calendar:gregorian_seconds_to_datetime(Secs) end,
-    Entry =
-        fun (TUSecs, NUSecs) ->
-                #{issuer      => <<"CN=CA">>,
-                  this_update => case TUSecs of
-                                     undefined -> undefined;
-                                     _         -> DT(TUSecs)
-                                 end,
-                  next_update => DT(NUSecs),
-                  checksum    => <<"c">>,
-                  crl_number  => 1}
-        end,
-    Fraction = 4,
-    AddEntry =
-        fun (Frac, E) ->
-                add_crl_entry('n1@host', <<"f.crl">>, E, Now, Warn, Frac,
-                              #{})
-        end,
-
-    %% A 24h delta CRL half-way through its life: inside the configured 3-day
-    %% window, but healthy under the capped window (24h/4 = 6h).
-    ?assertEqual(#{}, AddEntry(Fraction, Entry(Now - 12 * Hour,
-                                               Now + 12 * Hour))),
-
-    %% The same CRL once its daily replacement is overdue: 3h left of 24h,
-    %% inside the capped 6h window.
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
-                 AddEntry(Fraction, Entry(Now - 21 * Hour, Now + 3 * Hour))),
-
-    %% A long-lived CRL keeps the configured window: a 14-day validity period
-    %% caps the window at 3.5 days, so 2 days remaining warns as before.
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
-                 AddEntry(Fraction, Entry(Now - 12 * Day, Now + 2 * Day))),
-
-    %% Without a thisUpdate the configured window applies as is.
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
-                 AddEntry(Fraction, Entry(undefined, Now + 2 * Day))),
-
-    %% A fraction of 0 disables the cap: the fresh 24h delta CRL from above is
-    %% no longer healthy — the full 3-day window applies, so it warns for its
-    %% entire life just as it would without the validity-period cap.
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
-                 AddEntry(0, Entry(Now - 12 * Hour, Now + 12 * Hour))).
-
 crl_format_test__() ->
     ?assertEqual("unknown", format_crl_number(undefined)),
     ?assertEqual("42", format_crl_number(42)),
     ?assertEqual("a.crl, b.crl",
                  format_crl_files([<<"b.crl">>, <<"a.crl">>])).
+
 -endif.

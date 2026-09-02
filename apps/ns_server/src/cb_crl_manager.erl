@@ -135,7 +135,25 @@
                        %% against, so that a cached entry can say for itself
                        %% whether it still holds.  Every path that caches an
                        %% entry verifies it, so this is always set.
-                       cas_version := integer()}.
+                       cas_version := integer(),
+                       %% What this node makes of the CRL as of this read,
+                       %% rather than anything the cache holds: whether it is
+                       %% near its nextUpdate.  Answered here because with
+                       %% clocks out of step, another node's reading of our
+                       %% nextUpdate would be wrong.
+                       expires_soon := boolean()}.
+
+%% What the cache holds: a crl_entry() short of the one answer that only means
+%% anything at the moment of asking, which status_fun/2 adds on every read.
+%% Not exported - crl_entry() is the shape anything outside this module sees.
+-type cached_crl_entry() ::
+        #{issuer      := binary(),
+          status      := entry_status(),
+          this_update := calendar:datetime() | undefined,
+          next_update := calendar:datetime() | undefined,
+          checksum    := binary(),
+          crl_number  := non_neg_integer() | undefined,
+          cas_version := integer()}.
 
 %% Outcome of the most recent (re)load attempt for one file.  'time' is
 %% 'undefined' when no attempt has been recorded yet.
@@ -1923,12 +1941,15 @@ poll_file_records(FS, LoadedLocally) ->
 status_fun(TrustedDerCAs, Recalculate) ->
     Version = trusted_cas_version(TrustedDerCAs),
     Now = calendar:universal_time(),
+    WarningSecs = crl_expiration_warning_days() * 24 * 60 * 60,
+    Fraction = crl_warning_validity_fraction(),
     fun (Path) ->
             case file_entries(Path, TrustedDerCAs, Version, Recalculate) of
                 [] ->
                     {not_loaded, []};
                 Cached ->
-                    Entries = [age_entry(E, Now) || E <- Cached],
+                    Entries = [current_view(E, Now, WarningSecs, Fraction)
+                               || E <- Cached],
                     {aggregate_status(Entries), Entries}
             end
     end.
@@ -1978,7 +1999,7 @@ aggregate_status(Results) ->
     end.
 
 %% Convert a per-entry verify result to a plain (RPC-safe) map.
--spec entry_to_map(entry_result(), integer()) -> crl_entry().
+-spec entry_to_map(entry_result(), integer()) -> cached_crl_entry().
 entry_to_map(#entry_result{result = Result,
                            issuer      = Issuer,
                            this_update = ThisUpdate,
@@ -2005,7 +2026,7 @@ trusted_cas_version(TrustedDerCAs) ->
 %% the result kept.  Nothing else notices a CA being removed: the CRL data
 %% itself does not change when it happens.
 -spec file_entries(file:filename_all(), [binary()], integer(), boolean()) ->
-          [crl_entry()].
+          [cached_crl_entry()].
 file_entries(Path, TrustedDerCAs, Version, true) ->
     [verify_cached_der(Der, TrustedDerCAs, Version)
      || Der <- cb_crl_cache:get_file_crls(Path)];
@@ -2028,17 +2049,55 @@ file_entries(Path, TrustedDerCAs, Version, false) ->
 %% Expired CRLs are accepted whatever allow_expired_crls says: age_entry/2
 %% re-applies the validity window on every read, so a status that is kept must
 %% not depend on the time it was taken.
--spec verify_cached_der(binary(), [binary()], integer()) -> crl_entry().
+-spec verify_cached_der(binary(), [binary()], integer()) -> cached_crl_entry().
 verify_cached_der(Der, TrustedDerCAs, Version) ->
     case decode_and_verify_crl(Der, TrustedDerCAs, true) of
         {ok, [Result]} -> entry_to_map(Result, Version);
         {error, _}     -> invalid_entry_map(Version)
     end.
 
+%% Completes a cached entry: the validity window re-applied to the status, and
+%% the one answer that depends on the moment of asking rather than on anything
+%% the cache holds.  It is answered on the node holding the CRL because with
+%% clocks out of step, another node's reading of it would be wrong.
+-spec current_view(cached_crl_entry(), calendar:datetime(), non_neg_integer(),
+                   non_neg_integer()) -> crl_entry().
+current_view(Cached, Now, WarningSecs, Fraction) ->
+    #{status := Status, this_update := ThisUpdate,
+      next_update := NextUpdate} = Entry = age_entry(Cached, Now),
+    Warning = effective_warning(ThisUpdate, NextUpdate, WarningSecs, Fraction),
+    ExpiresSoon = Status =:= active andalso NextUpdate =/= undefined
+        andalso secs(NextUpdate) =< secs(Now) + Warning,
+    Entry#{expires_soon => ExpiresSoon}.
+
+%% The warning window applied to a single entry: the configured window, capped
+%% at 1/Fraction of the entry's own validity period (thisUpdate..nextUpdate).
+%% Without the cap a CRL re-issued more often than the configured window —
+%% e.g. a delta CRL published every 24h against the default 3-day window —
+%% would spend its entire life inside the window and warn continuously; with
+%% it, such a CRL warns only once its routine replacement is overdue.  A
+%% Fraction of 0 disables the cap, and an entry with no thisUpdate (or no
+%% nextUpdate, where no time-based state applies) uses the window as is.
+-spec effective_warning(calendar:datetime() | undefined,
+                        calendar:datetime() | undefined,
+                        non_neg_integer(), non_neg_integer()) ->
+          non_neg_integer().
+effective_warning(_ThisUpdate, _NextUpdate, WarningSecs, 0) ->
+    WarningSecs;
+effective_warning(ThisUpdate, NextUpdate, WarningSecs, Fraction)
+  when ThisUpdate =/= undefined, NextUpdate =/= undefined ->
+    Validity = max(0, secs(NextUpdate) - secs(ThisUpdate)),
+    min(WarningSecs, Validity div Fraction);
+effective_warning(_ThisUpdate, _NextUpdate, WarningSecs, _Fraction) ->
+    WarningSecs.
+
+secs(DateTime) ->
+    calendar:datetime_to_gregorian_seconds(DateTime).
+
 %% A CRL verified as usable can still fall out of its validity window later.
 %% Time beats the cached verdict, matching verify_crl/3, which checks the
 %% window before the signature.
--spec age_entry(crl_entry(), calendar:datetime()) -> crl_entry().
+-spec age_entry(cached_crl_entry(), calendar:datetime()) -> cached_crl_entry().
 age_entry(#{this_update := ThisUpdate,
             next_update := NextUpdate} = Entry, Now) ->
     case time_status(ThisUpdate, NextUpdate, Now) of
@@ -2058,7 +2117,7 @@ entry_status({error, crl_issuer_not_trusted}) -> untrusted;
 entry_status({error, _})                      -> invalid.
 
 %% Stand-in entry for a cached CRL that no longer decodes.
--spec invalid_entry_map(integer()) -> crl_entry().
+-spec invalid_entry_map(integer()) -> cached_crl_entry().
 invalid_entry_map(CasVersion) ->
     #{issuer      => <<"unknown">>,
       status      => invalid,
@@ -2448,7 +2507,6 @@ time_status(ThisUpdate, NextUpdate, Now) ->
         true                                       -> active
     end.
 
-
 %% RFC 5280 §5.2/§5.3: a critical extension the application cannot process
 %% makes the whole CRL unusable, so reject it here rather than let it reach the
 %% cache.  Both the CRL extensions and the per-entry extensions are covered,
@@ -2674,6 +2732,52 @@ file_entries_t() ->
     ?assertEqual([invalid],
                  [maps:get(status, E)
                   || E <- file_entries(Path, [CA], Version, true)]).
+
+%% A CRL whose validity period is shorter than the configured warning window
+%% (e.g. a delta CRL re-issued every 24h) must not warn for its entire life:
+%% the window applied to it is capped at 1/Fraction of its validity period, so
+%% it warns only once its replacement is overdue.  A Fraction of 0 disables
+%% the cap.
+expires_soon_test() ->
+    Day = 24 * 60 * 60,
+    Hour = 60 * 60,
+    Warn = 3 * Day,
+    Now = {{2026, 7, 15}, {0, 0, 0}},
+    DT = fun (Offset) ->
+                 calendar:gregorian_seconds_to_datetime(secs(Now) + Offset)
+         end,
+    View = fun (ThisOffset, NextOffset, Fraction) ->
+                   Entry = #{issuer => <<"CN=CA">>, status => active,
+                             this_update => case ThisOffset of
+                                                undefined -> undefined;
+                                                _ -> DT(ThisOffset)
+                                            end,
+                             next_update => DT(NextOffset),
+                             checksum => <<"sum">>, crl_number => 1,
+                             cas_version => 0},
+                   current_view(Entry, Now, Warn, Fraction)
+           end,
+    Soon = fun (V) -> maps:get(expires_soon, V) end,
+
+    %% A 24h delta CRL half-way through its life: inside the configured 3-day
+    %% window, but healthy under the capped window (24h/4 = 6h).
+    ?assertEqual(false, Soon(View(-12 * Hour, 12 * Hour, 4))),
+
+    %% The same CRL once its daily replacement is overdue: 3h left of 24h,
+    %% inside the capped 6h window.
+    ?assertEqual(true, Soon(View(-21 * Hour, 3 * Hour, 4))),
+
+    %% A long-lived CRL keeps the configured window: a 14-day validity period
+    %% caps it at 3.5 days, so 2 days remaining warns as before.
+    ?assertEqual(true, Soon(View(-12 * Day, 2 * Day, 4))),
+    %% Without a thisUpdate the configured window applies as is.
+    ?assertEqual(true, Soon(View(undefined, 2 * Day, 4))),
+    %% A fraction of 0 disables the cap, so the fresh 24h delta CRL above is
+    %% inside the full 3-day window and warns for its entire life.
+    ?assertEqual(true, Soon(View(-12 * Hour, 12 * Hour, 0))),
+
+    %% An unusable CRL is never also "expires soon".
+    ?assertEqual(false, Soon(View(-2 * Day, -Day, 0))).
 
 %% A status read that does not recalculate still has to notice a CRL falling
 %% out of its validity window: that half of the verdict ages with the clock,
