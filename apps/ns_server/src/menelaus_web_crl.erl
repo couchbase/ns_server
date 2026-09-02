@@ -280,7 +280,7 @@ collect_crl_status(NodePairs) ->
     Results =
         misc:parallel_map(
           fun ({Node, _Hostname}) ->
-                  rpc:call(Node, cb_crl_manager, get_status, [],
+                  rpc:call(Node, cb_crl_manager, get_status, [true],
                            ?STATUS_CALL_TIMEOUT_MS)
           end, NodePairs, ?STATUS_CALL_TIMEOUT_MS + 1000),
     lists:zipwith(
@@ -478,7 +478,7 @@ format_crl_term(Term) ->
 %%% Helpers
 %%%===================================================================
 
-%% Convert the cb_crl_manager:crl_status() from get_status/0 (or reload/0) to a
+%% Convert the cb_crl_manager:crl_status() from get_status/1 (or reload/0) to a
 %% JSON object: the per-file statuses under "crlFiles", and the state of the
 %% poll directory itself — which is not a CRL file — beside them under
 %% "pollDirectory".

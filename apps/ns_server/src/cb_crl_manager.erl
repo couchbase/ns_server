@@ -24,8 +24,7 @@
          set_config/1,
          sync/0,
          reload/0,
-         get_status/0,
-         get_expiry_info/0,
+         get_status/1,
          get_push_config/0,
          crl_expiration_warning_days/0,
          crl_warning_validity_fraction/0,
@@ -108,7 +107,7 @@
 %% Used for both loaded_locally (config/crls/local/) and uploaded (config/crls/).
 -type active_files() :: #{BaseName :: string() => binary()}.
 
-%% Status vocabulary reported by get_status/0 and reload/0.  Serialised by
+%% Status vocabulary reported by get_status/1 and reload/0.  Serialised by
 %% menelaus_web_crl:status_to_json/1 and reload_result_to_json/1, which have one
 %% clause per value below; an atom outside these types falls through their
 %% catch-all clause and leaks a raw Erlang term into the REST response.
@@ -144,7 +143,7 @@
                          time   := calendar:datetime() | undefined,
                          errors := [binary()]}.
 
-%% One element of the list returned by get_status/0 and reload/0 (see the
+%% One element of the list returned by get_status/1 and reload/0 (see the
 %% comments on those functions).  Plain maps only, so it is RPC-safe.
 -type crl_file_status() :: #{filename    := binary(),
                              source      := file_source(),
@@ -171,7 +170,7 @@
                         last_scan := calendar:datetime(),
                         errors    := [binary()]}.
 
-%% What get_status/0 and reload/0 return: the per-file statuses, and separately
+%% What get_status/1 and reload/0 return: the per-file statuses, and separately
 %% the state of the poll directory itself ('undefined' when none is
 %% configured).
 -type crl_status() :: #{files          := [crl_file_status()],
@@ -312,7 +311,7 @@ merge_default(Cfg) ->
 %% if it can be read, decoded, and every entry in it is valid.  A file that
 %% fails to load never overwrites or removes a previously loaded good copy.
 %%
-%% Returns the same crl_status() as get_status/0 (see below).
+%% Returns the same crl_status() as get_status/1 (see below).
 -spec reload() -> crl_status().
 reload() ->
     gen_server:call(?SERVER, reload, ?RELOAD_TIMEOUT).
@@ -335,18 +334,15 @@ reload() ->
 %%   poll_directory => dir_report() — how the last scan of the poll directory
 %%                     itself went, in its own vocabulary; 'undefined' when no
 %%                     poll directory is configured.
--spec get_status() -> crl_status().
-get_status() ->
-    gen_server:call(?SERVER, get_status, ?STATUS_TIMEOUT).
-
-%% Lightweight expiry view for CRL expiration alerts: one map per loaded
-%% file (filename => binary(), entries => [entry_meta/1 map]), built from the
-%% metadata stored in cb_crl_cache when each CRL was decoded at load time.
-%% Unlike get_status/0 this never decodes or re-verifies CRLs, so it is cheap
-%% enough to be polled periodically (see menelaus_web_alerts_srv).
--spec get_expiry_info() -> [map()].
-get_expiry_info() ->
-    gen_server:call(?SERVER, get_expiry_info, ?STATUS_TIMEOUT).
+%% Recalculate=true decodes every cached CRL and verifies it against the
+%% trusted CAs as they are now: the live view the diagnostics endpoint wants.
+%% Recalculate=false answers from what was cached when each CRL was last
+%% verified, which is cheap enough to poll (see menelaus_web_alerts_srv).  The
+%% cached answer is not stale: a change to the trusted CAs re-verifies it, and
+%% the validity window is re-applied on every read.
+-spec get_status(Recalculate :: boolean()) -> crl_status().
+get_status(Recalculate) ->
+    gen_server:call(?SERVER, {get_status, Recalculate}, ?STATUS_TIMEOUT).
 
 %% Number of days before a CRL's nextUpdate at which the "expires soon" alert
 %% starts firing. Settable via POST /settings/alerts/limits (crlExpirationDays).
@@ -539,14 +535,12 @@ handle_call(reload, _From, #state{url_file_state = UrlsState} = State) ->
     ?log_debug("CRL manual reload done: ~b locally, ~b from URLs",
                [maps:size(State4#state.loaded_locally),
                 maps:size(State4#state.loaded_from_urls)]),
-    {reply, build_status_map(TrustedCAs, State4),
+    {reply, build_status_map(TrustedCAs, true, State4),
      schedule_poll_dir_timer(schedule_url_timer(State4))};
 
-handle_call(get_status, _From, State) ->
-    {reply, build_status_map(ns_server_cert:trusted_CAs(der), State), State};
-
-handle_call(get_expiry_info, _From, State) ->
-    {reply, build_expiry_info(State), State};
+handle_call({get_status, Recalculate}, _From, State) ->
+    {reply, build_status_map(ns_server_cert:trusted_CAs(der), Recalculate,
+                             State), State};
 
 handle_call(sync, _From, State) ->
     {reply, ok, State};
@@ -1780,7 +1774,7 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
      || {N, Cs} <- maps:to_list(LoadedFromUrls)].
 
 %%%===================================================================
-%%% Status helpers (used by get_status/0)
+%%% Status helpers (used by get_status/1)
 %%%===================================================================
 
 %% Build the crl_status() answered by the status / reload endpoints: the
@@ -1803,8 +1797,8 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
 %% 'poll_directory' is the state of the configured directory itself, which
 %% describes no file and so is reported outside the list, in its own
 %% vocabulary (see dir_report/3).
--spec build_status_map([binary()], #state{}) -> crl_status().
-build_status_map(TrustedDerCAs,
+-spec build_status_map([binary()], boolean(), #state{}) -> crl_status().
+build_status_map(TrustedDerCAs, Recalculate,
                  #state{file_state       = FS,
                         dir_report       = DirReport,
                         loaded_locally   = LoadedLocally,
@@ -1817,6 +1811,7 @@ build_status_map(TrustedDerCAs,
     UploadedDir  = crls_dir(),
     GeneratedDir = generated_crls_dir(),
     UrlDir       = url_crls_dir(),
+    FileStatus   = status_fun(TrustedDerCAs, Recalculate),
     %% Poll-based entries — one per file the last scan recorded, plus the
     %% local copies it has no record of.
     PollList =
@@ -1826,8 +1821,7 @@ build_status_map(TrustedDerCAs,
                   {Status, Entries} =
                       case maps:is_key(Name, LoadedLocally) of
                           true ->
-                              current_status(filename:join(LocalDir, Name),
-                                             TrustedDerCAs);
+                              FileStatus(filename:join(LocalDir, Name));
                           false ->
                               {not_loaded, []}
                       end,
@@ -1846,7 +1840,7 @@ build_status_map(TrustedDerCAs,
                   CrlPath = filename:join(UploadedDir, Name),
                   {Status, Entries} =
                       case maps:is_key(Name, Uploaded) of
-                          true -> current_status(CrlPath, TrustedDerCAs);
+                          true -> FileStatus(CrlPath);
                           false -> {not_loaded, []}
                       end,
                   LastReload = upload_file_status_map(Name, Uploaded,
@@ -1867,7 +1861,7 @@ build_status_map(TrustedDerCAs,
                   {Status, Entries} =
                       case maps:is_key(Name, LoadedFromUrls) of
                           true ->
-                              current_status(CrlPath, TrustedDerCAs);
+                              FileStatus(CrlPath);
                           false ->
                               {not_loaded, []}
                       end,
@@ -1887,8 +1881,7 @@ build_status_map(TrustedDerCAs,
                   {Status, Entries} =
                       case maps:is_key(Name, Generated) of
                           true ->
-                              current_status(filename:join(GeneratedDir, Name),
-                                             TrustedDerCAs);
+                              FileStatus(filename:join(GeneratedDir, Name));
                           false ->
                               {not_loaded, []}
                       end,
@@ -1924,55 +1917,22 @@ poll_file_records(FS, LoadedLocally) ->
                 end, #{}, FS),
     maps:merge(maps:map(fun (_, _) -> undefined end, LoadedLocally), Scanned).
 
-%% Lightweight counterpart of build_status_map/1 for get_expiry_info/0.
-%% Returns one map per loaded file (filename => binary(), entries =>
-%% [entry_meta/1 map]) built purely from the metadata stored in cb_crl_cache
-%% at load time — no CRL decoding or signature verification.  Files that are
-%% not currently loaded have no cached entries and nothing that can expire,
-%% so they are omitted.
--spec build_expiry_info(#state{}) -> [map()].
-build_expiry_info(#state{loaded_locally   = LoadedLocally,
-                         uploaded         = Uploaded,
-                         generated        = Generated,
-                         url_file_state   = UrlFS,
-                         loaded_from_urls = LoadedFromUrls}) ->
-    FileInfo =
-        fun (Dir, Name, DisplayName) ->
-                #{filename => DisplayName,
-                  entries  => cb_crl_cache:get_file_crls_meta(
-                                filename:join(Dir, Name))}
-        end,
-    [FileInfo(local_crls_dir(), Name, list_to_binary(Name))
-     || Name <- maps:keys(LoadedLocally)] ++
-    [FileInfo(crls_dir(), Name, list_to_binary(Name))
-     || Name <- maps:keys(Uploaded)] ++
-    [FileInfo(generated_crls_dir(), Name, list_to_binary(Name))
-     || Name <- maps:keys(Generated)] ++
-    %% URL-fetched files are keyed on disk by url_filename/1 (a hash); report
-    %% the URL itself as the filename, consistent with build_status_map/1.
-    [FileInfo(url_crls_dir(), url_filename(URL), iolist_to_binary(URL))
-     || URL <- maps:keys(UrlFS),
-        maps:is_key(url_filename(URL), LoadedFromUrls)].
-
-%% Compute the current status of an active CRL by reading DER entries from
-%% the cache and re-verifying them now.
--spec current_status(file:filename_all(), [binary()]) ->
-          {file_status(), [crl_entry()]}.
-current_status(ConfigPath, TrustedDerCAs) ->
+%% How one file's status gets answered.  One 'now' and one CA-set version for
+%% the whole snapshot, so every entry in it is judged against the same reading
+%% of both.
+-spec status_fun([binary()], boolean()) ->
+          fun((file:filename_all()) -> {file_status(), [crl_entry()]}).
+status_fun(TrustedDerCAs, Recalculate) ->
     Version = trusted_cas_version(TrustedDerCAs),
-    case cb_crl_cache:get_file_crls(ConfigPath) of
-        [] ->
-            {not_loaded, []};
-        DerCRLs ->
-            Results = lists:map(
-                        fun (Der) ->
-                            case decode_and_verify_crl(Der, TrustedDerCAs,
-                                                       false) of
-                                {ok, [R]} -> entry_to_map(R, Version);
-                                {error, _} -> invalid_entry_map(Version)
-                            end
-                        end, DerCRLs),
-            {aggregate_status(Results), Results}
+    Now = calendar:universal_time(),
+    fun (Path) ->
+            case file_entries(Path, TrustedDerCAs, Version, Recalculate) of
+                [] ->
+                    {not_loaded, []};
+                Cached ->
+                    Entries = [age_entry(E, Now) || E <- Cached],
+                    {aggregate_status(Entries), Entries}
+            end
     end.
 
 %% Maps current status of an uploaded file to a status map
@@ -2040,6 +2000,53 @@ entry_to_map(#entry_result{result = Result,
 -spec trusted_cas_version([binary()]) -> integer().
 trusted_cas_version(TrustedDerCAs) ->
     erlang:phash2(lists:sort(TrustedDerCAs)).
+
+%% Recalculating decodes every CRL of the file and verifies it now.  Otherwise
+%% the cached entries are used - except that entries decided against a
+%% different set of CAs are no longer answers, so those are verified again and
+%% the result kept.  Nothing else notices a CA being removed: the CRL data
+%% itself does not change when it happens.
+-spec file_entries(file:filename_all(), [binary()], integer(), boolean()) ->
+          [crl_entry()].
+file_entries(Path, TrustedDerCAs, Version, true) ->
+    [verify_cached_der(Der, TrustedDerCAs, Version)
+     || Der <- cb_crl_cache:get_file_crls(Path)];
+file_entries(Path, TrustedDerCAs, Version, false) ->
+    case cb_crl_cache:get_file_crls_meta(Path) of
+        [] ->
+            [];
+        Cached ->
+            case lists:all(fun (#{cas_version := V}) -> V =:= Version end,
+                           Cached) of
+                true ->
+                    Cached;
+                false ->
+                    Entries = file_entries(Path, TrustedDerCAs, Version, true),
+                    ok = cb_crl_cache:set_file_meta(Path, Entries),
+                    Entries
+            end
+    end.
+
+%% Expired CRLs are accepted whatever allow_expired_crls says: age_entry/2
+%% re-applies the validity window on every read, so a status that is kept must
+%% not depend on the time it was taken.
+-spec verify_cached_der(binary(), [binary()], integer()) -> crl_entry().
+verify_cached_der(Der, TrustedDerCAs, Version) ->
+    case decode_and_verify_crl(Der, TrustedDerCAs, true) of
+        {ok, [Result]} -> entry_to_map(Result, Version);
+        {error, _}     -> invalid_entry_map(Version)
+    end.
+
+%% A CRL verified as usable can still fall out of its validity window later.
+%% Time beats the cached verdict, matching verify_crl/3, which checks the
+%% window before the signature.
+-spec age_entry(crl_entry(), calendar:datetime()) -> crl_entry().
+age_entry(#{this_update := ThisUpdate,
+            next_update := NextUpdate} = Entry, Now) ->
+    case time_status(ThisUpdate, NextUpdate, Now) of
+        active     -> Entry;
+        TimeStatus -> Entry#{status := TimeStatus}
+    end.
 
 %% Map a per-entry verify result to the reported status.  A usable entry is
 %% 'active', not 'ok': entries use the same vocabulary as the file-level status
@@ -2424,25 +2431,25 @@ verify_crl(CRL, TrustedDerCAs, AllowExpiredCrls) ->
 -spec check_crl_validity(#'CertificateList'{}) -> ok | {error, term()}.
 check_crl_validity(Cert) ->
     {ThisUpdate, NextUpdate} = crl_times(Cert),
-    Now = calendar:universal_time(),
-    maybe
-        ok ?= case ThisUpdate of
-                  undefined -> ok;
-                  _ ->
-                      case ThisUpdate > Now of
-                          true -> {error, crl_not_yet_valid};
-                          false -> ok
-                      end
-              end,
-        ok ?= case NextUpdate of
-                  undefined -> ok; %% No expiry — treat as permanently valid
-                  _ ->
-                    case NextUpdate < Now of
-                        true  -> {error, crl_expired};
-                        false -> ok
-                    end
-              end
+    case time_status(ThisUpdate, NextUpdate, calendar:universal_time()) of
+        active        -> ok;
+        not_yet_valid -> {error, crl_not_yet_valid};
+        expired       -> {error, crl_expired}
     end.
+
+%% Where a CRL sits in its own validity window at time Now.  The load-time
+%% check above and the one re-applied to a cached status both go through here,
+%% so the two cannot disagree about what 'expired' means.
+-spec time_status(calendar:datetime() | undefined,
+                  calendar:datetime() | undefined,
+                  calendar:datetime()) -> active | expired | not_yet_valid.
+time_status(ThisUpdate, NextUpdate, Now) ->
+    if
+        ThisUpdate =/= undefined, ThisUpdate > Now -> not_yet_valid;
+        NextUpdate =/= undefined, NextUpdate < Now -> expired;
+        true                                       -> active
+    end.
+
 
 %% RFC 5280 §5.2/§5.3: a critical extension the application cannot process
 %% makes the whole CRL unusable, so reject it here rather than let it reach the
@@ -2618,6 +2625,90 @@ dir_report_test() ->
     #{status := unreadable, errors := [ErrText]} =
         Report({unreadable, {list_dir_error, eacces}}),
     ?assertNotEqual(nomatch, binary:match(ErrText, <<"eacces">>)).
+
+%% A cached entry stops being an answer when the trusted CAs change under it,
+%% and says so itself.  Verifying again must therefore happen once per change
+%% to that set and not once per status read.  Probed with a CRL body that is
+%% not decodable: reaching the decode shows up as a status of 'invalid', and
+%% not reaching it as the cached entry surviving intact.
+file_entries_test_() ->
+    {setup,
+     fun () -> {ok, Pid} = cb_crl_cache:start_link(), Pid end,
+     fun (Pid) ->
+             erlang:unlink(Pid),
+             misc:terminate_and_wait(Pid, shutdown)
+     end,
+     fun (_) -> [fun file_entries_t/0] end}.
+
+file_entries_t() ->
+    Path = filename:join(crls_dir(), "cached.crl"),
+    #{cert := CA} = public_key:pkix_test_root_cert("CA", []),
+    #{cert := OtherCA} = public_key:pkix_test_root_cert("Other CA", []),
+    Version = trusted_cas_version([CA]),
+    Seed = fun (Entry) ->
+                   cb_crl_cache:insert_file(
+                     Path, [{{rdnSequence, []}, <<"not a crl">>, Entry}])
+           end,
+    Cached = fun (TrustedCAs) ->
+                     [E] = file_entries(Path, TrustedCAs,
+                                        trusted_cas_version(TrustedCAs), false),
+                     maps:get(status, E)
+             end,
+
+    %% Decided against some other set of CAs, so it is no longer an answer and
+    %% is verified again - which is where the undecodable body shows up.
+    Seed(#{status => sentinel, cas_version => trusted_cas_version([OtherCA])}),
+    ?assertEqual(invalid, Cached([CA])),
+
+    %% That answer names the CA set it was reached against, so a second read
+    %% against the same set must not look at the file at all: the sentinel it
+    %% could only have overwritten is still there.
+    Seed(#{status => sentinel, cas_version => Version}),
+    ?assertEqual(sentinel, Cached([CA])),
+
+    %% A different set of CAs, and it is verified once more.
+    ?assertEqual(invalid, Cached([CA, OtherCA])),
+    Seed(#{status => sentinel, cas_version => trusted_cas_version([CA,
+                                                                   OtherCA])}),
+    ?assertEqual(sentinel, Cached([CA, OtherCA])),
+
+    %% Recalculating never trusts the cached answer.
+    ?assertEqual([invalid],
+                 [maps:get(status, E)
+                  || E <- file_entries(Path, [CA], Version, true)]).
+
+%% A status read that does not recalculate still has to notice a CRL falling
+%% out of its validity window: that half of the verdict ages with the clock,
+%% the rest only changes when the CRL data or the trusted CAs do.
+age_entry_test() ->
+    Now = {{2026, 7, 15}, {0, 0, 0}},
+    Day = 24 * 60 * 60,
+    Shift = fun (Secs) ->
+                    calendar:gregorian_seconds_to_datetime(
+                      calendar:datetime_to_gregorian_seconds(Now) + Secs)
+            end,
+    Entry = fun (ThisUpdate, NextUpdate, Status) ->
+                    #{issuer => <<"CN=CA">>, status => Status,
+                      this_update => ThisUpdate, next_update => NextUpdate,
+                      checksum => <<"sum">>, crl_number => 1}
+            end,
+    Status = fun (E) -> maps:get(status, age_entry(E, Now)) end,
+
+    %% In its window: the cached verdict stands, whatever it says.
+    ?assertEqual(active, Status(Entry(Shift(-Day), Shift(Day), active))),
+    ?assertEqual(untrusted, Status(Entry(Shift(-Day), Shift(Day), untrusted))),
+
+    %% Out of it: time wins, matching verify_crl/3, which checks the window
+    %% before the signature.
+    ?assertEqual(expired, Status(Entry(Shift(-Day), Shift(-1), active))),
+    ?assertEqual(expired, Status(Entry(Shift(-Day), Shift(-1), untrusted))),
+    ?assertEqual(not_yet_valid,
+                 Status(Entry(Shift(Day), Shift(2 * Day), active))),
+
+    %% A CRL with no nextUpdate never expires, and one with no thisUpdate is
+    %% not withheld for a start time it never declared.
+    ?assertEqual(active, Status(Entry(Shift(-Day), undefined, active))),
+    ?assertEqual(active, Status(Entry(undefined, Shift(Day), active))).
 
 %% Certificates the cluster issues itself can only be checked against the CRL
 %% its own CA signs, so the scope that covers them is refused while there is

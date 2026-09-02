@@ -67,7 +67,7 @@
 -define(CRL_CHECK_MAX_INTERVAL_SEC,
         ?get_timeout(crl_check_interval_sec, 60 * 60 )).
 
-%% Per-node timeout for the get_expiry_info RPC issued during the CRL check
+%% Per-node timeout for the get_status RPC issued during the CRL check
 %% (ms).
 -define(CRL_STATUS_CALL_TIMEOUT, ?get_timeout(crl_status_call, 30000)).
 
@@ -1455,9 +1455,9 @@ crl_retry_time(infinity, Now) ->
 crl_retry_time(RecheckTime, Now) ->
     min(RecheckTime, Now + ?CRL_CHECK_MAX_INTERVAL_SEC).
 
-%% Gather CRL expiry info from every node and aggregate by CRL content
-%% (checksum).  get_expiry_info returns metadata captured when each CRL was
-%% loaded, so no node decodes or re-verifies CRLs for this check.
+%% Gather CRL status from every node and aggregate by CRL content (checksum).
+%% Asks for the cached status, so no node decodes a CRL for this check; each
+%% one re-verifies only when the trusted CAs have changed under it.
 %% Returns {RecheckTime, Aggregated} where RecheckTime is the earliest time any
 %% CRL could change alert state (or 'infinity' if none can on their own).
 gather_crl_alerts(Now, WarningDays, Fraction) ->
@@ -1475,14 +1475,14 @@ gather_crl_alerts(Now, WarningDays, Fraction) ->
     Results =
         misc:parallel_map(
             fun (Node) ->
-                rpc:call(Node, cb_crl_manager, get_expiry_info, [],
+                rpc:call(Node, cb_crl_manager, get_status, [false],
                          ?CRL_STATUS_CALL_TIMEOUT)
             end, Nodes, infinity),
 
     {Aggregated, RecheckTime} =
         lists:foldl(
-          fun ({Node, StatusList}, Acc) when is_list(StatusList) ->
-                  aggregate_node_crls(Node, StatusList, Now, WarningSeconds,
+          fun ({Node, #{files := Files}}, Acc) ->
+                  aggregate_node_crls(Node, Files, Now, WarningSeconds,
                                       Fraction, Acc);
               ({Node, Error}, Acc) ->
                   ?log_debug("Skipping CRL alerts for node ~p: ~p",
@@ -1494,7 +1494,7 @@ gather_crl_alerts(Now, WarningDays, Fraction) ->
 
 %% Fold one node's per-file CRL status into the {by-checksum map, recheck time}
 %% accumulator
-aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Fraction, Acc) ->
+aggregate_node_crls(Node, Files, Now, WarningSeconds, Fraction, Acc) ->
     lists:foldl(
       fun (#{filename := Filename, entries := Entries}, Acc1) ->
               lists:foldl(
@@ -1504,7 +1504,7 @@ aggregate_node_crls(Node, StatusList, Now, WarningSeconds, Fraction, Acc) ->
                 end, Acc1, Entries);
           (_, Acc1) ->
               Acc1
-      end, Acc, StatusList).
+      end, Acc, Files).
 
 add_crl_entry(Node, Filename,
               #{checksum := Checksum,

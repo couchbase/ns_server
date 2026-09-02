@@ -35,6 +35,7 @@
          get_all_file_paths/0,
          get_file_crls/1,
          get_file_crls_meta/1,
+         set_file_meta/2,
          set_policy/2,
          get_policy/1,
          set_check_intermediate_certs/1,
@@ -148,6 +149,16 @@ get_file_crls_meta(Path) ->
     catch
         error:badarg -> []
     end.
+
+%% Replace the metadata of one file's CRL entries, positionally, leaving the
+%% DERs and the issuer index untouched.  Metadata-only rather than a re-insert:
+%% the raw issuer names are not recoverable from the metadata, and a rebuild
+%% that lost an entry would silently drop a CRL from revocation checking.
+%% A path that is not cached, or a list that does not line up with the entries
+%% it would replace, is a no-op.
+-spec set_file_meta(file:filename_all(), [map()]) -> ok.
+set_file_meta(Path, Metas) ->
+    gen_server:call(?SERVER, {set_file_meta, Path, Metas}).
 
 %% Store the revocation policy for a given scope.
 %% Called exclusively by cb_crl_manager with strict ordering guarantees:
@@ -323,6 +334,18 @@ issuer_crls(Names) ->
 init([]) ->
     ets:new(?ETS, [named_table, protected, set]),
     {ok, #state{}}.
+
+handle_call({set_file_meta, Path, Metas}, _From, State) ->
+    FileKey = {crl_file, misc:normalize_path(Path)},
+    case ets:lookup(?ETS, FileKey) of
+        [{_, Elems}] when length(Elems) =:= length(Metas) ->
+            NewElems = [E#crl_elem{meta = M}
+                        || {E, M} <- lists:zip(Elems, Metas)],
+            ets:insert(?ETS, {FileKey, NewElems});
+        _ ->
+            ok
+    end,
+    {reply, ok, State};
 
 handle_call({insert_file, Path, CRLEntries}, _From, State) ->
     NormPath  = misc:normalize_path(Path),
