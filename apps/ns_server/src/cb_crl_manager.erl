@@ -467,10 +467,10 @@ init([]) ->
     ok = ensure_dir(generated_crls_dir()),
     %% Seed the cache from every storage directory so revocation checking
     %% is ready before any fetches happen.
-    LoadedLocally0  = populate_cache_from_dir(local_crls_dir()),
-    Uploaded0       = populate_cache_from_dir(crls_dir()),
-    LoadedFromUrls0 = populate_cache_from_dir(url_crls_dir()),
-    Generated0      = populate_cache_from_dir(generated_crls_dir()),
+    LoadedLocally0  = populate_cache_from_dir(local_crls_dir(), TrustedCAs),
+    Uploaded0       = populate_cache_from_dir(crls_dir(), TrustedCAs),
+    LoadedFromUrls0 = populate_cache_from_dir(url_crls_dir(), TrustedCAs),
+    Generated0      = populate_cache_from_dir(generated_crls_dir(), TrustedCAs),
     ChronicleFiles0 = get_crl_files_metadata(),
     State0 = #state{poll_directory       = undefined,
                     poll_interval_ms     = ?DEFAULT_POLL_INTERVAL_MS,
@@ -496,15 +496,15 @@ init([]) ->
     %% Reconcile: remove local uploaded files no longer in chronicle
     %% (deleted while this node was down) and download any files that
     %% are in chronicle but missing or stale locally.
-    State2 = reconcile_uploaded_files(ChronicleFiles0, State1),
+    State2 = reconcile_uploaded_files(ChronicleFiles0, TrustedCAs, State1),
     %% Make chronicle authoritative for the generated OOTB CRL on disk + in the
     %% cache.  The CRL itself is created elsewhere: transactionally with the CA
     %% in ns_server_cert:generate_cluster_CA/2 for fresh clusters, and by
     %% ns_server_cert:chronicle_upgrade_to_totoro/1 for upgraded ones.  There
     %% may be no CRL at all - a CA older than cRLSign cannot sign one.
-    %% Not forced: populate_cache_from_dir/1 above seeded the checksum but no
+    %% Not forced: populate_cache_from_dir/2 above seeded the checksum but no
     %% load status, so this still loads (and re-verifies the on-disk copy).
-    State3 = reconcile_generated_crl(false, State2),
+    State3 = reconcile_generated_crl(false, TrustedCAs, State2),
     %% Remove cache entries not in any of the active sets.
     ok = purge_stale_cache_entries(State3#state.loaded_locally,
                                    State3#state.uploaded,
@@ -529,7 +529,7 @@ handle_call(reload, _From, #state{url_file_state = UrlsState} = State) ->
     State2 = reconcile_url_files(maps:keys(UrlsState), true, TrustedCAs, State1),
     %% Forced, so that a manual reload refreshes every source and restores the
     %% generated CRL if its file was removed or damaged behind our back.
-    State3 = reconcile_generated_crl(true, State2),
+    State3 = reconcile_generated_crl(true, TrustedCAs, State2),
     State4 = maybe_notify_crl_consumers(TrustedCAs, State3),
     ?log_debug("CRL manual reload done: ~b locally, ~b from URLs",
                [maps:size(State4#state.loaded_locally),
@@ -580,9 +580,9 @@ handle_call({delete_crl_file, Filename}, _From, State) ->
 
 handle_call(sync_uploaded_files, _From, State) ->
     ChronicleFiles = get_crl_files_metadata(quorum),
-    NewState = reconcile_uploaded_files(ChronicleFiles, State),
-    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
-                                           NewState),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    NewState = reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State),
+    NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
     {reply, ok, NewState2};
 
 handle_call(Req, _From, State) ->
@@ -601,28 +601,28 @@ handle_info(config_changed, State) ->
     {noreply, schedule_poll_dir_timer(schedule_url_timer(State2))};
 
 handle_info(ootb_crl_changed, State) ->
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
     %% The OOTB CRL (ootb_crl chronicle key) changed: it is written
     %% transactionally with root_cert_and_pkey on CA generation, and during
     %% node addition via the engage payload.  Reconcile it to disk + cache.
-    NewState = reconcile_generated_crl(false, State),
-    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
-                                           NewState),
+    NewState = reconcile_generated_crl(false, TrustedCAs, State),
+    NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
     {noreply, NewState2};
 
 handle_info(crl_files_changed, State) ->
     ChronicleFiles = get_crl_files_metadata(),
-    NewState = reconcile_uploaded_files(ChronicleFiles, State),
-    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
-                                          NewState),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    NewState = reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State),
+    NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
     {noreply, NewState2};
 
 handle_info(retry_reconcile, State) ->
     ?log_debug("CRL uploaded-file reconcile retry", []),
     ?flush(retry_reconcile),
     ChronicleFiles = get_crl_files_metadata(),
-    NewState = reconcile_uploaded_files(ChronicleFiles, State),
-    NewState2 = maybe_notify_crl_consumers(ns_server_cert:trusted_CAs(der),
-                                          NewState),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    NewState = reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State),
+    NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
     {noreply, NewState2};
 
 handle_info(poll_directory, #state{poll_directory = Dir} = State) ->
@@ -657,8 +657,9 @@ code_change(_, State, _) -> {ok, State}.
 %%
 %% Schedules (or cancels) the retry timer internally based on whether
 %% any downloads failed.
--spec reconcile_uploaded_files(#{binary() => map()}, #state{}) -> #state{}.
-reconcile_uploaded_files(ChronicleFiles, State) ->
+-spec reconcile_uploaded_files(#{binary() => map()}, [binary()], #state{}) ->
+          #state{}.
+reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State) ->
     %% Build string-keyed map filename -> expected checksum from chronicle.
     WantedMap = maps:fold(
                   fun (NameBin, #{checksum := C}, Acc) ->
@@ -674,7 +675,8 @@ reconcile_uploaded_files(ChronicleFiles, State) ->
     {NewUploaded, HasPending} =
         maps:fold(
           fun (Name, Checksum, {Acc, Pending}) ->
-              case maybe_update_uploaded_file(Name, Checksum, OldUploaded) of
+              case maybe_update_uploaded_file(Name, Checksum, OldUploaded,
+                                              TrustedCAs) of
                   ok  -> {maps:put(Name, Checksum, Acc), Pending};
                   {error, _} -> {Acc, true}
               end
@@ -701,16 +703,20 @@ reconcile_uploaded_files(ChronicleFiles, State) ->
 
 %% Check whether an uploaded file is already present with the expected checksum,
 %% and if not, download it from another node and install it locally.
-maybe_update_uploaded_file(Name, ExpectedChecksum, CurrentlyLoadedMap) ->
+maybe_update_uploaded_file(Name, ExpectedChecksum, CurrentlyLoadedMap,
+                           TrustedCAs) ->
     case maps:get(Name, CurrentlyLoadedMap, undefined) of
         ExpectedChecksum ->
             ok;
         _ ->
             maybe
                 {ok, Binary} ?= download_missing_file(Name, ExpectedChecksum),
-                %% No need to re-verify the CRL as it was already verified by
-                %% another node
-                {ok, Entries} ?= decode_to_entries(Binary),
+                %% Verified again here rather than taken on the uploading
+                %% node's word: the answer is recorded against the trusted CAs
+                %% this node can see, which is what its own status reads are
+                %% compared with.
+                {ok, Entries} ?= decode_and_verify_crl(Binary, TrustedCAs,
+                                                       true),
                 ok ?= write_uploaded_file_locally(Name, Binary, Entries),
                 ?log_debug("CRL ~p: installed from remote node", [Name]),
                 ok
@@ -1615,15 +1621,17 @@ generated_crls_dir() ->
 %% Make chronicle's ootb_crl key authoritative for the generated CRL on disk and
 %% in cb_crl_cache. When set, write/refresh the file and insert it; when absent,
 %% remove any stale copy and report the slot as not attempted rather than
-%% dropping it. The CRL is signed by the cluster's own (trusted) CA,
-%% so it is loaded without re-verification (decode_to_entries), matching how the
-%% other directories are seeded on startup.
+%% dropping it. The CRL is signed by the cluster's own CA, and is verified
+%% against the trusted set like any other: being self-issued is not a reason to
+%% take its usability on faith, and a status nobody checked is one nothing can
+%% report.
 %%
 %% Unless ForceReload is set, content we already hold is not loaded again - the
 %% chronicle checksum plays the role the file's mtime plays for the poll
 %% directory (see maybe_load_from_local_file/6).
--spec reconcile_generated_crl(ForceReload :: boolean(), #state{}) -> #state{}.
-reconcile_generated_crl(ForceReload,
+-spec reconcile_generated_crl(ForceReload :: boolean(), [binary()],
+                              #state{}) -> #state{}.
+reconcile_generated_crl(ForceReload, TrustedCAs,
                         #state{generated = Generated,
                                generated_file_state = GenFS} = State) ->
     case ns_server_cert:get_ootb_crl() of
@@ -1646,22 +1654,22 @@ reconcile_generated_crl(ForceReload,
             case maps:get(Name, Generated, undefined) of
                 Checksum when not ForceReload, is_map_key(Name, GenFS) ->
                     %% Already loaded, and we know when. The status check is
-                    %% what makes the boot path load: populate_cache_from_dir/1
-                    %% seeds the checksum from disk but no status, so the first
-                    %% reconcile still runs and records the load time.
+                    %% what makes the boot path load: populate_cache_from_dir/2
+                    %% seeds the checksum from disk but no load status, so the
+                    %% first reconcile still runs and records the load time.
                     State;
                 _ ->
-                    load_generated_crl(Name, CrlPem, State)
+                    load_generated_crl(Name, CrlPem, TrustedCAs, State)
             end
     end.
 
--spec load_generated_crl(string(), binary(), #state{}) -> #state{}.
-load_generated_crl(Name, CrlPem,
+-spec load_generated_crl(string(), binary(), [binary()], #state{}) -> #state{}.
+load_generated_crl(Name, CrlPem, TrustedCAs,
                    #state{generated = Generated,
                           generated_file_state = GenFS} = State) ->
     TS = calendar:universal_time(),
     maybe
-        {ok, Entries} ?= decode_to_entries(CrlPem),
+        {ok, Entries} ?= decode_and_verify_crl(CrlPem, TrustedCAs, true),
         {ok, Checksum} ?= add_to_cache(generated, Name, CrlPem, Entries),
         Status = #crl_reload_status{result = loaded, time = TS, errors = []},
         State#state{generated = maps:put(Name, Checksum, Generated),
@@ -1693,8 +1701,9 @@ ensure_dir(Dir) ->
 %% Decode every CRL file in Dir, insert into the cache, and return a
 %% base-name => checksum map.  Files that fail to read or decode are
 %% skipped (and left on disk for diagnosis).  Dot-files are ignored.
--spec populate_cache_from_dir(file:filename_all()) -> active_files().
-populate_cache_from_dir(Dir) ->
+-spec populate_cache_from_dir(file:filename_all(), [binary()]) ->
+          active_files().
+populate_cache_from_dir(Dir, TrustedCAs) ->
     Names = case file:list_dir(Dir) of
                 {ok, Ns} ->
                     [N || N <- Ns, N =/= [], hd(N) =/= $.,
@@ -1706,7 +1715,7 @@ populate_cache_from_dir(Dir) ->
               Path = filename:join(Dir, Name),
               case file:read_file(Path) of
                   {ok, Binary} ->
-                      case decode_to_entries(Binary) of
+                      case decode_and_verify_crl(Binary, TrustedCAs, true) of
                           {ok, Entries} ->
                               CacheEntries =
                                   [{E#entry_result.issuer, E#entry_result.der,
@@ -2315,17 +2324,6 @@ decode_and_verify_crl(Binary, TrustedDerCAs, AllowExpiredCrls) ->
     maybe
         {ok, Triples} ?= decode_crl(Binary),
         {ok, verify_crls(Triples, TrustedDerCAs, AllowExpiredCrls)}
-    else
-        {error, Reason} ->
-            {error, {decode_error, Reason}}
-    end.
-
-%% Sometimes we don't need to reverify the CRL so it is useful to have a
-%% function that returns the decoded entries in the same format as verify_crls/2
-decode_to_entries(Binary) ->
-    maybe
-        {ok, Triples} ?= decode_crl(Binary),
-        {ok, [entry_result(ok, T) || T <- Triples]}
     else
         {error, Reason} ->
             {error, {decode_error, Reason}}
