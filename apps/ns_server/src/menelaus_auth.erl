@@ -264,26 +264,39 @@ extract_auth(Req) ->
         {token, Token} ->
             {token, Token};
         not_ui ->
-            Sock = mochiweb_request:get(socket, Req),
-            case ns_ssl_services_setup:get_user_name_from_client_cert(Sock) of
-                undefined ->
-                    case mochiweb_request:get_header_value("authorization", Req) of
-                        "Basic " ++ Value ->
-                            parse_basic_auth_header(Value);
-                        "SCRAM-" ++ Value ->
-                            {scram_sha, Value};
-                        "Bearer " ++ Value ->
-                            {jwt, Value};
-                        undefined ->
-                            undefined;
-                        _ ->
-                            error
-                    end;
-                failed ->
-                    error;
-                UName ->
-                    {client_cert_auth, UName}
+            AuthHeader =
+                mochiweb_request:get_header_value("authorization", Req),
+            case AuthHeader of
+                "Bearer " ++ Token when Token =/= "" ->
+                    {jwt, Token};
+                _ ->
+                    extract_non_jwt_auth(Req, AuthHeader)
             end
+    end.
+
+%% The client certificate is a transport level credential: its chain is
+%% validated during the handshake, and 'mandatory' rejects a connection
+%% without one before any header is read. Mapping it to a username through
+%% the 'prefixes' rules resolves an identity, which a bearer token has
+%% already supplied, so it is only consulted in the token's absence.
+extract_non_jwt_auth(Req, AuthHeader) ->
+    Sock = mochiweb_request:get(socket, Req),
+    case ns_ssl_services_setup:get_user_name_from_client_cert(Sock) of
+        undefined ->
+            case AuthHeader of
+                "Basic " ++ Value ->
+                    parse_basic_auth_header(Value);
+                "SCRAM-" ++ Value ->
+                    {scram_sha, Value};
+                undefined ->
+                    undefined;
+                _ ->
+                    error
+            end;
+        failed ->
+            error;
+        UName ->
+            {client_cert_auth, UName}
     end.
 
 get_rejected_user(Auth) ->

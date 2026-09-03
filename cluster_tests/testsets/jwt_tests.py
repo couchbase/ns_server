@@ -11,6 +11,7 @@ import os
 import testlib
 from testlib.test_tag_decorator import tag, Tag
 from testlib.util import Service
+from testsets.authn_tests import client_cert_auth
 import json
 import jwt
 import time
@@ -808,6 +809,71 @@ class JWTTests(testlib.BaseTestSet):
             self.cluster, "/pools/default/buckets", auth=None, headers=headers
         )
         assert r.status_code == 200
+
+    def assert_whoami(self, node, expected_id, expected_domain, **kwargs):
+        r = testlib.get_succ(node, "/whoami", https=True, auth=None, **kwargs)
+        testlib.assert_eq(r.json()["id"], expected_id, name="id")
+        testlib.assert_eq(r.json()["domain"], expected_domain, name="domain")
+
+    def client_cert_precedence_test(self):
+        """A bearer token outranks a client certificate on the REST API.
+
+        The certificate remains a transport level credential: its chain is
+        validated during the handshake and 'mandatory' still refuses a
+        connection that carries none. What the token displaces is the
+        'prefixes' mapping that turns a certificate into a local username,
+        which is identity resolution rather than validation. This mirrors
+        cbauth, where the JWT branch of AuthWebCredsCore returns before the
+        certificate is consulted.
+        """
+        self.auth_setup()
+        self.configure_jwt()
+
+        # Client certificate settings are applied synchronously on the node
+        # that receives them only, so every request here goes to one node.
+        node = self.cluster.connected_nodes[0]
+        claims = self.base_claims.copy()
+        claims["groups"] = ["jwt_bucket_admins"]
+        token = self.create_token(claims)
+        bearer = {"Authorization": f"Bearer {token}"}
+        subject = claims["sub"]
+
+        cert_user = testlib.random_str(8)
+        testlib.put_succ(node, f"/settings/rbac/users/local/{cert_user}",
+                         data={"roles": "admin",
+                               "password": testlib.random_str(16)})
+        try:
+            for mandatory in [False, True]:
+                with client_cert_auth(node, cert_user, True,
+                                      mandatory) as cert:
+                    # Both credentials: the identity is the token's subject.
+                    self.assert_whoami(node, subject, "external", cert=cert,
+                                       headers=bearer)
+
+                    # No token: the identity is the certificate principal.
+                    self.assert_whoami(node, cert_user, "local", cert=cert)
+
+                    # A token that fails validation is a 401. It never falls
+                    # back to the certificate.
+                    testlib.get_fail(node, "/whoami", 401, https=True,
+                                     auth=None, cert=cert,
+                                     headers={"Authorization":
+                                              "Bearer not-a-token"})
+
+                    # A certificate that no 'prefixes' rule maps is no longer
+                    # fatal when a token supplies the identity, but on its own
+                    # it is still a 401.
+                    testlib.toggle_client_cert_auth(
+                        node, enabled=True, mandatory=mandatory,
+                        prefixes=[{"delimiter": "@", "path": "san.email",
+                                   "prefix": "unmatched-"}])
+                    self.assert_whoami(node, subject, "external", cert=cert,
+                                       headers=bearer)
+                    testlib.get_fail(node, "/whoami", 401, https=True,
+                                     auth=None, cert=cert)
+        finally:
+            testlib.delete_succ(node,
+                                f"/settings/rbac/users/local/{cert_user}")
 
     def mapped_auth_test(self):
         """Test JWT authentication with mapping patterns and nested claims"""
