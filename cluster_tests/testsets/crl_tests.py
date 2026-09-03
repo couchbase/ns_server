@@ -3258,6 +3258,205 @@ def _decrypt_pem_key(encrypted_key_pem, passphrase):
 # =============================================================================
 
 
+class CRLFileSyncTests(testlib.BaseTestSet):
+    """Uploaded CRLs reaching the nodes that did not take the upload.
+
+    An upload is registered in chronicle by the node that received it; every
+    other node learns of it from there and fetches the file from a node that
+    already has it.  These cover that path and its retry, neither of which a
+    single-node cluster can reach.
+    """
+
+    @staticmethod
+    def requirements():
+        return testlib.ClusterRequirements(edition='Enterprise',
+                                           num_nodes=3, num_connected=3)
+
+    def setup(self):
+        self.ca_pem, self.ca_key_pem = generate_root_ca()
+        self.ca_ids = load_multiple_cas(self.cluster.connected_nodes[0],
+                                        [self.ca_pem])
+
+    def teardown(self):
+        node = self.cluster.connected_nodes[0]
+        for f in get_crl_files(node):
+            try:
+                delete_crl_file(node, f['filename'])
+            except Exception as e:
+                print(f"Failed to delete CRL file {f['filename']}: {e}")
+        for ca_id in self.ca_ids:
+            try:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            except Exception as e:
+                print(f"Failed to delete trusted CA {ca_id}: {e}")
+
+    def test_teardown(self):
+        # The retry interval is a per-node override, and the cluster outlives
+        # this testset - left behind it would have every later CRL reconcile
+        # retrying every two seconds.
+        for node in self.cluster.connected_nodes:
+            testlib.diag_eval(
+                node,
+                'ns_config:delete({node, node(), '
+                '{cb_crl_manager, retry_interval_ms}}), ok.')
+
+    def _upload(self):
+        """Upload a CRL through the first node and return its filename."""
+        filename = f'sync_{testlib.random_str(8)}.pem'
+        upload_crl_file(self.cluster.connected_nodes[0], filename,
+                        generate_crl(self.ca_pem, self.ca_key_pem, []))
+        return filename
+
+    def _crl_path(self, node, filename):
+        return os.path.join(node.data_path(), 'config', 'crls', filename)
+
+    def _statuses_on(self, node):
+        """cacheStatus per CRL filename, as one node reports it.
+
+        None - as opposed to an empty map - when the node did not answer, so
+        that a node still coming up is never mistaken for one that has
+        dropped a file.
+        """
+        status = get_crl_status_via_get(self.cluster, [node.hostname()])
+        node_status = status.get(node.hostname(), {})
+        if 'crlFiles' not in node_status:
+            return None
+        return {os.path.basename(f.get('filename', '')): f.get('cacheStatus')
+                for f in crl_file_statuses(node_status)}
+
+    def _status_on(self, node, filename):
+        """cacheStatus of one file as one node reports it, or None."""
+        return (self._statuses_on(node) or {}).get(filename)
+
+    # The node that took the upload tells the others to pull it, and each of
+    # them downloads it from a node that has it.  Asserting on every node is
+    # the point: the second one can only be holding the file by having
+    # fetched it.
+    def upload_reaches_other_nodes_test(self):
+        filename = self._upload()
+        _assert_crl_file_status(self.cluster, filename, 'active')
+
+
+    # Everything a node has to work out for itself when it comes back up.
+    # Nothing told it any of this: its boot reconcile has only chronicle to
+    # compare against what is on its own disk, and what it cannot fetch yet
+    # it has to keep retrying for.
+    def boot_reconcile_catches_up_test(self):
+        node0 = self.cluster.connected_nodes[0]
+        victim = self.cluster.connected_nodes[-1]
+        assert victim != node0, 'need a node other than the one uploading'
+        # Set before the node goes down: ns_config is persisted, so the
+        # reconcile the node's boot runs arms its retry at two seconds, and
+        # keeps re-arming it at that interval while a download is pending.
+        testlib.diag_eval(
+            victim,
+            'ns_config:set({node, node(), '
+            '{cb_crl_manager, retry_interval_ms}}, 2000), ok.')
+        doomed = self._upload()
+        stuck = self._upload()
+        _assert_crl_file_status(self.cluster, doomed, 'active')
+        _assert_crl_file_status(self.cluster, stuck, 'active')
+
+        served = [self._crl_path(n, stuck)
+                  for n in self.cluster.connected_nodes if n != victim]
+        # Resolved while the node is still up: data_path() asks the node
+        # itself, which it cannot answer once it is stopped.
+        victim_copy = self._crl_path(victim, stuck)
+        try:
+            self.cluster.stop_node(victim)
+            wait_any_node_unhealthy(node0)
+
+            added = self._upload()
+            delete_crl_file(node0, doomed)
+            # Take 'stuck' away from the node that is down and withhold every
+            # copy that could be served to it, so that nothing can satisfy it
+            # when it comes back.
+            os.remove(victim_copy)
+            for path in served:
+                os.rename(path, path + '.withheld')
+
+            self.cluster.restart_node(victim)
+            self.cluster.wait_for_nodes_to_be_healthy()
+
+            # Uploaded while it was down: fetched.  Deleted while it was
+            # down: dropped.
+            def caught_up():
+                statuses = self._statuses_on(victim)
+                return (statuses is not None and doomed not in statuses
+                        and statuses.get(added) == 'active')
+
+            testlib.poll_for_condition(
+                caught_up, sleep_time=1, timeout=60, verbose=True,
+                msg='wait for the restarted node to catch up with chronicle')
+            _assert_crl_file_status(self.cluster, added, 'active')
+
+            # Still in chronicle but servable by nobody, so the boot reconcile
+            # could not install it and must have left a retry pending.
+            testlib.assert_eq(self._status_on(victim, stuck), 'notLoaded',
+                              f'{stuck} on the restarted node')
+
+            # Give the copies back only now: nothing else about the cluster
+            # changes, so only the pending retry can install the file.
+            for path in served:
+                os.rename(path + '.withheld', path)
+            testlib.poll_for_condition(
+                lambda: self._status_on(victim, stuck) == 'active',
+                sleep_time=1, timeout=60, verbose=True,
+                msg='wait for the reconcile retry to fetch the CRL')
+        finally:
+            # A failure part-way through must not leave the node down, or the
+            # copies withheld, for whatever runs next on this cluster.
+            if not self.cluster.is_node_started(victim):
+                self.cluster.restart_node(victim)
+                self.cluster.wait_for_nodes_to_be_healthy()
+            for path in served:
+                if os.path.exists(path + '.withheld'):
+                    os.rename(path + '.withheld', path)
+
+    # A node that boots into a cluster that no longer trusts the CA has no
+    # notification to react to: it comes up holding the file on disk and a
+    # trust store that cannot verify it, so the answer can only come from the
+    # verification its own boot does.
+    def untrusted_ca_while_node_down_test(self):
+        node0 = self.cluster.connected_nodes[0]
+        victim = self.cluster.connected_nodes[-1]
+        assert victim != node0, 'need a node other than the one uploading'
+        filename = self._upload()
+        _assert_crl_file_status(self.cluster, filename, 'active')
+
+        removed, self.ca_ids = self.ca_ids, []
+        try:
+            try:
+                self.cluster.stop_node(victim)
+                wait_any_node_unhealthy(node0)
+                for ca_id in removed:
+                    testlib.delete_succ(
+                        node0, f'/pools/default/trustedCAs/{ca_id}',
+                        expected_code=204)
+            finally:
+                self.cluster.restart_node(victim)
+                self.cluster.wait_for_nodes_to_be_healthy()
+
+            testlib.poll_for_condition(
+                lambda: self._status_on(victim, filename) == 'untrusted',
+                sleep_time=1, timeout=60, verbose=True,
+                msg='wait for the restarted node to report the CRL untrusted')
+
+            # From the cache, and not just from the re-verification the status
+            # endpoint does for itself: what the boot cached must already say
+            # the CRL is unusable, or the health check would never see it.
+            r = testlib.diag_eval(
+                victim,
+                '#{files := Fs} = cb_crl_manager:get_status(false), '
+                '[S || #{filename := F, status := S} <- Fs, '
+                f'filename:basename(F) =:= <<"{filename}">>].')
+            testlib.assert_eq(r.text.strip(), '[untrusted]',
+                              'cached status on the restarted node')
+        finally:
+            # The CA belongs to the testset, not to this test.
+            self.ca_ids = load_multiple_cas(node0, [self.ca_pem])
+
+
 class CRLNodeToNodeTests(testlib.BaseTestSet):
     """CRL revocation tests for Erlang distribution client certificates.
 
