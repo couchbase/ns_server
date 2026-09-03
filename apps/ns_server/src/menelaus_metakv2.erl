@@ -101,7 +101,7 @@ not_found_reply(Path, Type) ->
 
 reply_mutation(Req, Start, Json, Code) ->
     Method = mochiweb_request:get(method, Req),
-    Path = mochiweb_request:get(path, Req),
+    Path = mochiweb_request:get(raw_path, Req),
     ElapsedTime = timer:now_diff(os:timestamp(), Start) div 1000,
     ?metakv_debug("Request ~p ~p returned code ~p in ~p ms~nPayload: ~p",
                   [Method, Path, Code, ElapsedTime, Json]),
