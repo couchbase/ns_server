@@ -507,7 +507,17 @@ validate_custom_claim(ClaimValue, object, _Config) ->
 -spec validate_custom_string_claim(ClaimValue :: string(), Config :: map()) ->
           ok | {error, binary()}.
 validate_custom_string_claim(ClaimValue, Config) ->
-    try re:run(ClaimValue, maps:get(pattern, Config)) of
+    %% The pattern has to match the whole value. re:run/3 on its own reports a
+    %% match anywhere in the subject, which is what a search wants and not what
+    %% a constraint does: [0-9]+ would accept abc123, and a pattern able to
+    %% match a zero length string, such as [0-9]*, would accept any value at
+    %% all. It is wrapped in ^(?: )$ here, non capturing so that the pattern's
+    %% own group numbers are kept. An iolist, so that a pattern held either as
+    %% a list or as a binary is wrapped without being converted first.
+    %%
+    %% notempty rejects a zero length match.
+    Pattern = ["^(?:", maps:get(pattern, Config), ")$"],
+    try re:run(ClaimValue, Pattern, [notempty]) of
         {match, _} -> ok;
         nomatch -> {error, <<"Value does not match pattern">>}
     catch
@@ -1283,6 +1293,34 @@ custom_claims_validation_test() ->
                                    #{type => string,
                                      pattern => ".*",
                                      mandatory => true}))
+    ].
+
+custom_string_claim_pattern_test_() ->
+    Check = fun(Pattern, Value) ->
+                    validate_custom_string_claim(Value, #{pattern => Pattern})
+            end,
+    [%% A pattern matching only part of the value does not accept it.
+     ?_assertMatch({error, _}, Check(<<"[0-9]+">>, <<"abc123">>)),
+     ?_assertMatch({error, _}, Check(<<"admin|ro">>, <<"administrator">>)),
+     %% Nor does one that can match a zero length string, which reports a
+     %% match at every position of every value.
+     ?_assertMatch({error, _}, Check(<<"[0-9]*">>, <<"abc">>)),
+     ?_assertMatch({error, _}, Check(<<"[0-9]*">>, <<"' OR 1=1">>)),
+     %% notempty: a claim present with an empty value is not a match.
+     ?_assertMatch({error, _}, Check(<<".*">>, <<>>)),
+     %% A value the pattern matches whole is accepted, whether or not the
+     %% operator anchored the pattern themselves.
+     ?_assertEqual(ok, Check(<<"[0-9]+">>, <<"123">>)),
+     ?_assertEqual(ok, Check(<<"^[0-9]+$">>, <<"123">>)),
+     %% Each branch of a top level alternation is anchored, not just the
+     %% first and the last.
+     ?_assertEqual(ok, Check(<<"admin|ro">>, <<"ro">>)),
+     %% A pattern is wrapped whether it is held as a list or as a binary.
+     ?_assertEqual(ok, Check("(admin|user)", <<"user">>)),
+     ?_assertMatch({error, _}, Check("(admin|user)", <<"superuser">>)),
+     %% A pattern that does not compile is an error, not a crash.
+     ?_assertEqual({error, <<"Invalid regex pattern">>},
+                   Check(<<"[">>, <<"abc">>))
     ].
 
 -endif.
