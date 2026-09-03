@@ -200,7 +200,8 @@ perform_loading_task(TaskId, Sample, Bucket, Quota, CacheDir, BucketState) ->
         case is_http(Sample) of
             true ->
                 {Sample,
-                 ["--http-cache-directory", CacheDir]};
+                 ["--http-cache-directory", CacheDir,
+                  "--block-private-ip-download"]};
             false ->
                 {"file://" ++
                      filename:join([BinDir, "..", "samples",
