@@ -296,8 +296,8 @@ errors(indexer_diverging_replicas) ->
 errors(indexer_lost_replicas) ->
     "Lost index replicas have been detected. Some index partitions have fewer "
     "replicas than expected. Please identify the affected indexes with GET "
-    "on indexer endpoint /api/v1/stats/getLostReplica and consider "
-    "rebuilding them to resolve this";
+    "/pools/default/stats/range/index_partn_num_lost_replicas and "
+    "consider rebuilding them to resolve this";
 errors(xdcr_replication_deleted) ->
     "Warning: The XDCR replication link between the local bucket ~s and the "
     "remote bucket ~s on cluster UUID ~s has been removed. Data is no longer "
