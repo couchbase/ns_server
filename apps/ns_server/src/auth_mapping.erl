@@ -11,8 +11,8 @@
 %% Couchbase identities using configurable regex rules.
 %%
 %% Each mapping rule consists of a pattern regex and a transformation template.
-%% The pattern is applied to the input value, and if it matches, the template
-%% is applied to the input value to produce the output value.
+%% The pattern has to match the whole input value, and if it does, the
+%% template is expanded to produce the output value.
 %%
 %% For example, the rule "(.*)@example.com cb-\\1" will map any email
 %% address ending in @example.com to cb-<token preceding @example.com>.
@@ -79,12 +79,17 @@ validate_mapping_rule(RuleStr) ->
         {ok, _} ->
             case string:split(Trimmed, " ", leading) of
                 [Pattern, Template] ->
+                    Backreference = re:run(Template, "\\\\g"),
                     case re:run(Template, "\\s") of
                         {match, _} ->
                             {error, "Mapping rule template must not contain "
                              "whitespace, since user, group and role names "
                              "cannot. To match whitespace in the value being "
                              "mapped, use \\s in the pattern"};
+                        nomatch when Backreference =/= nomatch ->
+                            {error, "Mapping rule template must name a "
+                             "capture group as \\1 to \\9. The \\g and \\g{} "
+                             "spellings are not supported"};
                         nomatch ->
                             %% Validate the pattern separately.
                             case re:compile(Pattern) of
@@ -105,24 +110,56 @@ validate_mapping_rule(RuleStr) ->
     end.
 
 %% @doc Applies a single regex mapping rule
-%% A mapping rule is a string of the form "pattern template" where pattern is
-%% a regex pattern to match on the input value and template is a replacement
-%% template string, separated by a single space. The template is an re:replace
-%% replacement rather than a regex, so it understands capture group references
-%% only. Escapes such as \s or \x20 are not interpreted there and yield the
-%% literal characters that follow the backslash.
-%% For example, the rule "(.*)@example.com cb-\\1" will map any email
-%% address ending in @example.com to cb-<token preceding @example.com>.
+%% A mapping rule is a string of the form "pattern template", split on the
+%% first space. For example the rule "(.*)@example.com cb-\\1" maps any
+%% address at example.com to cb- followed by the part before the @.
+%%
+%% The pattern has to match the whole value. It is wrapped in ^(?: )$ before
+%% compiling, so a rule cannot match a fragment of a name and map it as
+%% though it had matched all of it. The group is non capturing, which keeps
+%% the pattern's own group numbers.
+%%
+%% The template is expanded here rather than handed to re:replace/4, so it
+%% means one thing only: \1 to \9 name a capture group of the pattern, a
+%% backslash before any other character yields that character, and anything
+%% else is a literal. re:replace/4 interprets more than that. It gives & the
+%% whole match and accepts \gN and \g{N} as further spellings of a capture,
+%% neither of which a name wants, and it substitutes into the value rather
+%% than building a result, so whatever the pattern did not match is carried
+%% into the name. Expanding the template here removes all of it and leaves
+%% re:run/3 answering only whether the value matched and what it captured,
+%% which is the part of re that does not vary with the regex engine
+%% underneath it.
 -spec apply_mapping_rule(Value :: input_value(), Rule :: mapping_rule()) ->
           string() | nomatch.
 apply_mapping_rule(Value, {Pattern, Template}) ->
-    {ok, MP} = re:compile(Pattern),
-    case re:run(Value, MP, [{capture, none}, notempty]) of
-        match ->
-            re:replace(Value, MP, Template, [global, {return, list}]);
+    {ok, MP} = re:compile("^(?:" ++ Pattern ++ ")$"),
+    case re:run(Value, MP, [{capture, all_but_first, list}, notempty]) of
+        {match, Captures} ->
+            expand_template(Template, Captures);
         nomatch ->
             nomatch
     end.
+
+-spec expand_template(Template :: string(), Captures :: [string()]) ->
+          string().
+expand_template([$\\, N | Rest], Captures) when N >= $1, N =< $9 ->
+    capture(N - $0, Captures) ++ expand_template(Rest, Captures);
+expand_template([$\\, C | Rest], Captures) ->
+    [C | expand_template(Rest, Captures)];
+expand_template([C | Rest], Captures) ->
+    [C | expand_template(Rest, Captures)];
+expand_template([], _Captures) ->
+    [].
+
+%% A template cannot name a group the pattern does not have, since
+%% validate_mapping_rule/1 rejects the rule. Tolerate it rather than fail an
+%% authentication, should a rule ever reach here without being validated.
+-spec capture(N :: pos_integer(), Captures :: [string()]) -> string().
+capture(N, Captures) when N =< length(Captures) ->
+    lists:nth(N, Captures);
+capture(_N, _Captures) ->
+    "".
 
 %% @doc Maps a single value (user or a single group or role)
 -spec map_value(Type :: mapped_type(),
@@ -305,6 +342,60 @@ validate_mapping_rule_test_() ->
                    validate_mapping_rule("^my[[:space:]]group$ cb-admins")),
      ?_assertEqual({value, {"(.*)\\s(.*)", "cb-\\1-\\2"}},
                    validate_mapping_rule("(.*)\\s(.*) cb-\\1-\\2"))
+    ].
+
+whole_value_mapping_test_() ->
+    Map = fun(P, T, V) -> apply_mapping_rule(V, {P, T}) end,
+    [
+     %% A rule whose pattern is anchored and whose template holds only
+     %% literals and \\1 to \\9 is unaffected by any of it.
+     ?_assertEqual("alice", Map("^(.*)$", "\\1", "alice")),
+     ?_assertEqual("cb-alice", Map("^(.*)@x$", "cb-\\1", "alice@x")),
+     ?_assertEqual("ro_admin", Map("^readonly$", "ro_admin", "readonly")),
+     ?_assertEqual("g-db", Map("^a(.)c(.)e$", "g-\\2\\1", "abcde")),
+
+     %% A nullable pattern matched a second time on the empty string past
+     %% the end of the value, expanding the template once per match.
+     ?_assertEqual("ui_access", Map("(.*)", "ui_access", "alice")),
+     ?_assertEqual("ui_access", Map(".*", "ui_access", "alice")),
+
+     %% notempty still matters once the pattern is anchored: .* matches an
+     %% empty value emptily, and a rule must not map nothing to a name.
+     ?_assertEqual(nomatch, Map("^(.*)$", "ui_access", "")),
+
+     %% A pattern matching only part of the value no longer maps it. The
+     %% remainder used to be carried into the name.
+     ?_assertEqual(nomatch, Map("^admin", "super", "admins")),
+     ?_assertEqual(nomatch, Map("browser", "ui_access", "browsertest")),
+     ?_assertEqual(nomatch, Map("[a-z]*", "ui_access", "alice@example.com")),
+
+     %% An alternation is anchored on every branch, not just the first.
+     ?_assertEqual(nomatch, Map("admin|ro", "ro_admin", "administrator")),
+     ?_assertEqual("ro_admin", Map("admin|ro", "ro_admin", "admin")),
+
+     %% Replacing every occurrence within the value is not a mapping, and
+     %% no longer happens.
+     ?_assertEqual(nomatch, Map("-", "_", "a-b-c")),
+
+     %% & is a literal. re:replace/4 gave it the whole match, which turned a
+     %% name such as R&D into R<value>D.
+     ?_assertEqual("R&D", Map("^(.*)$", "R&D", "alice")),
+     ?_assertEqual("cb-&", Map("^(.*)$", "cb-\\&", "alice")),
+
+     %% A backslash before anything that is not 1 to 9 yields the character,
+     %% as it did before.
+     ?_assertEqual("cb-0", Map("^(.*)$", "cb-\\0", "alice")),
+     ?_assertEqual("cb-s", Map("^(.*)$", "cb-\\s", "alice"))
+    ].
+
+%% A template names a capture group one way, so the rule is rejected if it
+%% names one the pattern does not have or spells the reference differently.
+template_reference_test_() ->
+    [
+     ?_assertMatch({value, _}, validate_mapping_rule("^(.*)$ cb-\\1")),
+     ?_assertMatch({error, _}, validate_mapping_rule("^(.*)$ cb-\\2")),
+     ?_assertMatch({error, _}, validate_mapping_rule("^(.*)$ cb-\\g1")),
+     ?_assertMatch({error, _}, validate_mapping_rule("^(.*)$ cb-\\g{1}"))
     ].
 
 mapping_test_() ->
