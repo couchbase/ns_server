@@ -789,12 +789,9 @@ maybe_grab_heartbeat_info() ->
         true ?= lists:member(kv, ns_cluster_membership:node_services(node())),
         [{fusion_stats,
           [{buckets,
-            lists:filtermap(
-              fun ({BucketName, BucketConfig}) ->
-                      maybe_grab_heartbeat_info(
-                        BucketName,
-                        ns_bucket:get_fusion_state(BucketConfig))
-              end, ns_bucket:get_buckets())}]}]
+            [grab_bucket_heartbeat_info(
+               BucketName, ns_bucket:get_fusion_state(BucketConfig)) ||
+                {BucketName, BucketConfig} <- ns_bucket:get_buckets()]}]}]
     else
         _ -> []
     end.
@@ -875,15 +872,17 @@ node_uploaders_map(Enumerated) ->
               maps:update_with(Node, [VB | _], [VB], Acc)
       end, #{}, Enumerated).
 
-%% this will be fed to lists:filtermap
-maybe_grab_heartbeat_info(_BucketName, disabled) ->
-    false;
-maybe_grab_heartbeat_info(_BucketName, stopped) ->
-    false;
-maybe_grab_heartbeat_info(BucketName, State) ->
+grab_bucket_heartbeat_info(BucketName, State) ->
+    {BucketName, [{state, State} | grab_uploaders_stats(BucketName, State)]}.
+
+grab_uploaders_stats(_BucketName, disabled) ->
+    [];
+grab_uploaders_stats(_BucketName, stopped) ->
+    [];
+grab_uploaders_stats(BucketName, State) ->
     case ns_bucket:get_fusion_uploaders(BucketName) of
         not_found ->
-            false;
+            [];
         Uploaders ->
             ThisNodeUploaders = node_uploaders(node(), State, Uploaders),
             case ns_memcached:get_fusion_uploaders_state(BucketName) of
@@ -892,12 +891,12 @@ maybe_grab_heartbeat_info(BucketName, State) ->
                                  node(), BucketName,
                                  maps:from_list(VBucketsInfo),
                                  ThisNodeUploaders),
-                    {true, {BucketName, maps:to_list(StatsMap)}};
+                    maps:to_list(StatsMap);
                 Error ->
                     ?log_debug(
                        "Failure to retrieve uploaders stats for bucket ~p, "
                        "Error:~p", [BucketName, Error]),
-                    false
+                    []
             end
     end.
 
