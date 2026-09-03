@@ -55,17 +55,11 @@
           opaque = dict:new(),
           checker_pid,
           change_counter = 0,
-          xdcr_replications = #{},
-          crl_cache_dirty = false
+          xdcr_replications = #{}
          }).
 
 %% Amount of time to wait between state checks (ms)
 -define(SAMPLE_RATE, ?get_timeout(sample_rate, 60000)).
-
-%% Upper bound on how long we cache CRL alert results before re-gathering
-%% status from every node (s)
--define(CRL_CHECK_MAX_INTERVAL_SEC,
-        ?get_timeout(crl_check_interval_sec, 60 * 60 )).
 
 %% Per-node timeout for the get_status RPC issued during the CRL check
 %% (ms).
@@ -130,7 +124,7 @@
 
 -export([start_link/0, stop/0, local_alert/2, global_alert/2,
          fetch_alerts/0, consume_alerts/1, reset/0,
-         filter_alerts/1, notify_crl_change/0]).
+         filter_alerts/1]).
 
 -type alert_key() :: atom() | {atom(), any()}.
 
@@ -381,19 +375,6 @@ filter_alerts(FilterFun) ->
 stop() ->
     gen_server:cast(?MODULE, stop).
 
--spec notify_crl_change() -> ok.
-notify_crl_change() ->
-    try mb_master:master_node() of
-        Master when Master =/= undefined ->
-            gen_server:cast({?SERVER, Master}, invalidate_crl_cache);
-        _ ->
-            ?log_debug("No master node found")
-    catch
-        T:E ->
-            ?log_debug("Failed to notify master of CRL change: ~p:~p", [T, E])
-    end,
-    ok.
-
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
@@ -519,8 +500,6 @@ handle_cast({update_config_key,
             #state{xdcr_replications = Rs} = State) ->
     NewRs = add_xdcr_replication(Key, Value, Rs),
     {noreply, State#state{xdcr_replications = NewRs}};
-handle_cast(invalidate_crl_cache, State) ->
-    {noreply, State#state{crl_cache_dirty = true}};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -535,14 +514,13 @@ handle_info(check_alerts, #state{checker_pid = Pid} = State) ->
         true ->
             {noreply, State};
         _ ->
-            State1 = maybe_clear_crl_cache(State),
             Self = self(),
             CheckerPid = erlang:spawn_link(fun () ->
-                                                   NewOpaque = do_handle_check_alerts_info(State1),
+                                                   NewOpaque = do_handle_check_alerts_info(State),
                                                    Self ! {merge_opaque_from_checker, NewOpaque}
                                            end),
-            {noreply, State1#state{checker_pid = CheckerPid,
-                                   xdcr_replications = #{}}}
+            {noreply, State#state{checker_pid = CheckerPid,
+                                  xdcr_replications = #{}}}
     end;
 
 handle_info({merge_opaque_from_checker, NewOpaque},
@@ -562,12 +540,6 @@ do_handle_check_alerts_info(#state{history=Hist, opaque=Opaque,
     StatsOrddict = orddict:from_list([{K, orddict:from_list(V)}
                                           || {K, V} <- Stats]),
     check_alerts(dict:store(xdcr_replications, Rs, Opaque), Hist, StatsOrddict).
-
-maybe_clear_crl_cache(#state{crl_cache_dirty = true, opaque = Opaque} = State) ->
-    State#state{opaque = dict:erase(crls_check, Opaque),
-                crl_cache_dirty = false};
-maybe_clear_crl_cache(#state{crl_cache_dirty = false} = State) ->
-    State.
 
 terminate(_Reason, _State) ->
     ok.
@@ -1027,9 +999,10 @@ check(xdcr_certs, Opaque, _History, _Stats) ->
 check(crls, Opaque, _History, _Stats) ->
     case mb_master:master_node() == node() andalso
         cluster_compat_mode:is_cluster_totoro() of
-        true -> check_crls(Opaque);
-        false -> Opaque
-    end;
+        true -> check_crls();
+        false -> ok
+    end,
+    Opaque;
 
 %% @doc check if the mutation history size is over the alert threshold for at
 %% least one vbucket of a bucket
@@ -1423,43 +1396,20 @@ calculate_xdcr_cert_alerts(#{trusted_certs := TrustedCerts,
     {ClientAlerts, ClientRecheckTime} = AlertsFun(ClientCerts, client_cert),
     {min(CARecheckTime, ClientRecheckTime), CAAlerts ++ ClientAlerts}.
 
-check_crls(Opaque) ->
+%% Every node answers this from its cache, decoding nothing, so asking all of
+%% them costs one small RPC each - cheap enough to do on every check.  Working
+%% out when to ask next instead would mean trusting an answer to stay true
+%% until then, and a CRL stops being usable for reasons no schedule predicts:
+%% its issuing CA is no longer trusted, or a node loaded a bad one.
+check_crls() ->
     Now = calendar:datetime_to_gregorian_seconds(calendar:universal_time()),
     WarningDays = cb_crl_manager:crl_expiration_warning_days(),
     Fraction = cb_crl_manager:crl_warning_validity_fraction(),
-    {NewOpaque, Aggregated} =
-        case dict:find(crls_check, Opaque) of
-            %% WarningDays and Fraction are bound above, so this matches only
-            %% while the configured warning window is unchanged; a change forces
-            %% a re-gather so the new threshold takes effect on the next check.
-            {ok, #{warning_days := WarningDays, validity_fraction := Fraction,
-                   retry_time := RetryTime, result := Res}}
-              when Now < RetryTime ->
-                {Opaque, Res};
-            _ ->
-                {RecheckTime, Agg} = gather_crl_alerts(Now, WarningDays,
-                                                       Fraction),
-                {dict:store(crls_check,
-                            #{warning_days      => WarningDays,
-                              validity_fraction => Fraction,
-                              retry_time   => crl_retry_time(RecheckTime, Now),
-                              result       => Agg},
-                            Opaque), Agg}
-        end,
-
-    fire_crl_alerts(Aggregated),
-    NewOpaque.
-
-crl_retry_time(infinity, Now) ->
-    Now + ?CRL_CHECK_MAX_INTERVAL_SEC;
-crl_retry_time(RecheckTime, Now) ->
-    min(RecheckTime, Now + ?CRL_CHECK_MAX_INTERVAL_SEC).
+    fire_crl_alerts(gather_crl_alerts(Now, WarningDays, Fraction)).
 
 %% Gather CRL status from every node and aggregate by CRL content (checksum).
 %% Asks for the cached status, so no node decodes a CRL for this check; each
 %% one re-verifies only when the trusted CAs have changed under it.
-%% Returns {RecheckTime, Aggregated} where RecheckTime is the earliest time any
-%% CRL could change alert state (or 'infinity' if none can on their own).
 gather_crl_alerts(Now, WarningDays, Fraction) ->
     WarningSeconds = WarningDays * 24 * 60 * 60,
 
@@ -1479,21 +1429,17 @@ gather_crl_alerts(Now, WarningDays, Fraction) ->
                          ?CRL_STATUS_CALL_TIMEOUT)
             end, Nodes, infinity),
 
-    {Aggregated, RecheckTime} =
-        lists:foldl(
-          fun ({Node, #{files := Files}}, Acc) ->
-                  aggregate_node_crls(Node, Files, Now, WarningSeconds,
-                                      Fraction, Acc);
-              ({Node, Error}, Acc) ->
-                  ?log_debug("Skipping CRL alerts for node ~p: ~p",
-                             [Node, Error]),
-                  Acc
-          end, {#{}, infinity}, lists:zip(Nodes, Results)),
+    lists:foldl(
+      fun ({Node, #{files := Files}}, Acc) ->
+              aggregate_node_crls(Node, Files, Now, WarningSeconds,
+                                  Fraction, Acc);
+          ({Node, Error}, Acc) ->
+              ?log_debug("Skipping CRL alerts for node ~p: ~p",
+                         [Node, Error]),
+              Acc
+      end, #{}, lists:zip(Nodes, Results)).
 
-    {RecheckTime, Aggregated}.
-
-%% Fold one node's per-file CRL status into the {by-checksum map, recheck time}
-%% accumulator
+%% Fold one node's per-file CRL status into the by-checksum map
 aggregate_node_crls(Node, Files, Now, WarningSeconds, Fraction, Acc) ->
     lists:foldl(
       fun (#{filename := Filename, entries := Entries}, Acc1) ->
@@ -1509,7 +1455,7 @@ aggregate_node_crls(Node, Files, Now, WarningSeconds, Fraction, Acc) ->
 add_crl_entry(Node, Filename,
               #{checksum := Checksum,
                 next_update := NextUpdate} = Entry,
-              Now, WarningSeconds, Fraction, {Map, Recheck})
+              Now, WarningSeconds, Fraction, Map)
   when Checksum =/= <<>> ->
     NextUpdateSecs =
         case NextUpdate of
@@ -1531,11 +1477,10 @@ add_crl_entry(Node, Filename,
                 none
         end,
 
-    {merge_crl_alert(Entry, Filename, State, Node, Map),
-     min(Recheck, crl_entry_recheck(State, NextUpdateSecs, EffectiveWarning))};
+    merge_crl_alert(Entry, Filename, State, Node, Map);
 add_crl_entry(_Node, _Filename, _Entry, _Now, _WarningSeconds, _Fraction,
-              Acc) ->
-    Acc.
+              Map) ->
+    Map.
 
 %% The warning window applied to a single CRL entry: the configured window,
 %% capped at 1/Fraction of the entry's own validity period
@@ -1556,17 +1501,6 @@ effective_crl_warning(#{this_update := ThisUpdate}, NextUpdateSecs,
     min(WarningSeconds, ValiditySeconds div Fraction);
 effective_crl_warning(_Entry, _NextUpdateSecs, WarningSeconds, _Fraction) ->
     WarningSeconds.
-
-%% Earliest time an entry could change alert state as time passes.
-crl_entry_recheck(expires_soon, NextUpdateSecs, _WarningSeconds) ->
-    %% Flips to expired at next_update.
-    NextUpdateSecs;
-crl_entry_recheck(none, NextUpdateSecs, WarningSeconds)
-  when is_integer(NextUpdateSecs) ->
-    %% Enters the warning window WarningSeconds before next_update.
-    NextUpdateSecs - WarningSeconds;
-crl_entry_recheck(_State, _NextUpdateSecs, _WarningSeconds) ->
-    infinity.
 
 merge_crl_alert(_Entry, _Filename, none=_State, _Node, Map) ->
     Map;
@@ -2205,12 +2139,9 @@ all_test_() ->
      [fun basic_test__/0,
       fun check_kv_rebalance_progress_test__/0,
       fun check_index_rebalance_progress_test__/0,
-      fun crl_entry_recheck_test__/0,
-      fun crl_retry_time_test__/0,
       fun crl_aggregation_test__/0,
       fun crl_short_lived_warning_test__/0,
-      fun crl_format_test__/0,
-      fun maybe_clear_crl_cache_test__/0]}.
+      fun crl_format_test__/0]}.
 
 test_setup() ->
     ok = meck:new(basic_test_modules(), [passthrough]),
@@ -2367,31 +2298,6 @@ check_index_rebalance_progress_test__() ->
                 5, {<<>>, 0},
                 4, Opaque6).
 
-%% The recheck time for a single CRL entry, mirroring the cert warning logic.
-crl_entry_recheck_test__() ->
-    Day = 24 * 60 * 60,
-    Warn = 3 * Day,
-    %% An expired CRL never transitions on its own.
-    ?assertEqual(infinity, crl_entry_recheck(expired, 1000, Warn)),
-    %% One already in the warning window flips to expired at next_update.
-    ?assertEqual(5000, crl_entry_recheck(expires_soon, 5000, Warn)),
-    %% A healthy one enters the warning window Warn seconds before next_update.
-    ?assertEqual(5000 - Warn, crl_entry_recheck(none, 5000, Warn)),
-    %% No next_update means there is nothing time-based to recheck.
-    ?assertEqual(infinity, crl_entry_recheck(none, undefined, Warn)).
-
-%% The recheck time is turned into an absolute deadline, capped so we still
-%% re-gather periodically.
-crl_retry_time_test__() ->
-    Now = 1000000,
-    Cap = Now + ?CRL_CHECK_MAX_INTERVAL_SEC,
-    %% Nothing can transition on its own -> capped fallback.
-    ?assertEqual(Cap, crl_retry_time(infinity, Now)),
-    %% A near transition is used verbatim.
-    ?assertEqual(Now + 60, crl_retry_time(Now + 60, Now)),
-    %% A distant transition is clamped to the cap.
-    ?assertEqual(Cap, crl_retry_time(Now + 100 * Cap, Now)).
-
 %% Aggregation dedups by checksum across nodes/files, keeps only expired and
 %% expiring CRLs, and reports the soonest possible transition as the recheck.
 crl_aggregation_test__() ->
@@ -2431,10 +2337,8 @@ crl_aggregation_test__() ->
     %% Same expired CRL (checksum c1) present on a second node.
     StatusB = [File(<<"expired.crl">>, [Expired])],
 
-    Acc1 = aggregate_node_crls('n1@host', StatusA, Now, Warn, Fraction,
-                               {#{}, infinity}),
-    {Map, Recheck} = aggregate_node_crls('n2@host', StatusB, Now, Warn,
-                                         Fraction, Acc1),
+    Acc1 = aggregate_node_crls('n1@host', StatusA, Now, Warn, Fraction, #{}),
+    Map = aggregate_node_crls('n2@host', StatusB, Now, Warn, Fraction, Acc1),
 
     %% Only expired and expiring CRLs yield alert entries; the healthy one does
     %% not.
@@ -2449,12 +2353,7 @@ crl_aggregation_test__() ->
 
     ?assertMatch(#{state := expires_soon, crl_number := 3}, C2),
     ?assertEqual(['n1@host'], maps:get(nodes, C2)),
-    ?assertEqual([<<"soon.crl">>], maps:get(files, C2)),
-
-    %% The soonest transition drives the recheck: the expiring CRL becomes
-    %% expired at its next_update (Now + 1 day), sooner than the healthy CRL
-    %% entering the warning window.
-    ?assertEqual(Now + Day, Recheck).
+    ?assertEqual([<<"soon.crl">>], maps:get(files, C2)).
 
 %% A CRL whose validity period is shorter than the configured warning window
 %% (e.g. a delta CRL re-issued every 24h) must not warn for its entire life:
@@ -2482,59 +2381,37 @@ crl_short_lived_warning_test__() ->
     AddEntry =
         fun (Frac, E) ->
                 add_crl_entry('n1@host', <<"f.crl">>, E, Now, Warn, Frac,
-                              {#{}, infinity})
+                              #{})
         end,
 
     %% A 24h delta CRL half-way through its life: inside the configured 3-day
     %% window, but healthy under the capped window (24h/4 = 6h).
-    {FreshMap, FreshRecheck} = AddEntry(Fraction, Entry(Now - 12 * Hour,
-                                                        Now + 12 * Hour)),
-    ?assertEqual(#{}, FreshMap),
-    %% It enters the capped window 6h before next_update.
-    ?assertEqual(Now + 6 * Hour, FreshRecheck),
+    ?assertEqual(#{}, AddEntry(Fraction, Entry(Now - 12 * Hour,
+                                               Now + 12 * Hour))),
 
     %% The same CRL once its daily replacement is overdue: 3h left of 24h,
     %% inside the capped 6h window.
-    {OverdueMap, OverdueRecheck} = AddEntry(Fraction, Entry(Now - 21 * Hour,
-                                                            Now + 3 * Hour)),
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, OverdueMap),
-    ?assertEqual(Now + 3 * Hour, OverdueRecheck),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
+                 AddEntry(Fraction, Entry(Now - 21 * Hour, Now + 3 * Hour))),
 
     %% A long-lived CRL keeps the configured window: a 14-day validity period
     %% caps the window at 3.5 days, so 2 days remaining warns as before.
-    {BaseMap, _} = AddEntry(Fraction, Entry(Now - 12 * Day, Now + 2 * Day)),
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, BaseMap),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
+                 AddEntry(Fraction, Entry(Now - 12 * Day, Now + 2 * Day))),
 
     %% Without a thisUpdate the configured window applies as is.
-    {NoTUMap, _} = AddEntry(Fraction, Entry(undefined, Now + 2 * Day)),
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, NoTUMap),
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
+                 AddEntry(Fraction, Entry(undefined, Now + 2 * Day))),
 
     %% A fraction of 0 disables the cap: the fresh 24h delta CRL from above is
     %% no longer healthy — the full 3-day window applies, so it warns for its
     %% entire life just as it would without the validity-period cap.
-    {DisabledMap, DisabledRecheck} = AddEntry(0, Entry(Now - 12 * Hour,
-                                                       Now + 12 * Hour)),
-    ?assertMatch(#{<<"c">> := #{state := expires_soon}}, DisabledMap),
-    %% Already inside the window, so it can only change state at next_update.
-    ?assertEqual(Now + 12 * Hour, DisabledRecheck).
+    ?assertMatch(#{<<"c">> := #{state := expires_soon}},
+                 AddEntry(0, Entry(Now - 12 * Hour, Now + 12 * Hour))).
 
 crl_format_test__() ->
     ?assertEqual("unknown", format_crl_number(undefined)),
     ?assertEqual("42", format_crl_number(42)),
     ?assertEqual("a.crl, b.crl",
                  format_crl_files([<<"b.crl">>, <<"a.crl">>])).
-
-%% A pending CRL-change notification drops the cached result and clears the
-%% flag; without one the cache and flag are left untouched.
-maybe_clear_crl_cache_test__() ->
-    Cached = dict:store(crls_check, #{retry_time => 1, result => #{}},
-                        dict:new()),
-
-    Dirty = #state{opaque = Cached, crl_cache_dirty = true},
-    Cleared = maybe_clear_crl_cache(Dirty),
-    ?assertEqual(false, Cleared#state.crl_cache_dirty),
-    ?assertEqual(error, dict:find(crls_check, Cleared#state.opaque)),
-
-    Clean = #state{opaque = Cached, crl_cache_dirty = false},
-    ?assertEqual(Clean, maybe_clear_crl_cache(Clean)).
 -endif.

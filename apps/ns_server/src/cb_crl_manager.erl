@@ -1053,13 +1053,11 @@ crl_config_version(TrustedCAs, #state{config = Config} = State) ->
 
 %% Notify memcached and cbauth that CRL data has changed.
 %% Called after config changes, manual reload, and poll when files changed.
-%% Also notify the master's alert server so CRL expiry alerts pick up the new
-%% content
+%% The alert server is not told: it re-reads every node's status on each check.
 -spec notify_crl_consumers() -> ok.
 notify_crl_consumers() ->
     memcached_config_mgr:trigger_tls_config_push(),
     menelaus_cbauth:notify_crl_change(),
-    menelaus_web_alerts_srv:notify_crl_change(),
     ok.
 
 %% Every key added here must also be classified in crl_config_key_classes/0
