@@ -848,7 +848,7 @@ process_bucket_stats(Node, BucketName, VBucketsInfo, ThisNodeUploaders) ->
       fun ({VB, Term}, Acc) ->
               Key = << <<"vb_">>/binary, (integer_to_binary(VB))/binary >>,
               {VBStats} = maps:get(Key, VBucketsInfo,
-                                  {[<<"state">>, <<"disabled">>]}),
+                                   {[{<<"state">>, <<"disabled">>}]}),
               process_vbucket_stats(Node, BucketName, VB, VBStats, Term, Acc)
       end, #{}, ThisNodeUploaders).
 
