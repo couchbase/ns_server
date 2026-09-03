@@ -2682,13 +2682,24 @@ def assert_reload_crl(node, expected_status='active'):
 # =============================================================================
 
 
-def generate_root_ca():
-    """Return (cert_pem, key_pem) for a self-signed root CA."""
-    key = rsa.generate_private_key(
-        public_exponent=65537, key_size=2048, backend=default_backend())
+def generate_root_ca(key_pem=None, common_name='Test Root CA'):
+    """Return (cert_pem, key_pem) for a self-signed root CA.
+
+    Passing key_pem reissues a CA with an existing private key, which is what
+    a same-key CA rotation looks like: a different certificate (and a
+    different trusted-CA id on the cluster) that still verifies everything the
+    old one signed.
+    """
+    if key_pem is None:
+        key = rsa.generate_private_key(
+            public_exponent=65537, key_size=2048, backend=default_backend())
+    else:
+        key = serialization.load_pem_private_key(
+            key_pem.encode() if isinstance(key_pem, str) else key_pem,
+            password=None, backend=default_backend())
 
     name = x509.Name([
-        x509.NameAttribute(NameOID.COMMON_NAME, 'Test Root CA'),
+        x509.NameAttribute(NameOID.COMMON_NAME, common_name),
     ])
     now = datetime.datetime.utcnow()
     ski = x509.SubjectKeyIdentifier.from_public_key(key.public_key())

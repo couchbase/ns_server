@@ -28,7 +28,8 @@ from testsets.native_encryption_tests import create_secret, \
 from testsets.crl_tests import generate_root_ca, generate_crl, \
                                upload_crl_file, delete_crl_file, \
                                get_crl_files, load_multiple_cas, \
-                               set_allow_expired_crls
+                               set_allow_expired_crls, get_crl_status, \
+                               crl_file_statuses
 
 from testlib.mock_smtp_server import start_mock_smtp_server
 from testlib.test_tag_decorator import tag, Tag
@@ -46,15 +47,15 @@ class AlertTests(testlib.BaseTestSet):
     @staticmethod
     def requirements():
         return testlib.ClusterRequirements(
-            num_nodes=2,
-            num_connected=1,
+            num_nodes=3,
+            num_connected=2,
             include_services=[Service.KV, Service.BACKUP],
             afamily="ipv4",
             buckets=[{"name": "A",
                       "ramQuota": 128}])
 
     def setup(self):
-        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
+        self.reset_alerts()
 
         # Set alert check interval to 1s
         testlib.diag_eval(self.cluster,
@@ -87,6 +88,16 @@ class AlertTests(testlib.BaseTestSet):
         testlib.diag_eval(self.cluster,
                           "ns_config:delete({timeout,{menelaus_web_alerts_srv,"
                           "sample_rate}})")
+
+    def reset_alerts(self):
+        """Drop the queued alerts on every node.
+
+        A node ignores an alert key already in its own history, so clearing
+        only the node we read from would let one node's leftovers suppress a
+        re-raise that another node makes.
+        """
+        for node in self.cluster.connected_nodes:
+            testlib.diag_eval(node, "menelaus_web_alerts_srv:reset().")
 
     def test_teardown(self):
         # Clear captured emails after each test to ensure clean state for next
@@ -125,7 +136,7 @@ class AlertTests(testlib.BaseTestSet):
                               data={})
             testlib.wait_for_ejected_node(self.to_node())
 
-        testlib.diag_eval(self.cluster, "menelaus_web_alerts_srv:reset().")
+        self.reset_alerts()
 
     def setup_mock_email_server(self, smtp_host='127.0.0.1', smtp_port=None,
                                 sender='test_sender@example.com',
@@ -361,20 +372,6 @@ class AlertTests(testlib.BaseTestSet):
         ca_ids = load_multiple_cas(node, [ca_pem])
         return node, ca_pem, ca_key_pem, ca_ids
 
-    def _cleanup_crl(self, node, ca_ids):
-        """Remove any uploaded CRL files and the trusted CAs loaded for a
-        CRL alert test."""
-        for f in get_crl_files(node):
-            try:
-                delete_crl_file(node, f['filename'])
-            except Exception as e:
-                print(f"Failed to delete CRL file {f['filename']}: {e}")
-        for ca_id in ca_ids:
-            try:
-                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
-            except Exception as e:
-                print(f"Failed to delete trusted CA {ca_id}: {e}")
-
     # An uploaded CRL whose nextUpdate is within the warning window (default
     # 3 days) must raise a crl_expires_soon alert (pop-up + email). A CRL that
     # is comfortably in date must not.
@@ -392,10 +389,7 @@ class AlertTests(testlib.BaseTestSet):
         this_update = datetime.now(timezone.utc) - timedelta(days=30)
         filename = f'alert_{testlib.random_str(8)}.pem'
         # Regexps match the msg surfaced in /pools/default and the email body.
-        soon_re = (
-            r"Certificate Revocation List \(CRL\) issued by 'CN=Test Root CA' "
-            r"\(CRL number: \d+, file\(s\): " + re.escape(filename) +
-            r"\) will expire at .+ \(present on node\(s\): .+\)\.")
+        soon_re = self._crl_alert_re(filename, r"will expire at .+")
         any_crl_re = (r"Certificate Revocation List \(CRL\) issued by "
                       r"'CN=Test Root CA' ")
         try:
@@ -407,6 +401,7 @@ class AlertTests(testlib.BaseTestSet):
                 ca_pem, ca_key_pem, [], this_update=this_update,
                 next_update=datetime.now(timezone.utc) + timedelta(days=60))
             upload_crl_file(node, filename, healthy_pem)
+            self._wait_crl_same_everywhere(filename)
 
             # Give the alert checker a chance to run, then confirm no CRL
             # alert has fired for our CA.
@@ -419,6 +414,11 @@ class AlertTests(testlib.BaseTestSet):
                 ca_pem, ca_key_pem, [], this_update=this_update,
                 next_update=datetime.now(timezone.utc) + timedelta(hours=12))
             upload_crl_file(node, filename, soon_pem)
+            # This CRL alerts the moment it is seen, so it may already have
+            # done so from the node that took the upload.  Drop that alert
+            # once both nodes hold it; the next check gathers from scratch.
+            self._wait_crl_same_everywhere(filename)
+            self.reset_alerts()
 
             testlib.poll_for_condition(
                 lambda: assert_alerts(self.cluster, [soon_re],
@@ -430,7 +430,7 @@ class AlertTests(testlib.BaseTestSet):
             testlib.post_succ(
                 self.cluster, "/settings/alerts/limits",
                 data={"crlWarningValidityFraction": str(prev_fraction)})
-            self._cleanup_crl(node, ca_ids)
+            cleanup_crl(node, ca_ids)
 
     # An uploaded CRL whose nextUpdate is in the past can no longer be used, so
     # it must raise a crl_unusable alert (pop-up + email) naming expiry as the
@@ -475,9 +475,122 @@ class AlertTests(testlib.BaseTestSet):
                 msg="wait for CRL expired alert")
         finally:
             try:
-                self._cleanup_crl(node, ca_ids)
+                cleanup_crl(node, ca_ids)
             finally:
                 set_allow_expired_crls(self.cluster, False)
+
+    # A loaded CRL whose issuing CA is removed from the trust store can no
+    # longer be verified, so it must raise the same "no longer usable" alert an
+    # expired CRL does - naming the untrusted issuer as the reason (MB-73655).
+    def crl_untrusted_alert_test(self):
+        node, ca_pem, ca_key_pem, ca_ids = self._setup_crl_ca()
+        filename = f'alert_{testlib.random_str(8)}.pem'
+        untrusted_re = self._crl_alert_re(
+            filename,
+            r"can no longer be used: its issuing CA is no longer trusted")
+        any_crl_re = (r"Certificate Revocation List \(CRL\) issued by "
+                      r"'CN=Test Root CA' ")
+        try:
+            # A CRL that stays comfortably in date for the whole test, so
+            # nothing but the trust change can make it alert.
+            crl_pem = generate_crl(
+                ca_pem, ca_key_pem, [],
+                this_update=datetime.now(timezone.utc) - timedelta(days=30),
+                next_update=datetime.now(timezone.utc) + timedelta(days=60))
+            upload_crl_file(node, filename, crl_pem)
+            # Nothing may alert before every node holds the CRL: the first
+            # message raised for an alert key is the one that sticks, so one
+            # raised early would name a single node for good.
+            self._wait_crl_same_everywhere(filename)
+
+            time.sleep(alert_check_interval_s + 1)
+            assert_no_alerts(self.cluster, [any_crl_re])
+
+            for ca_id in ca_ids:
+                testlib.delete_succ(
+                    node, f'/pools/default/trustedCAs/{ca_id}',
+                    expected_code=204)
+            ca_ids = []
+
+            testlib.poll_for_condition(
+                lambda: assert_alerts(self.cluster, [untrusted_re],
+                                      verify_email=True,
+                                      mock_smtp_server=self.mock_smtp_server),
+                sleep_time=1, timeout=120, verbose=True, retry_on_assert=True,
+                msg="wait for CRL untrusted alert")
+        finally:
+            cleanup_crl(node, ca_ids)
+
+    # Rotating a CA - adding a reissued certificate carrying the same key, then
+    # removing the old one - leaves every CRL it signed verifiable, so it must
+    # not alert. The cluster gives the reissued certificate a new trusted-CA
+    # id, so nothing that keys on that id can tell this apart from the removal
+    # above; the CA identity we cache keys on the key instead.
+    def crl_ca_rotation_no_alert_test(self):
+        node, ca_pem, ca_key_pem, ca_ids = self._setup_crl_ca()
+        filename = f'alert_{testlib.random_str(8)}.pem'
+        any_crl_re = (r"Certificate Revocation List \(CRL\) issued by "
+                      r"'CN=Test Root CA' ")
+        try:
+            crl_pem = generate_crl(
+                ca_pem, ca_key_pem, [],
+                this_update=datetime.now(timezone.utc) - timedelta(days=30),
+                next_update=datetime.now(timezone.utc) + timedelta(days=60))
+            upload_crl_file(node, filename, crl_pem)
+
+            time.sleep(alert_check_interval_s + 1)
+            assert_no_alerts(self.cluster, [any_crl_re])
+
+            # Add the reissued CA before removing the old one, so the CRL is
+            # verifiable throughout.
+            reissued_pem, _ = generate_root_ca(key_pem=ca_key_pem)
+            new_ids = load_multiple_cas(node, [reissued_pem])
+            for ca_id in ca_ids:
+                testlib.delete_succ(
+                    node, f'/pools/default/trustedCAs/{ca_id}',
+                    expected_code=204)
+            ca_ids = new_ids
+
+            # Two full check intervals, so a spurious alert has every chance to
+            # fire before we conclude none did.
+            time.sleep(2 * alert_check_interval_s + 1)
+            assert_no_alerts(self.cluster, [any_crl_re])
+        finally:
+            cleanup_crl(node, ca_ids)
+
+    def _crl_same_everywhere(self, filename):
+        """True once every node holds the same usable copy of the CRL.
+
+        Checksums and not just the filename: re-uploading a name leaves the
+        previous content in place on a node that has not synced yet, and that
+        node's entry would be aggregated under a different alert.
+        """
+        checksums = set()
+        for node_status in get_crl_status(self.cluster).values():
+            matching = [f for f in crl_file_statuses(node_status)
+                        if os.path.basename(f.get('filename', '')) == filename]
+            if len(matching) != 1:
+                return False
+            if matching[0].get('cacheStatus') != 'active':
+                return False
+            checksums.update(e.get('checksum')
+                             for e in matching[0].get('entries', []))
+        return len(checksums) == 1
+
+    def _wait_crl_same_everywhere(self, filename):
+        testlib.poll_for_condition(
+            lambda: self._crl_same_everywhere(filename),
+            sleep_time=1, timeout=60, verbose=True,
+            msg='wait for every node to hold the same CRL')
+
+    @staticmethod
+    def _crl_alert_re(filename, tail):
+        return (r"Certificate Revocation List \(CRL\) issued by "
+                r"'CN=Test Root CA' \(CRL number: \d+, file\(s\): " +
+                re.escape(filename) + r"\) " + tail +
+                # Two entries: one alert has to speak for every node holding
+                # the CRL, which a single-node cluster never exercises.
+                r" \(present on node\(s\): [^,)]+, [^)]+\)\.")
 
     # Return the pid of the cbbackupmgr which is started by the backup
     # service.
@@ -613,11 +726,13 @@ class AlertTests(testlib.BaseTestSet):
             shutil.rmtree(f"{inaccessible_dir}")
 
 
+    # This test turns the node into a cluster of its own, so it has to be
+    # one that is not in ours.
     def to_node(self):
-        return self.cluster._nodes[1]
+        return self.cluster.disconnected_nodes()[0]
 
     def from_node(self):
-        return self.cluster._nodes[0]
+        return self.cluster.connected_nodes[0]
 
     @tag(Tag.LowUrgency)
     def xdcr_replications_deleted_alert_test(self):
@@ -779,6 +894,21 @@ class AlertTests(testlib.BaseTestSet):
             set_min_timer_interval(self.cluster, None)
             if aws_secret_id is not None:
                 delete_secret(bad_creds_node, aws_secret_id)
+
+
+def cleanup_crl(node, ca_ids):
+    """Remove any uploaded CRL files and the trusted CAs loaded for a
+    CRL alert test."""
+    for f in get_crl_files(node):
+        try:
+            delete_crl_file(node, f['filename'])
+        except Exception as e:
+            print(f"Failed to delete CRL file {f['filename']}: {e}")
+    for ca_id in ca_ids:
+        try:
+            testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+        except Exception as e:
+            print(f"Failed to delete trusted CA {ca_id}: {e}")
 
 
 def get_expiration_for_cert(cert_path):
