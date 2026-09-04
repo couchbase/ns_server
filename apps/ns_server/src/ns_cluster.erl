@@ -29,6 +29,9 @@
 -define(CHANGE_ADDRESS_TIMEOUT, ?get_timeout(change_address, 30000)).
 -define(HARD_RESET_TIMEOUT,     ?get_timeout(hard_reset, 240000)).
 
+%% Node specific to target a particular node
+-define(LEAVE_BODY_TEST_CONDITION, {node, node(), leave_body_test_condition}).
+
 -define(cluster_log(Code, Fmt, Args),
         ale:xlog(?USER_LOGGER, ns_log_sink:get_loglevel(?MODULE, Code),
                  {?MODULE, Code}, Fmt, Args)).
@@ -494,7 +497,15 @@ leave_init() ->
 leave_body() ->
     ?cluster_log(0001, "Node ~p is leaving cluster.", [node()]),
 
-    case testconditions:get(leave_body) of
+    %% init can trigger a leave if it finds a leave marker on disk. We might
+    %% not have started up all of the children in our supervisor, but we need
+    %% ns_config. Wait for all the children to have started before continuing.
+    ns_server_cluster_sup:ensure_started(),
+
+    %% Read from ns_config rather than testconditions, as the testconditions
+    %% store belongs to ns_server_sup, which is not running when a leave marker
+    %% is found on startup
+    case ns_config:read_key_fast(?LEAVE_BODY_TEST_CONDITION, undefined) of
         stuck ->
             %% Test only hook. See MB-68155.
             %%
@@ -505,12 +516,12 @@ leave_body() ->
             %% never advances past the revision at which it was removed - so it
             %% keeps looking (to itself) like a cluster member and can still
             %% push ns_config updates into the cluster it was ejected from.
-            %% Triggered by: testconditions:set(leave_body, stuck).
-            testconditions:delete(leave_body),
+            %%
+            %% Nothing clears the key here, so a test that wants the node to
+            %% finish leaving must delete it itself
             ?cluster_log(0001, "Node ~p is stuck leaving cluster (test).",
                          [node()]);
         _ ->
-            testconditions:check_test_condition(leave_body),
             perform_leave_body()
     end.
 

@@ -15,7 +15,8 @@
 
 %% API
 -export([start_link/0,
-         start_ns_server/0, stop_ns_server/0, restart_ns_server/0]).
+         start_ns_server/0, stop_ns_server/0, restart_ns_server/0,
+         ensure_started/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -156,6 +157,9 @@ stop_ns_server() ->
         {error, Error} ->
             {error, Error}
     end.
+
+ensure_started() ->
+    supervisor:count_children(?MODULE).
 
 restart_ns_server() ->
     restartable:restart(?MODULE, ns_server_nodes_sup).

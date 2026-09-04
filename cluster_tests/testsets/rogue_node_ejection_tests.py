@@ -22,6 +22,11 @@ import run
 # field reproduction (MB-68155).
 ROGUE_KEY = "leave_test_count"
 
+# ns_cluster:leave_body/0 reads its stuck test condition from ns_config
+# under this key. The lets us prevent a node from properly leaving the cluster
+# to simulate error scenarios.
+STUCK_LEAVE_KEY = "{node, node(), leave_body_test_condition}"
+
 # The compat version the "rogue" node pretends to run at (below LATEST). Update
 # to any version lower than LATEST as required (when we move min version
 # forward).
@@ -127,7 +132,8 @@ class RogueNodeEjectionTests(testlib.BaseTestSet):
 
         # Keep the pretend node up and connected once ejected, instead of
         # completing its leave, so it can act as the stuck rogue.
-        testlib.testconditions_set(self.pretend_node, "leave_body", "stuck")
+        testlib.diag_eval(self.pretend_node,
+                          f"ns_config:set({STUCK_LEAVE_KEY}, stuck).")
 
         # Rebalance the pretend-version node out. It gets stuck (stays up); the
         # surviving node then upgrades its compat version. Don't wait for the
