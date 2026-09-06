@@ -498,6 +498,20 @@ IF (BUILD_COLUMNAR)
   ENDIF ()
   FOREACH (_analytics_profile IN LISTS _analytics_profiles)
     GET_FILENAME_COMPONENT (_profile_name "${_analytics_profile}" NAME)
+    # CONFIGURE_FILE substitutes the empty string for an @VAR@ whose variable
+    # is unset, so a placeholder that nobody wired up ships as a blank setting
+    # instead of failing the build.  Insist on a value before configuring.
+    FILE (READ "${_analytics_profile}" _profile_contents)
+    STRING (REGEX MATCHALL "@[A-Za-z0-9_]+@" _placeholders "${_profile_contents}")
+    FOREACH (_placeholder IN LISTS _placeholders)
+      STRING (REGEX REPLACE "^@|@$" "" _placeholder_var "${_placeholder}")
+      IF (NOT DEFINED ${_placeholder_var} OR "${${_placeholder_var}}" STREQUAL "")
+        MESSAGE (FATAL_ERROR
+                 "${_profile_name} substitutes ${_placeholder}, which is unset "
+                 "or empty.  Version placeholders are read from the manifest "
+                 "by tlm/CMakeLists.txt; a new one has to be wired up there.")
+      ENDIF ()
+    ENDFOREACH ()
     CONFIGURE_FILE ("${_analytics_profile}"
                     "${_etcdir}/couchbase/${_profile_name}" @ONLY)
   ENDFOREACH ()
