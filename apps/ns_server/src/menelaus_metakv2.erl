@@ -33,6 +33,8 @@
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-define(NON_ASCII_KEY_ERROR, "Key must contain only ASCII characters.").
+
 -export([handle_get/2,
          handle_post_get_snapshot/1,
          handle_put/2,
@@ -40,9 +42,25 @@
          handle_delete/2,
          handle_post_sync_quorum/1]).
 
-get_key(Path) ->
+%% A metakv2 key is restricted to ASCII, and the restriction is what makes the
+%% two decoders agree. Below 128 a codepoint and its utf8 encoding are the same
+%% byte, so a key written through the URL path, which uri_string:unquote/1
+%% decodes to codepoints, and the same key written through a JSON body, which
+%% validator:string/2 leaves as utf8 bytes, are one chronicle term. Above 128
+%% they do not, and the same logical key is stored under two terms.
+with_key(Path, Req, Fun) ->
     "_metakv2" ++ Key = Path,
-    decode_path(uri_string:unquote(Key)).
+    Unquoted = uri_string:unquote(Key),
+    case is_ascii(Unquoted) of
+        true ->
+            Fun(decode_path(Unquoted));
+        false ->
+            validator:report_errors_for_one(
+              Req, [{key, ?NON_ASCII_KEY_ERROR}], 400)
+    end.
+
+is_ascii(Str) ->
+    lists:all(fun (C) -> C < 128 end, Str).
 
 decode_path(Path) ->
     lists:reverse([list_to_binary(T) || T <- string:tokens(Path, "/")]).
@@ -207,7 +225,9 @@ with_recursive(Fun, WithDepth, Req) ->
           [validator:unsupported(_)]).
 
 handle_get(Path, Req) ->
-    Key = get_key(Path),
+    with_key(Path, Req, fun (Key) -> handle_get(Path, Req, Key) end).
+
+handle_get(Path, Req, Key) ->
     case is_directory(Path) of
         true ->
             with_recursive(
@@ -243,7 +263,12 @@ validate_and_decode_path(Name, State) ->
                   ("/" ++ _) ->
                       {error, "Key cannot be a directory."};
                   (_) ->
-                      {value, decode_path(S)}
+                      case is_ascii(S) of
+                          true ->
+                              {value, decode_path(S)};
+                          false ->
+                              {error, ?NON_ASCII_KEY_ERROR}
+                      end
               end;
           (_) ->
               {error, "Key should start with /."}
@@ -296,11 +321,13 @@ sensitive_validators() ->
        end, sensitive, _)].
 
 handle_put(Path, Req) ->
+    with_key(Path, Req, fun (Key) -> handle_put(Path, Req, Key) end).
+
+handle_put(Path, Req, Key) ->
     IsDirectory = is_directory(Path),
     validator:handle(
       fun (Params) ->
               Start = os:timestamp(),
-              Key = get_key(Path),
               Recursive = proplists:get_value(recursive, Params, false),
               case IsDirectory of
                   true ->
@@ -389,8 +416,10 @@ reply_delete_result(Req, {error, not_empty}, Path, Start, dir) ->
       Req, Start, encode_reply_info("Not Empty", Path, undefined, dir), 400).
 
 handle_delete(Path, Req) ->
+    with_key(Path, Req, fun (Key) -> handle_delete(Path, Req, Key) end).
+
+handle_delete(Path, Req, Key) ->
     Start = os:timestamp(),
-    Key = get_key(Path),
     case is_directory(Path) of
         true ->
             with_recursive(

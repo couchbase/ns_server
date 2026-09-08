@@ -28,6 +28,19 @@ def assert_not_changed(resp, expected_path = None):
         assert_json_key(resp, "revision", json)
         assert_json_value(resp, "path", expected_path, json)
 
+def assert_non_ascii_key(resp):
+    testlib.assert_http_code(400, resp)
+    json = decode_json(resp)
+    errors = assert_json_key(resp, "errors", json)
+    # A json_array or json_map body is reported one error object per item,
+    # while the URL path is reported as a single object.
+    if isinstance(errors, list):
+        testlib.assert_eq(len(errors), 1, "errors", resp)
+        errors = errors[0]
+    testlib.assert_eq(errors.get("key"),
+                      "Key must contain only ASCII characters.",
+                      "errors.key", resp)
+
 def assert_json_error(resp, expected):
     json = decode_json(resp)
     error = assert_json_key(resp, "error", json)
@@ -631,6 +644,105 @@ class Metakv2Tests(testlib.BaseTestSet):
         resp = self.metakv2_get_snapshot([key])
         testlib.assert_eq(extract_snapshot(resp), {key: value}, "snapshot",
                           resp)
+
+    def key_charset_round_trip_test(self):
+        # A key travels as a URL path, so a caller escapes it and the server
+        # decodes it once, against the raw path. The two halves have to agree
+        # on every character a caller can put in a key, and the ones below are
+        # those a client either escapes or leaves alone depending on which
+        # escaping rules it follows. "+" is the one to watch, since a query
+        # string decoder reads it as a space and a path decoder does not.
+        dir = "/root/charset/"
+        cases = {"a+b": "a+b",
+                 "a%41b": "a%2541b",
+                 "a b": "a%20b",
+                 "a#b": "a%23b",
+                 "a?b": "a%3Fb",
+                 "a&b": "a&b",
+                 "a=b": "a=b",
+                 "a;b": "a;b",
+                 "a:b": "a:b",
+                 "a@b": "a@b",
+                 "a$b": "a$b",
+                 "a,b": "a,b"}
+
+        for key, escaped in cases.items():
+            resp = self.metakv2_put(dir + escaped, value=key, create=True,
+                                    recursive=True)
+            assert_created(resp)
+
+            resp = self.metakv2_get(dir + escaped)
+            assert_value(resp, key)
+
+        # The listing names each leaf the way the caller meant it, which is
+        # what says the server decoded the key rather than storing the
+        # escaped form it arrived as.
+        self.assert_dir_content(dir, {dir + key: key for key in cases})
+
+    def key_decoders_agree_test(self):
+        # A key reaches the store two ways, in the URL of a PUT and in the
+        # JSON body of setMultiple, and each arrives through a decoder of its
+        # own. A key written one way has to be the same key when read the
+        # other way, or a caller that mixes the two silently ends up with two
+        # leaves. Only ASCII is covered here, see MB-69973 for the rest.
+        dir = "/root/agree/"
+        cases = {"a+b": "a+b",
+                 "a%41b": "a%2541b",
+                 "a b": "a%20b"}
+
+        for key, escaped in cases.items():
+            body = self.metakv2_set_multiple(
+                {dir + key: {"value": "written as json", "create": True}},
+                recursive=True)
+            assert_updated(body)
+
+            resp = self.metakv2_get(dir + escaped)
+            assert_value(resp, "written as json")
+
+            resp = self.metakv2_put(dir + escaped, value="written as a url")
+            assert_updated(resp)
+
+            resp = self.metakv2_get_snapshot([dir + key])
+            testlib.assert_eq(extract_snapshot(resp),
+                              {dir + key: "written as a url"}, "snapshot",
+                              resp)
+
+    def non_ascii_key_rejected_test(self):
+        # The two decoders agree only below 128, so a non-ASCII key would be
+        # stored under one term when it arrives in a URL and another when it
+        # arrives in a JSON body. Every entry point refuses it instead.
+        # MB-73647.
+        #
+        # "\u4f60" is above U+00FF, which used to reach list_to_binary/1 and
+        # die with badarg, so the caller saw a 500. It has to be the same 400
+        # as any other refused key, which is the MB-69973 half of this.
+        dir = "/root/ascii/"
+
+        for escaped in ["a%C3%A9b", "a%E4%BD%A0b"]:
+            # recursive, so that a server without the guard would create the
+            # directory and store the key rather than failing on the missing
+            # parent. The refusal has to be what stops it.
+            assert_non_ascii_key(self.metakv2_put(dir + escaped, value="v",
+                                                  create=True,
+                                                  recursive=True))
+            assert_non_ascii_key(self.metakv2_get(dir + escaped))
+            assert_non_ascii_key(self.metakv2_delete(dir + escaped))
+
+        # The same keys through the JSON body, where they arrive as utf8
+        # bytes rather than as codepoints. getSnapshot is called directly
+        # because the helper asserts success.
+        for key in ["a\u00e9b", "a\u4f60b"]:
+            assert_non_ascii_key(self.metakv2_set_multiple(
+                {dir + key: {"value": "v", "create": True}}))
+            assert_non_ascii_key(testlib.request(
+                'POST', self.cluster, CONTROLLER_ENDPOINT + "/getSnapshot",
+                data=json.dumps([dir + key])))
+
+        # A refused call must not have written on its way to the 400. The
+        # key itself cannot be read back to check, since the guard refuses
+        # the read as well, so the directory is the only witness: it exists
+        # only if one of the calls above created it.
+        assert_not_found(self.metakv2_get(dir))
 
     def sensitive_values_are_not_dumped_test(self):
         # A distinctive value is used for each leaf so that it can be looked
