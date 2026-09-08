@@ -3264,7 +3264,8 @@ class CRLFileSyncTests(testlib.BaseTestSet):
     An upload is registered in chronicle by the node that received it; every
     other node learns of it from there and fetches the file from a node that
     already has it.  These cover that path and its retry, neither of which a
-    single-node cluster can reach.
+    single-node cluster can reach - and, with it, what a node that was down
+    has to work out for itself once it is back.
     """
 
     @staticmethod
@@ -3455,6 +3456,59 @@ class CRLFileSyncTests(testlib.BaseTestSet):
         finally:
             # The CA belongs to the testset, not to this test.
             self.ca_ids = load_multiple_cas(node0, [self.ca_pem])
+
+    # What a source cleared while a node was down leaves on it: copies in
+    # config/crls, and a configuration that says nothing is configured for
+    # them to have come from - nothing the node can recognise as a change, so
+    # its boot either drops them itself or keeps enforcing them forever.  Set
+    # up here directly: a node that is coming up races the chronicle catch-up
+    # that would tell it about the clearing, and only the boot that loses that
+    # race ends up in this state.
+    def cleared_source_while_node_down_test(self):
+        victim = self.cluster.connected_nodes[-1]
+        set_crl_settings(self.cluster, directory='', urls=[])
+        # One per source that leaves files behind: the poll directory keeps
+        # its copies in config/crls/local, the URL list in config/crls/url.
+        # Resolved while the node is still up: data_path() asks the node.
+        crls_dir = os.path.join(victim.data_path(), 'config', 'crls')
+        left_over = {
+            sub: os.path.join(crls_dir, sub,
+                              f'left_over_{testlib.random_str(8)}.pem')
+            for sub in ('local', 'url')}
+        try:
+            self.cluster.stop_node(victim)
+            try:
+                for path in left_over.values():
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, 'w') as f:
+                        f.write(generate_crl(self.ca_pem, self.ca_key_pem, []))
+            finally:
+                self.cluster.restart_node(victim)
+                self.cluster.wait_for_nodes_to_be_healthy()
+
+            # Gone from disk, and - the whole point - from the cache the
+            # revocation check reads.
+            cached = testlib.diag_eval(
+                victim, 'cb_crl_cache:get_all_file_paths().').text
+            for sub, path in left_over.items():
+                assert not os.path.exists(path), \
+                    f'{path} outlived the {sub} source being cleared'
+                assert os.path.basename(path) not in cached, \
+                    f'{path} is still in the CRL cache: {cached}'
+            # The poll-based copy is reported as a file this node holds, so
+            # its absence from the status is the visible half of the same
+            # answer.  A URL-based one has no url_file_state record to be
+            # reported under either way.
+            testlib.assert_eq(
+                self._status_on(victim,
+                                os.path.basename(left_over['local'])),
+                None, 'the leftover poll-based copy on the restarted node')
+        finally:
+            # A copy the node did not drop is one every later test on this
+            # cluster would be checking certificates against.
+            for path in left_over.values():
+                if os.path.exists(path):
+                    os.remove(path)
 
 
 class CRLNodeToNodeTests(testlib.BaseTestSet):

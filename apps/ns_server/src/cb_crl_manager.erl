@@ -1121,7 +1121,9 @@ crl_config_key_classes() ->
 %%   Phase 2 — Load CRL data.
 %%     Insert / update / remove CRL files according to the new poll dir.
 %%     Three poll dir transitions are handled:
-%%       poll dir unchanged  — only interval/policy changed; cache untouched
+%%       poll dir unchanged  — only interval/policy changed; cache untouched,
+%%                             unless there is nothing configured for the
+%%                             files this node holds to have come from
 %%       _ → undefined       — poll dir removed; bulk-remove all CRL records
 %%       _ → Dir             — new or changed directory; scan_directory adds
 %%                             new files before removing old ones so the cache
@@ -1161,9 +1163,17 @@ apply_config(Cfg, TrustedCAs, #state{poll_directory = OldPollDir,
     end,
 
     %% Phase 2a: update poll-directory CRL data.
+    %% Both transitions below are decided by comparing the new configuration
+    %% with this state, and a state built for boot says nothing is configured
+    %% whatever config/crls/local holds.  A poll directory cleared while this
+    %% node was down is then a change to nothing it can see, so what is loaded
+    %% has a say too: files with no configured directory left to have come
+    %% from are removed by the same path that removes them on a running node.
+    LoadedLocally = State1#state.loaded_locally,
     State2 =
         case {OldPollDir, NewPollDir} of
-            {Same, Same} ->
+            {Same, Same} when Same =/= undefined;
+                              map_size(LoadedLocally) =:= 0 ->
                 %% Poll dir unchanged; cache already up-to-date.
                 State1;
             {_, undefined} ->
@@ -1184,8 +1194,15 @@ apply_config(Cfg, TrustedCAs, #state{poll_directory = OldPollDir,
     %% reconcile_url_files removes stale URLs from cache and disk, adds
     %% newly configured ones, then fetches all using conditional GET
     %% (ETag-based, so unchanged CRLs are not re-downloaded).
-    State3 = case lists:sort(NewUrls) /= lists:sort(maps:keys(OldUrlsState)) of
-                 %% Something has changed:
+    %% The URL list has the same blind spot as the poll directory above: at
+    %% boot it is compared against an empty url_file_state whatever
+    %% config/crls/url holds, so URLs removed while this node was down leave
+    %% files that no comparison of the two lists can notice.
+    Fetched = State2#state.loaded_from_urls,
+    State3 = case lists:sort(NewUrls) /= lists:sort(maps:keys(OldUrlsState))
+                 orelse (NewUrls =:= [] andalso map_size(Fetched) > 0) of
+                 %% Something has changed, or there are files left with no
+                 %% URL to have come from:
                  true -> reconcile_url_files(NewUrls, false, TrustedCAs, State2);
                  %% Nothing changed:
                  false -> State2
