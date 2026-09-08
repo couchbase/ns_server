@@ -1788,7 +1788,8 @@ build_file_versions(#state{loaded_locally   = LoadedLocally,
 %%
 %% 'files' holds one entry per file, all values RPC-safe.
 %% Poll-based files (source = local_dir) come from file_state and
-%% loaded_locally.  Uploaded files (source = uploaded) are driven by
+%% loaded_locally, either of which can hold a file the other does not
+%% (see poll_file_records/2).  Uploaded files (source = uploaded) are driven by
 %% the chronicle crl_files key (the authoritative list); a file in
 %% chronicle but not yet downloaded appears with status not_loaded.
 %%
@@ -1816,11 +1817,11 @@ build_status_map(TrustedDerCAs,
     UploadedDir  = crls_dir(),
     GeneratedDir = generated_crls_dir(),
     UrlDir       = url_crls_dir(),
-    %% Poll-based entries — one per file_state entry.
+    %% Poll-based entries — one per file the last scan recorded, plus the
+    %% local copies it has no record of.
     PollList =
         maps:fold(
-          fun (Path, ReloadStatus, Acc) ->
-                  Name    = filename:basename(Path),
+          fun (Name, ReloadStatus, Acc) ->
                   NameBin = list_to_binary(Name),
                   {Status, Entries} =
                       case maps:is_key(Name, LoadedLocally) of
@@ -1835,7 +1836,7 @@ build_status_map(TrustedDerCAs,
                      status      => Status,
                      entries     => Entries,
                      last_reload => last_reload_map(ReloadStatus)} | Acc]
-          end, [], FS),
+          end, [], poll_file_records(FS, LoadedLocally)),
     %% Uploaded entries — chronicle map is the authoritative list.
     UploadedList =
         lists:map(
@@ -1903,6 +1904,25 @@ build_status_map(TrustedDerCAs,
       %% any files — a directory that is unreadable, or has not been created
       %% yet, used to be indistinguishable from an empty one (MB-72969).
       poll_directory => DirReport}.
+
+%% Every poll-based file to report, keyed by base name: what the last scan
+%% recorded of it, or 'undefined' for a local copy no scan has a record of.
+%% The two sets are not the same one.  A file that failed to load has a record
+%% and no local copy, and its errors are the whole point of reporting it.  A
+%% local copy with no record is what a directory that could not be listed
+%% leaves behind: the scan keeps what was loaded before it (a failed scan
+%% never makes things worse), so the copies seeded from config/crls/local at
+%% boot stay in the cache, in use for revocation, with nothing in file_state
+%% to go with them.  Reported as not_attempted (last_reload_map/1) rather than
+%% left out - the expiry alerts are driven off this list.
+-spec poll_file_records(file_state(), active_files()) ->
+          #{string() => reload_status() | undefined}.
+poll_file_records(FS, LoadedLocally) ->
+    Scanned = maps:fold(
+                fun (Path, ReloadStatus, Acc) ->
+                        maps:put(filename:basename(Path), ReloadStatus, Acc)
+                end, #{}, FS),
+    maps:merge(maps:map(fun (_, _) -> undefined end, LoadedLocally), Scanned).
 
 %% Lightweight counterpart of build_status_map/1 for get_expiry_info/0.
 %% Returns one map per loaded file (filename => binary(), entries =>
@@ -2541,6 +2561,29 @@ last_reload_map_test() ->
                  last_reload_map(#crl_reload_status{
                                     result = not_attempted, time = undefined,
                                     errors = [?NO_OOTB_CRL_ERROR]})).
+
+%% A local copy the last scan has no record of is still reported: it is in the
+%% cache and in use, and the expiry alerts read the reported list.  A record
+%% with no local copy is reported too - that is a file that failed to load,
+%% and its errors are why it is there.
+poll_file_records_test() ->
+    Status = #crl_reload_status{result = loaded,
+                                time = {{2026, 1, 1}, {0, 0, 0}},
+                                errors = []},
+    FS = #{"/inbox/crls/scanned.pem" => Status,
+           "/inbox/crls/failed.pem"  => Status#crl_reload_status{
+                                          result = failed,
+                                          errors = [<<"err">>]}},
+    Loaded = #{"scanned.pem" => <<"csum1">>, "orphan.pem" => <<"csum2">>},
+    Records = poll_file_records(FS, Loaded),
+    ?assertEqual(["failed.pem", "orphan.pem", "scanned.pem"],
+                 lists:sort(maps:keys(Records))),
+    %% The scan record wins for a file that has both, and the copy nothing
+    %% scanned reports as not_attempted.
+    ?assertEqual(Status, maps:get("scanned.pem", Records)),
+    ?assertEqual(undefined, maps:get("orphan.pem", Records)),
+    ?assertEqual(#{result => not_attempted, time => undefined, errors => []},
+                 last_reload_map(maps:get("orphan.pem", Records))).
 
 %% The poll directory has no file to hang its state on, so it is reported on
 %% its own; without it a directory that is unreadable, or has not been created
