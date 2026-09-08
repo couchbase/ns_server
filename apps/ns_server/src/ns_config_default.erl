@@ -47,14 +47,6 @@ get_data_dir() ->
         _ -> RawDir
     end.
 
-detect_enterprise_version(NsServerVersion) ->
-    case re:run(NsServerVersion, <<"-enterprise(-analytics)?$">>) of
-        nomatch ->
-            false;
-        _ ->
-            true
-    end.
-
 is_forced(EnvVar) ->
     case os:getenv(EnvVar) of
         false ->
@@ -66,13 +58,29 @@ is_forced(EnvVar) ->
     end.
 
 init_is_enterprise() ->
-    MaybeNsServerVersion =
-        [V || {ns_server, _, V} <- application:loaded_applications()],
-    case lists:any(fun (V) -> detect_enterprise_version(V) end, MaybeNsServerVersion) of
-        true ->
-            true;
-        _ ->
-            is_forced("FORCE_ENTERPRISE")
+    is_enterprise_build() orelse is_forced("FORCE_ENTERPRISE").
+
+%% The edition is a property of the build rather than of the deployment, so it
+%% is baked into the ns_server application env by CMake (NS_SERVER_IS_ENTERPRISE,
+%% see ns_server.app.src.in).  It used to be derived from the ns_server version
+%% string, which coupled the edition to the product name: a rename left the
+%% "-enterprise" suffix unmatched and silently dropped the cluster to community
+%% edition, disabling encryption at rest, LDAP, auditing, X.509 and node-to-node
+%% encryption.
+%%
+%% ns_babysitter:start/2 loads the ns_server application as its first act, so
+%% this is readable everywhere init_is_enterprise/0 is reached -- including
+%% ns_babysitter_sup:child_specs/0, which runs while the supervisor tree is
+%% being built, before the config profile is installed.  The key is missing only
+%% where the application was never loaded at all, i.e. under eunit.  A value
+%% that is present but not a boolean means a broken build, which fails the node
+%% here rather than quietly demoting it to community edition.
+is_enterprise_build() ->
+    case application:get_env(ns_server, is_enterprise) of
+        {ok, IsEnterprise} when is_boolean(IsEnterprise) ->
+            IsEnterprise;
+        undefined ->
+            false
     end.
 
 init_saslauthd_enabled() ->
@@ -600,13 +608,27 @@ test_all_upgrades() ->
     ?assertEqual([], UpgradedKVs -- Default),
     ?assertEqual([], Default -- UpgradedKVs).
 
-%% dialyzer proves that statically and complains about impossible code
-%% path if I use ?assert... Sucker
-detect_enterprise_version_test() ->
-    true = detect_enterprise_version(<<"1.8.0r-9-ga083a1e-enterprise">>),
-    true = not detect_enterprise_version(<<"1.8.0r-9-ga083a1e-comm">>),
-    true = detect_enterprise_version(
-        <<"1.8.0r-9-ga083a1e-enterprise-analytics">>),
-    false = detect_enterprise_version(
-        <<"1.8.0r-9-ga083a1e-enterprise-wombat">>).
+is_enterprise_build_test_() ->
+    {foreach,
+     fun () -> application:unset_env(ns_server, is_enterprise) end,
+     fun (_) -> application:unset_env(ns_server, is_enterprise) end,
+     [{"an enterprise build reports enterprise",
+       fun () ->
+               application:set_env(ns_server, is_enterprise, true),
+               ?assert(is_enterprise_build())
+       end},
+      {"a community build reports community",
+       fun () ->
+               application:set_env(ns_server, is_enterprise, false),
+               ?assertNot(is_enterprise_build())
+       end},
+      {"an unloaded application reports community", % i.e. under eunit
+       fun () ->
+               ?assertNot(is_enterprise_build())
+       end},
+      {"a non-boolean value fails rather than demoting the node",
+       fun () ->
+               application:set_env(ns_server, is_enterprise, "true"),
+               ?assertError({case_clause, _}, is_enterprise_build())
+       end}]}.
 -endif.

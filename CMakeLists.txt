@@ -27,15 +27,26 @@ ENDIF ("${PRODUCT_VERSION}" STREQUAL "")
 
 IF (BUILD_COLUMNAR)
   SET (_ns_version "${COLUMNAR_PRODUCT_VERSION}-enterprise-analytics")
+  SET (_ns_is_enterprise true)
 ELSEIF (BUILD_ENTERPRISE)
   SET (_ns_version "${_product_version}-enterprise")
+  SET (_ns_is_enterprise true)
 ELSE ()
   SET (_ns_version "${_product_version}-community")
+  SET (_ns_is_enterprise false)
 ENDIF ()
 
 SET (NS_SERVER_VERSION "${_ns_version}" CACHE STRING
      "Couchbase server version" FORCE)
 MARK_AS_ADVANCED (NS_SERVER_VERSION)
+
+# The edition is a property of the build, so it is declared here and baked into
+# the ns_server application env (see apps/ns_server/src/ns_server.app.src.in)
+# rather than derived from NS_SERVER_VERSION, which is free to change with the
+# product name.
+SET (NS_SERVER_IS_ENTERPRISE "${_ns_is_enterprise}" CACHE STRING
+     "Whether this is an enterprise edition build" FORCE)
+MARK_AS_ADVANCED (NS_SERVER_IS_ENTERPRISE)
 
 # Create rebar.config
 SET (COUCHDB_SRC_DIR "${PROJECT_SOURCE_DIR}/../couchdb" CACHE PATH "Path to couchdb source")
@@ -185,10 +196,15 @@ SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/apps/ns_server/src/ns_server.app.s
 
 ADD_CUSTOM_TARGET (ns_cfg DEPENDS "${ns_server_app_src}" "${rebar_config}")
 ADD_CUSTOM_COMMAND(OUTPUT "${ns_server_app_src}"
+  DEPENDS "${ns_server_app_src}.in"
   COMMAND "${CMAKE_COMMAND}" -D "INPUT_FILE=${ns_server_app_src}.in"
   -D "OUTPUT_FILE=${ns_server_app_src}"
   -D "SEARCH=NS_SERVER_VERSION"
   -D "REPLACE=${NS_SERVER_VERSION}"
+  # string-replace.cmake configures the file in a fresh cmake process, so every
+  # placeholder it must substitute has to be defined there; @ONLY silently
+  # blanks any it does not know, which yields an unparseable {is_enterprise, }.
+  -D "NS_SERVER_IS_ENTERPRISE=${NS_SERVER_IS_ENTERPRISE}"
   -P "${PROJECT_SOURCE_DIR}/cmake_modules/string-replace.cmake"
   VERBATIM)
 
