@@ -912,9 +912,10 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, CasVersion, State) ->
                             {error, not_found} -> #{}
                         end,
               {commit, [{set, ?CRL_FILES_KEY,
-                         maps:put(FilenameBin, FileInfo, CurrMap)}]}
+                         maps:put(FilenameBin, FileInfo, CurrMap)}],
+               maps:find(FilenameBin, CurrMap)}
           end) of
-        {ok, _} ->
+        {ok, _, Prev} ->
             case write_uploaded_file_locally(Filename, Binary, EntryResults,
                                              CasVersion) of
                 ok ->
@@ -926,10 +927,11 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, CasVersion, State) ->
                 {error, Reason} ->
                     ?log_error("CRL ~p: uploaded but failed to write locally: "
                                "~p", [Filename, Reason]),
-                    %% We could write the file to disk, we have to remove it
-                    %% from chronicle now because we don't have that file saved
-                    %% anywhere
-                    catch do_delete_crl_file(Filename, State),
+                    %% The bytes are saved nowhere, so undo the chronicle half
+                    %% of the upload.  A file we replaced must be put back:
+                    %% every node still holds it, and clearing the key instead
+                    %% makes them all delete it (reconcile_uploaded_files/2).
+                    rollback_uploaded_file(Filename, FileInfo, Prev),
                     {error, Reason}
             end;
         {error, exceeded_retries} ->
@@ -938,6 +940,60 @@ add_uploaded_file(Filename, Binary, TS, EntryResults, CasVersion, State) ->
             {error, exceeded_retries}
     catch
         exit:timeout -> {error, no_quorum}
+    end.
+
+%% Undo the chronicle entry written by an upload whose bytes never reached
+%% disk: restore what the upload replaced, or drop the entry if the name was
+%% new.  Leaves the key alone if another upload or delete already replaced our
+%% entry, so we never undo somebody else's write.
+-spec rollback_uploaded_file(string(), map(), {ok, map()} | error) -> ok.
+rollback_uploaded_file(Filename, FileInfo, Prev) ->
+    FilenameBin = list_to_binary(Filename),
+    case Prev of
+        %% Only a name that was new here can have local leftovers; on a replace
+        %% the file on disk is still the one chronicle is about to name again.
+        error -> catch remove_uploaded_file_locally(Filename);
+        {ok, _} -> ok
+    end,
+    try chronicle_kv:txn(
+          kv,
+          fun (Txn) ->
+              CurrMap = case chronicle_kv:txn_get(?CRL_FILES_KEY, Txn) of
+                            {ok, {M, _}}       -> M;
+                            {error, not_found} -> #{}
+                        end,
+              case maps:find(FilenameBin, CurrMap) of
+                  {ok, FileInfo} ->
+                      NewMap = case Prev of
+                                   {ok, PrevInfo} ->
+                                       maps:put(FilenameBin, PrevInfo,
+                                                CurrMap);
+                                   error ->
+                                       maps:remove(FilenameBin, CurrMap)
+                               end,
+                      {commit, [{set, ?CRL_FILES_KEY, NewMap}]};
+                  _ ->
+                      {abort, superseded}
+              end
+          end) of
+        {ok, _} ->
+            ?log_debug("CRL ~p: rolled back chronicle entry", [FilenameBin]),
+            ok;
+        superseded ->
+            ?log_debug("CRL ~p: rollback skipped, entry already replaced",
+                       [FilenameBin]),
+            ok;
+        {error, Reason} ->
+            ?log_error("CRL ~p: failed to roll back chronicle entry: ~p. "
+                       "Chronicle names a file no node holds.",
+                       [FilenameBin, Reason]),
+            ok
+    catch
+        exit:timeout ->
+            ?log_error("CRL ~p: timed out rolling back chronicle entry. "
+                       "Chronicle names a file no node holds.",
+                       [FilenameBin]),
+            ok
     end.
 
 %% Puts the file on disk and updates the metadata in ns_config, so that other
@@ -2911,5 +2967,54 @@ set_config_with_crl_t() ->
     fake_chronicle_kv:update_snapshot(ootb_crl, <<"crl">>),
     ?assertEqual(ok, set_config(policy(node_to_node, require))),
     ?assertEqual(require, stored_policy(node_to_node)).
+
+%% An upload that could not be written locally must not destroy the file it
+%% replaced: every node still holds that one, and clearing the key makes them
+%% all delete it.
+rollback_uploaded_file_test_() ->
+    {foreach,
+     fun () ->
+             fake_chronicle_kv:setup(),
+             meck:new(ns_config, [passthrough]),
+             meck:expect(ns_config, read_key_fast, fun (_, Def) -> Def end),
+             meck:expect(ns_config, set, fun (_, _) -> ok end),
+             meck:new(cb_crl_cache, [passthrough]),
+             meck:expect(cb_crl_cache, remove_file, fun (_) -> ok end)
+     end,
+     fun (_) ->
+             meck:unload(cb_crl_cache),
+             meck:unload(ns_config),
+             fake_chronicle_kv:teardown()
+     end,
+     [{"the replaced file is put back", fun rollback_restores_replaced_t/0},
+      {"a file that was new is dropped", fun rollback_drops_new_t/0},
+      {"an entry already replaced is left alone",
+       fun rollback_skips_superseded_t/0}]}.
+
+rollback_file_info(Checksum) ->
+    #{checksum => Checksum,
+      upload_timestamp => {{2026, 1, 1}, {0, 0, 0}},
+      entries => []}.
+
+rollback_drops_new_t() ->
+    New = rollback_file_info(<<"new">>),
+    fake_chronicle_kv:update_snapshot(?CRL_FILES_KEY, #{<<"a.pem">> => New}),
+    ?assertEqual(ok, rollback_uploaded_file("a.pem", New, error)),
+    ?assertEqual(#{}, get_crl_files_metadata()).
+
+rollback_restores_replaced_t() ->
+    Old = rollback_file_info(<<"old">>),
+    New = rollback_file_info(<<"new">>),
+    fake_chronicle_kv:update_snapshot(?CRL_FILES_KEY, #{<<"a.pem">> => New}),
+    ?assertEqual(ok, rollback_uploaded_file("a.pem", New, {ok, Old})),
+    ?assertEqual(#{<<"a.pem">> => Old}, get_crl_files_metadata()).
+
+rollback_skips_superseded_t() ->
+    Old = rollback_file_info(<<"old">>),
+    New = rollback_file_info(<<"new">>),
+    Other = rollback_file_info(<<"other">>),
+    fake_chronicle_kv:update_snapshot(?CRL_FILES_KEY, #{<<"a.pem">> => Other}),
+    ?assertEqual(ok, rollback_uploaded_file("a.pem", New, {ok, Old})),
+    ?assertEqual(#{<<"a.pem">> => Other}, get_crl_files_metadata()).
 
 -endif.
