@@ -695,7 +695,18 @@ reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State) ->
               case maybe_update_uploaded_file(Name, Checksum, OldUploaded,
                                               TrustedCAs) of
                   ok  -> {maps:put(Name, Checksum, Acc), Pending};
-                  {error, _} -> {Acc, true}
+                  {error, _} ->
+                      %% Keep the copy we already hold.  A stale CRL is still
+                      %% usable revocation data, while forgetting it here
+                      %% evicts it from the cache (purge_stale_cache_entries/4
+                      %% on the boot path) and, under a 'require' policy, fails
+                      %% every handshake - including the node-to-node ones the
+                      %% download needs.  Keeping the local checksum leaves
+                      %% pending set, so the retry still replaces it.
+                      case maps:find(Name, OldUploaded) of
+                          {ok, Local} -> {maps:put(Name, Local, Acc), true};
+                          error -> {Acc, true}
+                      end
               end
           end, {#{}, false}, WantedMap),
     %% Step 2: remove files that are no longer in chronicle.
