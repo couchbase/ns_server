@@ -474,6 +474,18 @@ init([]) ->
           (?CRL_FILES_KEY)          -> Self ! crl_files_changed;
           (_)                       -> ok
       end),
+    %% download_from_nodes/3 reads who holds a file from ns_config, which
+    %% replicates separately from the chronicle key that asks for it - and
+    %% later, since ns_config_rep only pulls once ns_node_disco reports the
+    %% node.  So retry when a node says what it holds, not when it merely
+    %% becomes reachable.
+    ns_pubsub:subscribe_link(
+      ns_config_events,
+      fun ({{node, N, crl_files}, _}) when N =/= node() ->
+              Self ! crl_holders_changed;
+          (_) ->
+              ok
+      end),
     Cfg = get_config(),
     %% One trusted-CA snapshot for the whole init: the CRL-loading functions and
     %% the version calculation must agree on the same set (see
@@ -627,20 +639,24 @@ handle_info(ootb_crl_changed, State) ->
     {noreply, NewState2};
 
 handle_info(crl_files_changed, State) ->
-    ChronicleFiles = get_crl_files_metadata(),
-    TrustedCAs = ns_server_cert:trusted_CAs(der),
-    NewState = reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State),
-    NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
-    {noreply, NewState2};
+    {noreply, do_reconcile_uploaded(State)};
 
 handle_info(retry_reconcile, State) ->
     ?log_debug("CRL uploaded-file reconcile retry", []),
     ?flush(retry_reconcile),
-    ChronicleFiles = get_crl_files_metadata(),
-    TrustedCAs = ns_server_cert:trusted_CAs(der),
-    NewState = reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State),
-    NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
-    {noreply, NewState2};
+    %% The timer has fired, so let the reconcile arm the next one.
+    {noreply, do_reconcile_uploaded(State#state{retry_timer = undefined})};
+
+%% Only a reconcile that still owes us a download cares who holds what.
+handle_info(crl_holders_changed, #state{retry_timer = Ref} = State)
+  when Ref =/= undefined ->
+    ?flush(crl_holders_changed),
+    ?log_debug("CRL uploaded-file reconcile retry, holders changed", []),
+    {noreply, do_reconcile_uploaded(State)};
+
+handle_info(crl_holders_changed, State) ->
+    ?flush(crl_holders_changed),
+    {noreply, State};
 
 handle_info(poll_directory, #state{poll_directory = Dir} = State) ->
     ?flush(poll_directory),
@@ -667,6 +683,14 @@ code_change(_, State, _) -> {ok, State}.
 %%%===================================================================
 %%% Internal helpers — uploaded file management
 %%%===================================================================
+
+%% Reconcile against the current chronicle metadata and republish the result.
+-spec do_reconcile_uploaded(#state{}) -> #state{}.
+do_reconcile_uploaded(State) ->
+    ChronicleFiles = get_crl_files_metadata(),
+    TrustedCAs = ns_server_cert:trusted_CAs(der),
+    NewState = reconcile_uploaded_files(ChronicleFiles, TrustedCAs, State),
+    maybe_notify_crl_consumers(TrustedCAs, NewState).
 
 %% Reconcile local config/crls against the chronicle crl_files list.
 %%   - Files in chronicle but missing / stale locally → download.
@@ -1007,12 +1031,16 @@ sync_with_active_nodes() ->
       end, Nodes, Timeout + 1000),
     ok.
 
+%% Keep an already armed timer rather than restarting it, so the reconciles
+%% driven by holder changes cannot keep pushing the periodic retry out.
 -spec schedule_reconcile_retry(#state{}) -> #state{}.
+schedule_reconcile_retry(#state{retry_timer = Ref} = State)
+  when Ref =/= undefined ->
+    State;
 schedule_reconcile_retry(State) ->
-    State1 = cancel_reconcile_retry(State),
     Ref = erlang:send_after(?RECONCILE_RETRY_INTERVAL_MS, self(),
                             retry_reconcile),
-    State1#state{retry_timer = Ref}.
+    State#state{retry_timer = Ref}.
 
 -spec cancel_reconcile_retry(#state{}) -> #state{}.
 cancel_reconcile_retry(#state{retry_timer = undefined} = State) ->
