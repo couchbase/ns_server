@@ -46,14 +46,18 @@
                              updated_at => integer(),
                              updated_by => credential_author(),
                              expires_at => integer(),
-                             description => binary() | string(),
+                             description => binary(),
                              guardrails => map(),
                              secret_set_at => integer(),
                              secret_set_by => credential_author(),
                              payload_version := chronicle:revision()}.
 
--type credential_fields() :: #{atom() => string() | integer() | boolean() |
-                               binary()}.
+%% Field values are held in the representation their field type validated to.
+%% The text types (string, cert_pem, pkey_pem, the enums and json_object) keep
+%% the utf8 binary the json decoder produced. The id is deliberately not in
+%% here: it comes from the URL path (list of UTF-8 bytes).
+%% validate_credential_id constrains it to printable ASCII.
+-type credential_fields() :: #{atom() => binary() | integer() | boolean()}.
 
 %% missing_sensitive_fields marks a credential whose sensitive portion is absent
 %% after restore. Restore always knows which sensitive fields it omitted. Totoro

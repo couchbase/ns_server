@@ -350,7 +350,8 @@ class CredentialStoreCrudTests(testlib.BaseTestSet):
             delete_service_consumer_role(self.cluster, svc)
 
     def test_teardown(self):
-        cleanup_ids = ["test/aws/e2e", "test/aws/update", "test/aws/delete"]
+        cleanup_ids = ["test/aws/e2e", "test/aws/update", "test/aws/delete",
+                       "test/aws/utf8", "test/aws/utf8bad"]
         for type_name in ALL_CRED_TYPES:
             cleanup_ids.append(f"test/{type_name}/e2e")
         for cred_id in cleanup_ids:
@@ -422,6 +423,95 @@ class CredentialStoreCrudTests(testlib.BaseTestSet):
         # --- DELETE ---
         testlib.delete_succ(self.cluster, cred_url(cred_id))
         testlib.get_fail(self.cluster, cred_url(cred_id), 404)
+
+    def utf8_values_test(self):
+        """Every credential field value is a JSON string, so it may hold any
+        character: the key id, the secret, the region, the description and the
+        free-form guardrail entries.
+
+        The credential endpoints are JSON only, so the value kept is the utf8
+        binary the decoder produced.  Two things have to hold.
+        Values must round trip byte for byte through POST, GET and
+        consume, and an error that quotes a non-ASCII value must still be a 400
+        rather than a 500.
+
+        A sensitive field is masked in GET, so the only way to prove the secret
+        itself survives is to consume it the way a Go service does, through
+        /_cbauth/getCredential.
+        """
+        cred_id = "test/aws/utf8"
+
+        # The secret's last character is U+0105, whose utf8 encoding ends in the
+        # byte 16#85.  Read as a list of utf8 bytes rather than as text, that
+        # byte is NEL, which OTP classifies as whitespace -- so any trim would
+        # strip it and leave half a character, producing a secret that no longer
+        # authenticates with no error anywhere near the request that stored it.
+        secret = "sekret-ĄĆŻ-ą"
+        key_id = "ключ-доступа"
+        region = "регион-1"
+        description = "Учётные данные для 数据库"
+        # No array on a credential carries free-form text any more. MB-73480
+        # removed allowedResources and allowedOperations, and what is left is
+        # allowedServices, a closed vocabulary, and the urlWhitelist arrays,
+        # which the URL validator rejects above ASCII. So the array validator
+        # is exercised here only in its ASCII form.
+
+        body = {
+            "type": "aws",
+            "fields": {
+                "accessKeyId": key_id,
+                "secretAccessKey": secret,
+                "region": region,
+            },
+            "description": description,
+            "guardrails": {"allowedServices": ["backup"]},
+        }
+
+        testlib.post_succ(self.cluster, cred_url(cred_id),
+                          json=body, expected_code=201)
+        try:
+            # Nothing may be re-encoded on the way to chronicle and back.
+            r = testlib.get_succ(self.cluster, cred_url(cred_id))
+            j = r.json()
+            testlib.assert_eq(j["fields"]["accessKeyId"], key_id,
+                              "accessKeyId round trip")
+            testlib.assert_eq(j["fields"]["region"], region,
+                              "region round trip")
+            testlib.assert_eq(j["meta"]["description"], description,
+                              "description round trip")
+            guardrails = j["meta"]["guardrails"]
+            testlib.assert_eq(guardrails["allowedServices"], ["backup"],
+                              "allowedServices round trip")
+            # The secret is masked here, which is why consume is checked below.
+            testlib.assert_eq(j["fields"]["secretAccessKey"], "********",
+                              "secret must be masked in GET")
+
+            # Consume as the backup service, the path a Go service takes.  This
+            # is the only response that carries the plaintext secret, so it is
+            # the only place the trailing 16#85 byte can be shown to survive.
+            cbcontbk_auth = ("@cbcontbk", self.special_password)
+            r = cbauth_get(self.node, cred_id, auth=cbcontbk_auth,
+                           on_behalf_user="@cbcontbk",
+                           on_behalf_domain="admin")
+            testlib.assert_http_code(200, r)
+            consumed = r.json()["fields"]
+            testlib.assert_eq(consumed["secretAccessKey"], secret,
+                              "secret round trip through consume")
+            testlib.assert_eq(consumed["accessKeyId"], key_id,
+                              "accessKeyId round trip through consume")
+        finally:
+            testlib.ensure_deleted(self.cluster, cred_url(cred_id))
+
+        # A rejected guardrail entry is quoted back in the error, and the
+        # validator turns that reason into a binary with iolist_to_binary.
+        # A non-ASCII name must therefore produce a 400 naming it, not a 500.
+        bad_service = "сервис-которого-нет"
+        bad_body = dict(body)
+        bad_body["guardrails"] = {"allowedServices": [bad_service]}
+        r = testlib.post_fail(self.cluster, cred_url("test/aws/utf8bad"),
+                              400, json=bad_body)
+        assert bad_service in r.text, \
+            f"400 body must name the rejected service verbatim: {r.text!r}"
 
     def duplicate_create_test(self):
         cred_id = "test/aws/e2e"

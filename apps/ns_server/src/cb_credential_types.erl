@@ -38,6 +38,9 @@
          validated_fields_to_store/2,
          fields_validators/1]).
 
+-define(HTTP_AUTH_SCHEMES, [<<"basic">>, <<"bearer">>, <<"mtls">>]).
+-define(COUCHBASE_ENCRYPTION_TYPES, [<<"none">>, <<"half">>, <<"full">>]).
+
 %% A field specification describes one field of a credential type.
 %%
 %% #{
@@ -320,10 +323,10 @@ field_type_validator(#{type := pkey_pem} = S) ->
      validator:validate(fun validate_pkey_pem/1, rest_key(S), _)];
 field_type_validator(#{type := http_auth_scheme} = S) ->
     [validator:non_empty_string(rest_key(S), _),
-     validator:one_of(rest_key(S), ["basic", "bearer", "mtls"], _)];
+     validator:one_of(rest_key(S), ?HTTP_AUTH_SCHEMES, _)];
 field_type_validator(#{type := couchbase_encryption_type} = S) ->
     [validator:non_empty_string(rest_key(S), _),
-     validator:one_of(rest_key(S), ["none", "half", "full"], _)];
+     validator:one_of(rest_key(S), ?COUCHBASE_ENCRYPTION_TYPES, _)];
 field_type_validator(#{type := json_object} = S) ->
     [validator:validate(fun validate_json_object/1, rest_key(S), _)].
 
@@ -373,11 +376,11 @@ cross_field_validators(_) ->
 
 validate_http_fields(Props) ->
     case proplists:get_value(authScheme, Props) of
-        "basic" ->
+        <<"basic">> ->
             require_fields([username, password], Props);
-        "bearer" ->
+        <<"bearer">> ->
             require_fields([token], Props);
-        "mtls" ->
+        <<"mtls">> ->
             require_fields([certificate, privateKey], Props);
         _ ->
             %% one_of already rejected unknown schemes
@@ -415,15 +418,14 @@ validate_gcp_fields(Props) ->
     end.
 
 require_fields(Keys, Props) ->
-    Missing = [atom_to_list(K)
+    Missing = [atom_to_binary(K)
                || K <- Keys,
                   proplists:get_value(K, Props) =:= undefined],
     case Missing of
         [] ->
             ok;
         _ ->
-            {error, io_lib:format("Missing required field(s): ~s",
-                                  [lists:join(", ", Missing)])}
+            {error, ["Missing required field(s): ", lists:join(", ", Missing)]}
     end.
 
 validate_pkey_with_passphrase(Props) ->
@@ -444,12 +446,12 @@ validate_pkey_with_passphrase(Props) ->
     end.
 
 
+%% A stored field value is whatever its field type validated to: a utf8 binary
+%% for the text types, or an integer or boolean. There is deliberately no list
+%% clause and no catch all, so a value that is unexpected crashes here.
 export_value(V) when is_binary(V)  -> V;
-export_value(V) when is_list(V)    -> list_to_binary(V);
 export_value(V) when is_boolean(V) -> V;
-export_value(V) when is_atom(V)    -> atom_to_binary(V);
-export_value(V) when is_integer(V) -> V;
-export_value(V)                    -> V.
+export_value(V) when is_integer(V) -> V.
 
 -ifdef(TEST).
 
@@ -467,27 +469,28 @@ gcp_adc_sensitive_fields_test() ->
 
 gcp_sa_cross_validator_test() ->
     %% Service-account mode: jsonCredentials alone is sufficient.
-    ?assertEqual(ok, validate_gcp_fields([{jsonCredentials, "{}"}])).
+    ?assertEqual(ok, validate_gcp_fields([{jsonCredentials, <<"{}">>}])).
 
 gcp_hmac_cross_validator_test() ->
     %% HMAC mode: both accessKeyId and secretAccessKey are required.
-    ?assertEqual(ok, validate_gcp_fields([{accessKeyId, "AK"},
-                                          {secretAccessKey, "SK"}])).
+    ?assertEqual(ok, validate_gcp_fields([{accessKeyId, <<"AK">>},
+                                          {secretAccessKey, <<"SK">>}])).
 
 http_bearer_valid_test() ->
-    Props = [{authScheme, "bearer"}, {token, "mytoken"}],
+    Props = [{authScheme, <<"bearer">>}, {token, <<"mytoken">>}],
     ?assertEqual(ok, validate_http_fields(Props)).
 
 http_bearer_missing_token_test() ->
-    Props = [{authScheme, "bearer"}],
+    Props = [{authScheme, <<"bearer">>}],
     ?assertMatch({error, _}, validate_http_fields(Props)).
 
 http_mtls_valid_test() ->
-    Props = [{authScheme, "mtls"}, {certificate, "cert"}, {privateKey, "key"}],
+    Props = [{authScheme, <<"mtls">>}, {certificate, <<"cert">>},
+             {privateKey, <<"key">>}],
     ?assertEqual(ok, validate_http_fields(Props)).
 
 http_mtls_missing_cert_test() ->
-    Props = [{authScheme, "mtls"}, {privateKey, "key"}],
+    Props = [{authScheme, <<"mtls">>}, {privateKey, <<"key">>}],
     ?assertMatch({error, _}, validate_http_fields(Props)).
 
 key_maps_consistent_test() ->

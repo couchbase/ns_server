@@ -13,13 +13,17 @@
 %% Stores credentials in chronicle. Key: {credentials, Id}
 %% Stored credential map structure (schema_version = 1):
 %%   #{
-%%     id             => string(),
+%%     id             => string(),   %% from the URL path, printable ASCII
 %%     schema_version => 1,
 %%     type           => aws,
 %%     meta           => #{created_at, created_by, updated_at, updated_by,
 %%                         expires_at  => integer() (ms since epoch, optional),
-%%                         description => string() (optional)},
+%%                         description => binary() (optional)},
 %%     fields         => #{...type-specific fields, all plaintext...}
+%%
+%% Text taken from the request body is held as the utf8 binary the json decoder
+%% produced; the id is the exception, because it arrives in the path rather
+%% than the body.
 %%   }
 %%
 
@@ -62,7 +66,7 @@
 -define(PREREQ_KEYS, [?CREDENTIAL_STORE_SETTINGS_KEY,
                       ?CHRONICLE_ENCR_AT_REST_SETTINGS_KEY]).
 -type user_meta_map() :: #{expires_at => integer(),
-                           description => binary() | string(),
+                           description => binary(),
                            guardrails => map()}.
 
 %% @doc Create a new credential.
@@ -649,10 +653,10 @@ sensitive_fields_test() ->
     ?assertEqual([secret_access_key, session_token], sensitive_fields(aws)).
 
 redact_credential_test() ->
-    Fields = #{access_key_id     => "AKIAIOSFODNN7EXAMPLE",
-               secret_access_key => "SECRET_KEY",
-               region            => "us-east-1",
-               endpoint          => "https://s3.amazonaws.com"},
+    Fields = #{access_key_id     => <<"AKIAIOSFODNN7EXAMPLE">>,
+               secret_access_key => <<"SECRET_KEY">>,
+               region            => <<"us-east-1">>,
+               endpoint          => <<"https://s3.amazonaws.com">>},
     Author = #{user => <<"admin">>, domain => local},
     Cred = #{id             => "test_aws",
              schema_version => ?SCHEMA_VERSION,
@@ -669,9 +673,9 @@ redact_credential_test() ->
     ?assertNot(maps:is_key(missing_sensitive_fields, Redacted)),
     ?assertMatch(#{created_at := 1234567890}, maps:get(meta, Redacted)),
     RedactedFields = maps:get(fields, Redacted),
-    ?assertEqual("AKIAIOSFODNN7EXAMPLE",
+    ?assertEqual(<<"AKIAIOSFODNN7EXAMPLE">>,
                  maps:get(access_key_id, RedactedFields)),
-    ?assertEqual("us-east-1",
+    ?assertEqual(<<"us-east-1">>,
                  maps:get(region, RedactedFields)),
     ?assertEqual(<<"********">>,
                  maps:get(secret_access_key, RedactedFields)).
@@ -686,8 +690,8 @@ redact_credential_missing_carries_fields_test() ->
                                  created_by    => Author,
                                  secret_set_at => 1234567890,
                                  secret_set_by => Author},
-             fields         => #{access_key_id => "AKIA",
-                                 region        => "us-east-1"}},
+             fields         => #{access_key_id => <<"AKIA">>,
+                                 region        => <<"us-east-1">>}},
     Redacted = redact_credential(Cred),
     ?assertEqual([secret_access_key],
                  maps:get(missing_sensitive_fields, Redacted)).
@@ -704,7 +708,7 @@ consume_refuses_missing_secret_test() ->
              type           => aws,
              missing_sensitive_fields => [secret_access_key],
              meta           => #{created_at => 1, created_by => Author},
-             fields         => #{access_key_id => "AKIA"}},
+             fields         => #{access_key_id => <<"AKIA">>}},
     Snapshot = #{build_key(Id) => {Cred, {<<"rev">>, 1}}},
     ?assertEqual({error, {secret_missing, [secret_access_key]}},
                  consume_credential_impl(Id, Snapshot)).
@@ -717,8 +721,8 @@ consume_allows_present_secret_test() ->
              schema_version => ?SCHEMA_VERSION,
              type           => aws,
              meta           => #{created_at => 1, created_by => Author},
-             fields         => #{access_key_id => "AKIA",
-                                 secret_access_key => "SECRET"}},
+             fields         => #{access_key_id => <<"AKIA">>,
+                                 secret_access_key => <<"SECRET">>}},
     Snapshot = #{build_key(Id) => {Cred, {<<"rev">>, 1}}},
     {ok, Got} = consume_credential_impl(Id, Snapshot),
     ?assertEqual(Id, maps:get(id, Got)).

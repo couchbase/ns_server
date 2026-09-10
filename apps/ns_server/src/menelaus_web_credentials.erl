@@ -155,7 +155,7 @@ handle_settings_put(Req) ->
       fun (Props) ->
               validate_and_store_settings(Props, Req)
       end,
-      Req, json, settings_validators(), #{strings => raw_byte_list}).
+      Req, json, settings_validators()).
 
 handle_settings_delete(Req) ->
     Fun = fun (_) -> {commit, [{delete, ?CREDENTIAL_STORE_SETTINGS_KEY}]} end,
@@ -465,7 +465,7 @@ handle_post(IdStr, Req) ->
                               reply_store_error(Req, Reason2)
                       end
               end,
-              Req, json, post_validators(), #{strings => raw_byte_list})
+              Req, json, post_validators())
     end.
 
 handle_put(IdStr, Req) ->
@@ -483,7 +483,7 @@ handle_put(IdStr, Req) ->
                                             MetaExtra, Author, ExpectedRev),
                 Req)
       end,
-      Req, json, put_validators(), #{strings => raw_byte_list}).
+      Req, json, put_validators()).
 
 %% @doc Partial update of an existing credential's metadata.
 %% Accepts only description, expiresAt, and guardrails — never type or fields.
@@ -510,7 +510,7 @@ handle_patch(IdStr, Req) ->
                         Req)
               end
       end,
-      Req, json, patch_validators(), #{strings => raw_byte_list}).
+      Req, json, patch_validators()).
 
 %% @doc Shared response handling for the update_credential audit event,
 %% used by both PUT (full replace) and PATCH (partial metadata update).
@@ -788,7 +788,7 @@ common_cred_validators() ->
                        FieldValidators =
                            cb_credential_types:fields_validators(Type),
                        case validator:validate_decoded_object(
-                              Fields, FieldValidators) of
+                              Fields, State, FieldValidators) of
                            {value, Validated} -> {value, Validated, State};
                            {error, Err} -> {error, Err, State}
                        end
@@ -911,23 +911,18 @@ validated_meta_extra(Props) ->
 %%   allowedUrls    – array of URL strings (validated as proper URLs)
 %%   disallowedUrls – array of URL strings (validated as proper URLs)
 guardrails_validators() ->
-    ConvertArray = fun (L) -> [list_to_binary(S) || S <- L] end,
-    ServiceNames = [atom_to_list(S) || S <- ?CREDENTIAL_CONSUMER_SERVICES],
-    [validator:string_array(allowedServices,
-                            fun (S) ->
-                                    case lists:member(S, ServiceNames) of
-                                        true  -> ok;
-                                        false ->
-                                            {error,
-                                             io_lib:format(
-                                               "Unknown service: ~s. "
-                                               "Valid services: ~s",
-                                               [S, lists:join(", ",
-                                                              ServiceNames)])}
-                                    end
-                            end, _),
+    ServiceNames = [atom_to_binary(S) || S <- ?CREDENTIAL_CONSUMER_SERVICES],
+    [validator:string_array(
+       allowedServices,
+       fun (S) ->
+               case lists:member(S, ServiceNames) of
+                   true  -> ok;
+                   false ->
+                       {error, ["Unknown service: ", S, ". Valid services: ",
+                                lists:join(", ", ServiceNames)]}
+               end
+       end, _),
      validator:array_length(allowedServices, 1, infinity, _),
-     validator:convert(allowedServices, ConvertArray, _),
      validator:decoded_json(urlWhitelist,
                             url_whitelist_validators(), _),
      validator:unsupported(_)].
@@ -955,17 +950,14 @@ url_whitelist_validators() ->
                     {error, _} -> {error, "Invalid URL"}
                 end
         end,
-    ConvertUrlArray = fun (L) -> [list_to_binary(U) || U <- L] end,
     [validator:has_params(_),
      validator:boolean(allAccess, _),
      validator:string_array(allowedUrls,
                             UrlValidatorFun, _),
      validator:array_length(allowedUrls, 1, infinity, _),
-     validator:convert(allowedUrls, ConvertUrlArray, _),
      validator:string_array(disallowedUrls,
                             UrlValidatorFun, _),
      validator:array_length(disallowedUrls, 1, infinity, _),
-     validator:convert(disallowedUrls, ConvertUrlArray, _),
      validator:unsupported(_)].
 
 %% @doc Convert validated guardrails proplist (camelCase atom keys) to the
@@ -1027,7 +1019,9 @@ hide_sensitive_fields(Type, Fields) ->
 %% by store).  Output uses maps with binary keys for json:encode.
 export_credential(#{id := Id, schema_version := SV, type := Type,
                     meta := Meta, fields := Fields} = Cred) ->
-    Base = #{<<"id">>            => ensure_binary(Id),
+    %% The id comes from the URL path, so it is a byte list, and
+    %% validate_credential_id/1 has already constrained it to printable ASCII.
+    Base = #{<<"id">>            => list_to_binary(Id),
              <<"type">>          => atom_to_binary(
                                       misc:snake_to_camel_atom(Type)),
              <<"schemaVersion">> => SV,
@@ -1061,8 +1055,7 @@ export_meta(#{created_at := CA, created_by := CB,
                      error    -> WithUpdated
                  end,
     WithDesc = case maps:find(description, Meta) of
-                   {ok, Desc} -> WithExpiry#{<<"description">> =>
-                                                 ensure_binary(Desc)};
+                   {ok, Desc} -> WithExpiry#{<<"description">> => Desc};
                    error      -> WithExpiry
                end,
     WithGuardrails = case maps:find(guardrails, Meta) of
@@ -1076,7 +1069,7 @@ export_meta(#{created_at := CA, created_by := CB,
     WithGuardrails#{<<"payloadVersion">> => rev_to_binary(Rev)}.
 
 export_author(#{user := User, domain := Domain}) ->
-    #{<<"user">> => ensure_binary(User),
+    #{<<"user">> => User,
       <<"domain">> => atom_to_binary(Domain)}.
 
 %% @doc Convert stored guardrails map (snake_case atom keys) to wire format
@@ -1107,10 +1100,6 @@ export_url_whitelist(WL) ->
 %% Delegates field export to the central type registry.
 export_fields(Type, Fields) ->
     cb_credential_types:export_fields(Type, Fields).
-
-ensure_binary(V) when is_binary(V) -> V;
-ensure_binary(V) when is_list(V)   -> list_to_binary(V);
-ensure_binary(V) when is_atom(V)   -> atom_to_binary(V).
 
 %% @doc Serialise an opaque chronicle revision to a JSON-safe binary string.
 %% The revision is an Erlang term; we use term_to_binary + base64 so it
@@ -1198,7 +1187,7 @@ roundtrip_test() ->
 
 export_credential_test() ->
     Admin = #{user => <<"Administrator">>, domain => local},
-    Cred = #{id             => <<"backup/aws/prod">>,
+    Cred = #{id             => "backup/aws/prod",
              schema_version => 1,
              type           => aws,
              meta           => #{created_at      => 1740000000000,
@@ -1229,7 +1218,7 @@ export_credential_test() ->
 %% credential as incomplete.
 export_credential_missing_test() ->
     Admin = #{user => <<"Administrator">>, domain => local},
-    Cred = #{id             => <<"backup/aws/restored">>,
+    Cred = #{id             => "backup/aws/restored",
              schema_version => 1,
              type           => aws,
              missing_sensitive_fields => [secret_access_key],

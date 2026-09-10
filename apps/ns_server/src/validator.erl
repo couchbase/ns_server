@@ -84,7 +84,7 @@
          report_errors_for_one/3,
          validate_field_path/2,
          no_duplicate_values/1,
-         validate_decoded_object/2,
+         validate_decoded_object/3,
          simple_term_to_list/1,
          jsonify_results/1]).
 
@@ -361,9 +361,6 @@ with_decoded_object(Value, Parent, Validators) when is_binary(Value) ->
                     Validators);
 with_decoded_object(_, _, _) ->
     #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
-
-validate_decoded_object(DecodedObject, Validators) ->
-    validate_decoded_object(DecodedObject, #state{}, Validators).
 
 validate_decoded_object(DecodedObject, Parent, Validators) ->
     St = with_decoded_object(DecodedObject, Parent, Validators),
