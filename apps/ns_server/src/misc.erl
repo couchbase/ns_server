@@ -3848,6 +3848,7 @@ parse_url(URL, Options) ->
         throw:{error, _} = Error -> Error
     end.
 
+-spec is_valid_uri(string(), [string()]) -> boolean().
 is_valid_uri(URI, Schemes) ->
     case string:tokens(URI, "://") of
         [Scheme | _] ->
