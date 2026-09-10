@@ -140,4 +140,5 @@ upgrade_to(?VERSION_80, UpgradeTxn) ->
        UpgradeTxn,
        [ns_bucket:chronicle_upgrade_to_totoro(_),
         menelaus_roles:chronicle_upgrade_to_totoro(_),
+        menelaus_web_jwt:chronicle_upgrade_to_totoro(_),
         ns_server_cert:chronicle_upgrade_to_totoro(_)])}.

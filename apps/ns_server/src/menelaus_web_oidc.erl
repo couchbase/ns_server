@@ -42,8 +42,8 @@ callback_validators() ->
 -spec get_issuer_config(IssuerName :: binary()) ->
           {ok, map()} | {error, string()}.
 get_issuer_config(IssuerName) ->
-    case chronicle_kv:get(kv, jwt_settings) of
-        {ok, {#{issuers := Issuers}, _}} ->
+    case menelaus_web_jwt:get_settings() of
+        {ok, #{issuers := Issuers}} ->
             case maps:get(IssuerName, Issuers, undefined) of
                 undefined ->
                     {error, "Unknown issuer"};
@@ -63,8 +63,8 @@ get_issuer_config(IssuerName) ->
 %% label. Empty when JWT is disabled or no issuer is OIDC-enabled.
 -spec enabled_issuers() -> [{[{atom(), binary()}]}].
 enabled_issuers() ->
-    case chronicle_kv:get(kv, jwt_settings) of
-        {ok, {#{enabled := true, issuers := Issuers}, _}} ->
+    case menelaus_web_jwt:get_settings() of
+        {ok, #{enabled := true, issuers := Issuers}} ->
             maps:fold(
               fun(Name, Props, Acc) when is_map(Props) ->
                       case maps:is_key(oidc_settings, Props) of

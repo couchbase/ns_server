@@ -571,8 +571,8 @@ handle_info(settings_update,
     cancel_timer(TimerRef),
 
     update_internal_keys(),
-    case chronicle_kv:get(kv, jwt_settings) of
-        {ok, {#{enabled := true, issuers := IssuersMap} = Settings, _Rev}} ->
+    case menelaus_web_jwt:get_settings() of
+        {ok, #{enabled := true, issuers := IssuersMap} = Settings} ->
             maps:foreach(
               fun(Issuer, #{signing_algorithm := Algo} = Props) ->
                       case menelaus_web_jwt_key:is_symmetric_algorithm(Algo) of
@@ -611,8 +611,8 @@ handle_info(periodic_refresh,
     cancel_timer(Ref),
     ?log_debug("Initiating JWKS refresh.", []),
 
-    case chronicle_kv:get(kv, jwt_settings) of
-        {ok, {#{enabled := true, issuers := IssuersMap}, _}} ->
+    case menelaus_web_jwt:get_settings() of
+        {ok, #{enabled := true, issuers := IssuersMap}} ->
             maps:foreach(
               fun(Issuer, #{public_key_source := jwks_uri} = Props) ->
                       case fetch_and_cache_jwks(Props#{name => Issuer}) of
@@ -642,12 +642,16 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 -ifdef(TEST).
+mock_compat_mode() ->
+    meck:new(cluster_compat_mode, [passthrough]),
+    meck:expect(cluster_compat_mode, is_cluster_totoro, fun() -> true end).
 
 cache_lookup_test() ->
     meck:new(chronicle_compat_events, [passthrough]),
     meck:new(chronicle_kv, [passthrough]),
     meck:new(ns_config, [passthrough]),
     meck:new(jwt_issuer, [passthrough]),
+    mock_compat_mode(),
 
     meck:expect(ns_config, search_node_with_default,
                 fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
@@ -763,6 +767,7 @@ cache_lookup_test() ->
         meck:unload(chronicle_compat_events),
         meck:unload(rest_utils),
         meck:unload(ns_config),
+        meck:unload(cluster_compat_mode),
         catch gen_server:stop(jwt_cache)
     end.
 
@@ -773,6 +778,7 @@ cache_refresh_failure_test() ->
     meck:new(rest_utils, [passthrough]),
     meck:new(menelaus_web_jwt_key, [passthrough]),
     meck:new(jwt_issuer, [passthrough]),
+    mock_compat_mode(),
 
     meck:expect(ns_config, search_node_with_default,
                 fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
@@ -905,6 +911,7 @@ cache_refresh_failure_test() ->
         meck:unload(chronicle_compat_events),
         meck:unload(rest_utils),
         meck:unload(ns_config),
+        meck:unload(cluster_compat_mode),
         meck:unload(menelaus_web_jwt_key),
         catch gen_server:stop(jwt_cache)
     end.
@@ -913,6 +920,7 @@ pem_cache_test() ->
     meck:new(chronicle_compat_events, [passthrough]),
     meck:new(chronicle_kv, [passthrough]),
     meck:new(jwt_issuer, [passthrough]),
+    mock_compat_mode(),
 
     meck:expect(jwt_issuer, settings, fun() -> #{} end),
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
@@ -986,6 +994,7 @@ pem_cache_test() ->
         catch gen_server:stop(jwt_cache),
         meck:unload(jwt_issuer),
         meck:unload(chronicle_kv),
+        meck:unload(cluster_compat_mode),
         meck:unload(chronicle_compat_events)
     end.
 
@@ -993,6 +1002,7 @@ static_jwks_cache_test() ->
     meck:new(chronicle_compat_events, [passthrough]),
     meck:new(chronicle_kv, [passthrough]),
     meck:new(jwt_issuer, [passthrough]),
+    mock_compat_mode(),
 
     meck:expect(jwt_issuer, settings, fun() -> #{} end),
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
@@ -1079,6 +1089,7 @@ static_jwks_cache_test() ->
         catch gen_server:stop(jwt_cache),
         meck:unload(jwt_issuer),
         meck:unload(chronicle_kv),
+        meck:unload(cluster_compat_mode),
         meck:unload(chronicle_compat_events)
     end.
 

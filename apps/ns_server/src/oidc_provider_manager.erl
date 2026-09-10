@@ -359,8 +359,8 @@ derive_issuer_from_discovery(DiscoveryUriBin) when is_binary(DiscoveryUriBin) ->
     end.
 
 get_oidc_issuers_with_discovery() ->
-    case chronicle_kv:get(kv, jwt_settings) of
-        {ok, {Settings, _Rev}} ->
+    case menelaus_web_jwt:get_settings() of
+        {ok, Settings} ->
             IssuersMap = maps:get(issuers, Settings, #{}),
             lists:foldl(
               fun({Name, Props}, Acc) ->

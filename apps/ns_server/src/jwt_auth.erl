@@ -64,8 +64,8 @@
           {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
 authenticate(Token) ->
     Persisted =
-        case chronicle_kv:get(kv, jwt_settings) of
-            {ok, {#{enabled := true, issuers := Issuers}, _Rev}} ->
+        case menelaus_web_jwt:get_settings() of
+            {ok, #{enabled := true, issuers := Issuers}} ->
                 Issuers;
             _ ->
                 #{}
