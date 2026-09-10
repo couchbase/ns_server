@@ -205,7 +205,8 @@ build_kid_map(Keys) ->
 
 %% @doc Validates a shared secret for HMAC algorithms (HS256, HS384, HS512).
 %% The secret must be valid UTF-8 and meet minimum length requirements based on
-%% the algorithm's bit size.
+%% the algorithm's bit size. Length bounds must use bytes not character length.
+%% A single Unicode character can span 1-4 bytes.
 -spec validate_shared_secret(string(), jwt_algorithm()) ->
           {ok, {value, binary()}} | {error, string()}.
 validate_shared_secret(Secret, Algorithm) ->
@@ -225,9 +226,9 @@ validate_shared_secret(Secret, Algorithm) ->
             %% size doesn't increase security. The key will be hashed to fit the
             %% block length before use.
             MaxLength = case Algorithm of
-                            'HS256' -> 512;
-                            'HS384' -> 1024;
-                            'HS512' -> 1024
+                            'HS256' -> 64;   % 512/8
+                            'HS384' -> 128;  % 1024/8
+                            'HS512' -> 128   % 1024/8
                         end,
             %% Mochiweb converts the utf8 string to a list, which isn't
             %% correct, so we need to undo that conversion here.
@@ -236,18 +237,18 @@ validate_shared_secret(Secret, Algorithm) ->
                     {error, "Incomplete utf8 shared secret"};
                 {error, _, _} ->
                     {error, "Ill-formed utf8 shared secret"};
-                BinaryChars ->
-                    SecretLength = string:length(BinaryChars),
+                SecretBin ->
+                    SecretLength = byte_size(SecretBin),
                     case SecretLength < MinLength orelse
                         SecretLength > MaxLength of
                         true ->
                             Msg = "Shared secret length must be in the range "
-                                "from ~p to ~p inclusive",
+                                "from ~p to ~p bytes inclusive",
                             {error, lists:flatten(io_lib:format(
                                                     Msg,
                                                     [MinLength, MaxLength]))};
                         false ->
-                            {ok, {value, BinaryChars}}
+                            {ok, {value, SecretBin}}
                     end
             end
     end.
