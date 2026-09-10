@@ -1129,20 +1129,20 @@ audit_map_to_proplist_utf8_test() ->
                   {<<"профиль"/utf8>>, {[{<<"name">>, <<"Алекс"/utf8>>}]}}
                  ], lists:sort(audit_map_to_proplist(Custom))).
 
-custom_claims_validation_test() ->
+custom_claims_validation_test_() ->
     [
      %% Test string validation
      ?_assertEqual(ok, validate_single_custom_claim(
                          #{<<"email">> => <<"test@example.com">>},
                          <<"email">>,
                          #{type => string,
-                           pattern => "^[a-z]+@[a-z]+\\.[a-z]+$",
+                           pattern => <<"^[a-z]+@[a-z]+\\.[a-z]+$">>,
                            mandatory => true})),
      ?_assertMatch({error, _}, validate_single_custom_claim(
                                    #{<<"email">> => <<"invalid">>},
                                    <<"email">>,
                                    #{type => string,
-                                     pattern => "^[a-z]+@[a-z]+\\.[a-z]+$",
+                                     pattern => <<"^[a-z]+@[a-z]+\\.[a-z]+$">>,
                            mandatory => true})),
 
      %% Test number validation with integers
@@ -1267,11 +1267,13 @@ custom_claims_validation_test() ->
                          <<"roles">>,
                          #{type => array,
                            mandatory => true})),
-     ?_assertMatch({error, _}, validate_single_custom_claim(
-                                 #{<<"roles">> => []},
-                                 <<"roles">>,
-                                 #{type => array,
-                                   mandatory => true})),
+     %% A mandatory array claim is present when it is empty, and nothing
+     %% below array validates what is in it, so an empty one is accepted.
+     ?_assertEqual(ok, validate_single_custom_claim(
+                         #{<<"roles">> => []},
+                         <<"roles">>,
+                         #{type => array,
+                           mandatory => true})),
 
      %% Test object validation
      ?_assertEqual(ok, validate_single_custom_claim(
@@ -1285,7 +1287,7 @@ custom_claims_validation_test() ->
                          #{},
                          <<"optional">>,
                          #{type => string,
-                           pattern => ".*",
+                           pattern => <<".*">>,
                            mandatory => false})),
 
      %% Test missing mandatory claims
@@ -1293,7 +1295,7 @@ custom_claims_validation_test() ->
                                  #{},
                                  <<"required">>,
                                  #{type => string,
-                                   pattern => ".*",
+                                   pattern => <<".*">>,
                                    mandatory => true}))
     ].
 
