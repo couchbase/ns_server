@@ -27,9 +27,9 @@
          issue/3,
          settings/0]).
 
--spec name() -> string().
+-spec name() -> binary().
 name() ->
-    "ns_server".
+    <<"ns_server">>.
 
 generate_keys() ->
     {_, Map} = jose_jwk:to_map(jose_jwk:generate_key({okp, ?JWT_EL_CURVE})),
@@ -54,7 +54,7 @@ issue(User, Roles, LifetimeSec) ->
     case get_jwk() of
         {ok, JWKMap} ->
             Now = erlang:system_time(second),
-            JWT = #{<<"iss">> => list_to_binary(name()),
+            JWT = #{<<"iss">> => name(),
                     <<"exp">> => Now + LifetimeSec,
                     <<"sub">> => list_to_binary(User),
                     <<"aud">> => <<"ns_server_internal">>,
@@ -76,13 +76,13 @@ settings() ->
         {ok, JWKMap} ->
             PEM = jose_jwk:to_pem(jose_jwk:to_public(JWKMap)),
             #{
-              "ns_server" =>
+              <<"ns_server">> =>
                   #{signing_algorithm => ?JWT_SIGNING_ALG,
                     public_key_source => pem,
                     public_key => PEM,
                     expiry_leeway_s => 0,
                     audience_handling => any,
-                    audiences => ["ns_server_internal"],
+                    audiences => [<<"ns_server_internal">>],
                     jit_provisioning => true
                    }
              };

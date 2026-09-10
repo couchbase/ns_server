@@ -44,7 +44,12 @@
          format_mapping_rules/1]).
 
 %% Used when no mapping rules are configured, so that a value maps to itself.
--define(IDENTITY_RULE, {"^(.*)$", "\\1"}).
+-define(IDENTITY_RULE, {<<"^(.*)$">>, <<"\\1">>}).
+
+%% Patterns and the values they are matched against are utf8 binaries.
+%% unicode makes re read them as characters rather than bytes.
+%% ucp extends \w, \d and \p{..} to the characters outside ASCII.
+-define(RE_OPTIONS, [unicode, ucp]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -52,9 +57,10 @@
 
 %% Types that can be mapped from external auth systems to Couchbase
 -type mapped_type() :: user | groups | {roles, public | all}.
--type mapping_rule_str() :: string().
--type mapping_rule() :: {string(), string()}.
--type input_value() :: string().
+%% The mapped result crosses into RBAC, whose names are lists of utf8 bytes,
+%% so extract_mapped_result/2 converts there and nowhere else.
+-type mapping_rule() :: {binary(), binary()}.
+-type input_value() :: binary().
 -type mapped_user() :: string().
 -type mapped_group() :: string().
 -type mapped_role() :: rbac_role().
@@ -68,19 +74,20 @@
 %% space. Use \s (or \x20, [[:space:]]) to match whitespace in the value being
 %% mapped. The template cannot contain whitespace at all, because every value it
 %% can produce is a user, group or role name, and none of those may contain it.
--spec validate_mapping_rule(MappingRule :: mapping_rule_str()) ->
+-spec validate_mapping_rule(MappingRule :: binary()) ->
           {value, mapping_rule()} | {error, binary()}.
-validate_mapping_rule(RuleStr) ->
-    Trimmed = string:trim(RuleStr),
+validate_mapping_rule(Rule) ->
+    Trimmed = string:trim(Rule),
     %% Validates that only as many captured groups as the template are present
     %% in the pattern. Note that re:compile will not choke on the cases where we
     %% use special characters '[]:'.
-    case re:compile(Trimmed) of
+    case compile(Trimmed) of
         {ok, _} ->
             case string:split(Trimmed, " ", leading) of
                 [Pattern, Template] ->
-                    Backreference = re:run(Template, "\\\\g"),
-                    case re:run(Template, "\\s") of
+                    Backreference = re:run(Template, <<"\\\\g">>,
+                                           ?RE_OPTIONS),
+                    case re:run(Template, <<"\\s">>, ?RE_OPTIONS) of
                         {match, _} ->
                             {error, "Mapping rule template must not contain "
                              "whitespace, since user, group and role names "
@@ -92,7 +99,7 @@ validate_mapping_rule(RuleStr) ->
                              "spellings are not supported"};
                         nomatch ->
                             %% Validate the pattern separately.
-                            case re:compile(Pattern) of
+                            case compile(Pattern) of
                                 {ok, _} -> {value, {Pattern, Template}};
                                 {error, {Error, At}} ->
                                     Err = io_lib:format(
@@ -108,6 +115,11 @@ validate_mapping_rule(RuleStr) ->
             Err = io_lib:format("~s (at character #~b)", [Error, At]),
             {error, lists:flatten(Err)}
     end.
+
+%% Without unicode a pattern is matched byte by byte, so a character range
+%% such as [а-я] matches nothing and a count such as .{5} counts bytes.
+compile(Pattern) ->
+    re:compile(Pattern, ?RE_OPTIONS).
 
 %% @doc Applies a single regex mapping rule
 %% A mapping rule is a string of the form "pattern template", split on the
@@ -131,35 +143,39 @@ validate_mapping_rule(RuleStr) ->
 %% which is the part of re that does not vary with the regex engine
 %% underneath it.
 -spec apply_mapping_rule(Value :: input_value(), Rule :: mapping_rule()) ->
-          string() | nomatch.
+          binary() | nomatch.
 apply_mapping_rule(Value, {Pattern, Template}) ->
-    {ok, MP} = re:compile("^(?:" ++ Pattern ++ ")$"),
-    case re:run(Value, MP, [{capture, all_but_first, list}, notempty]) of
+    {ok, MP} = compile(<<"^(?:", Pattern/binary, ")$">>),
+    case re:run(Value, MP, [{capture, all_but_first, binary}, notempty]) of
         {match, Captures} ->
             expand_template(Template, Captures);
         nomatch ->
             nomatch
     end.
 
--spec expand_template(Template :: string(), Captures :: [string()]) ->
-          string().
-expand_template([$\\, N | Rest], Captures) when N >= $1, N =< $9 ->
-    capture(N - $0, Captures) ++ expand_template(Rest, Captures);
-expand_template([$\\, C | Rest], Captures) ->
-    [C | expand_template(Rest, Captures)];
-expand_template([C | Rest], Captures) ->
-    [C | expand_template(Rest, Captures)];
-expand_template([], _Captures) ->
-    [].
+%% Walking the template a byte at a time is safe on utf8, because the only
+%% bytes given a meaning here are a backslash and an ASCII digit. Neither
+%% can occur inside a multi byte character.
+-spec expand_template(Template :: binary(), Captures :: [binary()]) ->
+          binary().
+expand_template(<<$\\, N, Rest/binary>>, Captures) when N >= $1, N =< $9 ->
+    Capture = capture(N - $0, Captures),
+    <<Capture/binary, (expand_template(Rest, Captures))/binary>>;
+expand_template(<<$\\, C, Rest/binary>>, Captures) ->
+    <<C, (expand_template(Rest, Captures))/binary>>;
+expand_template(<<C, Rest/binary>>, Captures) ->
+    <<C, (expand_template(Rest, Captures))/binary>>;
+expand_template(<<>>, _Captures) ->
+    <<>>.
 
 %% A template cannot name a group the pattern does not have, since
 %% validate_mapping_rule/1 rejects the rule. Tolerate it rather than fail an
 %% authentication, should a rule ever reach here without being validated.
--spec capture(N :: pos_integer(), Captures :: [string()]) -> string().
+-spec capture(N :: pos_integer(), Captures :: [binary()]) -> binary().
 capture(N, Captures) when N =< length(Captures) ->
     lists:nth(N, Captures);
 capture(_N, _Captures) ->
-    "".
+    <<>>.
 
 %% @doc Maps a single value (user or a single group or role)
 -spec map_value(Type :: mapped_type(),
@@ -170,7 +186,7 @@ map_value(Type, Value, Rules, StopFirstMatch) ->
     try_rules(Type, Value, Rules, StopFirstMatch, []).
 
 -spec try_rules(mapped_type(), input_value(), [mapping_rule()],
-                boolean(), [mapped_result()]) -> [mapped_result()].
+                boolean(), mapped_result()) -> mapped_result().
 try_rules(_Type, _Value, [], _StopFirstMatch, Results) ->
     Results;
 try_rules(Type, Value, [Rule | Rest], StopFirstMatch, Acc) ->
@@ -190,9 +206,14 @@ try_rules(Type, Value, [Rule | Rest], StopFirstMatch, Acc) ->
     end.
 
 %% @doc Validates mapped result based on type
--spec extract_mapped_result(mapped_type(), mapped_result()) ->
-          {ok, mapped_result()} | {error, binary()}.
-extract_mapped_result(user, Value) ->
+-spec extract_mapped_result(mapped_type(), binary()) ->
+          {ok, string() | rbac_role()} | {error, binary()}.
+extract_mapped_result(Type, MappedBin) ->
+    extract_mapped_name(Type, binary_to_list(MappedBin)).
+
+-spec extract_mapped_name(mapped_type(), string()) ->
+          {ok, string() | rbac_role()} | {error, binary()}.
+extract_mapped_name(user, Value) ->
     case menelaus_web_rbac:validate_cred(Value, username) of
         true ->
             case menelaus_auth:is_external_auth_allowed(Value) of
@@ -208,7 +229,7 @@ extract_mapped_result(user, Value) ->
                          [ns_config_log:tag_user_name(Value), Error]),
             {error, Error}
     end;
-extract_mapped_result(groups, Value) ->
+extract_mapped_name(groups, Value) ->
     case menelaus_users:group_exists(Value) of
         true ->
             {ok, Value};
@@ -217,7 +238,7 @@ extract_mapped_result(groups, Value) ->
                          [ns_config_log:tag_group_name(Value)]),
             {error, <<"Invalid group">>}
     end;
-extract_mapped_result({roles, RolesScope}, Value) ->
+extract_mapped_name({roles, RolesScope}, Value) ->
     case menelaus_web_rbac:parse_roles(Value) of
         [{error, _}] ->
             ?log_warning("Ignoring invalid roles ~s",
@@ -280,68 +301,133 @@ try_user_rules(Value, [Rule | Rest]) ->
         Mapped -> extract_mapped_result(user, Mapped)
     end.
 
--spec format_mapping_rules(undefined | [{string(), string()}]) ->
+-spec format_mapping_rules(undefined | [mapping_rule()]) ->
           undefined | [binary()].
 format_mapping_rules(undefined) -> undefined;
 format_mapping_rules(Rules) ->
     lists:map(fun({Pattern, Template}) ->
-                      list_to_binary(string:join([Pattern, Template], " "))
+                      <<Pattern/binary, " ", Template/binary>>
               end, Rules).
 
 -ifdef(TEST).
+
+validate_rule_str(RuleStr) ->
+    case validate_mapping_rule(list_to_binary(RuleStr)) of
+        {value, {Pattern, Template}} ->
+            {value, {binary_to_list(Pattern), binary_to_list(Template)}};
+        Other ->
+            Other
+    end.
+
+map_ids_str(Type, Values, Rules, StopFirstMatch) ->
+    map_identities(Type, [list_to_binary(V) || V <- Values],
+                   rules_str(Rules), StopFirstMatch).
+
+map_user_str(Value, Rules) ->
+    map_user(list_to_binary(Value), rules_str(Rules)).
+
+rules_str(Rules) ->
+    [{list_to_binary(P), list_to_binary(T)} || {P, T} <- Rules].
 
 validate_mapping_rule_test_() ->
     [
      %% Valid rules
      ?_assertEqual({value, {"^GoogleUser:(.*)", "\\1"}},
-                   validate_mapping_rule("^GoogleUser:(.*) \\1")),
+                   validate_rule_str("^GoogleUser:(.*) \\1")),
      ?_assertEqual({value, {"^(.*)@(.*)\\.com", "\\2-\\1"}},
-                   validate_mapping_rule("^(.*)@(.*)\\.com \\2-\\1")),
+                   validate_rule_str("^(.*)@(.*)\\.com \\2-\\1")),
      ?_assertEqual({value, {"(.*)", "user-\\1"}},
-                   validate_mapping_rule("(.*) user-\\1")),
+                   validate_rule_str("(.*) user-\\1")),
 
      %% Rules with special characters
      ?_assertEqual({value, {"^Role:(.*):(.*):admin",
                             "data_writer[\\1:\\2:c1]"}},
-                   validate_mapping_rule("^Role:(.*):(.*):admin "
-                                         "data_writer[\\1:\\2:c1]")),
+                   validate_rule_str("^Role:(.*):(.*):admin "
+                                     "data_writer[\\1:\\2:c1]")),
      ?_assertEqual({value, {"^Group:analytics:(.*)",
                             "analytics_reader[\\1]"}},
-                   validate_mapping_rule("^Group:analytics:(.*) "
-                                         "analytics_reader[\\1]")),
+                   validate_rule_str("^Group:analytics:(.*) "
+                                     "analytics_reader[\\1]")),
 
      %% Invalid patterns
      ?_assertMatch({error, _},
-                   validate_mapping_rule("[")), % Unmatched bracket
+                   validate_rule_str("[")), % Unmatched bracket
      ?_assertMatch({error, _},
-                   validate_mapping_rule("(.*")), % Unmatched parenthesis
+                   validate_rule_str("(.*")), % Unmatched parenthesis
 
      %% Invalid format
      ?_assertEqual({error, "Invalid mapping rule"},
-                   validate_mapping_rule("single_part")),
+                   validate_rule_str("single_part")),
      ?_assertEqual({error, "Invalid mapping rule"},
-                   validate_mapping_rule("")),
+                   validate_rule_str("")),
 
      %% Invalid template references
      ?_assertMatch({error, _},
-                   validate_mapping_rule("(.*) \\2")), % Non-existent group
+                   validate_rule_str("(.*) \\2")), % Non-existent group
 
      %% Template must not contain whitespace
      ?_assertMatch({error, _},
-                   validate_mapping_rule("^my group$ cb-admins")),
+                   validate_rule_str("^my group$ cb-admins")),
      ?_assertMatch({error, _},
-                   validate_mapping_rule("^admin$ role one")),
+                   validate_rule_str("^admin$ role one")),
      ?_assertMatch({error, _},
-                   validate_mapping_rule("(.*) \\1 extra")),
+                   validate_rule_str("(.*) \\1 extra")),
 
      %% Whitespace in the value being mapped is matched from the pattern with
      %% an escape instead of a literal space.
      ?_assertEqual({value, {"^my\\sgroup$", "cb-admins"}},
-                   validate_mapping_rule("^my\\sgroup$ cb-admins")),
+                   validate_rule_str("^my\\sgroup$ cb-admins")),
      ?_assertEqual({value, {"^my[[:space:]]group$", "cb-admins"}},
-                   validate_mapping_rule("^my[[:space:]]group$ cb-admins")),
+                   validate_rule_str("^my[[:space:]]group$ cb-admins")),
      ?_assertEqual({value, {"(.*)\\s(.*)", "cb-\\1-\\2"}},
-                   validate_mapping_rule("(.*)\\s(.*) cb-\\1-\\2"))
+                   validate_rule_str("(.*)\\s(.*) cb-\\1-\\2"))
+    ].
+
+utf8_mapping_rule_test_() ->
+    [
+     %% A rule is trimmed and split as a binary, so a character whose utf8
+     %% encoding ends in the byte 16#85, Cyrillic "х" among them, survives. On
+     %% a list of utf8 bytes string:trim/1 would have cut that byte off.
+     ?_assertEqual({value, {<<"^нет-(.*)$"/utf8>>, <<"группых"/utf8>>}},
+                   validate_mapping_rule(<<" ^нет-(.*)$ группых "/utf8>>)),
+     ?_assertEqual({value, {<<"^(.*)$">>, <<"кб-\\1Å"/utf8>>}},
+                   validate_mapping_rule(<<"^(.*)$ кб-\\1Å"/utf8>>)),
+
+     %% A pattern naming characters outside ASCII, by literal range and by
+     %% codepoint. Neither is usable if the pattern is matched byte by byte,
+     %% and the codepoint form does not even compile.
+     ?_assertEqual({value, {<<"^[а-я]+$"/utf8>>, <<"cb-admins">>}},
+                   validate_mapping_rule(<<"^[а-я]+$ cb-admins"/utf8>>)),
+     ?_assertEqual({value, {<<"^[\\x{0430}-\\x{044f}]+$">>, <<"cb-admins">>}},
+                   validate_mapping_rule(
+                     <<"^[\\x{0430}-\\x{044f}]+$ cb-admins">>)),
+
+     %% The mapped result keeps the utf8 of both the value and the template.
+     ?_assertEqual(<<"кб-Алекс"/utf8>>,
+                   apply_mapping_rule(<<"Алекс"/utf8>>,
+                                      {<<"^(.*)$">>, <<"кб-\\1"/utf8>>})),
+
+     %% Counts and ranges are per character, not per utf8 byte.
+     ?_assertEqual(<<"Алекс"/utf8>>,
+                   apply_mapping_rule(<<"Алекс"/utf8>>,
+                                      {<<"^(.{5})$">>, <<"\\1">>})),
+     ?_assertEqual(nomatch,
+                   apply_mapping_rule(<<"Алекс"/utf8>>,
+                                      {<<"^(.{10})$">>, <<"\\1">>})),
+     ?_assertEqual(<<"лекс"/utf8>>,
+                   apply_mapping_rule(<<"лекс"/utf8>>,
+                                      {<<"^([а-я]+)$"/utf8>>, <<"\\1">>})),
+
+     %% A capture ends on a character boundary, so a group taking one
+     %% character of the value yields that whole character. Matched byte by
+     %% byte, the group would end mid character and the mapped name would hold
+     %% half a character.
+     ?_assertEqual(<<"кб-А"/utf8>>,
+                   apply_mapping_rule(<<"Алекс"/utf8>>,
+                                      {<<"^(.)(.*)$">>, <<"кб-\\1"/utf8>>})),
+     ?_assertEqual(<<"А-лекс"/utf8>>,
+                   apply_mapping_rule(<<"Алекс"/utf8>>,
+                                      {<<"^(.)(.*)$">>, <<"\\1-\\2">>}))
     ].
 
 whole_value_mapping_test_() ->
@@ -349,53 +435,73 @@ whole_value_mapping_test_() ->
     [
      %% A rule whose pattern is anchored and whose template holds only
      %% literals and \\1 to \\9 is unaffected by any of it.
-     ?_assertEqual("alice", Map("^(.*)$", "\\1", "alice")),
-     ?_assertEqual("cb-alice", Map("^(.*)@x$", "cb-\\1", "alice@x")),
-     ?_assertEqual("ro_admin", Map("^readonly$", "ro_admin", "readonly")),
-     ?_assertEqual("g-db", Map("^a(.)c(.)e$", "g-\\2\\1", "abcde")),
+     ?_assertEqual(<<"alice">>, Map(<<"^(.*)$">>, <<"\\1">>, <<"alice">>)),
+     ?_assertEqual(<<"cb-alice">>,
+                   Map(<<"^(.*)@x$">>, <<"cb-\\1">>, <<"alice@x">>)),
+     ?_assertEqual(<<"ro_admin">>,
+                   Map(<<"^readonly$">>, <<"ro_admin">>, <<"readonly">>)),
+     ?_assertEqual(<<"g-db">>,
+                   Map(<<"^a(.)c(.)e$">>, <<"g-\\2\\1">>, <<"abcde">>)),
 
      %% A nullable pattern matched a second time on the empty string past
      %% the end of the value, expanding the template once per match.
-     ?_assertEqual("ui_access", Map("(.*)", "ui_access", "alice")),
-     ?_assertEqual("ui_access", Map(".*", "ui_access", "alice")),
+     ?_assertEqual(<<"ui_access">>,
+                   Map(<<"(.*)">>, <<"ui_access">>, <<"alice">>)),
+     ?_assertEqual(<<"ui_access">>,
+                   Map(<<".*">>, <<"ui_access">>, <<"alice">>)),
 
      %% notempty still matters once the pattern is anchored: .* matches an
      %% empty value emptily, and a rule must not map nothing to a name.
-     ?_assertEqual(nomatch, Map("^(.*)$", "ui_access", "")),
+     ?_assertEqual(nomatch, Map(<<"^(.*)$">>, <<"ui_access">>, <<"">>)),
 
      %% A pattern matching only part of the value no longer maps it. The
      %% remainder used to be carried into the name.
-     ?_assertEqual(nomatch, Map("^admin", "super", "admins")),
-     ?_assertEqual(nomatch, Map("browser", "ui_access", "browsertest")),
-     ?_assertEqual(nomatch, Map("[a-z]*", "ui_access", "alice@example.com")),
+     ?_assertEqual(nomatch, Map(<<"^admin">>, <<"super">>, <<"admins">>)),
+     ?_assertEqual(nomatch,
+                   Map(<<"browser">>, <<"ui_access">>, <<"browsertest">>)),
+     ?_assertEqual(nomatch,
+                   Map(<<"[a-z]*">>, <<"ui_access">>,
+                       <<"alice@example.com">>)),
 
      %% An alternation is anchored on every branch, not just the first.
-     ?_assertEqual(nomatch, Map("admin|ro", "ro_admin", "administrator")),
-     ?_assertEqual("ro_admin", Map("admin|ro", "ro_admin", "admin")),
+     ?_assertEqual(nomatch,
+                   Map(<<"admin|ro">>, <<"ro_admin">>, <<"administrator">>)),
+     ?_assertEqual(<<"ro_admin">>,
+                   Map(<<"admin|ro">>, <<"ro_admin">>, <<"admin">>)),
 
      %% Replacing every occurrence within the value is not a mapping, and
      %% no longer happens.
-     ?_assertEqual(nomatch, Map("-", "_", "a-b-c")),
+     ?_assertEqual(nomatch, Map(<<"-">>, <<"_">>, <<"a-b-c">>)),
 
      %% & is a literal. re:replace/4 gave it the whole match, which turned a
      %% name such as R&D into R<value>D.
-     ?_assertEqual("R&D", Map("^(.*)$", "R&D", "alice")),
-     ?_assertEqual("cb-&", Map("^(.*)$", "cb-\\&", "alice")),
+     ?_assertEqual(<<"R&D">>, Map(<<"^(.*)$">>, <<"R&D">>, <<"alice">>)),
+     ?_assertEqual(<<"cb-&">>,
+                   Map(<<"^(.*)$">>, <<"cb-\\&">>, <<"alice">>)),
 
      %% A backslash before anything that is not 1 to 9 yields the character,
      %% as it did before.
-     ?_assertEqual("cb-0", Map("^(.*)$", "cb-\\0", "alice")),
-     ?_assertEqual("cb-s", Map("^(.*)$", "cb-\\s", "alice"))
+     ?_assertEqual(<<"cb-0">>, Map(<<"^(.*)$">>, <<"cb-\\0">>, <<"alice">>)),
+     ?_assertEqual(<<"cb-s">>, Map(<<"^(.*)$">>, <<"cb-\\s">>, <<"alice">>)),
+
+     %% The value and the template keep their utf8 through the expansion.
+     ?_assertEqual(<<"кб-Алекс"/utf8>>,
+                   Map(<<"^(.*)$">>, <<"кб-\\1"/utf8>>,
+                       <<"Алекс"/utf8>>))
     ].
 
 %% A template names a capture group one way, so the rule is rejected if it
 %% names one the pattern does not have or spells the reference differently.
 template_reference_test_() ->
     [
-     ?_assertMatch({value, _}, validate_mapping_rule("^(.*)$ cb-\\1")),
-     ?_assertMatch({error, _}, validate_mapping_rule("^(.*)$ cb-\\2")),
-     ?_assertMatch({error, _}, validate_mapping_rule("^(.*)$ cb-\\g1")),
-     ?_assertMatch({error, _}, validate_mapping_rule("^(.*)$ cb-\\g{1}"))
+     ?_assertMatch({value, _},
+                   validate_mapping_rule(<<"^(.*)$ cb-\\1">>)),
+     ?_assertMatch({error, _},
+                   validate_mapping_rule(<<"^(.*)$ cb-\\2">>)),
+     ?_assertMatch({error, _},
+                   validate_mapping_rule(<<"^(.*)$ cb-\\g1">>)),
+     ?_assertMatch({error, _},
+                   validate_mapping_rule(<<"^(.*)$ cb-\\g{1}">>))
     ].
 
 mapping_test_() ->
@@ -450,148 +556,148 @@ mapping_test_() ->
      [
       %% Single value, single rule tests
       ?_assertEqual(["alice"],
-                    map_identities(user, ["GoogleUser:alice"],
-                                   [{"^GoogleUser:(.*)", "\\1"}], true)),
+                    map_ids_str(user, ["GoogleUser:alice"],
+                                [{"^GoogleUser:(.*)", "\\1"}], true)),
       ?_assertEqual([],
-                    map_identities(user, ["GoogleUser:@bob"],
-                                   [{"^GoogleUser:(.*)", "\\1"}], true)),
+                    map_ids_str(user, ["GoogleUser:@bob"],
+                                [{"^GoogleUser:(.*)", "\\1"}], true)),
       ?_assertEqual(["cb-admins"],
-                    map_identities(groups, ["GoogleGroup:admins"],
-                                   [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
+                    map_ids_str(groups, ["GoogleGroup:admins"],
+                                [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
       ?_assertEqual([],
-                    map_identities(groups, ["GoogleGroup:users"],
-                                   [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
+                    map_ids_str(groups, ["GoogleGroup:users"],
+                                [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
       ?_assertEqual(["admin"],
-                    map_identities({roles, public}, ["GoogleRole:admin"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, public}, ["GoogleRole:admin"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual(["admin"],
-                    map_identities({roles, all}, ["GoogleRole:admin"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, all}, ["GoogleRole:admin"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual([],
-                    map_identities({roles, public}, ["GoogleRole:internal"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, public}, ["GoogleRole:internal"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual(["internal"],
-                    map_identities({roles, all}, ["GoogleRole:internal"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, all}, ["GoogleRole:internal"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual([],
-                    map_identities({roles, public},
-                                   ["GoogleRole:data_reader[b2:s2:c2]"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, public},
+                                ["GoogleRole:data_reader[b2:s2:c2]"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
 
       %% Single value, multiple rules tests
       ?_assertEqual(["alice"],
-                    map_identities(user, ["GoogleUser:alice"],
-                                   [{"^AzureUser:(.*)", "\\0"},
-                                    {"^GoogleUser:(.*)", "\\1"}], true)),
+                    map_ids_str(user, ["GoogleUser:alice"],
+                                [{"^AzureUser:(.*)", "\\0"},
+                                 {"^GoogleUser:(.*)", "\\1"}], true)),
       ?_assertEqual(["cb-admins", "users@cb"],
-                    map_identities(groups, ["GoogleGroup:admins"],
-                                   [{"^GoogleGroup:(.*)", "cb-\\1"},
-                                    {"^GoogleGroup:(.*)", "users@cb"}], false)),
+                    map_ids_str(groups, ["GoogleGroup:admins"],
+                                [{"^GoogleGroup:(.*)", "cb-\\1"},
+                                 {"^GoogleGroup:(.*)", "users@cb"}], false)),
       ?_assertEqual(["cb-admins"],
-                    map_identities(groups, ["GoogleGroup:admins"],
-                                   [{"^GoogleGroup:(.*)", "cb-\\1"},
-                                    {"^GoogleGroup:(.*)", "users@cb"}], true)),
+                    map_ids_str(groups, ["GoogleGroup:admins"],
+                                [{"^GoogleGroup:(.*)", "cb-\\1"},
+                                 {"^GoogleGroup:(.*)", "users@cb"}], true)),
       ?_assertEqual(["admin", "data_writer[b1:s1:c1]"],
-                    map_identities({roles, public}, ["GoogleRole:admin"],
-                                   [{"^GoogleRole:(.*)", "\\1"},
-                                    {"^GoogleRole:admin",
-                                     "data_writer[b1:s1:c1]"}],
-                                   false)),
+                    map_ids_str({roles, public}, ["GoogleRole:admin"],
+                                [{"^GoogleRole:(.*)", "\\1"},
+                                 {"^GoogleRole:admin",
+                                  "data_writer[b1:s1:c1]"}],
+                                false)),
       ?_assertEqual(["admin"],
-                    map_identities({roles, public}, ["GoogleRole:admin"],
-                                   [{"^GoogleRole:(.*)", "\\1"},
-                                    {"^GoogleRole:admin",
-                                     "data_writer[b1:s1:c1]"}],
-                                   true)),
+                    map_ids_str({roles, public}, ["GoogleRole:admin"],
+                                [{"^GoogleRole:(.*)", "\\1"},
+                                 {"^GoogleRole:admin",
+                                  "data_writer[b1:s1:c1]"}],
+                                true)),
 
       %% Multiple values tests
       ?_assertEqual(["cb-admins", "users@cb"],
-                    map_identities(groups,
-                                   ["GoogleGroup:cb-admins",
-                                    "GoogleGroup:users@cb"],
-                                   [{"^GoogleGroup:(.*)", "\\1"}], true)),
+                    map_ids_str(groups,
+                                ["GoogleGroup:cb-admins",
+                                 "GoogleGroup:users@cb"],
+                                [{"^GoogleGroup:(.*)", "\\1"}], true)),
       ?_assertEqual(["admin", "data_writer[b1:s1:c1]"],
-                    map_identities({roles, public},
-                                   ["GoogleRole:admin",
-                                    "GoogleRole:data_writer[b1:s1:c1]"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, public},
+                                ["GoogleRole:admin",
+                                 "GoogleRole:data_writer[b1:s1:c1]"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
 
       %% Validates that invalid roles are ignored
       ?_assertEqual(["admin"],
-                    map_identities({roles, public},
-                                   ["GoogleRole:admin",
-                                    "GoogleRole:invalid_role"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, public},
+                                ["GoogleRole:admin",
+                                 "GoogleRole:invalid_role"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
       ?_assertEqual([],
-                    map_identities({roles, public},
-                                   ["GoogleRole:invalid1",
-                                    "GoogleRole:invalid2"],
-                                   [{"^GoogleRole:(.*)", "\\1"}], true)),
+                    map_ids_str({roles, public},
+                                ["GoogleRole:invalid1",
+                                 "GoogleRole:invalid2"],
+                                [{"^GoogleRole:(.*)", "\\1"}], true)),
 
       %% Empty values/rules tests
       ?_assertEqual([],
-                    map_identities(groups, [],
-                                   [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
+                    map_ids_str(groups, [],
+                                [{"^GoogleGroup:(.*)", "cb-\\1"}], true)),
       ?_assertEqual(["cb-admins", "users@cb"],
-                    map_identities(groups, ["group1", "cb-admins", "users@cb"],
-                                   [], true)),
+                    map_ids_str(groups, ["group1", "cb-admins", "users@cb"],
+                                [], true)),
 
       %% Stopping at the first match means stopping at the rule that matched,
       %% not at the first one whose result was usable, so a rejected result
       %% does not hand the value to a later rule.
       ?_assertEqual([],
-                    map_identities(groups, ["GoogleGroup:admins"],
-                                   [{"^GoogleGroup:(.*)", "\\1"},
-                                    {"^GoogleGroup:(.*)", "cb-\\1"}], true)),
+                    map_ids_str(groups, ["GoogleGroup:admins"],
+                                [{"^GoogleGroup:(.*)", "\\1"},
+                                 {"^GoogleGroup:(.*)", "cb-\\1"}], true)),
       ?_assertEqual([],
-                    map_identities({roles, public}, ["GoogleRole:invalid"],
-                                   [{"^GoogleRole:(.*)", "\\1"},
-                                    {"^GoogleRole:.*", "admin"}], true)),
+                    map_ids_str({roles, public}, ["GoogleRole:invalid"],
+                                [{"^GoogleRole:(.*)", "\\1"},
+                                 {"^GoogleRole:.*", "admin"}], true)),
 
       %% Collecting every match is different: each rule contributes on its own,
       %% so a rejected result only drops itself.
       ?_assertEqual(["cb-admins"],
-                    map_identities(groups, ["GoogleGroup:admins"],
-                                   [{"^GoogleGroup:(.*)", "\\1"},
-                                    {"^GoogleGroup:(.*)", "cb-\\1"}], false)),
+                    map_ids_str(groups, ["GoogleGroup:admins"],
+                                [{"^GoogleGroup:(.*)", "\\1"},
+                                 {"^GoogleGroup:(.*)", "cb-\\1"}], false)),
 
       %% map_user/2 reports why a mapping failed, where map_identities/4 only
       %% drops the value.
       ?_assertEqual({ok, "alice"},
-                    map_user("GoogleUser:alice",
-                             [{"^GoogleUser:(.*)", "\\1"}])),
-      ?_assertEqual({ok, "alice"}, map_user("alice", [])),
+                    map_user_str("GoogleUser:alice",
+                                 [{"^GoogleUser:(.*)", "\\1"}])),
+      ?_assertEqual({ok, "alice"}, map_user_str("alice", [])),
 
       %% No rule matched, so there is no mapped value to report on.
       ?_assertEqual({error, <<"Username not provisioned">>},
-                    map_user("AzureUser:alice",
-                             [{"^GoogleUser:(.*)", "\\1"}])),
+                    map_user_str("AzureUser:alice",
+                                 [{"^GoogleUser:(.*)", "\\1"}])),
 
       %% A rule matched and its result was rejected, so the specific reason is
       %% reported rather than the generic one.
       ?_assertEqual({error, <<"Invalid username">>},
-                    map_user("GoogleUser:carol",
-                             [{"^GoogleUser:(.*)", "\\1"}])),
+                    map_user_str("GoogleUser:carol",
+                                 [{"^GoogleUser:(.*)", "\\1"}])),
       ?_assertEqual({error, <<"External auth not allowed">>},
-                    map_user("GoogleUser:bob",
-                             [{"^GoogleUser:(.*)", "@\\1"}])),
+                    map_user_str("GoogleUser:bob",
+                                 [{"^GoogleUser:(.*)", "@\\1"}])),
 
       %% The first rule to match decides, so a later rule neither reports the
       %% failure nor maps the user itself.
       ?_assertEqual({error, <<"Invalid username">>},
-                    map_user("GoogleUser:carol",
-                             [{"^GoogleUser:(.*)", "\\1"},
-                              {"^GoogleUser:(.*)", "@\\1"}])),
+                    map_user_str("GoogleUser:carol",
+                                 [{"^GoogleUser:(.*)", "\\1"},
+                                  {"^GoogleUser:(.*)", "@\\1"}])),
       ?_assertEqual({error, <<"Invalid username">>},
-                    map_user("GoogleUser:carol",
-                             [{"^GoogleUser:(.*)", "\\1"},
-                              {"^GoogleUser:.*", "alice"}])),
+                    map_user_str("GoogleUser:carol",
+                                 [{"^GoogleUser:(.*)", "\\1"},
+                                  {"^GoogleUser:.*", "alice"}])),
 
       %% A rule that does not match is skipped, so a later rule still applies.
       ?_assertEqual({ok, "alice"},
-                    map_user("GoogleUser:carol",
-                             [{"^AzureUser:(.*)", "\\1"},
-                              {"^GoogleUser:.*", "alice"}]))
+                    map_user_str("GoogleUser:carol",
+                                 [{"^AzureUser:(.*)", "\\1"},
+                                  {"^GoogleUser:.*", "alice"}]))
      ]}.
 
 -endif.

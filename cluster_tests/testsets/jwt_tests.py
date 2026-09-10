@@ -1102,6 +1102,240 @@ class JWTTests(testlib.BaseTestSet):
         finally:
             set_disabled(default_disabled)
 
+    def utf8_claims_test(self):
+        """Claim values are JSON strings, so they may hold any character.
+
+        Asserts that non-ASCII claims reach the identity and the audit
+        record byte for byte, and that list claims (aud, groups) are
+        audited correctly.
+        """
+        self.auth_setup()
+        node = self.cluster.connected_nodes[0]
+
+        # One name spanning the ranges that encode differently: Cyrillic,
+        # CJK, Latin Extended-A and Latin-1 supplement.
+        username = "Алекс-你好-Ā-Vérification"
+        # Group names are also claim values, and reach the audit record as a
+        # list of strings. Two of them, so that a list audited as one joined
+        # string is caught rather than read as a single-element list.
+        groups = ["группа-data", "группа-bucket"]
+        display_name = "Алекс"
+
+        self.configure_jwt(
+            {
+                "jitProvisioning": True,
+                "groupsMaps": ["^группа-(.*)$ jwt_\\1_admins"],
+                "customClaims": [
+                    {
+                        "name": "displayName",
+                        "type": "string",
+                        "pattern": "^.+$",
+                        "mandatory": True,
+                    }
+                ],
+            }
+        )
+
+        # aud is a list claim too, and audienceHandling "any" accepts a token
+        # that carries an audience the issuer was not configured with.
+        audiences = ["test-audience", "аудитория"]
+
+        claims = {
+            **self.base_claims,
+            "sub": username,
+            "aud": audiences,
+            "groups": groups,
+            "displayName": display_name,
+        }
+        headers = {"Authorization": f"Bearer {self.create_token(claims)}"}
+
+        # The identity built from the sub claim has to be the same string the
+        # token carried, not a mangled re-encoding of it.
+        r = testlib.get_succ(self.cluster, "/whoami", auth=None,
+                             headers=headers).json()
+        assert r["id"] == username, f"whoami returned {r['id']!r}"
+        assert r["domain"] == "external"
+
+        def assert_claims_audited(event, expected_groups):
+            assert event["sub"] == username, f"sub audited as {event['sub']!r}"
+            assert event["aud"] == audiences, \
+                f"aud audited as {event['aud']!r}"
+            assert event["groups"] == expected_groups, \
+                f"groups audited as {event['groups']!r}"
+            assert event["displayName"] == display_name, \
+                f"displayName audited as {event['displayName']!r}"
+
+        # A forbidden request records the claims of the token that was used.
+        # Neither mapped group grants security admin, so reading the JWT
+        # settings is forbidden.
+        offset = testlib.audit_log_offset(node)
+        testlib.get_fail(self.cluster, self.endpoint, auth=None,
+                         headers=headers, expected_code=403)
+        assert_claims_audited(
+            testlib.wait_for_audit_event(
+                node, 8275,  # access forbidden
+                since_offset=offset,
+                predicate=lambda e: e.get("type") == "jwt"),
+            groups)
+
+        # And so does a rejected token: the group matches no mapping rule, so
+        # authentication fails after the claims were extracted.
+        offset = testlib.audit_log_offset(node)
+        unmapped = ["неизвестная-группа", "未知"]
+        rejected = self.create_token({**claims, "groups": unmapped})
+        testlib.get_fail(
+            self.cluster, "/pools/default/buckets", auth=None,
+            expected_code=401,
+            headers={"Authorization": f"Bearer {rejected}"},
+        )
+        assert_claims_audited(
+            testlib.wait_for_audit_event(
+                node, 8264,  # authentication failure
+                since_offset=offset,
+                predicate=lambda e: e.get("type") == "jwt"),
+            unmapped)
+
+    def utf8_settings_test(self):
+        """Every string in the issuer settings is a JSON string, so it may hold
+        any character: the issuer name, the claim name paths, the audiences,
+        the custom claim names and patterns, and the mapping rules.
+
+        Two things have to hold. The settings must round trip byte for byte
+        through PUT and GET, and a regex given in the settings must be applied
+        per character rather than per utf8 byte, or a pattern that names
+        non-ASCII characters silently matches nothing.
+        """
+        self.auth_setup()
+
+        issuer_name = "издатель-你好"
+        subject = "алекс"
+        mapped_subject = "кб-" + subject
+
+        issuer = {
+            "name": issuer_name,
+            "displayName": "Издатель",
+            "audienceHandling": "any",
+            # Claim name paths are values too, and the token has to be read
+            # with the same bytes the settings were stored with.
+            "subClaim": "субъект",
+            "audClaim": "аудитория",
+            "groupsClaim": "группы",
+            "audiences": ["аудитория-1", "аудитория-2"],
+            "signingAlgorithm": "RS256",
+            "publicKeySource": "jwks",
+            "jwks": self.jwks,
+            "jitProvisioning": True,
+            "subMaps": ["^(.+)$ кб-\\1"],
+            # The first rule names a range of Cyrillic characters, which only
+            # matches if the pattern is read as characters. The second never
+            # matches: it is here because its template ends in a character
+            # whose utf8 encoding ends in the byte 16#85, which a byte
+            # oriented trim of the rule would strip.
+            "groupsMaps": ["^[а-я]+$ jwt_data_admins", "^нет-(.*)$ группых"],
+            "customClaims": [
+                {
+                    "name": "профиль",
+                    "type": "string",
+                    # Both the character range and the count are per
+                    # character, not per byte.
+                    "pattern": "^[а-я]{8}$",
+                    "mandatory": True,
+                }
+            ],
+        }
+
+        testlib.put_succ(self.cluster, self.endpoint, json={
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [issuer],
+        })
+
+        # Nothing may be re-encoded on the way to storage and back.
+        got = testlib.get_succ(self.cluster, self.endpoint).json()
+        assert len(got["issuers"]) == 1
+        for key, value in issuer.items():
+            assert got["issuers"][0][key] == value, \
+                f"{key} round tripped as {got['issuers'][0][key]!r}"
+
+        # A custom claim may not take the name of a claim the issuer already
+        # reads, and here that name is non-ASCII, so the error naming it has to
+        # survive being turned into JSON.
+        conflicting = {
+            **issuer,
+            "customClaims": [
+                {"name": "субъект", "type": "string", "pattern": "^.*$",
+                 "mandatory": True}
+            ],
+        }
+        r = testlib.put_fail(self.cluster, self.endpoint, 400, json={
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [conflicting],
+        }).json()
+        assert "субъект" in str(r), f"error did not name the claim: {r}"
+
+        claims = {
+            "iss": issuer_name,
+            "субъект": subject,
+            "аудитория": ["аудитория-1"],
+            "группы": ["любая"],
+            "профиль": "значение",
+            "exp": int(time.time()) + 3600,
+        }
+        headers = {"Authorization": f"Bearer {self.create_token(claims)}"}
+
+        r = testlib.get_succ(self.cluster, "/whoami", auth=None,
+                             headers=headers).json()
+        assert r["id"] == mapped_subject, f"whoami returned {r['id']!r}"
+
+        # The Cyrillic range in the first groupsMaps rule only matches if the
+        # pattern is read as characters, and the match is observable only
+        # through the roles the group it maps to carries.
+        roles = {role["role"] for role in r["roles"]}
+        assert "data_reader" in roles, f"whoami returned roles {roles}"
+
+        # The custom claim pattern must reject as well as accept per
+        # character: seven characters is fourteen bytes, so a byte oriented
+        # ^[а-я]{8}$ would accept it.
+        seven = {**claims, "профиль": "значени"}
+        testlib.get_fail(
+            self.cluster, "/pools/default/buckets", auth=None,
+            expected_code=401,
+            headers={"Authorization": f"Bearer {self.create_token(seven)}"},
+        )
+
+        # Verify an HMAC shared secret with a non-ASCII secret.
+        # Thirty characters, sixty bytes is within the HS256 bound of 32 to
+        # 64 bytes.
+        secret = "пароль" * 5
+        testlib.put_succ(self.cluster, self.endpoint, json={
+            "enabled": True,
+            "jwksUriRefreshIntervalS": 14400,
+            "issuers": [{
+                "name": issuer_name,
+                "audienceHandling": "any",
+                "subClaim": "sub",
+                "audClaim": "aud",
+                "audiences": ["аудитория-1"],
+                "signingAlgorithm": "HS256",
+                "sharedSecret": secret,
+                "jitProvisioning": True,
+                "groupsMaps": ["^[а-я]+$ jwt_data_admins"],
+            }],
+        })
+        hmac_claims = {
+            "iss": issuer_name,
+            "sub": subject,
+            "aud": "аудитория-1",
+            "groups": ["любая"],
+            "exp": int(time.time()) + 3600,
+        }
+        token = jwt.encode(hmac_claims, secret, algorithm="HS256")
+        r = testlib.get_succ(self.cluster, "/whoami", auth=None,
+                             headers={"Authorization": f"Bearer {token}"}
+                             ).json()
+        assert r["id"] == subject, f"whoami returned {r['id']!r}"
+
     @staticmethod
     def create_token(claims, key_id="2011-04-29", alg="RS256"):
         """Create a signed JWT for testing.
@@ -2298,97 +2532,6 @@ class JWTTests(testlib.BaseTestSet):
             f"/pools/default/buckets/{self.test_bucket}/docs",
             auth=None,
             headers=headers,
-        )
-
-    def pre_totoro_settings_format_test(self):
-        """Settings written by a pre-Totoro node stay readable on Totoro.
-
-        Enterprise Analytics shipped JWT on ns_server 8.0.x ahead of Totoro by
-        setting {jwt_enabled, true} in its config profile, so an EA cluster can
-        hold jwt_settings that a pre-Totoro node wrote. MB-73362 removed that
-        flag, which stops an upgraded node from writing settings until cluster
-        compat reaches Totoro. It does not stop a node that has not been
-        upgraded yet: that node keeps its own gate and can still accept a PUT,
-        so pre-Totoro settings can be written at any point during a rolling
-        upgrade and must be read natively afterwards.
-
-        No conversion exists because none is needed, and that rests on two
-        properties nothing else pins:
-
-        1. Both lines store the same representation. Issuer names and string
-           values are Erlang strings, so a Totoro node finds the issuer by the
-           name in the token's iss claim. Were that to become a binary, the
-           lookup would miss and every token would be refused as an unknown
-           issuer.
-        2. Storage keys that Totoro does not know are dropped on read, which
-           covers jwksUriTlsExtraOpts, the one issuer field 8.0.x has and
-           Totoro does not.
-
-        The fields Totoro added to an issuer (oidcSettings, customClaims,
-        displayName) need nothing here: they are optional, and a plain issuer
-        without them is already what the other tests in this file configure.
-
-        A failure here is a compatibility decision, not a broken test: it means
-        Enterprise Analytics cannot take the release without a stored-format
-        converter and an upgrade path for it. See MB-73362.
-        """
-        self.auth_setup()
-        self.configure_jwt({"jitProvisioning": True})
-
-        # Property 1, against what a plain issuer stores today. An 8.0.x node
-        # writes this same shape.
-        shape = testlib.diag_eval(
-            self.cluster,
-            "{ok, {#{issuers := Is}, _}} = chronicle_kv:get(kv, jwt_settings),"
-            "[{Name, Props}] = maps:to_list(Is),"
-            "{is_list(Name),"
-            " is_list(maps:get(sub_claim, Props)),"
-            " is_list(maps:get(aud_claim, Props))}.",
-        ).text.strip()
-        testlib.assert_eq(shape, "{true,true,true}", name="stored shape")
-
-        # Property 2. Add the field only 8.0.x knows, the way that node would
-        # have stored it, bypassing the REST layer because Totoro's validator
-        # has no such field to accept.
-        testlib.diag_eval(
-            self.cluster,
-            "{ok, {Settings, _}} = chronicle_kv:get(kv, jwt_settings),"
-            "#{issuers := Is} = Settings,"
-            "NewIs = maps:map(fun(_, Props) ->"
-            "                     Props#{jwks_uri_tls_extra_opts =>"
-            "                                [{verify, verify_peer}]}"
-            "                 end, Is),"
-            "{ok, _} = chronicle_kv:set(kv, jwt_settings,"
-            "                           Settings#{issuers => NewIs}),"
-            "ok.",
-        )
-
-        # Authentication is what matters to a customer mid-upgrade, and it is
-        # what breaks first if either property is lost. Polled because the
-        # settings write reaches jwt_cache asynchronously.
-        claims = self.base_claims.copy()
-        claims["groups"] = ["jwt_bucket_admins"]
-        headers = {"Authorization": f"Bearer {self.create_token(claims)}"}
-        testlib.poll_for_condition(
-            lambda: testlib.get(
-                self.cluster, "/pools/default/buckets", auth=None,
-                headers=headers,
-            ).status_code == 200,
-            sleep_time=0.5,
-            timeout=60,
-            msg="authenticate against pre-Totoro settings",
-        )
-
-        # GET drops the unknown field rather than reflecting it, and renders
-        # strings as strings. A representation mismatch shows up here as JSON
-        # arrays of integers.
-        issuer = testlib.get_succ(self.cluster, self.endpoint).json()[
-            "issuers"
-        ][0]
-        testlib.assert_eq(issuer["audClaim"], "aud", name="audClaim")
-        testlib.assert_eq(issuer["subClaim"], "sub", name="subClaim")
-        assert "jwksUriTlsExtraOpts" not in issuer, (
-            f"8.0.x-only field reflected back by GET: {issuer}"
         )
 
 

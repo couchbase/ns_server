@@ -39,7 +39,7 @@ callback_validators() ->
      validator:required(state, _),
      validator:non_empty_string(state, _)].
 
--spec get_issuer_config(IssuerName :: string()) ->
+-spec get_issuer_config(IssuerName :: binary()) ->
           {ok, map()} | {error, string()}.
 get_issuer_config(IssuerName) ->
     case chronicle_kv:get(kv, jwt_settings) of
@@ -70,8 +70,8 @@ enabled_issuers() ->
                       case maps:is_key(oidc_settings, Props) of
                           true ->
                               DisplayName = maps:get(display_name, Props),
-                              [{[{name, list_to_binary(Name)},
-                                 {displayName, list_to_binary(DisplayName)}]} |
+                              [{[{name, Name},
+                                 {displayName, DisplayName}]} |
                                Acc];
                           false ->
                               Acc
@@ -85,8 +85,8 @@ enabled_issuers() ->
 
 %% TODO: Handling multiple redirect bases may need to change - awaiting PM
 %% feedback.
--spec select_uri_for_request(list(string()), mochiweb_request()) ->
-          string() | {error, string()}.
+-spec select_uri_for_request([binary()], mochiweb_request()) ->
+          binary() | {error, string()}.
 select_uri_for_request([Base], _Req) ->
     Base;
 select_uri_for_request(Allowed, Req) ->
@@ -94,9 +94,9 @@ select_uri_for_request(Allowed, Req) ->
         undefined ->
             {error, "Request host missing; multiple redirect bases configured"};
         HostPortStr ->
-            {ReqHost, ReqPortStr} = misc:split_host_port(HostPortStr, ""),
-
-            ReqScheme = get_request_scheme(Req),
+            {ReqHost0, ReqPortStr} = misc:split_host_port(HostPortStr, ""),
+            ReqHost = list_to_binary(ReqHost0),
+            ReqScheme = list_to_binary(get_request_scheme(Req)),
 
             ReqPort =
                 case ReqPortStr of
@@ -165,12 +165,12 @@ get_request_scheme(Req) ->
             string:lowercase(Proto)
     end.
 
--spec default_port(string()) -> integer().
-default_port("http") -> 80;
-default_port("https") -> 443;
+-spec default_port(binary()) -> integer().
+default_port(<<"http">>) -> 80;
+default_port(<<"https">>) -> 443;
 default_port(_) -> 0.
 
--spec host_matches(map(), string()) -> boolean().
+-spec host_matches(map(), binary()) -> boolean().
 host_matches(Map, ReqHost) ->
     Host = maps:get(host, Map),
     string:lowercase(Host) =:= string:lowercase(ReqHost).
@@ -186,7 +186,9 @@ handle_auth(Req) ->
     menelaus_util:assert_is_totoro(),
     validator:handle(
       fun (Props) ->
-              IssuerName = proplists:get_value(issuer, Props),
+              %% A query string parameter is a list of utf8 bytes, while the
+              %% settings, and so the issuer names, are binaries.
+              IssuerName = list_to_binary(proplists:get_value(issuer, Props)),
               case get_issuer_config(IssuerName) of
                   {ok, Config} ->
                       Redirect = build_auth_redirect(Config, Req),
@@ -345,7 +347,7 @@ create_nonce_verifier(OIDCConfig) ->
     {Verifier, Nonce}.
 
 get_redirect_uri(BaseRedirectUri) ->
-    list_to_binary(BaseRedirectUri ++ "/oidc/callback").
+    <<BaseRedirectUri/binary, "/oidc/callback">>.
 
 -spec has_discovery_uri(map()) -> boolean().
 has_discovery_uri(IssuerConfig) ->
@@ -359,27 +361,18 @@ build_manual_provider_configuration(IssuerConfig) ->
     OidcSettings = maps:get(oidc_settings, IssuerConfig),
     AuthEndpoint = maps:get(authorization_endpoint, OidcSettings),
     TokenEndpoint = maps:get(token_endpoint, OidcSettings),
-    Scopes = maps:get(scopes, OidcSettings),
-    ScopesSupported = [list_to_binary(S) || S <- Scopes],
+    ScopesSupported = maps:get(scopes, OidcSettings),
     SigningAlg = maps:get(signing_algorithm, IssuerConfig),
     SigningAlgBin = atom_to_binary(SigningAlg),
     TokenAuthMethod = maps:get(token_endpoint_auth_method, OidcSettings),
     TokenAuthMethodBin = atom_to_binary(TokenAuthMethod),
     EndSessionEndpoint = maps:get(end_session_endpoint, OidcSettings,
                                   undefined),
-    IssuerBin = list_to_binary(IssuerName),
-    AuthEndpointBin = list_to_binary(AuthEndpoint),
-    TokenEndpointBin = list_to_binary(TokenEndpoint),
-    EndSessionBin =
-        case EndSessionEndpoint of
-            undefined -> undefined;
-            Url -> list_to_binary(Url)
-        end,
     {ok,
      #oidcc_provider_configuration{
-        issuer = IssuerBin,
-        authorization_endpoint = AuthEndpointBin,
-        token_endpoint = TokenEndpointBin,
+        issuer = IssuerName,
+        authorization_endpoint = AuthEndpoint,
+        token_endpoint = TokenEndpoint,
         scopes_supported = ScopesSupported,
         response_types_supported = [<<"code">>],
         grant_types_supported =
@@ -388,7 +381,7 @@ build_manual_provider_configuration(IssuerConfig) ->
         id_token_signing_alg_values_supported = [SigningAlgBin],
         code_challenge_methods_supported = [<<"S256">>],
         token_endpoint_auth_methods_supported = [TokenAuthMethodBin],
-        end_session_endpoint = EndSessionBin
+        end_session_endpoint = EndSessionEndpoint
        }}.
 
 -spec build_manual_client_context(map()) ->
@@ -402,12 +395,9 @@ build_manual_client_context(IssuerConfig) ->
         {ok, Jwks} ->
             ClientId = maps:get(client_id, OidcSettings),
             ClientSecret = maps:get(client_secret, OidcSettings),
-            ClientIdBin = list_to_binary(ClientId),
-            ClientSecretBin = list_to_binary(ClientSecret),
             {ok,
              oidcc_client_context:from_manual(
-               ProviderCfg0, Jwks, ClientIdBin,
-               ClientSecretBin)}
+               ProviderCfg0, Jwks, ClientId, ClientSecret)}
     end.
 
 -spec with_issuer_context(map(),
@@ -461,7 +451,7 @@ with_issuer_context(IssuerConfig, Opts, OperationFun, LogPrefix) ->
             {error, {T, E}}
     end.
 
--spec create_provider_redirect(map(), string() | undefined,
+-spec create_provider_redirect(map(), binary() | undefined,
                                binary(), binary() | undefined,
                                binary() | undefined) ->
           {ok, string()} | {error, term()}.
@@ -472,9 +462,8 @@ create_provider_redirect(IssuerConfig, RedirectBaseParam,
     ClientId = maps:get(client_id, OidcSettings),
     ClientSecret = maps:get(client_secret, OidcSettings),
     Scopes = maps:get(scopes, OidcSettings),
-    ScopesBin = [list_to_binary(S) || S <- Scopes],
     BaseOpts = #{redirect_uri => get_redirect_uri(RedirectBaseParam),
-                 scopes => ScopesBin,
+                 scopes => Scopes,
                  state => State},
 
     Opts1 = case Verifier of
@@ -495,9 +484,9 @@ create_provider_redirect(IssuerConfig, RedirectBaseParam,
           IssuerConfig,
           Opts,
           fun(discovery, FullOpts) ->
-                  oidcc:create_redirect_url(list_to_atom(IssuerName),
-                                            list_to_binary(ClientId),
-                                            list_to_binary(ClientSecret),
+                  oidcc:create_redirect_url(binary_to_atom(IssuerName),
+                                            ClientId,
+                                            ClientSecret,
                                             FullOpts);
              (ClientContext, FullOpts) ->
                   oidcc_authorization:create_redirect_url(ClientContext,
@@ -511,7 +500,7 @@ create_provider_redirect(IssuerConfig, RedirectBaseParam,
 
 %% Choose an OIDC URL whose scheme/host/port match the upstream IdP so that
 %% tls_connect_options/6 can apply tls_verify_peer/tls_ca/tls_sni correctly.
--spec oidc_tls_url(map()) -> string().
+-spec oidc_tls_url(map()) -> binary().
 oidc_tls_url(OidcSettings) ->
     case maps:get(oidc_discovery_uri, OidcSettings, undefined) of
         undefined ->
@@ -550,9 +539,9 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
           Opts,
           fun(discovery, FullOpts) ->
                   oidcc:retrieve_token(CodeBin,
-                                       list_to_atom(IssuerName),
-                                       list_to_binary(ClientId),
-                                       list_to_binary(ClientSecret),
+                                       binary_to_atom(IssuerName),
+                                       ClientId,
+                                       ClientSecret,
                                        FullOpts);
              (ClientContext, FullOpts) ->
                   oidcc_token:retrieve(CodeBin, ClientContext,
@@ -726,10 +715,10 @@ handle_deauth(Req) ->
 
 parse_issuer_from_session_name(SessionName) ->
     try
-        [IssuerStr, _Rest] = string:split(binary_to_list(SessionName), "::"),
-        IssuerStr
+        [IssuerName, _Rest] = string:split(SessionName, <<"::">>),
+        IssuerName
     catch _:_ ->
-            ""
+            <<>>
     end.
 
 build_logout_opts(Req, Cfg) ->
@@ -747,7 +736,7 @@ build_logout_opts(Req, Cfg) ->
                     ?log_warning("OIDC logout failed selecting post-logout "
                                  "redirect URI: ~s", [Msg]),
                     menelaus_util:web_exception(400, Msg);
-                Uri -> #{post_logout_redirect_uri => list_to_binary(Uri)}
+                Uri -> #{post_logout_redirect_uri => Uri}
             end
     end.
 
@@ -759,8 +748,8 @@ initiate_logout(IssuerConfig, ClientId, Opts, IdTokenHint) ->
           Opts,
           fun(discovery, FullOpts) ->
                   oidcc:initiate_logout_url(IdTokenHint,
-                                            list_to_atom(IssuerName),
-                                            list_to_binary(ClientId),
+                                            binary_to_atom(IssuerName),
+                                            ClientId,
                                             FullOpts);
              (ClientContext, FullOpts) ->
                   oidcc_logout:initiate_url(IdTokenHint,

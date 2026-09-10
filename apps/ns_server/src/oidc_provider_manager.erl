@@ -42,7 +42,7 @@
                 %% IssuerName => {ProfileName, ConnectOptionsKey}. Each issuer
                 %% gets its own httpc profile so that TLS settings are never
                 %% inherited from a connection opened with different ones.
-                profiles = #{} :: #{string() => {atom(), profile_key()}},
+                profiles = #{} :: #{binary() => {atom(), profile_key()}},
                 retry_timer_ref :: undefined | reference()
                }).
 
@@ -60,7 +60,7 @@ restart_workers() ->
 %% relaxed options would be reused for one that asks for peer verification.
 %% Requests are therefore isolated by issuer, and the profile is restarted
 %% whenever the connect options of the issuer change.
--spec get_httpc_profile(IssuerName :: string(), Key :: profile_key()) ->
+-spec get_httpc_profile(IssuerName :: binary(), Key :: profile_key()) ->
           {ok, atom()} | {error, term()}.
 get_httpc_profile(IssuerName, Key) ->
     gen_server:call(?MODULE, {get_httpc_profile, IssuerName, Key}).
@@ -68,13 +68,20 @@ get_httpc_profile(IssuerName, Key) ->
 %% Returns the ssl options for URL along with a key that identifies them. The
 %% key is derived from the settings rather than from the options themselves
 %% because the latter hold a closure, which is not comparable across modules.
--spec connect_options(URL :: string(), OidcSettings :: map()) ->
+%% misc:tls_connect_options/6 is shared with the other auth features and takes
+%% the URL and the SNI host as strings, while the settings hold them as the utf8
+%% binaries they were configured with. A URL is always ASCII.
+-spec connect_options(URL :: binary(), OidcSettings :: map()) ->
           {list(), profile_key()}.
-connect_options(URL, OidcSettings) ->
+connect_options(URLBin, OidcSettings) ->
+    URL = binary_to_list(URLBin),
     AddressFamily = maps:get(address_family, OidcSettings, undefined),
     VerifyPeer = maps:get(tls_verify_peer, OidcSettings, true),
     {_, Certs} = maps:get(tls_ca, OidcSettings, {<<>>, []}),
-    SNI = maps:get(tls_sni, OidcSettings, ""),
+    SNI = case maps:get(tls_sni, OidcSettings, undefined) of
+              undefined -> "";
+              Name -> binary_to_list(Name)
+          end,
     Opts = misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI,
                                     []),
     {Opts, {URL, AddressFamily, VerifyPeer, Certs, SNI,
@@ -207,7 +214,7 @@ cancel_retry_timer(#state{retry_timer_ref = Ref} = State) ->
 
 start_worker_fold(#{name := IssuerName, profile_key := Key} = IssuerMap,
                   #state{name_to_pid = Map} = State0) ->
-    WorkerName = {local, list_to_atom(IssuerName)},
+    WorkerName = {local, binary_to_atom(IssuerName)},
     case ensure_profile(IssuerName, Key, State0) of
         {ok, Profile, State} ->
             case start_provider_worker(WorkerName, IssuerMap, Profile) of
@@ -224,7 +231,7 @@ start_worker_fold(#{name := IssuerName, profile_key := Key} = IssuerMap,
             State
     end.
 
--spec ensure_profile(IssuerName :: string(), Key :: profile_key(),
+-spec ensure_profile(IssuerName :: binary(), Key :: profile_key(),
                      State :: #state{}) ->
           {ok, atom(), #state{}} | {error, term(), #state{}}.
 ensure_profile(IssuerName, Key, #state{profiles = Profiles} = State) ->
@@ -251,7 +258,7 @@ ensure_profile(IssuerName, Key, #state{profiles = Profiles} = State) ->
     end.
 
 profile_name(IssuerName) ->
-    list_to_atom("oidc_httpc-" ++ IssuerName).
+    binary_to_atom(<<"oidc_httpc-", IssuerName/binary>>).
 
 start_profile(Profile) ->
     case inets:start(httpc, [{profile, Profile}]) of
@@ -330,14 +337,13 @@ start_provider_worker(WorkerName, IssuerMap, Profile) ->
                     {error, {T, E}}
             end
     end.
--spec derive_issuer_from_discovery(DiscoveryUri :: list()) -> binary() |
+-spec derive_issuer_from_discovery(DiscoveryUri :: binary()) -> binary() |
           undefined.
-derive_issuer_from_discovery(DiscoveryUri) when is_list(DiscoveryUri) ->
-    DiscoveryUriBin = list_to_binary(DiscoveryUri),
+derive_issuer_from_discovery(DiscoveryUriBin) when is_binary(DiscoveryUriBin) ->
     case uri_string:parse(DiscoveryUriBin) of
         {error, Reason, Info} ->
             ?log_warning("Failed to parse discovery URI ~p: ~p ~p",
-                         [DiscoveryUri, Reason, Info]),
+                         [DiscoveryUriBin, Reason, Info]),
             undefined;
         URI ->
             Path = maps:get(path, URI, <<>>),
@@ -347,7 +353,7 @@ derive_issuer_from_discovery(DiscoveryUri) when is_list(DiscoveryUri) ->
                     uri_string:recompose(NewURI);
                 _ ->
                     ?log_warning("Discovery URI ~p does not have the expected "
-                                 "path", [DiscoveryUri]),
+                                 "path", [DiscoveryUriBin]),
                     undefined
             end
     end.
@@ -391,8 +397,9 @@ build_discovery_issuer(Name, OIDC) ->
 
 -ifdef(TEST).
 
--define(HTTP_URL, "http://localhost:8080/.well-known/openid-configuration").
--define(HTTPS_URL, "https://localhost:8443/.well-known/openid-configuration").
+-define(HTTP_URL, <<"http://localhost:8080/.well-known/openid-configuration">>).
+-define(HTTPS_URL,
+        <<"https://localhost:8443/.well-known/openid-configuration">>).
 
 %% The key tracks every setting, including ones the current scheme ignores, so
 %% that it can never miss a change in the options. http shows that plainly: the
@@ -404,7 +411,7 @@ connect_options_key_tracks_settings_test() ->
 
     SameOpts = [Settings#{tls_verify_peer => true},
                 Settings#{tls_ca => {<<"ca">>, [<<"cert">>]}},
-                Settings#{tls_sni => "idp.example.com"}],
+                Settings#{tls_sni => <<"idp.example.com">>}],
     lists:foreach(
       fun(S) ->
               {VariedOpts, VariedKey} = connect_options(?HTTP_URL, S),
@@ -419,7 +426,7 @@ connect_options_key_tracks_settings_test() ->
     ?assertNotEqual(Opts, InetOpts),
     ?assertNotEqual(Key, InetKey),
 
-    ?assertNotEqual(Key, element(2, connect_options("http://other:8080/",
+    ?assertNotEqual(Key, element(2, connect_options(<<"http://other:8080/">>,
                                                     Settings))).
 
 %% Over https with peer verification the node's trusted CAs are part of the
@@ -493,10 +500,10 @@ trusted_CAs_marker_test() ->
 %% still holds connections established with the previous ones.
 profile_lifecycle_test() ->
     {ok, _} = application:ensure_all_started(inets),
-    IssuerName = "test-oidc-issuer",
+    IssuerName = <<"test-oidc-issuer">>,
     Settings = #{tls_verify_peer => false},
-    {_, Key1} = connect_options("http://localhost:8080/", Settings),
-    {_, Key2} = connect_options("http://localhost:8081/", Settings),
+    {_, Key1} = connect_options(<<"http://localhost:8080/">>, Settings),
+    {_, Key2} = connect_options(<<"http://localhost:8081/">>, Settings),
     {ok, Profile, State1} = ensure_profile(IssuerName, Key1, #state{}),
     Pid1 = whereis(httpc:profile_name(Profile)),
     ?assert(is_pid(Pid1)),

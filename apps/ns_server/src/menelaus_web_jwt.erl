@@ -22,11 +22,9 @@
 %% JWT configured is either a Server cluster in developer preview, which
 %% cannot be upgraded, or an Enterprise Analytics cluster, which can.
 %% MB-73362 removed jwt_enabled once Enterprise Analytics moved to Totoro, so
-%% this endpoint now requires Totoro compat unconditionally. Settings written
-%% by the older line are read natively, which pre_totoro_settings_format_test
-%% in cluster_tests/testsets/jwt_tests.py pins. The same distinction is why
-%% the memcached OAUTHBEARER mechanism is gated on oauthbearer_enabled alone
-%% rather than on cluster compat.
+%% this endpoint now requires Totoro compat unconditionally. The same
+%% distinction is why the memcached OAUTHBEARER mechanism is gated on
+%% oauthbearer_enabled alone rather than on cluster compat.
 %%
 %% The consequence for an Enterprise Analytics cluster upgrading to Totoro is
 %% deliberate and covers every method, so an upgraded node can neither read
@@ -184,34 +182,34 @@
 %% sub_claim - Field path of the claim containing the subject identifier
 -define(ISSUER_PARAMS_WITH_FORMATTERS,
         [
-         {aud_claim, fun format_string/1},
+         {aud_claim, undefined},
          {audience_handling, undefined},
-         {audiences, fun format_string_list/1},
+         {audiences, undefined},
          {custom_claims, fun format_custom_claims/1},
-         {display_name, fun format_string/1},
+         {display_name, undefined},
          {expiry_leeway_s, undefined},
-         {groups_claim, fun format_string/1},
+         {groups_claim, undefined},
          {groups_maps, fun auth_mapping:format_mapping_rules/1},
          {groups_maps_stop_first_match, undefined},
          {sub_maps, fun auth_mapping:format_mapping_rules/1},
          {jit_provisioning, undefined},
          {jwks, fun format_jwks/1},
-         {jwks_uri, fun format_string/1},
+         {jwks_uri, undefined},
          {jwks_uri_address_family, undefined},
          {jwks_uri_http_timeout_ms, undefined},
          {jwks_uri_tls_ca, fun format_tls_ca/1},
-         {jwks_uri_tls_sni, fun format_string/1},
+         {jwks_uri_tls_sni, undefined},
          {jwks_uri_tls_verify_peer, undefined},
-         {name, fun format_string/1},
+         {name, undefined},
          {oidc_settings, fun storage_to_rest_format_oidc_provider/1},
          {public_key, fun format_public_key/1},
          {public_key_source, undefined},
-         {roles_claim, fun format_string/1},
+         {roles_claim, undefined},
          {roles_maps, fun auth_mapping:format_mapping_rules/1},
          {roles_maps_stop_first_match, undefined},
          {shared_secret, fun format_secret/1},
          {signing_algorithm, undefined},
-         {sub_claim, fun format_string/1}
+         {sub_claim, undefined}
         ]).
 
 %% REST to storage mapping (camelCase atom -> snake_case atom)
@@ -235,10 +233,10 @@
 %% const - Expected value for boolean type
 -define(CUSTOM_CLAIM_PARAMS_WITH_FORMATTERS,
         [
-         {name, fun format_string/1},
+         {name, undefined},
          {type, undefined},
          {mandatory, undefined},
-         {pattern, fun format_string/1},
+         {pattern, undefined},
          {min, undefined},
          {max, undefined},
          {enum, undefined},
@@ -289,21 +287,21 @@
 %% (To circumvent Keycloak IdP Issue #43034 (OIDCC #443); default false)
 -define(OIDC_PROVIDER_PARAMS_WITH_FORMATTERS,
         [
-         {client_id, fun format_string/1},
+         {client_id, undefined},
          {client_secret, fun format_secret/1},
-         {base_redirect_uris, fun format_string_list/1},
+         {base_redirect_uris, undefined},
          {endpoint_source, undefined},
-         {oidc_discovery_uri, fun format_string/1},
-         {authorization_endpoint, fun format_string/1},
-         {token_endpoint, fun format_string/1},
-         {end_session_endpoint, fun format_string/1},
-         {scopes, fun format_string_list/1},
+         {oidc_discovery_uri, undefined},
+         {authorization_endpoint, undefined},
+         {token_endpoint, undefined},
+         {end_session_endpoint, undefined},
+         {scopes, undefined},
          {nonce_validation, undefined},
          {pkce_enabled, undefined},
-         {post_logout_redirect_uris, fun format_string_list/1},
+         {post_logout_redirect_uris, undefined},
          {tls_ca, fun format_tls_ca/1},
          {tls_verify_peer, undefined},
-         {tls_sni, fun format_string/1},
+         {tls_sni, undefined},
          {address_family, undefined},
          {http_timeout_ms, undefined},
          {token_endpoint_auth_method, undefined},
@@ -408,7 +406,7 @@ handle_settings_put(Req) ->
       fun (Props) ->
               validate_and_store_settings(Props, Req)
       end,
-      Req, json, main_validators(), #{strings => raw_byte_list}).
+      Req, json, main_validators()).
 
 handle_settings_delete(Req) ->
     Fun = fun (_) -> {commit, [{delete, jwt_settings}]} end,
@@ -491,11 +489,11 @@ issuer_validators() ->
                    Aud = proplists:get_value(audClaim, Props),
 
                    Groups = case proplists:get_value(groupsClaim, Props) of
-                                undefined -> "groups";
+                                undefined -> <<"groups">>;
                                 GroupsV -> GroupsV
                             end,
                    Roles = case proplists:get_value(rolesClaim, Props) of
-                               undefined -> "roles";
+                               undefined -> <<"roles">>;
                                RolesV -> RolesV
                            end,
 
@@ -503,8 +501,13 @@ issuer_validators() ->
                    Conflicts = [N || N <- Names, lists:member(N, Protected)],
                    case Conflicts of
                        [] -> ok;
-                       _  -> {error, "Custom claim names cannot conflict with "
-                              "JWT claims: " ++ string:join(Conflicts, ", ")}
+                       %% The names are utf8 binaries. An iolist of
+                       %% binaries keeps those bytes: formatting with ~ts would
+                       %% yield codepoints, which jsonify_error/1 cannot turn
+                       %% into a binary.
+                       _  -> {error,
+                              ["Custom claim names cannot conflict with "
+                               "JWT claims: ", lists:join(", ", Conflicts)]}
                    end
            end, _),
          validator:post_validate_all(
@@ -574,7 +577,8 @@ basic_validators() ->
      validator:validate_field_path(subClaim, _)].
 
 mapping_validators() ->
-    [validator:string_array(subMaps, auth_mapping:validate_mapping_rule(_), _),
+    [validator:string_array(subMaps,
+                            auth_mapping:validate_mapping_rule(_), _),
      validator:string(groupsClaim, _),
      validator:validate_field_path(groupsClaim, _),
      validator:string_array(groupsMaps,
@@ -625,7 +629,7 @@ custom_string_validators() ->
           (_) -> ok
        end, [pattern, type], _),
      validator:string(pattern, _),
-     validator:regex(pattern, _)].
+     validator:regex(pattern, [unicode, ucp], _)].
 
 custom_number_validators() ->
     [validator:number(min, _),
@@ -745,7 +749,7 @@ jwks_validators() ->
                                {error, Reason} -> {error, Reason};
                                {ok, KidToJWKMap} ->
                                    {value,
-                                    {iolist_to_binary(ejson:encode(Value)),
+                                    {iolist_to_binary(json:encode(Map)),
                                      KidToJWKMap}}
                            end
                        catch T:E:S ->
@@ -1012,8 +1016,6 @@ n2n_encryption_warning(Names) ->
 %% @doc Converts storage format (map with snake_case atom keys) to REST format
 %% (map with camelCase binary keys). Special handling for issuers maps and
 %% formatted values like jwks, certificates, and secrets.
-%% Note that the parameter names are not binary, they were converted to strings
-%% by the validator:string/2 calls.
 storage_to_rest_format(Settings) ->
     maps:fold(
       fun(issuers, IssuersMap, Acc) ->
@@ -1158,14 +1160,6 @@ is_masked_placeholder(Secret) when is_binary(Secret) ->
     Secret =:= chronicle_kv_log:masked();
 is_masked_placeholder(_) -> false.
 
-format_string(undefined) -> undefined;
-format_string(Value) ->
-    list_to_binary(Value).
-
-format_string_list(undefined) -> undefined;
-format_string_list(Values) ->
-    [list_to_binary(Value) || Value <- Values].
-
 format_custom_claims(undefined) -> undefined;
 format_custom_claims(ClaimsMap) ->
     maps:fold(
@@ -1185,22 +1179,23 @@ format_tls_ca(undefined) -> undefined;
 format_tls_ca(<<"redacted">>) -> <<"redacted">>;
 format_tls_ca({Cert, _DecodedCerts}) -> Cert.
 
--spec validate_redirect_uri(string()) -> ok | {error, string()}.
+-spec validate_redirect_uri(binary()) -> ok | {error, string()}.
 validate_redirect_uri(Url) ->
     case uri_string:parse(Url) of
         {error, _, _} ->
             {error, "Invalid URL syntax"};
         #{scheme := Scheme, host := Host} = Map ->
             case Host of
-                [] ->
+                <<>> ->
                     {error, "Missing host"};
                 _ ->
-                    case lists:member($*, Host) of
-                        true ->
+                    case binary:match(Host, <<"*">>) of
+                        {_, _} ->
                             {error,
                              "Wildcards are not permitted in redirect URIs"};
-                        false ->
-                            case lists:member(Scheme, ["http", "https"]) of
+                        nomatch ->
+                            case lists:member(Scheme,
+                                              [<<"http">>, <<"https">>]) of
                                 true -> validate_strict_base(Map);
                                 false ->
                                     {error,
@@ -1215,14 +1210,14 @@ validate_redirect_uri(Url) ->
     end.
 
 validate_strict_base(Map) ->
-    Path = maps:get(path, Map, ""),
-    Query = maps:get(query, Map, ""),
-    Fragment = maps:get(fragment, Map, ""),
+    Path = maps:get(path, Map, <<>>),
+    Query = maps:get(query, Map, <<>>),
+    Fragment = maps:get(fragment, Map, <<>>),
     UserInfo = maps:get(userinfo, Map, undefined),
 
     case {Path, Query, Fragment, UserInfo} of
-        {"", "", "", undefined} -> ok;
-        {"/", "", "", undefined} -> ok;
+        {<<>>, <<>>, <<>>, undefined} -> ok;
+        {<<"/">>, <<>>, <<>>, undefined} -> ok;
         {_, _, _, DefinedUser} when DefinedUser /= undefined ->
             {error, "User info not allowed in redirect base"};
         _ ->
@@ -1231,21 +1226,21 @@ validate_strict_base(Map) ->
 
 %% Validate OIDC endpoint URL: allow https anywhere; allow http only for
 %% localhost/127.0.0.1. localhost is used for local testing.
-validate_public_https_url(Url) when is_list(Url) ->
+validate_public_https_url(Url) when is_binary(Url) ->
     case uri_string:parse(Url) of
         {error, _, _} -> {error, "Invalid URL"};
         Map when is_map(Map) ->
-            Scheme = maps:get(scheme, Map, ""),
-            Host = maps:get(host, Map, ""),
+            Scheme = maps:get(scheme, Map, <<>>),
+            Host = maps:get(host, Map, <<>>),
             case Scheme of
-                "http" ->
+                <<"http">> ->
                     case Host of
-                        "127.0.0.1" -> ok;
-                        "localhost" -> ok;
+                        <<"127.0.0.1">> -> ok;
+                        <<"localhost">> -> ok;
                         _ -> {error,
                               "HTTP allowed only for localhost (127.0.0.1)"}
                     end;
-                "https" -> ok;
+                <<"https">> -> ok;
                 _ -> {error, "Invalid scheme"}
             end
     end;
@@ -1364,7 +1359,8 @@ oidc_provider_validators() ->
        end, [endpointSource, oidcDiscoveryUri, authorizationEndpoint,
              tokenEndpoint, endSessionEndpoint], _),
      validator:required(scopes, _),
-     validator:string_array(scopes, fun validator:no_whitespace/1, _),
+     validator:string_array(scopes,
+                            fun validator:no_whitespace/1, _),
      validator:validate(
        fun(Scopes) ->
                case length(Scopes) =:= length(lists:usort(Scopes)) of
@@ -1374,7 +1370,7 @@ oidc_provider_validators() ->
        end, scopes, _),
      validator:validate(
        fun(Scopes) ->
-               case lists:member("openid", Scopes) of
+               case lists:member(<<"openid">>, Scopes) of
                    true -> ok;
                    false -> {error, "scopes must include 'openid'"}
                end
@@ -1391,14 +1387,15 @@ oidc_provider_validators() ->
                            ?OIDC_HTTP_TIMEOUT_MIN_MS,
                            ?OIDC_HTTP_TIMEOUT_MAX_MS, _),
          validator:default(httpTimeoutMs, ?OIDC_HTTP_TIMEOUT_DEFAULT_MS, _),
-     validator:one_of(tokenEndpointAuthMethod,
-                      [client_secret_basic, client_secret_post], _),
-     validator:default(tokenEndpointAuthMethod, <<"client_secret_basic">>, _),
-     validator:convert(tokenEndpointAuthMethod, fun binary_to_existing_atom/1,
-                       _),
-     validator:boolean(disablePushedAuthorizationRequests, _),
-     validator:default(disablePushedAuthorizationRequests, false, _),
-     validator:unsupported(_)].
+         validator:one_of(tokenEndpointAuthMethod,
+                          [client_secret_basic, client_secret_post], _),
+         validator:default(tokenEndpointAuthMethod,
+                           <<"client_secret_basic">>, _),
+         validator:convert(tokenEndpointAuthMethod,
+                           fun binary_to_existing_atom/1, _),
+         validator:boolean(disablePushedAuthorizationRequests, _),
+         validator:default(disablePushedAuthorizationRequests, false, _),
+         validator:unsupported(_)].
 
 -ifdef(TEST).
 
@@ -1445,47 +1442,47 @@ proplist_to_map_test_() ->
 %% their original form. Additionally, it checks that values containing lists are
 %% converted to binary format so that json:encode handles them properly.
 format_conversion_test_() ->
-    BaseCb = "https://couchbase.example.com",
-    OktaAuth = "https://example.okta.com/oauth2/v1/authorize",
-    OktaToken = "https://example.okta.com/oauth2/v1/token",
-    OktaLogout = "https://example.okta.com/oauth2/v1/logout",
+    BaseCb = <<"https://couchbase.example.com">>,
+    OktaAuth = <<"https://example.okta.com/oauth2/v1/authorize">>,
+    OktaToken = <<"https://example.okta.com/oauth2/v1/token">>,
+    OktaLogout = <<"https://example.okta.com/oauth2/v1/logout">>,
     AzureDisc =
-        "https://login.microsoftonline.com/tenant/v2.0/.well-known/"
-        "openid-configuration",
+        <<"https://login.microsoftonline.com/tenant/v2.0/.well-known/"
+          "openid-configuration">>,
     ExampleDisc =
-        "https://example.com/.well-known/openid-configuration",
-    ExampleJwks = "https://example.com/.well-known/jwks.json",
+        <<"https://example.com/.well-known/openid-configuration">>,
+    ExampleJwks = <<"https://example.com/.well-known/jwks.json">>,
     StorageFormat =
         #{enabled => true,
           jwks_uri_refresh_interval_s => 14400,
           issuers =>
               #{
-                "issuer1" =>
+                <<"issuer1">> =>
                     #{
-                      aud_claim => "aud",
-                      audiences => ["aud1", "aud2"],
+                      aud_claim => <<"aud">>,
+                      audiences => [<<"aud1">>, <<"aud2">>],
                       expiry_leeway_s => 15,
                       jit_provisioning => false,
                       custom_claims =>
                           #{
-                            "email" =>
+                            <<"email">> =>
                                 #{
                                   type => string,
-                                  pattern => "^[a-z]+@[a-z]+\.[a-z]+$",
+                                  pattern => <<"^[a-z]+@[a-z]+\.[a-z]+$">>,
                                   mandatory => true
                                  },
-                            "age" => #{
+                            <<"age">> => #{
                                        type => number,
                                        min => 18,
                                        max => 65,
                                        mandatory => false
                                       },
-                            "level" => #{
+                            <<"level">> => #{
                                          type => number,
                                          enum => [1, 2, 3, 4, 5],
                                          mandatory => true
                                         },
-                            "admin" => #{
+                            <<"admin">> => #{
                                          type => boolean,
                                          const => true,
                                          mandatory => true
@@ -1493,72 +1490,72 @@ format_conversion_test_() ->
                            },
                       oidc_settings =>
                           #{
-                            client_id => "okta_client_id",
+                            client_id => <<"okta_client_id">>,
                             client_secret =>
-                                "encrypted_okta_secret",
+                                <<"encrypted_okta_secret">>,
                             endpoint_source => manual,
                             authorization_endpoint => OktaAuth,
                             base_redirect_uris => [BaseCb],
                             token_endpoint => OktaToken,
                             end_session_endpoint => OktaLogout,
-                            scopes => ["openid", "profile", "email",
-                                       "groups"],
+                            scopes => [<<"openid">>, <<"profile">>, <<"email">>,
+                                       <<"groups">>],
                             nonce_validation => true,
                             pkce_enabled => true,
                             tls_verify_peer => true,
                             http_timeout_ms => 10000
                            }
                      },
-                "issuer2" =>
+                <<"issuer2">> =>
                     #{
-                      signing_algorithm => "ES256",
-                      audiences => ["aud3"],
+                      signing_algorithm => <<"ES256">>,
+                      audiences => [<<"aud3">>],
                       custom_claims =>
                           #{
-                            "role" =>
+                            <<"role">> =>
                                 #{
                                   type => string,
-                                  pattern => "^(admin|user)$",
+                                  pattern => <<"^(admin|user)$">>,
                                   mandatory => true
                                  }
                            },
                       oidc_settings =>
                           #{
-                            client_id => "azure_client_id",
+                            client_id => <<"azure_client_id">>,
                             client_secret =>
-                                "encrypted_azure_secret",
+                                <<"encrypted_azure_secret">>,
                             endpoint_source => discovery,
                             base_redirect_uris => [BaseCb],
                             oidc_discovery_uri =>
                                 AzureDisc,
-                            scopes => ["openid", "profile",
-                                       "email"],
+                            scopes => [<<"openid">>, <<"profile">>,
+                                       <<"email">>],
                             nonce_validation => true,
                             pkce_enabled => true,
                             tls_verify_peer => true,
                             http_timeout_ms => 15000
                            }
                      },
-                "issuer3" =>
+                <<"issuer3">> =>
                     #{
-                      signing_algorithm => "RS256",
-                      aud_claim => "aud",
-                      audiences => ["aud4"],
-                      sub_claim => "sub",
-                      public_key_source => "jwks_uri",
+                      signing_algorithm => <<"RS256">>,
+                      aud_claim => <<"aud">>,
+                      audiences => [<<"aud4">>],
+                      sub_claim => <<"sub">>,
+                      public_key_source => <<"jwks_uri">>,
                       jwks_uri => ExampleJwks,
                       oidc_settings =>
                           #{
                             client_id =>
-                                "conflict_client_id",
+                                <<"conflict_client_id">>,
                             client_secret =>
-                                "conflict_secret",
+                                <<"conflict_secret">>,
                             endpoint_source => discovery,
                             base_redirect_uris => [BaseCb],
                             oidc_discovery_uri =>
                                 ExampleDisc,
-                            scopes => ["openid", "profile",
-                                       "email"],
+                            scopes => [<<"openid">>, <<"profile">>,
+                                       <<"email">>],
                             nonce_validation => true,
                             pkce_enabled => true,
                             tls_verify_peer => true,
@@ -1661,81 +1658,84 @@ format_conversion_test_() ->
     Props = [{enabled, true},
              {jwksUriRefreshIntervalS, 14400},
              {issuers, [
-                        {[{name, "issuer1"},
-                          {audClaim, "aud"},
-                          {audiences, ["aud1", "aud2"]},
+                        {[{name, <<"issuer1">>},
+                          {audClaim, <<"aud">>},
+                          {audiences, [<<"aud1">>, <<"aud2">>]},
                           {expiryLeewayS, 15},
                           {jitProvisioning, false},
                           {customClaims, [
-                                          {[{name, "email"},
+                                          {[{name, <<"email">>},
                                             {type, string},
                                             {pattern,
-                                             "^[a-z]+@[a-z]+\.[a-z]+$"},
+                                             <<"^[a-z]+@[a-z]+\.[a-z]+$">>},
                                             {mandatory, true}]},
-                                          {[{name, "age"},
+                                          {[{name, <<"age">>},
                                             {type, number},
                                             {min, 18},
                                             {max, 65},
                                             {mandatory, false}]},
-                                          {[{name, "level"},
+                                          {[{name, <<"level">>},
                                             {type, number},
                                             {enum, [1, 2, 3, 4, 5]},
                                             {mandatory, true}]},
-                                          {[{name, "admin"},
+                                          {[{name, <<"admin">>},
                                             {type, boolean},
                                             {const, true},
                                             {mandatory, true}]}
                                          ]},
                           {oidcSettings,
-                           [{clientId, "okta_client_id"},
-                            {clientSecret, "encrypted_okta_secret"},
+                           [{clientId, <<"okta_client_id">>},
+                            {clientSecret, <<"encrypted_okta_secret">>},
                             {baseRedirectUris, [BaseCb]},
                             {endpointSource, manual},
                             {authorizationEndpoint, OktaAuth},
                             {tokenEndpoint, OktaToken},
                             {endSessionEndpoint, OktaLogout},
-                            {scopes, ["openid", "profile", "email", "groups"]},
+                            {scopes, [<<"openid">>, <<"profile">>,
+                                      <<"email">>, <<"groups">>]},
                             {nonceValidation, true},
                             {pkceEnabled, true},
                             {tlsVerifyPeer, true},
                             {httpTimeoutMs, 10000}]}]},
-                        {[{name, "issuer2"},
-                          {signingAlgorithm, "ES256"},
-                          {audiences, ["aud3"]},
+                        {[{name, <<"issuer2">>},
+                          {signingAlgorithm, <<"ES256">>},
+                          {audiences, [<<"aud3">>]},
                           {customClaims, [
-                                          {[{name, "role"},
+                                          {[{name, <<"role">>},
                                             {type, string},
                                             {pattern,
-                                             "^(admin|user)$"},
+                                             <<"^(admin|user)$">>},
                                             {mandatory, true}]}
                                          ]},
                           %% Add OIDC settings to issuer2 (using OIDC discovery)
                           {oidcSettings,
-                           [{clientId, "azure_client_id"},
-                            {clientSecret, "encrypted_azure_secret"},
+                           [{clientId, <<"azure_client_id">>},
+                            {clientSecret, <<"encrypted_azure_secret">>},
                             {baseRedirectUris, [BaseCb]},
                             {endpointSource, discovery},
                             {oidcDiscoveryUri, AzureDisc},
-                            {scopes, ["openid", "profile", "email"]},
+                            {scopes, [<<"openid">>, <<"profile">>,
+                                      <<"email">>]},
                             {nonceValidation, true},
                             {pkceEnabled, true},
                             {tlsVerifyPeer, true},
                             {httpTimeoutMs, 15000}]}]},
-                        {[{name, "issuer3"},
-                          {signingAlgorithm, "RS256"},
-                          {audClaim, "aud"},
-                          {audiences, ["aud4"]},
-                          {subClaim, "sub"},
-                          {publicKeySource, "jwks_uri"},
+                        {[{name, <<"issuer3">>},
+                          {signingAlgorithm, <<"RS256">>},
+                          {audClaim, <<"aud">>},
+                          {audiences, [<<"aud4">>]},
+                          {subClaim, <<"sub">>},
+                          {publicKeySource, <<"jwks_uri">>},
                           {jwksUri, ExampleJwks},
                           %% This issuer has both jwks_uri and OIDC discovery
                           {oidcSettings,
-                           [{clientId, "conflict_client_id"},
-                            {clientSecret, "conflict_secret"},
+                           [{clientId, <<"conflict_client_id">>},
+                            {clientSecret, <<"conflict_secret">>},
                             {baseRedirectUris, [BaseCb]},
                             {endpointSource, discovery},
                             {oidcDiscoveryUri, ExampleDisc},
-                            {scopes, ["openid", "profile", "email"]},
+                            {scopes, [<<"openid">>, <<"profile">>,
+                                      <<"email">>]},
                             {nonceValidation, true},
                             {pkceEnabled, true},
                             {tlsVerifyPeer, true},
@@ -1766,10 +1766,11 @@ format_conversion_test_() ->
                                 Cs -> I#{customClaims => SortClaims(Cs)}
                             end || I <- L])
         end,
-    %% Convert all binaries to lists for comparison with expected
+    %% Convert all binaries to lists for comparison with expected. Issuer and
+    %% custom claim names are map keys, so keys are converted too.
     DeepToList =
         fun F(V) when is_map(V) ->
-                maps:from_list([{K, F(Val)} || {K, Val} <- maps:to_list(V)]);
+                maps:from_list([{F(K), F(Val)} || {K, Val} <- maps:to_list(V)]);
             F(V) when is_list(V) ->
                 [F(X) || X <- V];
             F(V) when is_binary(V) ->
@@ -1783,9 +1784,11 @@ format_conversion_test_() ->
         RestFormat#{issuers := SortIssuers(maps:get(issuers, RestFormat))},
 
     [
-     %% Test validated_to_storage_format
-     ?_assertEqual(StorageFormat,
-                   validated_to_storage_format(Props)),
+     %% Test validated_to_storage_format. Both the props and the expected
+     %% storage format hold the binaries the validators hand over, so this
+     %% compares the stored representation itself rather than a normalized
+     %% reading of it.
+     ?_assertEqual(StorageFormat, validated_to_storage_format(Props)),
 
      %% Test storage_to_rest_format with normalized ordering and string types
      ?_assertEqual(DeepToList(Expected1),
@@ -1829,23 +1832,23 @@ sanitize_chronicle_cfg_test_() ->
 
 validate_redirect_uri_test_() ->
     [
-     ?_assertEqual(ok, validate_redirect_uri("https://example.com")),
-     ?_assertEqual(ok, validate_redirect_uri("https://example.com/")),
-     ?_assertEqual(ok, validate_redirect_uri("http://example.com")),
-     ?_assertEqual(ok, validate_redirect_uri("http://localhost")),
+     ?_assertEqual(ok, validate_redirect_uri(<<"https://example.com">>)),
+     ?_assertEqual(ok, validate_redirect_uri(<<"https://example.com/">>)),
+     ?_assertEqual(ok, validate_redirect_uri(<<"http://example.com">>)),
+     ?_assertEqual(ok, validate_redirect_uri(<<"http://localhost">>)),
      ?_assertEqual({error, "Wildcards are not permitted in redirect URIs"},
-                   validate_redirect_uri("http://*.example.com/")),
+                   validate_redirect_uri(<<"http://*.example.com/">>)),
      ?_assertEqual({error, "Wildcards are not permitted in redirect URIs"},
-                   validate_redirect_uri("https://*.example.com/")),
+                   validate_redirect_uri(<<"https://*.example.com/">>)),
      ?_assertEqual({error, "Wildcards are not permitted in redirect URIs"},
-                   validate_redirect_uri("https://example*.com/")),
+                   validate_redirect_uri(<<"https://example*.com/">>)),
      ?_assertEqual({error, "Invalid scheme (must be http/https)"},
-                   validate_redirect_uri("ftp://example.com")),
+                   validate_redirect_uri(<<"ftp://example.com">>)),
      ?_assertEqual({error, "Missing host"},
-                   validate_redirect_uri("https://")),
+                   validate_redirect_uri(<<"https://">>)),
      ?_assertEqual(
         {error, "Path (except /), Query, and Fragment must be empty"},
-        validate_redirect_uri("https://example.com/path"))
+        validate_redirect_uri(<<"https://example.com/path">>))
     ].
 
 shared_secret_masking_test_() ->

@@ -167,7 +167,7 @@ jwks_from_kid_map(KidToJWKMap) when is_map(KidToJWKMap) ->
             {ok, #jose_jwk{keys = {jose_jwk_set, Keys}}}
     end.
 
--spec lookup_and_build_jwks(string()) ->
+-spec lookup_and_build_jwks(binary()) ->
           {ok, jose_jwk:key()} | {error, binary()}.
 lookup_and_build_jwks(Issuer) ->
     case ets:lookup(?MODULE, Issuer) of
@@ -288,9 +288,17 @@ get_tls_connect_options(URL, AddressFamilyKey, VerifyPeerKey, CAKey, SNIKey,
     AddressFamily = maps:get(AddressFamilyKey, Settings, undefined),
     VerifyPeer = maps:get(VerifyPeerKey, Settings, true),
     {_, Certs} = maps:get(CAKey, Settings, {<<>>, []}),
-    SNI = maps:get(SNIKey, Settings, ""),
+    SNI = case maps:get(SNIKey, Settings, undefined) of
+              undefined -> "";
+              Name -> binary_to_list(Name)
+          end,
 
     misc:tls_connect_options(URL, AddressFamily, VerifyPeer, Certs, SNI, []).
+
+%% Settings hold a URL as the utf8 binary it was configured with, while lhttpc
+%% and misc:tls_connect_options/6 take it as a string. A URI is always ASCII.
+-spec url_to_list(binary()) -> string().
+url_to_list(URL) -> binary_to_list(URL).
 
 -spec extract_connect_options(URL :: string(), IssuerProps :: map()) -> list().
 extract_connect_options(URL, IssuerProps) ->
@@ -352,10 +360,11 @@ fetch_jwks_from_oidc_discovery(DiscoveryURL, IssuerProps) ->
           {Json :: binary(), MaxAge :: integer() | undefined} | {error, term()}.
 fetch_jwks(IssuerProps) ->
     case maps:get(oidc_settings, IssuerProps, undefined) of
-        #{oidc_discovery_uri := DiscoveryURL} ->
-            fetch_jwks_from_oidc_discovery(DiscoveryURL, IssuerProps);
+        #{oidc_discovery_uri := DiscoveryURI} ->
+            fetch_jwks_from_oidc_discovery(url_to_list(DiscoveryURI),
+                                           IssuerProps);
         _ ->
-            URL = maps:get(jwks_uri, IssuerProps),
+            URL = url_to_list(maps:get(jwks_uri, IssuerProps)),
             fetch_jwks_from_url(URL, IssuerProps)
     end.
 
@@ -411,7 +420,7 @@ fetch_and_cache_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
             end
     end.
 
--spec check_cooldown(Issuer :: string()) -> ok | {error, cooldown}.
+-spec check_cooldown(Issuer :: binary()) -> ok | {error, cooldown}.
 check_cooldown(Issuer) ->
     Now = erlang:monotonic_time(millisecond),
     case ets:lookup(?MODULE, Issuer) of
@@ -455,7 +464,7 @@ schedule_refresh(Interval) ->
 cancel_timer(undefined) -> ok;
 cancel_timer(Ref) -> erlang:cancel_timer(Ref).
 
--spec cache_jwks_entry(#{name := string(),
+-spec cache_jwks_entry(#{name := binary(),
                          public_key_source := jwks | jwks_uri,
                          _ => _},
                        jwt_kid_to_jwk(),
@@ -484,7 +493,7 @@ cache_jwks_entry(#{name := Issuer, public_key_source := Source} = _IssuerProps,
                        [Issuer, Error])
     end.
 
--spec cache_issuer_settings(Issuer :: string(), Props :: map()) -> ok.
+-spec cache_issuer_settings(Issuer :: binary(), Props :: map()) -> ok.
 cache_issuer_settings(Issuer, #{public_key_source := pem,
                                 public_key := PEM} = _Props) ->
     try
@@ -692,9 +701,10 @@ cache_lookup_test() ->
                                            "max-age=21600"}], TestJWKS}}
                 end),
     IssuerProps = #{
-                    name => "test1",
+                    name => <<"test1">>,
                     public_key_source => jwks_uri,
-                    jwks_uri => "https://www.googleapis.com/oauth2/v3/certs",
+                    jwks_uri =>
+                        <<"https://www.googleapis.com/oauth2/v3/certs">>,
                     signing_algorithm => 'ES256',
                     jwks_uri_http_timeout_ms => 5000,
                     jwks_uri_tls_verify_peer => false
@@ -711,7 +721,7 @@ cache_lookup_test() ->
         [{_, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
                                fetch_time = FetchTime,
                                expiry = Expiry}}] = ets:lookup(?MODULE,
-                                                               "test1"),
+                                                               <<"test1">>),
         ?assert(is_map(KidToJWKMap)),
         ?assertEqual(2, maps:size(KidToJWKMap)),
         ?assert(Expiry > FetchTime),
@@ -722,8 +732,8 @@ cache_lookup_test() ->
                                                           '_', '_', '_']), 1),
 
         %% Set the cache entry to expired
-        ExpiredEntry = {"test1", #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
-                                                   fetch_time = FetchTime,
+        ExpiredEntry = {<<"test1">>, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
+                                                       fetch_time = FetchTime,
                                                    expiry = StartTime - 1}},
         ets:insert(?MODULE, ExpiredEntry),
 
@@ -805,18 +815,18 @@ cache_refresh_failure_test() ->
                 end),
 
     %% Set up JWT settings with two issuers
-    Issuer1 = "test-issuer1",
-    Issuer2 = "test-issuer2",
+    Issuer1 = <<"test-issuer1">>,
+    Issuer2 = <<"test-issuer2">>,
     Issuer1Props = #{
                      public_key_source => jwks_uri,
-                     jwks_uri => "https://example.com/jwks1",
+                     jwks_uri => <<"https://example.com/jwks1">>,
                      signing_algorithm => 'ES256',
                      jwks_uri_http_timeout_ms => 5000,
                      jwks_uri_tls_verify_peer => false
                     },
     Issuer2Props = #{
                      public_key_source => jwks_uri,
-                     jwks_uri => "https://example.com/jwks2",
+                     jwks_uri => <<"https://example.com/jwks2">>,
                      signing_algorithm => 'ES256',
                      jwks_uri_http_timeout_ms => 5000,
                      jwks_uri_tls_verify_peer => false
@@ -911,7 +921,7 @@ pem_cache_test() ->
     PublicJWK = jose_jwk:to_public(JWK),
     PEM = jose_jwk:to_pem(PublicJWK),
 
-    TestIssuer = "test-pem-issuer",
+    TestIssuer = <<"test-pem-issuer">>,
     IssuerProps = #{
                     public_key_source => pem,
                     public_key => PEM,
@@ -997,7 +1007,7 @@ static_jwks_cache_test() ->
     Kid1 = <<"key1">>,
     Kid2 = <<"key2">>,
     KidToJWKMap = #{Kid1 => Key1Map, Kid2 => Key2Map},
-    TestIssuer = "test-jwks-issuer",
+    TestIssuer = <<"test-jwks-issuer">>,
     IssuerProps = #{
                     public_key_source => jwks,
                     jwks => {undefined, KidToJWKMap},

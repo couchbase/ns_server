@@ -89,7 +89,7 @@ authenticate(Token) ->
 %% Issuer must use standard claim names for these claims.
 -type standard_claim() :: iss | jti | alg | kid | exp | nbf | iat.
 
--type custom_claim() :: string().
+-type custom_claim() :: binary().
 -type claims() :: mapped_claim() | standard_claim() | custom_claim().
 
 -type claim_type() :: mapped | standard.
@@ -138,7 +138,7 @@ get_claim_name(Name, IssuerProps) ->
             Claim = list_to_atom(atom_to_list(Name) ++ "_claim"),
             case maps:get(Claim, IssuerProps, undefined) of
                 undefined -> atom_to_binary(Name);
-                Value -> list_to_binary(Value)
+                Value -> Value
             end
     end.
 
@@ -182,30 +182,24 @@ get_claim_value(integer, Value) when is_binary(Value) ->
             undefined
     end;
 get_claim_value(string, Value) when is_binary(Value) ->
-    try binary_to_list(Value)
-    catch _:_ ->
-            undefined
-    end;
+    Value;
 get_claim_value(list, Value) ->
-    try
-        case Value of
-            Values when is_list(Values) ->
-                [binary_to_list(Elem) || Elem <- Values];
-            Value when is_binary(Value) ->
-                [binary_to_list(Value)];
-            _ -> undefined
-        end
-    catch _:_ ->
-            undefined
+    case Value of
+        Values when is_list(Values) ->
+            case lists:all(fun is_binary/1, Values) of
+                true -> Values;
+                false -> undefined
+            end;
+        Value when is_binary(Value) ->
+            [Value];
+        _ -> undefined
     end;
 get_claim_value(boolean, Value) when is_boolean(Value) -> Value;
 get_claim_value(boolean, Value) when is_binary(Value) ->
-    try string:lowercase(binary_to_list(Value)) of
-        "true" -> true;
-        "false" -> false;
+    case string:lowercase(Value) of
+        <<"true">> -> true;
+        <<"false">> -> false;
         _ -> undefined
-    catch _:_ ->
-            undefined
     end;
 get_claim_value(array, Value) ->
     Value;
@@ -219,9 +213,9 @@ format_number(Value) when is_integer(Value) ->
 format_number(Value) when is_float(Value) ->
     float_to_list(Value).
 
--spec get_standard_claim_names() -> [string()].
+-spec get_standard_claim_names() -> [binary()].
 get_standard_claim_names() ->
-    [atom_to_list(Claim) || Claim <- header_claims() ++ payload_claims()].
+    [atom_to_binary(Claim) || Claim <- header_claims() ++ payload_claims()].
 
 %% Extracts claims from a JWT in map format for further processing.
 %% Keys are atoms, claim values are converted to standard formats (integer, list
@@ -233,9 +227,8 @@ get_standard_claim_names() ->
 -spec extract_claims(TokenBin :: binary(),
                      Issuers :: map()) ->
           {ok,
-           ParsedPlusCustomClaims :: #{claims() => string() | [string()] |
-                                       integer() |
-                                       binary() | number() |
+           ParsedPlusCustomClaims :: #{claims() => binary() | [binary()] |
+                                       integer() | number() |
                                        boolean() | map() | list()},
            IssProps :: map()} |
           {error, Msg :: binary()}.
@@ -253,9 +246,8 @@ extract_claims(TokenBin, Issuers) ->
                        {ok, Props} ->
                            hide_shared_secret(Props#{name => IssuerName});
                        error ->
-                           IssuerBin = list_to_binary(IssuerName),
                            throw({error, <<"Unknown issuer: ",
-                                           IssuerBin/binary>>})
+                                           IssuerName/binary>>})
                    end,
 
         Claims0 = lists:foldl(
@@ -273,12 +265,12 @@ extract_claims(TokenBin, Issuers) ->
         Claims = case maps:get(custom_claims, IssProps, undefined) of
                      Custom when is_map(Custom) ->
                          maps:fold(
-                           fun(ClaimNameStr, _Conf, Acc) ->
-                                   NameBin = list_to_binary(ClaimNameStr),
-                                   case get_nested_value(NameBin, PayloadMap) of
+                           fun(ClaimName, _Conf, Acc) ->
+                                   case get_nested_value(ClaimName,
+                                                         PayloadMap) of
                                        undefined -> Acc;
                                        Value ->
-                                           Acc#{ClaimNameStr => Value}
+                                           Acc#{ClaimName => Value}
                                    end
                            end, Claims0, Custom);
                      undefined -> Claims0
@@ -303,13 +295,10 @@ extract_claims(TokenBin, Issuers) ->
 %% These normalization functions are used to convert decoded JSON values
 %% to proplists for auditing.
 
-%% Standard claims are atoms. Custom claims are strings.
+%% Standard claims are atoms. Custom claims are the binary claim name.
 -spec normalize_claim(Claim :: claims()) -> binary().
 normalize_claim(Claim) when is_atom(Claim) -> atom_to_binary(Claim);
-normalize_claim(Claim) when is_list(Claim) -> list_to_binary(Claim).
-
-%% JSON keys must be strings (binaries).
-normalize_key(K) when is_binary(K) -> K.
+normalize_claim(Claim) when is_binary(Claim) -> Claim.
 
 %% The roles claim is audited as token_roles. Event 8192 has a mandatory
 %% roles field of its own holding menelaus_roles:get_roles/1 - the effective
@@ -324,35 +313,29 @@ audit_claim_name(Claim) ->
         Name -> Name
     end.
 
-%% The audit map holds two kinds of values. A standard or mapped claim has been
-%% through get_claim_value/2, so it is a string, a list of strings or an
-%% integer, and get_claim_value_type/1 says which. A custom claim is keyed by
-%% the name the operator configured and holds the decoded JSON as it came off
-%% the token.
--spec audit_value_type(Claim :: claims()) -> claim_value_type() | decoded.
-audit_value_type(Claim) when is_atom(Claim) -> get_claim_value_type(Claim);
-audit_value_type(Claim) when is_list(Claim) -> decoded.
-
-%% Normalize a claim value for auditing (ejson encoding).
-normalize_val(string, V) -> list_to_binary(V);
-normalize_val(list, Vs) -> [list_to_binary(V) || V <- Vs];
-normalize_val(integer, V) when is_integer(V) -> V;
-normalize_val(decoded, V) -> normalize_decoded(V).
-
-normalize_decoded(V) when is_number(V); is_boolean(V); is_binary(V) -> V;
-normalize_decoded(null) -> null;
-normalize_decoded(V) when is_list(V) -> [normalize_decoded(E) || E <- V];
+%% Every claim value is already what the encoder wants: a standard or mapped
+%% claim has been through get_claim_value/2 and is a utf8 binary, a list of
+%% them or an integer. A custom claim is the decoded JSON as it came off the
+%% token. Only a map has to change (ejson doesn't support maps). ejson spells
+%% it as a tagged proplist.
+-spec normalize_decoded(term()) -> term().
 normalize_decoded(V) when is_map(V) ->
-    {[{normalize_key(K), normalize_decoded(Val)} ||
-         {K, Val} <- maps:to_list(V)]}.
+    {[{K, normalize_decoded(Val)} || {K, Val} <- maps:to_list(V)]};
+normalize_decoded(V) when is_list(V) ->
+    [normalize_decoded(E) || E <- V];
+normalize_decoded(V) ->
+    V.
 
-%% Converts the claims map to a proplist containing only binaries for auditing.
+%% Converts the claims map to a proplist for auditing. Claim values are the
+%% utf8 binaries, numbers, arrays and objects the JSON decoder produced, so
+%% they are accepted by the encoder as-is. Only the roles key and nested
+%% objects need to change.
 -spec audit_map_to_proplist(AuditMap :: map()) -> auth_audit_props().
 audit_map_to_proplist(AuditMap) ->
     lists:sort(maps:fold(
                  fun(Claim, Value, Acc) ->
                          [{audit_claim_name(Claim),
-                           normalize_val(audit_value_type(Claim), Value)} | Acc]
+                           normalize_decoded(Value)} | Acc]
                  end, [], AuditMap)).
 
 -spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) ->
@@ -394,7 +377,7 @@ validate_signature(TokenBin, Claims, IssProps) ->
     AlgoConfig = maps:get(signing_algorithm, IssProps),
     AlgoBin = atom_to_binary(AlgoConfig),
     AlgoToken = maps:get(alg, Claims),
-    case AlgoBin =:= list_to_binary(AlgoToken) of
+    case AlgoBin =:= AlgoToken of
         false ->
             {error, <<"Mismatched signing algorithm in JWT">>};
         true ->
@@ -435,7 +418,7 @@ lookup_jwk(Claims, IssuerProps, Algorithm) ->
                     _ ->
                         case maps:get(kid, Claims, undefined) of
                             undefined -> undefined;
-                            Kid -> list_to_binary(Kid)
+                            Kid -> Kid
                         end
                 end,
             jwt_cache:get_jwk(IssuerProps, KidBin)
@@ -456,13 +439,12 @@ validate_custom_claims(Claims, IssProps) ->
               end, ok, CustomClaims)
     end.
 
--spec validate_single_custom_claim(Claims :: map(), ClaimName :: string(),
+-spec validate_single_custom_claim(Claims :: map(), ClaimName :: binary(),
                                    ClaimConfig :: map()) ->
           ok | {error, binary()}.
 validate_single_custom_claim(Claims, ClaimName, ClaimConfig) ->
     Type = maps:get(type, ClaimConfig),
     Mandatory = maps:get(mandatory, ClaimConfig, false),
-    CNameBin = list_to_binary(ClaimName),
     RawClaimValue = maps:get(ClaimName, Claims, undefined),
     ParsedValue =
         case RawClaimValue of
@@ -472,11 +454,11 @@ validate_single_custom_claim(Claims, ClaimName, ClaimConfig) ->
 
     case {RawClaimValue, ParsedValue} of
         {undefined, _} when Mandatory ->
-            {error, <<"Missing mandatory custom claim: ", CNameBin/binary>>};
+            {error, <<"Missing mandatory custom claim: ", ClaimName/binary>>};
         {undefined, _} when not Mandatory ->
             ok;
         {_, undefined} ->
-            {error, <<"Custom claim ", CNameBin/binary,
+            {error, <<"Custom claim ", ClaimName/binary,
                       " cannot be parsed as ",
                       (atom_to_binary(Type, utf8))/binary>>};
         {_, _} ->
@@ -484,11 +466,11 @@ validate_single_custom_claim(Claims, ClaimName, ClaimConfig) ->
                 ok -> ok;
                 {error, Reason} ->
                     {error, <<"Custom claim validation failed for ",
-                              CNameBin/binary, ": ", Reason/binary>>}
+                              ClaimName/binary, ": ", Reason/binary>>}
             end
     end.
 
--spec validate_custom_claim(ClaimValue :: string() | number() | boolean() |
+-spec validate_custom_claim(ClaimValue :: binary() | number() | boolean() |
                                           binary(),
                             Type :: string | number | boolean | array | object,
                             Config :: map()) ->
@@ -504,7 +486,7 @@ validate_custom_claim(ClaimValue, array, _Config) ->
 validate_custom_claim(ClaimValue, object, _Config) ->
     validate_custom_object_claim(ClaimValue).
 
--spec validate_custom_string_claim(ClaimValue :: string(), Config :: map()) ->
+-spec validate_custom_string_claim(ClaimValue :: binary(), Config :: map()) ->
           ok | {error, binary()}.
 validate_custom_string_claim(ClaimValue, Config) ->
     %% The pattern has to match the whole value. re:run/3 on its own reports a
@@ -512,12 +494,14 @@ validate_custom_string_claim(ClaimValue, Config) ->
     %% a constraint does: [0-9]+ would accept abc123, and a pattern able to
     %% match a zero length string, such as [0-9]*, would accept any value at
     %% all. It is wrapped in ^(?: )$ here, non capturing so that the pattern's
-    %% own group numbers are kept. An iolist, so that a pattern held either as
-    %% a list or as a binary is wrapped without being converted first.
+    %% own group numbers are kept.
     %%
     %% notempty rejects a zero length match.
-    Pattern = ["^(?:", maps:get(pattern, Config), ")$"],
-    try re:run(ClaimValue, Pattern, [notempty]) of
+    %%
+    %% Without unicode the pattern is matched byte by byte, so a character
+    %% range or a count in it are misinterpreted.
+    Pattern = <<"^(?:", (maps:get(pattern, Config))/binary, ")$">>,
+    try re:run(ClaimValue, Pattern, [unicode, ucp, notempty]) of
         {match, _} -> ok;
         nomatch -> {error, <<"Value does not match pattern">>}
     catch
@@ -635,6 +619,9 @@ validate_payload(Claims, IssProps) ->
         Error -> Error
     end.
 
+%% The name returned crosses into RBAC, whose user names are lists of utf8
+%% bytes. auth_mapping converts on the mapped path, so the trusted path
+%% converts here.
 -spec validate_user(Claims :: map(), IssProps :: map()) ->
           {ok, string()} | {error, binary()}.
 validate_user(Claims, IssProps) ->
@@ -642,7 +629,7 @@ validate_user(Claims, IssProps) ->
     case maps:get(name, IssProps) =:= jwt_issuer:name() of
         true ->
             %% we can trust our own token to have the correct user name
-            {ok, Value};
+            {ok, binary_to_list(Value)};
         false ->
             auth_mapping:map_user(Value, maps:get(sub_maps, IssProps, []))
     end.
@@ -742,14 +729,14 @@ get_claim_value_test() ->
     ?assertEqual(123, get_claim_value(integer, <<"123">>)),
     ?assertEqual(undefined, get_claim_value(integer, <<"not_a_number">>)),
 
-    ?assertEqual("test", get_claim_value(string, <<"test">>)),
+    ?assertEqual(<<"test">>, get_claim_value(string, <<"test">>)),
     ?assertEqual(undefined, get_claim_value(string, [<<"test1">>])),
     ?assertEqual(undefined, get_claim_value(string, 123)),
 
-    ?assertEqual(["test1"], get_claim_value(list, [<<"test1">>])),
-    ?assertEqual(["test1", "test2"],
+    ?assertEqual([<<"test1">>], get_claim_value(list, [<<"test1">>])),
+    ?assertEqual([<<"test1">>, <<"test2">>],
                  get_claim_value(list, [<<"test1">>, <<"test2">>])),
-    ?assertEqual(["single"], get_claim_value(list, <<"single">>)),
+    ?assertEqual([<<"single">>], get_claim_value(list, <<"single">>)),
     ?assertEqual(undefined, get_claim_value(list, 123)),
 
     ?assertEqual(undefined, get_claim_value(string, undefined)),
@@ -761,16 +748,16 @@ get_claim_value_test() ->
 %% auth_mapping:map_user/2, which is covered by its own tests.
 validate_sub_own_issuer_test() ->
     ?assertEqual({ok, "internal-user"},
-                 validate_user(#{sub => "internal-user"},
+                 validate_user(#{sub => <<"internal-user">>},
                                #{name => jwt_issuer:name()})).
 
 validate_claims_test() ->
     Now = erlang:system_time(second),
     IssProps = #{
-                 name => "test-issuer",
+                 name => <<"test-issuer">>,
                  expiry_leeway_s => 300,
                  audience_handling => any,
-                 audiences => ["aud1", "aud2"]
+                 audiences => [<<"aud1">>, <<"aud2">>]
                 },
 
     %% Test exp validation
@@ -785,12 +772,15 @@ validate_claims_test() ->
                  validate(nbf, #{nbf => Now + 600}, IssProps)),
 
     %% Test aud validation
-    ?assertEqual(ok, validate(aud, #{aud => ["aud1", "other"]}, IssProps)),
+    ?assertEqual(ok, validate(aud, #{aud => [<<"aud1">>, <<"other">>]},
+                              IssProps)),
 
     IssPropsAll = IssProps#{audience_handling => all},
-    ?assertEqual(ok, validate(aud, #{aud => ["aud1", "aud2"]}, IssPropsAll)),
+    ?assertEqual(ok, validate(aud, #{aud => [<<"aud1">>, <<"aud2">>]},
+                              IssPropsAll)),
     ?assertEqual({error, <<"Invalid audience">>},
-                 validate(aud, #{aud => ["aud1", "other"]}, IssPropsAll)).
+                 validate(aud, #{aud => [<<"aud1">>, <<"other">>]},
+                          IssPropsAll)).
 
 get_nested_value_test() ->
     Map = #{
@@ -826,11 +816,11 @@ extract_claims_test_() ->
      fun(_) -> meck:unload() end,
      fun(_) ->
              Issuers = #{
-                         "test-issuer" =>
+                         <<"test-issuer">> =>
                              #{
                                signing_algorithm => hs256,
-                               aud_claim => "aud",
-                               sub_claim => "sub"
+                               aud_claim => <<"aud">>,
+                               sub_claim => <<"sub">>
                               }
                         },
              [
@@ -855,25 +845,22 @@ extract_claims_test_() ->
                                    fun(_) -> {ok, PayloadMap} end),
 
                        {ok, Claims, _} = extract_claims(<<"token">>, Issuers),
-                       ?assertEqual("test-issuer", maps:get(iss, Claims)),
-                       ?assertEqual("test-user", maps:get(sub, Claims)),
-                       ?assertEqual(["test-aud"], maps:get(aud, Claims)),
+                       ?assertEqual(<<"test-issuer">>, maps:get(iss, Claims)),
+                       ?assertEqual(<<"test-user">>, maps:get(sub, Claims)),
+                       ?assertEqual([<<"test-aud">>], maps:get(aud, Claims)),
                        ?assertEqual(1234567890, maps:get(exp, Claims)),
-                       ?assertEqual("HS256", maps:get(alg, Claims)),
-                       ?assertEqual("key-1", maps:get(kid, Claims))
+                       ?assertEqual(<<"HS256">>, maps:get(alg, Claims)),
+                       ?assertEqual(<<"key-1">>, maps:get(kid, Claims))
                end},
 
               {"mapped claim names",
                fun() ->
-                       Issuers3 = #{
-                                    "test-issuer" =>
-                                        #{
-                                          signing_algorithm => hs256,
-                                          sub_claim => "user.preferred_user",
-                                          aud_claim => "azp",
-                                          roles_claim => "resource.test.roles"
-                                         }
-                                   },
+                       Issuers3 =
+                           #{<<"test-issuer">> =>
+                                 #{signing_algorithm => hs256,
+                                   sub_claim => <<"user.preferred_user">>,
+                                   aud_claim => <<"azp">>,
+                                   roles_claim => <<"resource.test.roles">>}},
                        HeaderMap = #{
                                      <<"alg">> => <<"HS256">>,
                                      <<"kid">> => <<"key-1">>
@@ -904,24 +891,24 @@ extract_claims_test_() ->
                                    fun(_) -> {ok, PayloadMap} end),
 
                        {ok, Claims, _} = extract_claims(<<"token">>, Issuers3),
-                       ?assertEqual("test-issuer", maps:get(iss, Claims)),
-                       ?assertEqual("nested-user", maps:get(sub, Claims)),
-                       ?assertEqual(["test-client"], maps:get(aud, Claims)),
-                       ?assertEqual(["role1", "role2"],
+                       ?assertEqual(<<"test-issuer">>, maps:get(iss, Claims)),
+                       ?assertEqual(<<"nested-user">>, maps:get(sub, Claims)),
+                       ?assertEqual([<<"test-client">>], maps:get(aud, Claims)),
+                       ?assertEqual([<<"role1">>, <<"role2">>],
                                     maps:get(roles, Claims)),
                        ?assertEqual(1234567890, maps:get(exp, Claims))
                end},
               {"only the matched issuer, with the secret hidden",
                fun() ->
-                       Secret = "sekrit",
-                       OtherSecret = "othersekrit",
+                       Secret = <<"sekrit">>,
+                       OtherSecret = <<"othersekrit">>,
                        Issuers4 =
-                           #{"test-issuer" =>
+                           #{<<"test-issuer">> =>
                                  #{signing_algorithm => hs256,
-                                   aud_claim => "aud",
-                                   sub_claim => "sub",
+                                   aud_claim => <<"aud">>,
+                                   sub_claim => <<"sub">>,
                                    shared_secret => Secret},
-                             "other-issuer" =>
+                             <<"other-issuer">> =>
                                  #{signing_algorithm => hs256,
                                    shared_secret => OtherSecret}},
                        HeaderMap = #{<<"alg">> => <<"HS256">>},
@@ -939,7 +926,8 @@ extract_claims_test_() ->
 
                        {ok, _, IssProps} = extract_claims(<<"token">>,
                                                           Issuers4),
-                       ?assertEqual("test-issuer", maps:get(name, IssProps)),
+                       ?assertEqual(<<"test-issuer">>,
+                                    maps:get(name, IssProps)),
                        Hidden = maps:get(shared_secret, IssProps),
                        ?assert(is_function(Hidden, 0)),
                        ?assertEqual(Secret, ?UNHIDE(Hidden)),
@@ -1013,10 +1001,10 @@ extract_claims_test_() ->
      end}.
 
 get_claim_name_test() ->
-    Props = #{sub_claim => "username",
-              aud_claim => "scope",
-              roles_claim => "nested.roles",
-              groups_claim => "custom.groups"},
+    Props = #{sub_claim => <<"username">>,
+              aud_claim => <<"scope">>,
+              roles_claim => <<"nested.roles">>,
+              groups_claim => <<"custom.groups">>},
     ?assertEqual(<<"username">>, get_claim_name(sub, Props)),
     ?assertEqual(<<"scope">>, get_claim_name(aud, Props)),
     ?assertEqual(<<"nested.roles">>, get_claim_name(roles, Props)),
@@ -1028,8 +1016,8 @@ get_claim_name_test() ->
 audit_map_to_proplist_test() ->
     %% Test simple claims
     Simple = #{
-               iss => "test-issuer",
-               sub => "test-user",
+               iss => <<"test-issuer">>,
+               sub => <<"test-user">>,
                exp => 1234567890,
                nbf => 1234567800
               },
@@ -1042,8 +1030,8 @@ audit_map_to_proplist_test() ->
 
     %% Test array claims
     Arrays = #{
-               aud => ["aud1", "aud2"],
-               groups => ["group1", "group2"]
+               aud => [<<"aud1">>, <<"aud2">>],
+               groups => [<<"group1">>, <<"group2">>]
               },
     ?assertEqual([
                   {<<"aud">>, [<<"aud1">>, <<"aud2">>]},
@@ -1053,10 +1041,10 @@ audit_map_to_proplist_test() ->
     %% Test complex roles
     Roles = #{
               roles => [
-                        "admin",
-                        "bucket_admin[default]",
-                        "data_writer[default:scope1]",
-                        "query_select[default:scope1.collection1]"
+                        <<"admin">>,
+                        <<"bucket_admin[default]">>,
+                        <<"data_writer[default:scope1]">>,
+                        <<"query_select[default:scope1.collection1]">>
                        ]
              },
     %% Audited as token_roles, not roles, so that event 8192 can carry the
@@ -1070,12 +1058,12 @@ audit_map_to_proplist_test() ->
                                 ]}
                  ], lists:sort(audit_map_to_proplist(Roles))),
 
-    %% A claim value carrying anything above ASCII. It is a list of utf8
-    %% bytes rather than a printable list, and the type declared for the
-    %% claim, not the shape of the list, is what says it is a string.
+    %% A claim value carrying anything above ASCII. It stays the utf8 binary
+    %% the decoder produced, so nothing has to tell a string from a list by
+    %% looking at it.
     NonAscii = #{
-                 sub => binary_to_list(<<"Алиса"/utf8>>),
-                 groups => [binary_to_list(<<"Ingenjörer"/utf8>>), "eng"]
+                 sub => <<"Алиса"/utf8>>,
+                 groups => [<<"Ingenjörer"/utf8>>, <<"eng">>]
                 },
     ?assertEqual([
                   {<<"groups">>, [<<"Ingenjörer"/utf8>>, <<"eng">>]},
@@ -1085,8 +1073,8 @@ audit_map_to_proplist_test() ->
     %% A custom claim holds the decoded JSON, so an array of small integers
     %% stays an array. Guessing by shape would have made it a string.
     Custom = #{
-               "port_list" => [101, 110, 103],
-               "tenant" => <<"acme">>
+               <<"port_list">> => [101, 110, 103],
+               <<"tenant">> => <<"acme">>
               },
     ?assertEqual([
                   {<<"port_list">>, [101, 110, 103]},
@@ -1094,7 +1082,7 @@ audit_map_to_proplist_test() ->
                  ], lists:sort(audit_map_to_proplist(Custom))),
 
     Nested = #{
-               "user_metadata" =>
+               <<"user_metadata">> =>
                    #{
                      <<"preferences">> => #{
                                             <<"theme">> => <<"dark">>,
@@ -1127,6 +1115,20 @@ audit_map_to_proplist_test() ->
     {<<"age">>, 30} = lists:keyfind(<<"age">>, 1, Profile),
     {<<"active">>, true} = lists:keyfind(<<"active">>, 1, Profile).
 
+%% A custom claim holds the decoded JSON as it came off the token. The shape
+%% is what this pins: an object becomes the ejson tagged proplist and an array
+%% stays an array. That the values themselves survive byte for byte is
+%% asserted end to end by utf8_claims_test in jwt_tests.py.
+audit_map_to_proplist_utf8_test() ->
+    Custom = #{
+               <<"профиль"/utf8>> => #{<<"name">> => <<"Алекс"/utf8>>},
+               <<"codes">> => [1, 2, 3]
+              },
+    ?assertEqual([
+                  {<<"codes">>, [1, 2, 3]},
+                  {<<"профиль"/utf8>>, {[{<<"name">>, <<"Алекс"/utf8>>}]}}
+                 ], lists:sort(audit_map_to_proplist(Custom))).
+
 custom_claims_validation_test() ->
     [
      %% Test string validation
@@ -1141,7 +1143,7 @@ custom_claims_validation_test() ->
                                    <<"email">>,
                                    #{type => string,
                                      pattern => "^[a-z]+@[a-z]+\\.[a-z]+$",
-                                     mandatory => true})),
+                           mandatory => true})),
 
      %% Test number validation with integers
      ?_assertEqual(ok, validate_single_custom_claim(
@@ -1225,11 +1227,11 @@ custom_claims_validation_test() ->
                            enum => [1, 2, 3, 4, 5],
                            mandatory => true})),
      ?_assertMatch({error, _}, validate_single_custom_claim(
-                                   #{<<"level">> => 6},
-                                   <<"level">>,
-                                   #{type => number,
-                                     enum => [1, 2, 3, 4, 5],
-                                     mandatory => true})),
+                                 #{<<"level">> => 6},
+                                 <<"level">>,
+                                 #{type => number,
+                                   enum => [1, 2, 3, 4, 5],
+                                   mandatory => true})),
      %% Float representation of an integer enum value must match (e.g. Keycloak
      %% serializes integer claims as JSON floats like 1.0)
      ?_assertEqual(ok, validate_single_custom_claim(
@@ -1253,11 +1255,11 @@ custom_claims_validation_test() ->
                            const => true,
                            mandatory => true})),
      ?_assertMatch({error, _}, validate_single_custom_claim(
-                                   #{<<"admin">> => false},
-                                   <<"admin">>,
-                                   #{type => boolean,
-                                     const => true,
-                                     mandatory => true})),
+                                 #{<<"admin">> => false},
+                                 <<"admin">>,
+                                 #{type => boolean,
+                                   const => true,
+                                   mandatory => true})),
 
      %% Test array validation
      ?_assertEqual(ok, validate_single_custom_claim(
@@ -1266,10 +1268,10 @@ custom_claims_validation_test() ->
                          #{type => array,
                            mandatory => true})),
      ?_assertMatch({error, _}, validate_single_custom_claim(
-                                   #{<<"roles">> => []},
-                                   <<"roles">>,
-                                   #{type => array,
-                                     mandatory => true})),
+                                 #{<<"roles">> => []},
+                                 <<"roles">>,
+                                 #{type => array,
+                                   mandatory => true})),
 
      %% Test object validation
      ?_assertEqual(ok, validate_single_custom_claim(
@@ -1288,11 +1290,11 @@ custom_claims_validation_test() ->
 
      %% Test missing mandatory claims
      ?_assertMatch({error, _}, validate_single_custom_claim(
-                                   #{},
-                                   <<"required">>,
-                                   #{type => string,
-                                     pattern => ".*",
-                                     mandatory => true}))
+                                 #{},
+                                 <<"required">>,
+                                 #{type => string,
+                                   pattern => ".*",
+                                   mandatory => true}))
     ].
 
 custom_string_claim_pattern_test_() ->
@@ -1315,9 +1317,8 @@ custom_string_claim_pattern_test_() ->
      %% Each branch of a top level alternation is anchored, not just the
      %% first and the last.
      ?_assertEqual(ok, Check(<<"admin|ro">>, <<"ro">>)),
-     %% A pattern is wrapped whether it is held as a list or as a binary.
-     ?_assertEqual(ok, Check("(admin|user)", <<"user">>)),
-     ?_assertMatch({error, _}, Check("(admin|user)", <<"superuser">>)),
+     ?_assertEqual(ok, Check(<<"(admin|user)">>, <<"user">>)),
+     ?_assertMatch({error, _}, Check(<<"(admin|user)">>, <<"superuser">>)),
      %% A pattern that does not compile is an error, not a crash.
      ?_assertEqual({error, <<"Invalid regex pattern">>},
                    Check(<<"[">>, <<"abc">>))

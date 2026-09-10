@@ -207,7 +207,7 @@ build_kid_map(Keys) ->
 %% The secret must be valid UTF-8 and meet minimum length requirements based on
 %% the algorithm's bit size. Length bounds must use bytes not character length.
 %% A single Unicode character can span 1-4 bytes.
--spec validate_shared_secret(string(), jwt_algorithm()) ->
+-spec validate_shared_secret(binary(), jwt_algorithm()) ->
           {ok, {value, binary()}} | {error, string()}.
 validate_shared_secret(Secret, Algorithm) ->
     case is_symmetric_algorithm(Algorithm) of
@@ -230,14 +230,15 @@ validate_shared_secret(Secret, Algorithm) ->
                             'HS384' -> 128;  % 1024/8
                             'HS512' -> 128   % 1024/8
                         end,
-            %% Mochiweb converts the utf8 string to a list, which isn't
-            %% correct, so we need to undo that conversion here.
-            case unicode:characters_to_binary(Secret) of
-                {incomplete, _, _} ->
+            %% The secret arrives as the utf8 binary of the JSON string, and
+            %% is stored and used for HMAC as those same bytes. This only
+            %% checks that they are well formed utf8.
+            case validator:to_utf8(Secret) of
+                {error, incomplete} ->
                     {error, "Incomplete utf8 shared secret"};
-                {error, _, _} ->
+                {error, ill_formed} ->
                     {error, "Ill-formed utf8 shared secret"};
-                SecretBin ->
+                {ok, SecretBin} ->
                     SecretLength = byte_size(SecretBin),
                     case SecretLength < MinLength orelse
                         SecretLength > MaxLength of
