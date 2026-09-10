@@ -663,6 +663,23 @@ test_all_upgrades() ->
     ?assertEqual([], UpgradedKVs -- Default),
     ?assertEqual([], Default -- UpgradedKVs).
 
+decrypt_test_() ->
+    {setup,
+     fun () ->
+             meck:new(encryption_service, [passthrough]),
+             meck:expect(encryption_service, decrypt,
+                         fun (Bin) -> {ok, Bin} end)
+     end,
+     fun (_) -> meck:unload(encryption_service) end,
+     ?_test(test_decrypt())}.
+
+test_decrypt() ->
+    Encrypted = {encrypted, term_to_binary("secret")},
+
+    %% The wrapper is replaced by what it held, wherever it sits
+    ?assertEqual([[{k, "secret"}]], decrypt([[{k, Encrypted}]])),
+    ?assertEqual(#{k => "secret"}, decrypt(#{k => Encrypted})).
+
 %% dialyzer proves that statically and complains about impossible code
 %% path if I use ?assert... Sucker
 detect_enterprise_version_test() ->

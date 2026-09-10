@@ -22,10 +22,10 @@
 
 -include("ns_common.hrl").
 -include("ns_config.hrl").
--include_lib("ns_common/include/generic.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
 -ifdef(TEST).
+-include("ns_test.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
@@ -256,9 +256,15 @@ do_tag_group_name(GroupName) when is_binary(GroupName) ->
 do_tag_group_name(_) ->
     no_change.
 
+%% Not generic directly, as that flattens a map into its keys and values and
+%% {name, N} would never match
 tag_user_props(Props) ->
-    generic:transformt(?transform({name, N}, {name, tag_user_name(N)}),
-                       Props).
+    misc:rewrite_tuples(
+      fun ({name, N}) ->
+              {stop, {name, tag_user_name(N)}};
+          (_) ->
+              continue
+      end, Props).
 
 do_tag_misc_item(Item) when is_list(Item) ->
     {ok, "<ud>" ++ Item ++ "</ud>"};
@@ -575,5 +581,67 @@ sanitize_renamed_key_keeps_vclock_test() ->
                    [VClock | {auth, [{password, "*****"}]}]}],
                  sanitize([{"Administrator",
                             [VClock | {auth, [{password, "p"}]}]}])).
+with_vclock(Value) ->
+    [{?METADATA_VCLOCK, [{<<"uuid">>, {1, 2}}]} | Value].
+
+%% A user doc as replicated_dets holds it, which diag_handler dumps through
+%% sanitize/2, with the props menelaus_users builds for a user that has a name
+user_doc(Name, Props) ->
+    {docv2, {user, {Name, local}}, Props, []}.
+
+sanitize_test() ->
+    KVList = [{cert_and_pkey, with_vclock({"cert", "pkey"})},
+              {{metakv, <<"/sensitive">>},
+               with_vclock({?METAKV_SENSITIVE, <<"secret">>})},
+              {{metakv, <<"/plain">>}, with_vclock(<<"visible">>)},
+              {rest_creds, with_vclock([{user, "admin"},
+                                        {password, "secret"}])},
+              %% Props in both shapes, as they are tagged by a pass of their
+              %% own
+              {user_docs,
+               with_vclock([user_doc("alice", [{name, "Alice Smith"},
+                                               {roles, [admin]}]),
+                            user_doc("bob", #{name => "Bob Smith",
+                                              roles => [admin]})])}],
+
+    SanitizedList = sanitize(KVList),
+
+    ?assertMatch([_VClock | {"cert", {sanitized, _}}],
+                 proplists:get_value(cert_and_pkey, SanitizedList)),
+    ?assertMatch([_VCLock | {?METAKV_SENSITIVE, {sanitized, _}}],
+                 proplists:get_value({metakv, <<"/sensitive">>}, SanitizedList)),
+
+    %% A metakv value that was never marked sensitive is untouched
+    ?assertMatch([_VClock | <<"visible">>],
+                 proplists:get_value({metakv, <<"/plain">>}, SanitizedList)),
+
+    %% A sensitive tuple nested in a value is sanitized on its own
+    %% key, not on the config key
+    ?assertMatch([_VClock | [{user, "admin"}, {password, "*****"}]],
+                 proplists:get_value(rest_creds, SanitizedList)),
+
+    %% The same keys as a map sanitize to the same values, which is what
+    %% ns_config's dynamic will be
+    ?assertEqual(maps:from_list(SanitizedList),
+                 sanitize(maps:from_list(KVList))),
+
+    %% Whichever of the two ns_config holds is also the same
+    SanitizedConfig =
+        ns_config:get_kv_list_with_config(
+          sanitize(ns_config:mk_config(KVList))),
+    ?assertListsEqual(SanitizedList, SanitizedConfig),
+
+    %% diag_handler asks for user tagging on top, which reaches the props in
+    %% either shape
+    TaggedList = sanitize(KVList, true),
+    ?assertMatch(
+       [_VClock | [{docv2, {user, {"<ud>alice</ud>", local}},
+                    [{name, "<ud>Alice Smith</ud>"}, {roles, [admin]}], []},
+                   {docv2, {user, {"<ud>bob</ud>", local}},
+                    #{name := "<ud>Bob Smith</ud>", roles := [admin]}, []}]],
+       proplists:get_value(user_docs, TaggedList)),
+
+    ?assertEqual(maps:from_list(TaggedList),
+                 sanitize(maps:from_list(KVList), true)).
 
 -endif.

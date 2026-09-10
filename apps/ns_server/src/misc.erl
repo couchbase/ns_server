@@ -819,7 +819,13 @@ rewrite_key_value_tuple(Key, NewValue, Struct) ->
 
 rewrite_tuples(Fun, Struct) ->
     rewrite(
-      fun (Term) ->
+      fun (Term) when is_map(Term) ->
+              %% generic flattens a map into its keys and values, so a pair
+              %% never reaches Fun. Walk the pairs here instead, as callers
+              %% match on the whole {K, V}
+              {stop, maps:from_list([rewrite_tuples_pair(Fun, KV)
+                                     || KV <- maps:to_list(Term)])};
+          (Term) ->
               case is_tuple(Term) of
                   true ->
                       Fun(Term);
@@ -829,7 +835,73 @@ rewrite_tuples(Fun, Struct) ->
       end,
       Struct).
 
+%% Stopping on the map above means generic will not descend, so recurse into
+%% the key and the value here. A Fun that rewrites keys can collapse pairs, as
+%% maps:from_list/1 keeps the last of any duplicates. This will likely look
+%% non-deterministic as callers such as `rewrite_tuples/2` do not pass in an
+%% ordered list.
+%%
+%% Fun may replace a tuple with something that is not a pair, as
+%% ns_config_default:decrypt/1 does, but that is legacy code for pre-7.9 config
+%% that will not be a map (this is only called for a map).
+%% A map entry cannot hold a bare term, so the map form does not support that
+%% yet and a Fun that starts doing it will crash here.
+rewrite_tuples_pair(Fun, {K, V} = KV) ->
+    case Fun(KV) of
+        continue ->
+            {rewrite_tuples(Fun, K), rewrite_tuples(Fun, V)};
+        {stop, {_, _} = NewKV} ->
+            NewKV
+    end.
+
 -ifdef(TEST).
+rewrite_tuples_map_test() ->
+    Fun = fun ({password, _}) ->
+                  {stop, {password, "*****"}};
+              ({rewrite_me, V}) ->
+                  {stop, {rewritten, V}};
+              (_) ->
+                  continue
+          end,
+
+    ?assertEqual([{password, "*****"}],
+                 rewrite_tuples(Fun, [{password, "secret"}])),
+    ?assertEqual(#{password => "*****"},
+                 rewrite_tuples(Fun, #{password => "secret"})),
+
+    %% Entries Fun does not match are descended into, and keys are rewritten
+    %% as well as values
+    ?assertEqual(#{a => [{password, "*****"}], rewritten => 1},
+                 rewrite_tuples(Fun, #{a => [{password, "secret"}],
+                                       rewrite_me => 1})),
+
+    %% Maps nested in a value, and values nested in a map
+    ?assertEqual([{a, #{password => "*****"}}],
+                 rewrite_tuples(Fun, [{a, #{password => "secret"}}])),
+    ?assertEqual(#{a => #{b => [{password, "*****"}]}},
+                 rewrite_tuples(Fun, #{a => #{b => [{password, "secret"}]}})),
+
+    %% Nothing to rewrite leaves the term alone
+    Term = #{a => 1, b => [{c, 2}], d => #{}},
+    ?assertEqual(Term, rewrite_tuples(Fun, Term)).
+
+rewrite_tuples_map_unwrapping_fun_test() ->
+    %% ns_config_default:decrypt/1 replaces the whole {encrypted, Bin} tuple
+    %% with the term it held, so Fun does not return a pair
+    Fun = fun ({encrypted, Bin}) when is_binary(Bin) ->
+                  {stop, binary_to_term(Bin)};
+              (_) ->
+                  continue
+          end,
+    Encrypted = term_to_binary("secret"),
+
+    %% A list holds the replacement in place of the pair
+    ?assertEqual(["secret"], rewrite_tuples(Fun, [{encrypted, Encrypted}])),
+
+    %% So does a value in a map, as the pair itself is not what Fun matched
+    ?assertEqual(#{k => "secret"},
+                 rewrite_tuples(Fun, #{k => {encrypted, Encrypted}})).
+
 rewrite_value_test() ->
     x = rewrite_value(a, b, x),
     b = rewrite_value(a, b, a),

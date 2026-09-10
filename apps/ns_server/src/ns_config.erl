@@ -74,7 +74,8 @@
 -export([save_file/3, load_config/4,
          load_file/3, send_config/3,
          test_setup/1, upgrade_config/2,
-         do_announce_changes/1]).
+         do_announce_changes/1,
+         mk_config/1, mk_config/2]).
 -export([mock_tombstone_agent/0, unmock_tombstone_agent/0]).
 -endif.
 
@@ -1791,6 +1792,14 @@ all_test_() ->
 
 -define(assertConfigEquals(A, B), ?assertEqual(lists:sort([{K, strip_metadata(V)} || {K,V} <- A]),
                                                lists:sort([{K, strip_metadata(V)} || {K,V} <- B]))).
+
+%% #config{} holding the given dynamic KVList, without naming the
+%% representation
+mk_config(KVList) ->
+    mk_config(KVList, #config{}).
+
+mk_config(KVList, Config) ->
+    set_config_dynamic(Config, kvlist_to_dynamic(KVList)).
 
 test_update_config() ->
     ?assertConfigEquals([{test, 1}], update_config_key(test, 1, [], <<"uuid">>)),
