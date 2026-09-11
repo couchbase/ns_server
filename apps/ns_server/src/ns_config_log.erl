@@ -290,9 +290,9 @@ rewrite_tuples_with_vclock(Fun, Config) ->
                   case Fun({Key, Value}) of
                       continue ->
                           continue;
-                      {stop, {Key, NewValue}} ->
-                          {stop, {Key, [ns_config:build_vclock(Ts, VClock)
-                                        | NewValue]}}
+                      {stop, {NewKey, NewValue}} ->
+                          {stop, {NewKey, [ns_config:build_vclock(Ts, VClock)
+                                          | NewValue]}}
                   end
           end;
           (Other) ->
@@ -565,5 +565,15 @@ tag_user_data_tags_jwt_settings_test() ->
     %% A delete audits an atom, which has nothing to tag.
     ?assertEqual(jwt_settings_body(deleted),
                  tag_user_data(jwt_settings_body(deleted))).
+
+%% A clause that renames the key must still get its vclock back, under the
+%% new key. The value is improper-list wrapped, as ns_config wraps a
+%% non-list value carrying metadata.
+sanitize_renamed_key_keeps_vclock_test() ->
+    VClock = {?METADATA_VCLOCK, [{<<"uuid">>, {1, 2}}]},
+    ?assertEqual([{"<ud>Administrator</ud>",
+                   [VClock | {auth, [{password, "*****"}]}]}],
+                 sanitize([{"Administrator",
+                            [VClock | {auth, [{password, "p"}]}]}])).
 
 -endif.
