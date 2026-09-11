@@ -390,7 +390,17 @@ schedule_config_sync() ->
 do_push_keys(Keys, AllKVs, State) ->
     KVsToPush =
         lists:foldl(
-            fun(Key, Acc) -> Acc#{Key => maps:get(Key, AllKVs)} end,
+            fun(Key, Acc) ->
+                    %% concurrent tombstone purge may have resulted in a
+                    %% difference between keys and allkvs, skip anything that
+                    %% is missing, it is gone
+                    case maps:find(Key, AllKVs) of
+                        {ok, Value} ->
+                            Acc#{Key => Value};
+                        error ->
+                            Acc
+                    end
+            end,
             #{}, Keys),
     do_push_and_log_keys(Keys, KVsToPush, State).
 
@@ -542,6 +552,41 @@ accumulate_pull_and_push_test() ->
         {pull_and_push, _} -> exit(bad)
     after 0 -> ok
     end.
+
+%% The map handed to misc:compress by the push
+pushed_kvs() ->
+    meck:capture(first, misc, compress, ['_'], 1).
+
+do_push_keys_test_() ->
+    {foreach,
+     fun () ->
+             meck:new([cluster_compat_mode, misc, ns_node_disco],
+                      [passthrough]),
+             meck:expect(cluster_compat_mode, is_cluster_totoro,
+                         fun () -> true end),
+             meck:expect(misc, parallel_map, fun (_, _, _) -> [] end),
+             meck:expect(ns_node_disco, local_sub_nodes, fun () -> [] end),
+             meck:expect(ns_node_disco, only_live_nodes, fun (_) -> [] end)
+     end,
+     fun (_) ->
+             meck:unload([cluster_compat_mode, misc, ns_node_disco])
+     end,
+     [{"pushes the value of every key",
+       fun () ->
+               do_push_keys([a, c], #{a => 1, b => 2, c => 3},
+                            #state{nodes = []}),
+               ?assertEqual(#{a => 1, c => 3}, pushed_kvs())
+       end},
+      {"skips keys purged before we looked them up",
+       fun () ->
+               do_push_keys([a, b, c], #{a => 1, c => 3}, #state{nodes = []}),
+               ?assertEqual(#{a => 1, c => 3}, pushed_kvs())
+       end},
+      {"pushes nothing when every key was purged",
+       fun () ->
+               do_push_keys([a, b], #{c => 3}, #state{nodes = []}),
+               ?assertEqual(#{}, pushed_kvs())
+       end}]}.
 -endif.
 
 handle_node_disco_event(Parent, {ns_node_disco_events, Old, New}) ->
