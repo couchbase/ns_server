@@ -178,9 +178,15 @@ max_body_size(Opts) ->
 %% Support for representing strings as binaries exists only for JSON. JSON
 %% strings arrive as UTF-8 binaries from ejson/json native decoders.
 %% Every other input format currently supports only byte lists.
+%%
+%% An endpoint's representation is fixed when the endpoint is written. Moving
+%% an existing endpoint to binaries changes formats and is not backwards
+%% compatible for any endpoint that persists the validated fields. So the
+%% raw_byte_list lives for older JSON endpoints. There is no reason to specify
+%% raw_byte_list for any new JSON endpoint.
 -spec strings_option(input_format(), options()) -> string_repr().
 strings_option(json, Opts) ->
-    case maps:get(strings, Opts, raw_byte_list) of
+    case maps:get(strings, Opts, binary) of
         binary -> binary;
         raw_byte_list -> raw_byte_list;
         Other -> erlang:error({unsupported_strings_option, json, Other})
@@ -1784,7 +1790,7 @@ json_shapes_strings_test() ->
 %% json is the only format holding decoder output, so it is the only one that
 %% can be asked for binaries. Asking anywhere else is a caller error.
 strings_option_test() ->
-    ?assertEqual(raw_byte_list, strings_option(json, #{})),
+    ?assertEqual(binary, strings_option(json, #{})),
     ?assertEqual(raw_byte_list,
                  strings_option(json, #{strings => raw_byte_list})),
     ?assertEqual(raw_byte_list, strings_option(form, #{})),
@@ -1931,10 +1937,13 @@ run_tests_for_json_validators(Validators, Tests) ->
     Respond = fun (Body, Code) ->
                       erlang:put(json_test_response, {Body, Code})
               end,
+    %% These cases assert the error, warning and nesting behavior rather than
+    %% the string representation, and were written against byte lists.
     Handle = fun (Type, Data, Qs) ->
                      meck:expect(mochiweb_request, parse_qs,
                                  fun (_Req) -> Qs end),
-                     handle(Respond(_, 200), Data, Type, Validators),
+                     handle(Respond(_, 200), Data, Type, Validators,
+                            #{strings => raw_byte_list}),
                      erlang:get(json_test_response)
              end,
 
