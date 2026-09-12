@@ -408,7 +408,7 @@ handle_settings_put(Req) ->
       fun (Props) ->
               validate_and_store_settings(Props, Req)
       end,
-      Req, json, main_validators()).
+      Req, json, main_validators(), #{strings => raw_byte_list}).
 
 handle_settings_delete(Req) ->
     Fun = fun (_) -> {commit, [{delete, jwt_settings}]} end,

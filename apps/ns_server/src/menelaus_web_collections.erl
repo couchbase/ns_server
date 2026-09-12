@@ -416,7 +416,7 @@ handle_set_manifest(Bucket, Req) ->
           [validator:required(scopes, _),
            validate_scopes(scopes, BucketConf, _),
            check_duplicates(scopes, _),
-           validator:unsupported(_)])
+           validator:unsupported(_)], #{strings => raw_byte_list})
     else
         not_present ->
             handle_rv(

@@ -375,7 +375,7 @@ handle_deks_drop_complete(Req) ->
         [validator:required(success, _),
          validator:boolean(success, _),
          validator:string(description, _),
-         validator:unsupported(_)]).
+         validator:unsupported(_)], #{strings => raw_byte_list}).
 
 dek_kind_validators() ->
     [validator:required(type, _),
@@ -840,7 +840,7 @@ handle_import_ear_dek(Req) ->
        %% duration in nanoseconds) makes gen_server:call raise timeout_value,
        %% crashing the request with a 500 instead of returning a clean 400.
        validator:integer(timeout, 1, ?MAX_32BIT_SIGNED_INT, _),
-       validator:unsupported(_)]).
+       validator:unsupported(_)], #{strings => raw_byte_list}).
 
 %% Returns warning as binary if master password is not configured on some
 %% cluster nodes

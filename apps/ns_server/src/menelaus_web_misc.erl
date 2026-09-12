@@ -168,7 +168,8 @@ handle_event_log_post(Req) ->
     validator:handle(fun (_Values) ->
                        event_log:log(Log),
                        reply_json(Req, [], 200)
-                     end, Req, json, event_log:validators()).
+                     end, Req, json, event_log:validators(),
+                     #{strings => raw_byte_list}).
 
 handle_rotate_internal_creds(Req) ->
     menelaus_util:assert_is_76(),

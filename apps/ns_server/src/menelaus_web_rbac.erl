@@ -3376,7 +3376,7 @@ handle_put_custom_role(RoleId, Req) ->
        validator:string(name, _),
        validator:string(description, _),
        validate_json_permissions(_),
-       validator:unsupported(_)]).
+       validator:unsupported(_)], #{strings => raw_byte_list}).
 
 validate_json_permissions(State) ->
     validator:validate(fun parse_permissions_json/1, permissions, State).

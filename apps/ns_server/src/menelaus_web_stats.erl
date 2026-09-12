@@ -307,7 +307,8 @@ handle_range_post(Req) ->
             fun () ->
                 handle_range_post_validated(List, PermFilters, Now, Req)
             end)
-      end, Req, {json_array, JSONArray}, post_validators(Now, Req)).
+      end, Req, {json_array, JSONArray}, post_validators(Now, Req),
+      #{strings => raw_byte_list}).
 
 handle_range_post_validated(List, PermFilters, Now, Req) ->
     Monitors = start_node_extractors_monitoring([Props || {_, Props} <- List]),

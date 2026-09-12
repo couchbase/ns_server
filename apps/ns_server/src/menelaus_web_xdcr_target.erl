@@ -38,7 +38,7 @@ validate_commitopaque(Name, State) ->
 
 handle_pre_replicate(Bucket, Req) ->
     validator:handle(do_handle_pre_replicate(Req, _, Bucket), Req, json,
-                     validators()).
+                     validators(), #{strings => raw_byte_list}).
 
 handle_pre_replicate_legacy(#httpd{mochi_req = Req}, Body, Bucket) ->
     Props = [{binary_to_list(K), V} || {K, V} <- Body],

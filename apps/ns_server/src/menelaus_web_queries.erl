@@ -119,7 +119,8 @@ handle_curl_whitelist_post(Req) ->
               ns_audit:settings(Req, modify_query,
                                 [{curl_whitelist, ejson:encode({Values})}]),
               menelaus_util:reply_json(Req, get_curl_whitelist_settings())
-      end, Req, json, settings_curl_whitelist_validators()).
+      end, Req, json, settings_curl_whitelist_validators(),
+      #{strings => raw_byte_list}).
 
 handle_curl_whitelist_get(Req) ->
     menelaus_util:reply_json(Req, get_curl_whitelist_settings()).

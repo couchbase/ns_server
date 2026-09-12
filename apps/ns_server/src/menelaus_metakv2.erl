@@ -290,7 +290,7 @@ handle_post_get_snapshot(Req) ->
        validator:required(key, _),
        validator:string(key, _),
        validate_and_decode_path(key, _),
-       validator:unsupported(_)]).
+       validator:unsupported(_)], #{strings => raw_byte_list}).
 
 validate_revision(Name, State) ->
   validator:validate(
@@ -403,7 +403,7 @@ handle_post_set_multiple(Req, Recursive) ->
        validate_revision(revision, _),
        validator:boolean(create, _)] ++
           sensitive_validators() ++
-          [validator:unsupported(_)]).
+          [validator:unsupported(_)], #{strings => raw_byte_list}).
 
 reply_delete_result(Req, {ok, Rev}, _Path, Start, _Type) ->
     reply_mutation(

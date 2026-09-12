@@ -81,7 +81,8 @@ handle_ingest(Req) ->
                                 menelaus_util:reply(Req, 507)
                         end
                 end, Req, json, [],
-                #{max_body_size =>
+                #{strings => raw_byte_list,
+                  max_body_size =>
                       telemetry_reporter:max_external_payload_size()})
       end, Req, qs, ingest_validators()).
 

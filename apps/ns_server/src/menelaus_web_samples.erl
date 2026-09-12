@@ -160,7 +160,7 @@ post_validators() ->
 handle_post(Req) ->
     menelaus_web_rbac:assert_no_users_upgrade(),
     validator:handle(handle_post_inner(Req, _), Req, json_array,
-                     post_validators()).
+                     post_validators(), #{strings => raw_byte_list}).
 
 handle_post_inner(Req, ParsedJson) ->
     Samples = build_samples_input_list(ParsedJson),

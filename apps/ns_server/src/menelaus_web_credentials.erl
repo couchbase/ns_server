@@ -155,7 +155,7 @@ handle_settings_put(Req) ->
       fun (Props) ->
               validate_and_store_settings(Props, Req)
       end,
-      Req, json, settings_validators()).
+      Req, json, settings_validators(), #{strings => raw_byte_list}).
 
 handle_settings_delete(Req) ->
     Fun = fun (_) -> {commit, [{delete, ?CREDENTIAL_STORE_SETTINGS_KEY}]} end,
@@ -465,7 +465,7 @@ handle_post(IdStr, Req) ->
                               reply_store_error(Req, Reason2)
                       end
               end,
-              Req, json, post_validators())
+              Req, json, post_validators(), #{strings => raw_byte_list})
     end.
 
 handle_put(IdStr, Req) ->
@@ -483,7 +483,7 @@ handle_put(IdStr, Req) ->
                                             MetaExtra, Author, ExpectedRev),
                 Req)
       end,
-      Req, json, put_validators()).
+      Req, json, put_validators(), #{strings => raw_byte_list}).
 
 %% @doc Partial update of an existing credential's metadata.
 %% Accepts only description, expiresAt, and guardrails — never type or fields.
@@ -510,7 +510,7 @@ handle_patch(IdStr, Req) ->
                         Req)
               end
       end,
-      Req, json, patch_validators()).
+      Req, json, patch_validators(), #{strings => raw_byte_list}).
 
 %% @doc Shared response handling for the update_credential audit event,
 %% used by both PUT (full replace) and PATCH (partial metadata update).

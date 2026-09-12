@@ -455,7 +455,7 @@ handle_reload_certificate(Type, Req) when Type == node_cert;
           validator:one_of(type, ["script", "rest", "plain"], _),
           validator:convert(type, binary_to_atom(_, latin1), _),
           validate_required_keys(type, _)], _),
-       validator:unsupported(_)]).
+       validator:unsupported(_)], #{strings => raw_byte_list}).
 
 validate_required_keys(Name, State) ->
     validator:validate(

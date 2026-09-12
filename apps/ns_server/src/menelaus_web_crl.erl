@@ -87,7 +87,7 @@ handle_post_settings(Req) ->
                         {[{error, iolist_to_binary(
                                     io_lib:format("~p", [R]))}]}, 400)
               end
-      end, Req, json, post_validators()).
+      end, Req, json, post_validators(), #{strings => raw_byte_list}).
 
 post_validators() ->
     [validator:string(directory, _),
@@ -228,7 +228,7 @@ do_diagnostics_status(Req, ParseMode, Validators) ->
               UniqPairs = lists:uniq(fun ({Node, _}) -> Node end, NodePairs),
               Results = collect_crl_status(UniqPairs),
               menelaus_util:reply_json(Req, {Results})
-      end, Req, ParseMode, Validators).
+      end, Req, ParseMode, Validators, #{strings => raw_byte_list}).
 
 %% GET: split the single comma-separated string into individual
 %% hostnames, then resolve each one.
@@ -339,7 +339,7 @@ handle_post_diagnostics_validate(Req) ->
                   end,
               menelaus_util:reply_json(
                 Req, {[{policy, mode_to_json(Policy)} | Body]})
-      end, Req, json, validate_post_validators()).
+      end, Req, json, validate_post_validators(), #{strings => raw_byte_list}).
 
 validate_post_validators() ->
     [%% 'Disabled' is intentionally not allowed: the test policy must

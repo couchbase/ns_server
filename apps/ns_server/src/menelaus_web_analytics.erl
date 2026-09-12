@@ -280,13 +280,13 @@ cluster_init_validators_test() ->
                 {0, <<"<stderr>">>, <<"<stdout>">>}
             end),
         validator:handle(Respond(_, 200), JsonObject,
-            json, cluster_init_validators()),
+            json, cluster_init_validators(), #{strings => raw_byte_list}),
         meck:expect(misc, run_external_tool,
             fun (_Path, _Args, _Env, _Options) ->
                 {1, <<"<stderr>">>, <<?MISSING_SETTINGS>>}
             end),
         validator:handle(Respond(_, 200), JsonObject,
-            json, cluster_init_validators()),
+            json, cluster_init_validators(), #{strings => raw_byte_list}),
         ?assertResponse(
             GlobalError(?MISSING_SETTINGS), 400, erlang:get(json_test_response))
     after

@@ -1370,7 +1370,7 @@ process_req(Req, HandlerFunc, Validators) ->
     validator:handle(fun (Params) ->
                              handle_hibernation_response(Req,
                                                          HandlerFunc(Params))
-                     end, Req, json, Validators()).
+                     end, Req, json, Validators(), #{strings => raw_byte_list}).
 
 handle_hibernation_request(Req, Func, Validators) ->
     assert_pause_resume_api_enabled(),

@@ -106,7 +106,7 @@ handle_put_catalogs(Req) ->
       [validator:string(key, _),
        validator:length(key, 1, ?MAX_NAME_LENGTH, _),
        menelaus_web_collections:name_validator(key, _),
-       check_key_not_uid(_)]).
+       check_key_not_uid(_)], #{strings => raw_byte_list}).
 
 %% Replaces the full catalog set atomically. If ValidOnUid is specified the
 %% manifest is only replaced if it matches the currently stored uid.

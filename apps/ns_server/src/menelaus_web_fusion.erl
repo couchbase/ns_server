@@ -329,7 +329,7 @@ handle_upload_mounted_volumes(Req) ->
                 end, Req, json,
                 [validator:required(nodes, _),
                  validate_guest_volumes(nodes, _),
-                 validator:unsupported(_)])
+                 validator:unsupported(_)], #{strings => raw_byte_list})
       end, Req, qs,
       [validator:string(planUUID, _),
        validator:required(planUUID, _),
@@ -419,7 +419,7 @@ handle_sync_log_store_body(Req, Timeout, Reset, Body) ->
                   validate_sync_bucket(_),
                   validator:unsupported(_)],
                  _),
-               validator:unsupported(_)]);
+               validator:unsupported(_)], #{strings => raw_byte_list});
         _ ->
             menelaus_util:reply_json(
               Req, {[{errors, {[{<<"_">>, <<"Invalid Json">>}]}}]}, 400)
@@ -545,7 +545,7 @@ handle_prepare_snapshot_restore(Req) ->
                              validate_bucket_config(config, _),
                              validator:unsupported(_)],
                             _),
-       validator:unsupported(_)]).
+       validator:unsupported(_)], #{strings => raw_byte_list}).
 
 validate_manifest(Name, State) ->
     validator:decoded_json(
@@ -596,7 +596,7 @@ handle_restore_snapshot(Req) ->
                 end, Req, json,
                 [validator:required(nodes, _),
                  validate_guest_volumes(nodes, _),
-                 validator:unsupported(_)])
+                 validator:unsupported(_)], #{strings => raw_byte_list})
       end, Req, qs,
       [validator:string(planUUID, _),
        validator:required(planUUID, _),

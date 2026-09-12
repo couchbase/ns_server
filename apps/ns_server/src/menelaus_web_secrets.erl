@@ -245,7 +245,8 @@ with_validated_secret(Fun, ExistingId, NeedQuorum, Req) ->
                           menelaus_util:reply_global_error(Req,
                                                            format_error(Reason))
                   end
-              end, Req, json, secret_validators(CurProps, Snapshot));
+              end, Req, json, secret_validators(CurProps, Snapshot),
+              #{strings => raw_byte_list});
         {error, not_found} ->
             menelaus_util:reply_not_found(Req)
     end.

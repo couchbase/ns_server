@@ -673,7 +673,7 @@ handle_crls_validate_post(Req) ->
        validator:required(scope, _),
        validator:string(scope, _),
        validator:one_of(scope, ["clientAuth", "nodeToNode"], _),
-       validator:unsupported(_)]).
+       validator:unsupported(_)], #{strings => raw_byte_list}).
 
 format_crl_status(cert_decode_error, _DerCert, _Expiry) ->
     %% There is no real subject to report for a cert we could not decode.
