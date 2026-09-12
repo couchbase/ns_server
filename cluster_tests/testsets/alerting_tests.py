@@ -660,7 +660,11 @@ class AlertTests(testlib.BaseTestSet):
             archived_name= f"{repo_name}Archive"
             testlib.post_succ(self.cluster, f"{api_active}/{repo_name}/archive",
                               json={"id": archived_name})
-            path2del = f"{api_archived}/{archived_name}?remove_repository=true"
+            # Don't ask the service to remove the repository data: the
+            # killed cbbackupmgr may have left a backup directory without
+            # its .version file, which makes cbbackupmgr refuse to open the
+            # archive. The temporary directory is removed below anyway.
+            path2del = f"{api_archived}/{archived_name}"
             testlib.delete_succ(self.cluster, path2del)
             # Remove the temporary directory used for the repository
             shutil.rmtree(repo_path)
