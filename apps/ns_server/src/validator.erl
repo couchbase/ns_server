@@ -97,33 +97,39 @@
 
 -record(state, {kv = [], touched = [], errors = [], warnings = []}).
 
-handle(Fun, Req, json, Validators, MaxSizeBytes) ->
+-type options() :: #{max_body_size => pos_integer()}.
+
+-spec handle(function(), mochiweb_request(), term(), [function()],
+             options()) -> term().
+handle(Fun, Req, json, Validators, Opts) ->
     apply_to_body(
       Req, ?cut(handle_one(Fun, Req, with_json_object(_, Validators))),
-      MaxSizeBytes);
+      max_body_size(Opts));
 
-
-handle(Fun, Req, json_array, Validators, MaxSizeBytes) ->
+handle(Fun, Req, json_array, Validators, Opts) ->
     apply_to_body(
       Req, ?cut(handle_multiple(Fun, Req, with_json_array(_, Validators))),
-      MaxSizeBytes);
+      max_body_size(Opts));
 
-handle(Fun, Req, json_map, Validators, MaxSizeBytes) ->
+handle(Fun, Req, json_map, Validators, Opts) ->
     apply_to_body(
       Req, ?cut(handle_multiple(Fun, Req, with_json_map(_, Validators))),
-      MaxSizeBytes).
+      max_body_size(Opts)).
 
 apply_to_body(Req, Fun, MaxSizeBytes) ->
     try mochiweb_request:recv_body(MaxSizeBytes, Req) of
-         Body -> Fun(Body)
+        Body -> Fun(Body)
     catch exit:{body_too_large, _} ->
-             menelaus_util:reply(Req, 413)
+            menelaus_util:reply(Req, 413)
     end.
+
+max_body_size(Opts) ->
+    maps:get(max_body_size, Opts, ?MAX_RECV_BODY).
 
 handle(Fun, Req, Type, Validators) when Type =:= json;
                                         Type =:= json_array;
                                         Type =:= json_map ->
-    handle(Fun, Req, Type, Validators, ?MAX_RECV_BODY);
+    handle(Fun, Req, Type, Validators, #{});
 
 handle(Fun, Req, form, Validators) ->
     handle(Fun, Req, add_input_type(form, mochiweb_request:parse_post(Req)),
@@ -1495,6 +1501,10 @@ string_array_test() ->
     ResultState7 = string_array(names, Fun, State7),
     #state{errors = Errors7} = ResultState7,
     ?assertEqual([{"names", "Must be an array of non-empty strings"}], Errors7).
+
+max_body_size_test() ->
+    ?assertEqual(?MAX_RECV_BODY, max_body_size(#{})),
+    ?assertEqual(64, max_body_size(#{max_body_size => 64})).
 
 int_array_test() ->
     %% Test with valid input and default fun
