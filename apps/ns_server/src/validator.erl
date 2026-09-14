@@ -99,6 +99,9 @@
 
 -type options() :: #{max_body_size => pos_integer()}.
 
+handle(Fun, Req, Type, Validators) ->
+    handle(Fun, Req, Type, Validators, #{}).
+
 -spec handle(function(), mochiweb_request(), term(), [function()],
              options()) -> term().
 handle(Fun, Req, json, Validators, Opts) ->
@@ -114,7 +117,28 @@ handle(Fun, Req, json_array, Validators, Opts) ->
 handle(Fun, Req, json_map, Validators, Opts) ->
     apply_to_body(
       Req, ?cut(handle_multiple(Fun, Req, with_json_map(_, Validators))),
-      max_body_size(Opts)).
+      max_body_size(Opts));
+
+handle(Fun, Req, form, Validators, _Opts) ->
+    handle_params(Fun, Req, mochiweb_request:parse_post(Req), Validators);
+
+handle(Fun, Req, qs, Validators, _Opts) ->
+    handle_params(Fun, Req, mochiweb_request:parse_qs(Req), Validators);
+
+handle(Fun, Req, {JSONProps} = JSONObj, Validators, _Opts)
+  when is_list(JSONProps) ->
+    handle_one(Fun, Req, with_decoded_object(JSONObj, Validators));
+
+handle(Fun, Req, {json_array, JSONArray}, Validators, _Opts)
+  when is_list(JSONArray) ->
+    handle_multiple(Fun, Req, with_decoded_array(JSONArray, Validators));
+
+handle(Fun, Req, Args, Validators, _Opts) ->
+    handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
+
+handle_params(Fun, Req, Params, Validators) ->
+    Tagged = add_input_type(form, Params),
+    handle_one(Fun, Req, functools:chain(#state{kv = Tagged}, Validators)).
 
 apply_to_body(Req, Fun, MaxSizeBytes) ->
     try mochiweb_request:recv_body(MaxSizeBytes, Req) of
@@ -125,28 +149,6 @@ apply_to_body(Req, Fun, MaxSizeBytes) ->
 
 max_body_size(Opts) ->
     maps:get(max_body_size, Opts, ?MAX_RECV_BODY).
-
-handle(Fun, Req, Type, Validators) when Type =:= json;
-                                        Type =:= json_array;
-                                        Type =:= json_map ->
-    handle(Fun, Req, Type, Validators, #{});
-
-handle(Fun, Req, form, Validators) ->
-    handle(Fun, Req, add_input_type(form, mochiweb_request:parse_post(Req)),
-           Validators);
-
-handle(Fun, Req, qs, Validators) ->
-    handle(Fun, Req, add_input_type(form, mochiweb_request:parse_qs(Req)),
-           Validators);
-
-handle(Fun, Req, {JSONProps} = JSONObj, Validators) when is_list(JSONProps) ->
-    handle_one(Fun, Req, with_decoded_object(JSONObj, Validators));
-
-handle(Fun, Req, {json_array, JSONArray}, Validators) when is_list(JSONArray) ->
-    handle_multiple(Fun, Req, with_decoded_array(JSONArray, Validators));
-
-handle(Fun, Req, Args, Validators) ->
-    handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
 
 add_input_type(Type, Params) ->
     [{{internal, input_type}, Type} | Params].
