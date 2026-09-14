@@ -76,6 +76,7 @@
          url/3,
          uri/3,
          regex/2,
+         regex/3,
          to_utf8/1,
          mutually_exclusive/3,
          non_empty_string/2,
@@ -578,7 +579,7 @@ simple_term_to_list(X) when is_list(X) ->
     X.
 
 simple_term_to_atom(X) when is_binary(X) ->
-    list_to_atom(binary_to_list(X));
+    binary_to_atom(X);
 simple_term_to_atom(X) when is_list(X) ->
     list_to_atom(X);
 simple_term_to_atom(X) when is_atom(X) ->
@@ -837,16 +838,18 @@ greater_or_equal(Name1, Name2, State) ->
 length(Name, Min, Max, State) ->
     validate(
       fun (Value) ->
-              %% Mochiweb converts the utf8 string to a list, which isn't
-              %% correct, so we need to undo that conversion here.
-              case unicode:characters_to_binary(list_to_binary(Value)) of
-                  {incomplete, _, _} ->
+              %% Count characters rather than bytes. mochiweb converts the
+              %% string to a list of UTF-8 bytes. Erlang string treats lists as
+              %% a list of codepoints, not UTF-8 bytes.
+              %% list[codepoints] =:= list[UTF-8 bytes] only for ASCII.
+              case to_utf8(Value) of
+                  {error, incomplete} ->
                       {error,
                        io_lib:format("Incomplete utf8 name ~p", [Value])};
-                  {error, _, _} ->
+                  {error, ill_formed} ->
                       {error,
                        io_lib:format("Ill-formed utf8 name ~p", [Value])};
-                  BinaryChars ->
+                  {ok, BinaryChars} ->
                       Length = string:length(BinaryChars),
                       case Length < Min orelse Length > Max of
                           true ->
@@ -878,8 +881,14 @@ array_length(Name, Min, Max, State) ->
 string(Name, Regex, Options, ErrorStr, State) ->
     validate(
       fun (Value) ->
-              StringValue = (catch simple_term_to_list(Value)),
-              case re:run(StringValue, Regex, Options) of
+              %% A binary is matched as it is. re reads it as utf8 chars when
+              %% the caller specifies unicode. Converting it to a list first
+              %% would incorrectly treat those bytes as codepoints.
+              Subject = case is_binary(Value) of
+                            true -> Value;
+                            false -> (catch simple_term_to_list(Value))
+                        end,
+              case re:run(Subject, Regex, Options) of
                   {match, _} ->
                       ok;
                   nomatch ->
@@ -1218,9 +1227,19 @@ uri(Name, Schemes, State) ->
       end, Name, State).
 
 regex(Name, State) ->
+    regex(Name, [], State).
+
+%% Pass [unicode, ucp] as options when the pattern should match utf8 encoded
+%% characters instead of bytes. Note that ucp is more expensive.
+%% The pattern is compiled from a binary. In unicode mode, re reads a list as
+%% codepoints, not as utf8 bytes. A byte list would compile to the wrong
+%% pattern.
+%% For older JSON endpoints, the comparison remains unchanged - raw byte
+%% comparison without the unicode and ucp options.
+regex(Name, Options, State) ->
     validate(
       fun (Str) when is_binary(Str); is_list(Str) ->
-              case re:compile(Str) of
+              case re:compile(iolist_to_binary(Str), Options) of
                   {ok, _} -> ok;
                   {error, {Error, At}} ->
                       Err = io_lib:format("~s (at character #~b)", [Error, At]),
@@ -1247,8 +1266,17 @@ non_empty_string(Name, State) ->
                           (Value) -> {value, Value}
                        end, Name, _)]).
 
-no_whitespace(S) ->
-    case re:run(S, "\\s") of
+%% A binary is read as UTF-8 encoded characters with the unicode option.
+%% ucp so that \s covers the space characters outside ASCII.
+%% A raw byte list is compared byte-by-byte and matches only ASCII spaces.
+-spec no_whitespace(binary() | string()) -> ok | {error, string()}.
+no_whitespace(Value) when is_binary(Value) ->
+    no_whitespace_run(Value, [unicode, ucp]);
+no_whitespace(Value) ->
+    no_whitespace_run(Value, []).
+
+no_whitespace_run(Value, Options) ->
+    case re:run(Value, "\\s", Options) of
         {match, _} -> {error, "Value must not contain whitespace"};
         nomatch -> ok
     end.
@@ -1770,6 +1798,7 @@ strings_option_test() ->
 
 max_body_size_test() ->
     ?assertEqual(?MAX_RECV_BODY, max_body_size(#{})),
+    ?assertEqual(?MAX_RECV_BODY, max_body_size(#{strings => binary})),
     ?assertEqual(64, max_body_size(#{max_body_size => 64})).
 
 %% A text body is the raw request body rather than mochiweb decoded, so it is
@@ -1789,6 +1818,23 @@ is_json_test() ->
     ?assertNot(Source(form)),
     ?assertNot(Source(text)),
     ?assertNot(is_json(#state{kv = []})).
+
+no_whitespace_test() ->
+    ?assertEqual(ok, no_whitespace(<<"openid">>)),
+    ?assertMatch({error, _}, no_whitespace(<<"open id">>)),
+    ?assertMatch({error, _}, no_whitespace(<<"open\tid">>)),
+
+    %% A no break space is caught whether or not re reads the value as
+    %% characters (the second byte of its utf8 is the codepoint itself).
+    %% An ideographic space (U+3000) is not, unless interpreted as a char.
+    ?assertMatch({error, _},
+                 no_whitespace(<<"open", 16#C2, 16#A0, "id">>)),
+    ?assertMatch({error, _},
+                 no_whitespace(<<"open", 16#E3, 16#80, 16#80, "id">>)),
+
+    %% A byte list keeps the ASCII only behavior its callers have.
+    ?assertEqual(ok, no_whitespace("openid")),
+    ?assertMatch({error, _}, no_whitespace("open id")).
 
 int_array_test() ->
     %% Test with valid input and default fun
