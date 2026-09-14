@@ -76,6 +76,7 @@
          url/3,
          uri/3,
          regex/2,
+         to_utf8/1,
          mutually_exclusive/3,
          non_empty_string/2,
          no_whitespace/1,
@@ -109,7 +110,9 @@
 -record(state, {kv = [], touched = [], errors = [], warnings = [],
                 string_repr = raw_byte_list :: string_repr()}).
 
--type options() :: #{max_body_size => pos_integer()}.
+-type input_format() :: json | form | text.
+-type options() :: #{strings => string_repr(),
+                     max_body_size => pos_integer()}.
 
 handle(Fun, Req, Type, Validators) ->
     handle(Fun, Req, Type, Validators, #{}).
@@ -117,40 +120,49 @@ handle(Fun, Req, Type, Validators) ->
 -spec handle(function(), mochiweb_request(), term(), [function()],
              options()) -> term().
 handle(Fun, Req, json, Validators, Opts) ->
+    Seed = #state{string_repr = strings_option(json, Opts)},
     apply_to_body(
-      Req, ?cut(handle_one(Fun, Req, with_json_object(_, Validators))),
+      Req, ?cut(handle_one(Fun, Req, with_json_object(_, Seed, Validators))),
       max_body_size(Opts));
 
 handle(Fun, Req, json_array, Validators, Opts) ->
+    Seed = #state{string_repr = strings_option(json, Opts)},
     apply_to_body(
-      Req, ?cut(handle_multiple(Fun, Req, with_json_array(_, Validators))),
+      Req,
+      ?cut(handle_multiple(Fun, Req, with_json_array(_, Seed, Validators))),
       max_body_size(Opts));
 
 handle(Fun, Req, json_map, Validators, Opts) ->
+    Seed = #state{string_repr = strings_option(json, Opts)},
     apply_to_body(
-      Req, ?cut(handle_multiple(Fun, Req, with_json_map(_, Validators))),
+      Req, ?cut(handle_multiple(Fun, Req, with_json_map(_, Seed, Validators))),
       max_body_size(Opts));
 
-handle(Fun, Req, form, Validators, _Opts) ->
-    handle_params(Fun, Req, mochiweb_request:parse_post(Req), Validators);
+handle(Fun, Req, form, Validators, Opts) ->
+    handle_params(Fun, Req, Opts, mochiweb_request:parse_post(Req), Validators);
 
-handle(Fun, Req, qs, Validators, _Opts) ->
-    handle_params(Fun, Req, mochiweb_request:parse_qs(Req), Validators);
+handle(Fun, Req, qs, Validators, Opts) ->
+    handle_params(Fun, Req, Opts, mochiweb_request:parse_qs(Req), Validators);
 
-handle(Fun, Req, {JSONProps} = JSONObj, Validators, _Opts)
+handle(Fun, Req, {JSONProps} = JSONObj, Validators, Opts)
   when is_list(JSONProps) ->
-    handle_one(Fun, Req, with_decoded_object(JSONObj, Validators));
+    Seed = #state{string_repr = strings_option(json, Opts)},
+    handle_one(Fun, Req, with_decoded_object(JSONObj, Seed, Validators));
 
-handle(Fun, Req, {json_array, JSONArray}, Validators, _Opts)
+handle(Fun, Req, {json_array, JSONArray}, Validators, Opts)
   when is_list(JSONArray) ->
-    handle_multiple(Fun, Req, with_decoded_array(JSONArray, Validators));
+    Seed = #state{string_repr = strings_option(json, Opts)},
+    handle_multiple(Fun, Req, with_decoded_array(JSONArray, Seed, Validators));
 
 handle(Fun, Req, Args, Validators, _Opts) ->
     handle_one(Fun, Req, functools:chain(#state{kv = Args}, Validators)).
 
-handle_params(Fun, Req, Params, Validators) ->
+handle_params(Fun, Req, Opts, Params, Validators) ->
     Tagged = add_input_type(form, Params),
-    handle_one(Fun, Req, functools:chain(#state{kv = Tagged}, Validators)).
+    Strings = strings_option(form, Opts),
+    handle_one(Fun, Req,
+               functools:chain(#state{kv = Tagged, string_repr = Strings},
+                               Validators)).
 
 apply_to_body(Req, Fun, MaxSizeBytes) ->
     try mochiweb_request:recv_body(MaxSizeBytes, Req) of
@@ -162,11 +174,31 @@ apply_to_body(Req, Fun, MaxSizeBytes) ->
 max_body_size(Opts) ->
     maps:get(max_body_size, Opts, ?MAX_RECV_BODY).
 
+%% Support for representing strings as binaries exists only for JSON. JSON
+%% strings arrive as UTF-8 binaries from ejson/json native decoders.
+%% Every other input format currently supports only byte lists.
+-spec strings_option(input_format(), options()) -> string_repr().
+strings_option(json, Opts) ->
+    case maps:get(strings, Opts, raw_byte_list) of
+        binary -> binary;
+        raw_byte_list -> raw_byte_list;
+        Other -> erlang:error({unsupported_strings_option, json, Other})
+    end;
+strings_option(Format, Opts) ->
+    case maps:get(strings, Opts, raw_byte_list) of
+        raw_byte_list -> raw_byte_list;
+        Other -> erlang:error({unsupported_strings_option, Format, Other})
+    end.
+
 add_input_type(Type, Params) ->
     [{{internal, input_type}, Type} | Params].
 
 is_json(#state{kv = Params}) ->
     json =:= proplists:get_value({internal, input_type}, Params).
+
+-spec string_repr(#state{}) -> string_repr().
+string_repr(#state{string_repr = Strings}) ->
+    Strings.
 
 validate_only(Req) ->
     proplists:get_value("just_validate",
@@ -284,7 +316,7 @@ send_error_json(Req, Errors, Warnings, Code) ->
 json_array(Name, Validators, State) ->
     validate(
       fun (JsonArray) when is_list(JsonArray) ->
-              States = [with_decoded_object(Elem, Validators) ||
+              States = [with_decoded_object(Elem, State, Validators) ||
                            Elem <- JsonArray],
               Errors = [ErrorList || #state{errors = ErrorList} <- States],
               Warnings = [WarnList || #state{warnings = WarnList} <- States],
@@ -304,19 +336,30 @@ json_array(Name, Validators, State) ->
               {error, "The value must be a json array"}
       end, Name, State).
 
-with_decoded_object({KVList}, Validators) ->
+%% A nested object is validated in its own state. Name every field it takes
+%% from the body it arrived in. A field added to the record does not reach a
+%% child until it is named here.
+child_state(#state{string_repr = Strings}, Kv) ->
+    #state{kv = Kv, string_repr = Strings}.
+
+with_decoded_object({KVList}, Parent, Validators) ->
     Params = [{binary_to_list(Name), Value} || {Name, Value} <- KVList],
-    functools:chain(#state{kv = add_input_type(json, Params)}, Validators);
-with_decoded_object(Value, Validators) when is_binary(Value) ->
+    functools:chain(child_state(Parent, add_input_type(json, Params)),
+                    Validators);
+with_decoded_object(Value, Parent, Validators) when is_binary(Value) ->
     %% Instead of rejecting json which has a value as the root, store it in an
     %% internal key to possibly be parsed with extract_internal/3
     Params = [{{internal, root}, Value}],
-    functools:chain(#state{kv = add_input_type(json, Params)}, Validators);
-with_decoded_object(_, _) ->
+    functools:chain(child_state(Parent, add_input_type(json, Params)),
+                    Validators);
+with_decoded_object(_, _, _) ->
     #state{errors = [{<<"_">>, <<"Unexpected Json">>}]}.
 
 validate_decoded_object(DecodedObject, Validators) ->
-    St = with_decoded_object(DecodedObject, Validators),
+    validate_decoded_object(DecodedObject, #state{}, Validators).
+
+validate_decoded_object(DecodedObject, Parent, Validators) ->
+    St = with_decoded_object(DecodedObject, Parent, Validators),
     case {St#state.errors, St#state.warnings} of
         {[], []} ->
             {value, prepare_params(St)};
@@ -331,38 +374,39 @@ validate_decoded_object(DecodedObject, Validators) ->
     end.
 
 decoded_json(Name, Validators, State) ->
-    validate(validate_decoded_object(_, Validators), Name, State).
+    validate(validate_decoded_object(_, State, Validators), Name, State).
 
 json(Name, Validators, State) ->
     validate(
       fun (BinJson) ->
               try ejson:decode(BinJson) of
                   Object ->
-                      validate_decoded_object(Object, Validators)
+                      validate_decoded_object(Object, State, Validators)
               catch _:_ ->
                         {error, {json, {[{<<"_">>, <<"Invalid Json">>}]}}}
               end
       end, Name, State).
 
-with_json_object(Body, Validators) ->
+with_json_object(Body, Parent, Validators) ->
     try ejson:decode(Body) of
         Object ->
-            with_decoded_object(Object, Validators)
+            with_decoded_object(Object, Parent, Validators)
     catch _:_ ->
             #state{errors = [{<<"_">>, <<"Invalid Json">>}]}
     end.
 
-with_json_array(Body, Validators) ->
+with_json_array(Body, Parent, Validators) ->
     try ejson:decode(Body) of
         Objects when is_list(Objects) ->
-            [with_decoded_object(Object, Validators) || Object <- Objects];
+            [with_decoded_object(Object, Parent, Validators)
+             || Object <- Objects];
         _ ->
             [#state{errors = [{<<"_">>, <<"A Json list must be specified.">>}]}]
     catch _:_ ->
             [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
     end.
 
-with_json_map(Body, Validators) ->
+with_json_map(Body, Parent, Validators) ->
     try ejson:decode(Body) of
         {KVS} when is_list(KVS) ->
             Objects = [{[{<<"key">>, K} | Props]} || {K, {Props}} <- KVS],
@@ -372,7 +416,7 @@ with_json_map(Body, Validators) ->
                         errors =
                             [{<<"_">>, <<"Must be a map K -> JsonObject.">>}]}];
                 false ->
-                    [with_decoded_object(Object, Validators) ||
+                    [with_decoded_object(Object, Parent, Validators) ||
                         Object <- Objects]
             end;
         _ ->
@@ -381,8 +425,8 @@ with_json_map(Body, Validators) ->
             [#state{errors = [{<<"_">>, <<"Invalid Json">>}]}]
     end.
 
-with_decoded_array(JSONArray, Validators) ->
-    [with_decoded_object(Object, Validators) || Object <- JSONArray].
+with_decoded_array(JSONArray, Parent, Validators) ->
+    [with_decoded_object(Object, Parent, Validators) || Object <- JSONArray].
 
 name_to_list(Name) when is_atom(Name) ->
     atom_to_list(Name);
@@ -571,21 +615,42 @@ one_of(Name, List, State) ->
               end
       end, Name, State).
 
+%% A json string is decoded as a utf8 binary. An endpoint asking for binary
+%% keeps it. One asking for raw_byte_list converts it to a list of those
+%% bytes. form, qs and text hold lists and are left as they arrive.
 string_trim_logic(Trim, State) ->
-    case is_json(State) of
-        true ->
-            fun (Binary) when is_binary(Binary), Trim ->
-                    {value, string:trim(binary_to_list(Binary))};
-                (Binary) when is_binary(Binary) ->
-                    {value, binary_to_list(Binary)};
+    case {is_json(State), string_repr(State)} of
+        {true, Strings} ->
+            fun (Binary) when is_binary(Binary) ->
+                    json_string(Binary, Strings, Trim);
                 (_) ->
                     {error, "Value must be json string"}
             end;
-        false when Trim ->
+        {false, raw_byte_list} when Trim ->
             fun (S) -> {value, string:trim(S)} end;
-        false ->
+        {false, raw_byte_list} ->
             fun (_) -> ok end
     end.
+
+json_string(Binary, binary, Trim) ->
+    %% Check that the value is valid UTF-8 before trimming it.
+    %% ejson lets a few malformed sequences through that native json rejects,
+    %% so this check is not redundant.
+    case to_utf8(Binary) of
+        {ok, Binary} -> {value, from_utf8(maybe_trim(Trim, Binary), binary)};
+        _ -> {error, "Value must be valid utf8"}
+    end;
+
+%% A byte list is trimmed as a list, which reads the utf8 bytes as codepoints.
+%% That is wrong, but it is what json endpoints holding byte lists have always
+%% done.
+json_string(Binary, raw_byte_list, Trim) ->
+    {value, maybe_trim(Trim, from_utf8(Binary, raw_byte_list))}.
+
+maybe_trim(true, Value) ->
+    string:trim(Value);
+maybe_trim(false, Value) ->
+    Value.
 
 get_all_values(LName, #state{kv = Props, errors = Errors}) ->
     case lists:keymember(LName, 1, Errors) of
@@ -1015,14 +1080,37 @@ string_array(Name, State) ->
       Fun :: fun((string()) -> ok | {value, term()} | {error, string()}).
 string_array(Name, Fun, State) ->
     Error = {error, "Must be an array of non-empty strings"},
+    Strings = string_repr(State),
     array(Name,
-          fun (X) when is_binary(X) ->
-                  case binary_to_list(X) of
-                      "" -> Error;
-                      String -> {ok, String}
+          fun (<<>>) -> Error;
+              (X) when is_binary(X) ->
+                  case json_string(X, Strings, false) of
+                      {value, Value} -> {ok, Value};
+                      {error, _} -> Error
                   end;
               (_) -> Error
           end, Fun, State).
+
+%% Checks that Value holds well formed utf8 and returns it as a binary. Takes
+%% either representation: a utf8 binary, or a list of utf8 bytes. A validator
+%% that only checks (i.e. does not return) a value calls this.
+-spec to_utf8(iodata()) -> {ok, binary()} | {error, incomplete |
+                                             ill_formed}.
+to_utf8(Value) ->
+    case unicode:characters_to_binary(iolist_to_binary(Value)) of
+        {incomplete, _, _} -> {error, incomplete};
+        {error, _, _} -> {error, ill_formed};
+        Binary -> {ok, Binary}
+    end.
+
+%% Returns a validated utf8 binary in the representation the endpoint
+%% declared. This is the only place that reads the representation.
+-spec from_utf8(binary(), string_repr()) ->
+          binary() | string().
+from_utf8(Binary, binary) ->
+    Binary;
+from_utf8(Binary, raw_byte_list) ->
+    binary_to_list(Binary).
 
 array(Name, ItemValidator, Fun, State) ->
     validate(
@@ -1155,6 +1243,7 @@ non_empty_string(Name, State) ->
                     [string(Name, _),
                      validate(
                        fun("") -> {error, "Value must not be empty"};
+                          (<<>>) -> {error, "Value must not be empty"};
                           (Value) -> {value, Value}
                        end, Name, _)]).
 
@@ -1357,12 +1446,12 @@ has_params_test() ->
 
 json_root_test() ->
     %% Root value is stored in {internal, root}
-    State1 = with_decoded_object(<<"value">>, []),
+    State1 = with_decoded_object(<<"value">>, #state{}, []),
     ?assertEqual(<<"value">>,
                  proplists:get_value({internal, root},
                                      State1#state.kv)),
     %% Root value can be extracted and validated
-    State2 = with_decoded_object(<<"value">>,
+    State2 = with_decoded_object(<<"value">>, #state{},
                                  [extract_internal(root, key, _),
                                   string(key, _)]),
     ?assertEqual("value", get_value(key, State2)).
@@ -1519,9 +1608,187 @@ string_array_test() ->
 string_repr_test() ->
     ?assertEqual(raw_byte_list, (#state{})#state.string_repr).
 
+%% Asking for binary keeps the binary the decoder produced. The default keeps
+%% converting it to a list of utf8 bytes, so endpoints that have not moved
+%% over preserve their behavior.
+string_repr_values_test() ->
+    Name = <<"Алекс"/utf8>>,
+    Group = <<"группых"/utf8>>,
+
+    ?assertEqual(Name, get_value(sub, string(sub, bin_state(sub, Name)))),
+    ?assertEqual(Group, get_value(sub, string(sub, bin_state(sub, Group)))),
+
+    %% The same values under json are byte lists, as before.
+    ?assertEqual(binary_to_list(Name),
+                 get_value(sub, string(sub, list_state(sub, Name)))),
+    ?assertEqual(binary_to_list(Group),
+                 get_value(sub, string(sub, list_state(sub, Group)))),
+
+    %% Trimming a binary does not cut a character in half. "группых" ends in
+    %% the byte 16#85, which string:trim/1 takes for NEL on a byte list.
+    Padded = <<" ", Group/binary, " ">>,
+    ?assertEqual(Group,
+                 get_value(sub, trimmed_string(sub, bin_state(sub, Padded)))),
+
+    %% A json string is required, under either representation.
+    ?assertMatch(#state{errors = [{"sub", "Value must be json string"}]},
+                 string(sub, bin_state(sub, 42))),
+    ?assertMatch(#state{errors = [{"sub", "Value must be json string"}]},
+                 string(sub, list_state(sub, 42))),
+
+    %% The json value (binary) is checked for well formed utf8. A truncated
+    %% sequence is incomplete. 192 128 is an overlong encoding and
+    %% 237 160 128 a lone surrogate, both of which ejson lets through and
+    %% native json rejects.
+    %% Trimming is checked the same way.
+    lists:foreach(
+      fun (Bad) ->
+              Padded2 = <<" ", Bad/binary, " ">>,
+              ?assertMatch(
+                 #state{errors = [{"sub", "Value must be valid utf8"}]},
+                 string(sub, bin_state(sub, Bad))),
+              ?assertMatch(
+                 #state{errors = [{"sub", "Value must be valid utf8"}]},
+                 trimmed_string(sub, bin_state(sub, Bad))),
+              ?assertMatch(
+                 #state{errors = [{"sub", "Value must be valid utf8"}]},
+                 trimmed_string(sub, bin_state(sub, Padded2)))
+      end, [<<208, 179, 209>>, <<192, 128>>, <<237, 160, 128>>]),
+
+    ?assertMatch(#state{errors = [{"sub", "Value must not be empty"}]},
+                 non_empty_string(sub, bin_state(sub, <<>>))),
+    ?assertMatch(#state{errors = [{"sub", "Value must not be empty"}]},
+                 non_empty_string(sub, list_state(sub, <<>>))),
+
+    %% An array of strings follows the same representation.
+    ?assertEqual([Name, Group],
+                 get_value(groups,
+                           string_array(groups, bin_state(groups,
+                                                          [Name, Group])))),
+    ?assertEqual([binary_to_list(Name), binary_to_list(Group)],
+                 get_value(groups,
+                           string_array(groups, list_state(groups,
+                                                           [Name, Group])))),
+    ?assertMatch(#state{errors = [{"groups", _}]},
+                 string_array(groups, bin_state(groups, [Name, <<>>]))),
+
+    %% Form encoded input is untouched by either branch.
+    ?assertEqual("Alex",
+                 get_value(sub, string(sub, #state{kv = [{"sub", "Alex"}]}))).
+
+%% A nested object validated through json_array/3 or decoded_json/3 has to
+%% inherit the string type of the body it arrived in. If it doesn't, the
+%% failure is silent.
+string_repr_nested_test() ->
+    Name = <<"Алекс"/utf8>>,
+    Inner = {[{<<"sub">>, Name}]},
+
+    Bin = with_decoded_object({[{<<"outer">>, [Inner]}]}, seed(binary),
+                              [json_array(outer, [string(sub, _)], _)]),
+    ?assertEqual([{[{sub, Name}]}], get_value(outer, Bin)),
+
+    List = with_decoded_object({[{<<"outer">>, [Inner]}]}, seed(raw_byte_list),
+                               [json_array(outer, [string(sub, _)], _)]),
+    ?assertEqual([{[{sub, binary_to_list(Name)}]}], get_value(outer, List)),
+
+    BinObj = with_decoded_object({[{<<"outer">>, Inner}]}, seed(binary),
+                                 [decoded_json(outer, [string(sub, _)], _)]),
+    ?assertEqual([{sub, Name}], get_value(outer, BinObj)),
+
+    ListObj = with_decoded_object({[{<<"outer">>, Inner}]}, seed(raw_byte_list),
+                                  [decoded_json(outer, [string(sub, _)], _)]),
+    ?assertEqual([{sub, binary_to_list(Name)}], get_value(outer, ListObj)),
+
+    %% A json blob held in a form field is validated as json. Its strings
+    %% follow the list representation.
+    FormState = #state{kv = add_input_type(form, [])},
+    ?assertEqual({value, [{sub, binary_to_list(Name)}]},
+                 validate_decoded_object(Inner, FormState,
+                                         [string(sub, _)])),
+    ?assertMatch({error, {json, {[{<<"sub">>, <<"Value must be json "
+                                                "string">>}]}}},
+                 validate_decoded_object({[{<<"sub">>, 42}]}, FormState,
+                                         [string(sub, _)])).
+
+seed(Strings) ->
+    #state{string_repr = Strings}.
+
+bin_state(Name, Value) ->
+    strings_state(binary, Name, Value).
+
+list_state(Name, Value) ->
+    strings_state(raw_byte_list, Name, Value).
+
+strings_state(Strings, Name, Value) ->
+    #state{kv = add_input_type(json, [{atom_to_list(Name), Value}]),
+           string_repr = Strings}.
+
+%% Every json shape carries the representation, not just a json object.
+%% json_array and json_map could only hold byte lists before it was an option.
+json_shapes_strings_test() ->
+    Name = <<"Алекс"/utf8>>,
+    List = binary_to_list(Name),
+    BinSeed = seed(binary),
+    RawSeed = seed(raw_byte_list),
+
+    Body = ejson:encode({[{<<"sub">>, Name}]}),
+    ?assertEqual(Name, get_value(sub, with_json_object(Body, BinSeed,
+                                                       [string(sub, _)]))),
+    ?assertEqual(List, get_value(sub, with_json_object(Body, RawSeed,
+                                                       [string(sub, _)]))),
+
+    ArrayBody = ejson:encode([{[{<<"sub">>, Name}]}]),
+    ?assertEqual([Name], [get_value(sub, St) ||
+                             St <- with_json_array(ArrayBody, BinSeed,
+                                                   [string(sub, _)])]),
+    ?assertEqual([List], [get_value(sub, St) ||
+                             St <- with_json_array(ArrayBody, RawSeed,
+                                                   [string(sub, _)])]),
+
+    MapBody = ejson:encode({[{<<"k">>, {[{<<"sub">>, Name}]}}]}),
+    ?assertEqual([Name], [get_value(sub, St) ||
+                             St <- with_json_map(MapBody, BinSeed,
+                                                 [string(sub, _)])]),
+    ?assertEqual([List], [get_value(sub, St) ||
+                             St <- with_json_map(MapBody, RawSeed,
+                                                 [string(sub, _)])]).
+
+%% json is the only format holding decoder output, so it is the only one that
+%% can be asked for binaries. Asking anywhere else is a caller error.
+strings_option_test() ->
+    ?assertEqual(raw_byte_list, strings_option(json, #{})),
+    ?assertEqual(raw_byte_list,
+                 strings_option(json, #{strings => raw_byte_list})),
+    ?assertEqual(raw_byte_list, strings_option(form, #{})),
+    ?assertEqual(raw_byte_list, strings_option(text, #{})),
+    ?assertEqual(raw_byte_list, strings_option(form,
+                                               #{strings => raw_byte_list})),
+    ?assertError({unsupported_strings_option, form, binary},
+                 strings_option(form, #{strings => binary})),
+    ?assertError({unsupported_strings_option, text, binary},
+                 strings_option(text, #{strings => binary})).
+
 max_body_size_test() ->
     ?assertEqual(?MAX_RECV_BODY, max_body_size(#{})),
     ?assertEqual(64, max_body_size(#{max_body_size => 64})).
+
+%% A text body is the raw request body rather than mochiweb decoded, so it is
+%% passed through untouched.
+text_input_test() ->
+    Body = <<"Алекс"/utf8>>,
+    St = string(sub, #state{kv = add_input_type(text, [{"sub", Body}])}),
+    ?assertEqual([], St#state.errors),
+    ?assertEqual(Body, get_value(sub, St)),
+    ?assertNot(is_json(#state{kv = add_input_type(text, [])})).
+
+is_json_test() ->
+    Source = fun (Type) ->
+                     is_json(#state{kv = add_input_type(Type, [])})
+             end,
+    ?assert(Source(json)),
+    ?assertNot(Source(form)),
+    ?assertNot(Source(text)),
+    ?assertNot(is_json(#state{kv = []})).
 
 int_array_test() ->
     %% Test with valid input and default fun
