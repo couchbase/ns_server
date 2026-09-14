@@ -218,6 +218,11 @@ build_settings(CredsFun, Config, Snapshot, Node) ->
     Port = service_ports:get_port(prometheus_http_port, Config, Node),
     LocalAddr = misc:localhost(AFamily, [url]),
     Services = ns_cluster_membership:node_services(Snapshot, Node),
+    %% cont_backup doesn't run on every node
+    ExtraServices =
+        [ns_server, xdcr] ++
+        [cont_backup ||
+            ns_ports_setup:should_run(cont_backup, Snapshot, Node)],
     Targets = lists:filtermap(
                 fun (S) ->
                         case service_ports:get_port(get_service_port(S),
@@ -225,7 +230,7 @@ build_settings(CredsFun, Config, Snapshot, Node) ->
                             undefined -> false;
                             P -> {true, {S, misc:join_host_port(LocalAddr, P)}}
                         end
-                end, [ns_server, xdcr, cont_backup | Services]),
+                end, ExtraServices ++ Services),
 
     Creds = CredsFun(),
 
@@ -501,6 +506,9 @@ init([]) ->
             ({node, Node, prometheus_http_port}) when Node == node() -> true;
             ({node, Node, address_family}) when Node == node() -> true;
             ({node, Node, services}) when Node == node() -> true;
+            %% Whether a service runs here depends on the node being an active
+            %% cluster member, not just on its service list.
+            ({node, Node, membership}) when Node == node() -> true;
             ({node, Node, rest}) when Node == node() -> true;
             ({node, Node, stats_scrape_dynamic_intervals})
               when Node == node() -> true;
@@ -1879,10 +1887,29 @@ randomly_test_calculate_dynamic_intervals() ->
 
 -define(NODE, nodename).
 
+%% build_settings/4 asks ns_ports_setup whether cbcontbk runs on the node,
+%% which reaches further into the system than these tests set up.
+setup_test_env() ->
+    config_profile:load_default_profile_for_test(),
+    meck:new(ns_config_auth, [passthrough]),
+    meck:expect(ns_config_auth, is_system_provisioned, fun () -> true end),
+    meck:new(cluster_compat_mode, [passthrough]),
+    set_continuous_backup_enabled(true).
+
+set_continuous_backup_enabled(Enabled) ->
+    %% cbcontbk only runs on enterprise builds, see
+    %% ns_ports_setup:should_run/3.
+    meck:expect(cluster_compat_mode, is_enterprise, fun () -> Enabled end).
+
+teardown_test_env() ->
+    meck:unload(),
+    config_profile:unload_profile_for_test().
+
 generate_prometheus_test_config(ExtraConfig, Services) ->
     BaseConfig = service_ports:default_config(true, ?NODE),
     NsConfig = [misc:update_proplist(BaseConfig, ExtraConfig)],
-    Snapshot = #{{node, ?NODE, services} => {Services, no_rev}},
+    Snapshot = #{{node, ?NODE, services} => {Services, no_rev},
+                 {node, ?NODE, membership} => {active, no_rev}},
     CredsFun = fun () -> {"user", "pass"} end,
     Settings = build_settings(CredsFun, NsConfig, Snapshot, ?NODE),
     Configs = generate_prometheus_configs(Settings),
@@ -1890,7 +1917,7 @@ generate_prometheus_test_config(ExtraConfig, Services) ->
 
 default_config_test() ->
     try
-        config_profile:load_default_profile_for_test(),
+        setup_test_env(),
         [{_, DefaultMainCfg}, {RulesFile, DefaultRulesCfg}] =
             generate_prometheus_test_config([], [kv]),
         RulesFileBin = list_to_binary(RulesFile),
@@ -1925,12 +1952,41 @@ default_config_test() ->
                          rules := [_|_]}]},
           DefaultRulesCfg)
     after
-        config_profile:unload_profile_for_test()
+        teardown_test_env()
+    end.
+
+cont_backup_target_test() ->
+    try
+        setup_test_env(),
+        GeneralTargets =
+            fun (NodeServices) ->
+                    [{_, Cfg} | _] = generate_prometheus_test_config(
+                                       [], NodeServices),
+                    #{scrape_configs :=
+                          [#{job_name := <<"general">>,
+                             static_configs := [#{targets := T}]} | _]} = Cfg,
+                    T
+            end,
+        ContBackup = <<"127.0.0.1:9125">>,
+
+        %% cbcontbk is only started on kv nodes, so its stats port must not be
+        %% scraped on nodes that don't run kv.
+        ?assert(lists:member(ContBackup, GeneralTargets([kv]))),
+        ?assert(lists:member(ContBackup, GeneralTargets([kv, index]))),
+        ?assertNot(lists:member(ContBackup, GeneralTargets([backup]))),
+        ?assertNot(lists:member(ContBackup, GeneralTargets([index, n1ql]))),
+
+        %% Nor on a kv node where continuous backup is not available at all
+        %% (community edition, or a profile that disables it).
+        set_continuous_backup_enabled(false),
+        ?assertNot(lists:member(ContBackup, GeneralTargets([kv])))
+    after
+        teardown_test_env()
     end.
 
 prometheus_config_test() ->
     try
-        config_profile:load_default_profile_for_test(),
+        setup_test_env(),
         MainConfig =
             fun (StatsSettings, NodeServices) ->
                     ExtraConfig = [{stats_settings, StatsSettings}],
@@ -1987,12 +2043,12 @@ prometheus_config_test() ->
 
         ok
     after
-        config_profile:unload_profile_for_test()
+        teardown_test_env()
     end.
 
 prometheus_derived_metrics_config_test() ->
     try
-        config_profile:load_default_profile_for_test(),
+        setup_test_env(),
         RulesConfig =
             fun (StatsSettings, NodeServices) ->
                     ExtraConfig = [{stats_settings, StatsSettings}],
@@ -2067,12 +2123,12 @@ prometheus_derived_metrics_config_test() ->
 
         ok
     after
-        config_profile:unload_profile_for_test()
+        teardown_test_env()
     end.
 
 prometheus_config_afamily_test() ->
     try
-        config_profile:load_default_profile_for_test(),
+        setup_test_env(),
         ExtraConfig = [{{node, ?NODE, address_family}, inet6}],
         [{_, Cfg}, _] = generate_prometheus_test_config(ExtraConfig, [kv]),
         ?assert(is_binary(yaml:encode(Cfg))),
@@ -2092,7 +2148,7 @@ prometheus_config_afamily_test() ->
                                    [#{targets := [<<"[::1]:11280">>]}]}]},
           Cfg)
     after
-        config_profile:unload_profile_for_test()
+        teardown_test_env()
     end.
 
 %% This test is disabled due to intermittent failures and also because
