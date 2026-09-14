@@ -95,7 +95,19 @@
 %% we can store in Couchbase.
 -define(MAX_RECV_BODY, 20 * 1024 * 1024).
 
--record(state, {kv = [], touched = [], errors = [], warnings = []}).
+%% raw_byte_list is a list of the raw bytes as delivered by the input types
+%% (form/json/text). json mandates UTF-8 encoding (RFC 8259). The others have
+%% not been inspected, so don't claim anything beyond "raw" bytes.
+%%
+%% json is decoded as UTF-8 binaries. Holding a json string as a list of those
+%% bytes is incorrect for anything above ASCII. Such a list is
+%% indistinguishable from a list of codepoints. string and re read it as the
+%% latter. See "Lists of UTF-8 Bytes" in
+%% https://www.erlang.org/doc/apps/stdlib/unicode_usage.html
+-type string_repr() :: binary | raw_byte_list.
+
+-record(state, {kv = [], touched = [], errors = [], warnings = [],
+                string_repr = raw_byte_list :: string_repr()}).
 
 -type options() :: #{max_body_size => pos_integer()}.
 
@@ -1503,6 +1515,9 @@ string_array_test() ->
     ResultState7 = string_array(names, Fun, State7),
     #state{errors = Errors7} = ResultState7,
     ?assertEqual([{"names", "Must be an array of non-empty strings"}], Errors7).
+
+string_repr_test() ->
+    ?assertEqual(raw_byte_list, (#state{})#state.string_repr).
 
 max_body_size_test() ->
     ?assertEqual(?MAX_RECV_BODY, max_body_size(#{})),
