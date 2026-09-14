@@ -19,7 +19,7 @@
          sync/0, create_erl_node_spec/4,
          shutdown_ports/0, build_cbauth_env_vars/2, get_rpc_prefix/1,
          build_cbauth_revrpc_url/2, remote_build_cbauth_revrpc_url/1,
-         should_run/2]).
+         should_run/2, should_run/3]).
 
 start() ->
     proc_lib:start_link(?MODULE, setup_body_tramp, []).
@@ -374,16 +374,22 @@ get_rpc_prefix(Service) ->
     #def{rpc = RPCService} = maps:get(Service, goport_defs()),
     RPCService.
 
-should_run(goxdcr, _Snapshot) ->
-    cluster_compat_mode:is_goxdcr_enabled();
-should_run(projector, Snapshot) ->
-    ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
-        not config_profile:search({indexer, projector_disabled}, false);
-should_run(cont_backup, Snapshot) ->
-    ns_cluster_membership:should_run_service(Snapshot, kv, node()) andalso
-        cluster_compat_mode:is_continuous_backup_enabled();
 should_run(Service, Snapshot) ->
-    ns_cluster_membership:should_run_service(Snapshot, Service, node()).
+    should_run(Service, Snapshot, node()).
+
+%% Whether Service is supposed to be running on Node. Anything that needs to
+%% know which ports a node exposes (prometheus_cfg, for instance) should ask
+%% this rather than reimplementing the conditions.
+should_run(goxdcr, _Snapshot, _Node) ->
+    cluster_compat_mode:is_goxdcr_enabled();
+should_run(projector, Snapshot, Node) ->
+    ns_cluster_membership:should_run_service(Snapshot, kv, Node) andalso
+        not config_profile:search({indexer, projector_disabled}, false);
+should_run(cont_backup, Snapshot, Node) ->
+    ns_cluster_membership:should_run_service(Snapshot, kv, Node) andalso
+        cluster_compat_mode:is_continuous_backup_enabled(Node);
+should_run(Service, Snapshot, Node) ->
+    ns_cluster_membership:should_run_service(Snapshot, Service, Node).
 
 build_goport_spec(Service, #def{exe = Executable,
                                 rpc = RPCService,
