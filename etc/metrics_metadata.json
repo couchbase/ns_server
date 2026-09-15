@@ -140,6 +140,18 @@
         "help": "Total number of cbauth client_cert cache misses",
         "added": "7.6.0"
     },
+    "cm_crl_loads_total": {
+        "type": "counter",
+        "help": "Total number of CRL load attempts made by the Cluster Manager, across uploads, the poll directory, configured URLs and the generated CRL. Polls that load nothing, such as an unchanged file or an HTTP 304, are not counted",
+        "added": "8.5.0",
+        "stability": "committed",
+        "labels": [
+            {
+                "name": "status",
+                "help": "Whether the CRL was loaded into the cache (success) or rejected (failed)"
+            }
+        ]
+    },
     "cm_crl_status_checks_total": {
         "type": "counter",
         "help": "Total number of certificate revocation status checks performed by the Cluster Manager only",

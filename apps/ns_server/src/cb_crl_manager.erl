@@ -486,6 +486,7 @@ init([]) ->
           (_) ->
               ok
       end),
+    create_load_counters(),
     Cfg = get_config(),
     %% One trusted-CA snapshot for the whole init: the CRL-loading functions and
     %% the version calculation must agree on the same set (see
@@ -589,11 +590,16 @@ handle_call(get_push_config, _From, #state{config = Config,
 
 handle_call({upload_crl_file, Filename, Binary}, _From, State) ->
     TrustedCAs = ns_server_cert:trusted_CAs(der),
+    %% Counted here rather than deeper down so that every way an upload can
+    %% fail the admin - a bad CRL, but also a lost quorum or a failed write -
+    %% is one failed load attempt.
     case do_upload_crl_file(Filename, Binary, TrustedCAs, State) of
         {ok, NewState} ->
+            notify_load(success),
             NewState2 = maybe_notify_crl_consumers(TrustedCAs, NewState),
             {reply, ok, NewState2};
         {error, _} = Err ->
+            notify_load(failed),
             {reply, Err, State}
     end;
 
@@ -772,14 +778,18 @@ maybe_update_uploaded_file(Name, ExpectedChecksum, CurrentlyLoadedMap,
                 ok ?= write_uploaded_file_locally(
                         Name, Binary, Entries,
                         trusted_cas_version(TrustedCAs)),
+                notify_load(success),
                 ?log_debug("CRL ~p: installed from remote node", [Name]),
                 ok
             else
                 {error, not_found_on_any_node} ->
                     %% Not logging error because it may happen during normal
-                    %% operation
+                    %% operation.  Not counted as a failed load either: the
+                    %% file is still on its way and the retry timer brings us
+                    %% back here every minute until it arrives.
                     {error, not_found_on_any_node};
                 {error, Reason} ->
+                    notify_load(failed),
                     ?log_error("Failed to update CRL ~p: ~p", [Name, Reason]),
                     {error, Reason}
             end
@@ -1496,6 +1506,9 @@ scan_directory(Dir, ForceReload, TrustedCAs, State) ->
                            dir_report = DirReport}
     else
         {error, {list_dir_error, Reason} = Error} ->
+            %% No per-file failure can be reported for a directory we could
+            %% not even list, so the scan itself counts as the failed attempt.
+            notify_load(failed),
             ?log_error("Failed to list CRL directory ~p: ~p", [Dir, Reason]),
             %% Keep whatever was loaded before (a failed scan never makes
             %% things worse) but remember the failure, so that build_status_map
@@ -1580,6 +1593,7 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
                 end,
         {ok, Checksum} ?= add_to_cache(local, Name, Binary, Results,
                                        trusted_cas_version(TrustedCAs)),
+        notify_load(success),
         Status = #crl_reload_status{mtime  = FileMTime,
                                     result = loaded,
                                     time   = CurTS,
@@ -1588,6 +1602,7 @@ load_from_local_file(Name, Path, FileMTime, CurTS, TrustedCAs,
                     loaded_locally = maps:put(Name, Checksum, Loaded)}
     else
         {error, Reason} ->
+            notify_load(failed),
             ErrorStrings = format_load_errors(Reason),
             ?log_warning("Failed to load CRLs from ~s:~n~s",
                          [Path, lists:join(<<"\n">>, ErrorStrings)]),
@@ -1653,6 +1668,26 @@ remove_from_cache(CacheType, Name) ->
                        [FullPath, Reason]),
             {error, Reason}
     end.
+
+%% Report one crl_loads tick for a load attempt that has just finished.
+%%
+%% Only attempts that actually tried to load something are counted.  A poll
+%% that loads nothing - an unchanged file, a 304, a peer that does not have
+%% the file yet - is not an attempt, and counting it would report a steady
+%% stream of loads on a cluster where nothing ever changes.
+-spec notify_load(success | failed) -> ok.
+notify_load(Status) ->
+    ns_server_stats:notify_counter({<<"crl_loads">>, [{status, Status}]}).
+
+%% Both outcomes are reported from the start, so that a cluster that has not
+%% loaded a CRL yet says so with a zero rather than with no metric at all.
+-spec create_load_counters() -> ok.
+create_load_counters() ->
+    lists:foreach(
+      fun (Status) ->
+              ns_server_stats:create_counter({<<"crl_loads">>,
+                                              [{status, Status}]})
+      end, [success, failed]).
 
 %% Should return a list of errors
 format_load_errors({read_error, Reason}) ->
@@ -1805,11 +1840,13 @@ load_generated_crl(Name, CrlPem, TrustedCAs,
         {ok, Entries} ?= decode_and_verify_crl(CrlPem, TrustedCAs, true),
         {ok, Checksum} ?= add_to_cache(generated, Name, CrlPem, Entries,
                                        trusted_cas_version(TrustedCAs)),
+        notify_load(success),
         Status = #crl_reload_status{result = loaded, time = TS, errors = []},
         State#state{generated = maps:put(Name, Checksum, Generated),
                     generated_file_state = maps:put(Name, Status, GenFS)}
     else
         {error, Reason} ->
+            notify_load(failed),
             ErrorStrings = format_load_errors(Reason),
             ?log_error("Failed to load the OOTB CRL:~n~s",
                        [lists:join(<<"\n">>, ErrorStrings)]),
@@ -2389,6 +2426,9 @@ fetch_one_url(URL, TS, Force, TrustedCAs,
     case lhttpc:request(URLStr, "GET", ReqHeaders, [],
                         ?URL_FETCH_TIMEOUT_MS, []) of
         {ok, {{304, _}, _, _}} ->
+            %% Deliberately not counted as a load: nothing was fetched or
+            %% installed, and this is what every poll of an unchanged URL
+            %% returns (see notify_load/1).
             ?log_debug("CRL URL ~s: 304 Not Modified", [URL]),
             Status = #crl_reload_status{etag = StoredETag,
                                         result = loaded,
@@ -2401,6 +2441,7 @@ fetch_one_url(URL, TS, Force, TrustedCAs,
             install_url_crl(URL, Name, CrlPath, Body, ResponseETag, StoredETag,
                             TS, TrustedCAs, State);
         {ok, {{HttpStatus, _}, _, Body}} ->
+            notify_load(failed),
             ?log_warning("CRL URL ~s: unexpected HTTP status ~p~nBody: ~p",
                             [URL, HttpStatus, Body]),
             R = {http_status, HttpStatus, Body},
@@ -2410,6 +2451,7 @@ fetch_one_url(URL, TS, Force, TrustedCAs,
                                         errors = format_load_errors(R)},
             State#state{url_file_state = maps:put(URL, Status, UrlFS)};
         {error, Reason} ->
+            notify_load(failed),
             ?log_warning("CRL URL ~s: fetch failed: ~p", [URL, Reason]),
             R = {http_failed, Reason},
             Status = #crl_reload_status{etag = StoredETag,
@@ -2443,6 +2485,9 @@ install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS, TrustedCAs,
                      {error, R} -> format_load_errors({etag_save, R})
                  end,
         ?log_debug("CRL URL ~p: installed (~b bytes)", [URL, byte_size(Body)]),
+        %% A failed ETag write leaves Errors non-empty but the CRL itself is
+        %% loaded, so this is still a successful load.
+        notify_load(success),
         Status = #crl_reload_status{etag = NewETag,
                                     result = loaded,
                                     time   = TS,
@@ -2451,6 +2496,7 @@ install_url_crl(URL, Name, CrlPath, Body, NewETag, CurETag, TS, TrustedCAs,
                     loaded_from_urls = maps:put(Name, Checksum, LoadedFromUrls)}
     else
         {error, Reason} ->
+            notify_load(failed),
             ErrorStrings = format_load_errors(Reason),
             ?log_warning("Failed to install CRL from URL ~s:~n~s",
                          [URL, lists:join(<<"\n">>, ErrorStrings)]),

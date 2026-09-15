@@ -1374,6 +1374,13 @@ class CRLTests(testlib.BaseTestSet):
         crl_dir = tempfile.mkdtemp()
         ca_ids = []
 
+        # Whichever source this run uses - poll directory, upload or URL -
+        # loading a CRL through it must be counted (MB-73929).  Both series
+        # exist from startup, so a node that has never loaded a CRL reports
+        # zero rather than no metric at all.
+        loads_before, _ = _crl_load_counters(node)
+        assert loads_before is not None, 'cm_crl_loads_total is not reported'
+
         try:
             # ------------------------------------------------------------------
             # Step 1: Generate PKI with 3 intermediate CAs
@@ -1566,6 +1573,13 @@ class CRLTests(testlib.BaseTestSet):
                         self._check_cert_access(
                             node, cert_path, cert_users[cert_name],
                             should_allow, f'{cert_name}/{policy}/update')
+
+                # The revocation checks above only pass if the CRLs really
+                # were loaded, so by now the counter must have moved.
+                loads_after, _ = _crl_load_counters(node)
+                assert loads_after > loads_before, \
+                    f'expected successful loads to be counted ' \
+                    f'({loads_before} -> {loads_after})'
 
         finally:
             testlib.toggle_client_cert_auth(node, enabled=False)
@@ -3334,8 +3348,25 @@ class CRLFileSyncTests(testlib.BaseTestSet):
     # the point: the second one can only be holding the file by having
     # fetched it.
     def upload_reaches_other_nodes_test(self):
+        # A node reports the file active only once it has loaded it, so by
+        # the time the status assertion passes every node must also have
+        # counted the load - on the nodes that fetched it, through the sync
+        # path and nowhere else (MB-73929).
+        before = {n.hostname(): _crl_load_counters(n)[0]
+                  for n in self.cluster.connected_nodes}
+        for hostname, count in before.items():
+            assert count is not None, \
+                f'cm_crl_loads_total is not reported on {hostname}'
+
         filename = self._upload()
         _assert_crl_file_status(self.cluster, filename, 'active')
+
+        for node in self.cluster.connected_nodes:
+            hostname = node.hostname()
+            after, _ = _crl_load_counters(node)
+            assert after > before[hostname], \
+                f'{hostname} did not count the uploaded CRL as loaded ' \
+                f'({before[hostname]} -> {after})'
 
 
     # Everything a node has to work out for itself when it comes back up.
@@ -4052,6 +4083,25 @@ def _crl_cache_counters(node):
     return (total, misses)
 
 
+def _crl_load_counters(node):
+    """Return (success, failed) from cm_crl_loads_total on this node.
+
+    cb_crl_manager creates both series at startup, so a node that has never
+    loaded a CRL still reports them as zero; returning (None, None) when the
+    family is missing lets a test tell that apart from 'nothing happened yet'.
+    """
+    metrics = testlib.get_prometheus_metrics(node)
+    # The prometheus parser strips the _total suffix from counter families.
+    stat = metrics.get('cm_crl_loads')
+    if stat is None:
+        return (None, None)
+    counts = {'success': 0, 'failed': 0}
+    for labels, value in stat['VALUES'].items():
+        status = dict(labels)['status']
+        counts[status] = counts.get(status, 0) + value
+    return (counts['success'], counts['failed'])
+
+
 def get_crl_version(node):
     """Return the node's current CRL version (cb_crl_cache:get_crl_version/0).
 
@@ -4347,6 +4397,7 @@ class CRLBadCRLTests(testlib.BaseTestSet):
         # Headerless garbage: decoded as DER.
         garbage = b'\x00\xFF' * 32 + b'not a crl'
         # A PEM header with a malformed body: decoded as PEM.
+        success0, failed0 = _crl_load_counters(node)
         for content in [garbage, MALFORMED_PEM]:
             files = {'crl': ('bad.pem', content, 'application/x-pem-file')}
             r = testlib.post_fail(node, '/settings/crl/files', files=files,
@@ -4355,6 +4406,11 @@ class CRLBadCRLTests(testlib.BaseTestSet):
             print(f'upload_garbage_content error: {error}')
             assert 'Failed to decode CRL: Invalid CRL' in error, \
                 f'Unexpected error: {error!r}'
+
+        # A rejected upload is a failed load, and loads nothing (MB-73929).
+        success1, failed1 = _crl_load_counters(node)
+        testlib.assert_eq(failed1, failed0 + 2, name='failed upload loads')
+        testlib.assert_eq(success1, success0, name='successful loads')
 
     def upload_chunked_encoding_test(self):
         """A chunked upload (no Content-Length) returns HTTP 400.
@@ -4535,6 +4591,8 @@ class CRLBadCRLTests(testlib.BaseTestSet):
                              poll_interval_ms=1000,
                              directory=crl_dir)
 
+            _, failed0 = _crl_load_counters(node)
+
             result = reload_crl(node)
             assert_crl_file_load_error(result, 'bad.pem',
                                        expected_cache_status='notLoaded',
@@ -4552,6 +4610,14 @@ class CRLBadCRLTests(testlib.BaseTestSet):
                                        expected_reload_result='failed',
                                        expected_error_num=1,
                                        expected_error='Failed to decode file')
+
+            # Each forced reload re-reads the file, so both attempts are
+            # counted (MB-73929).  A lower bound, not an exact count: the
+            # poll timer may have re-read the rewritten file as well.
+            _, failed1 = _crl_load_counters(node)
+            assert failed1 >= failed0 + 2, \
+                f'expected both failed loads to be counted ' \
+                f'({failed0} -> {failed1})'
 
             # Replace with a valid CRL → recovery to active.
             generate_crl_to_file(crl_path, ca_pem, ca_key_pem, [])
@@ -4741,6 +4807,8 @@ class CRLBadCRLTests(testlib.BaseTestSet):
                     urls=[srv.url],
                     url_poll_interval_ms=1000)
 
+                _, failed0 = _crl_load_counters(node)
+
                 result = reload_crl(node)
                 assert_crl_file_load_error(
                     result, srv.url,
@@ -4760,6 +4828,15 @@ class CRLBadCRLTests(testlib.BaseTestSet):
                     expected_reload_result='failed',
                     expected_error_num=1,
                     expected_error='Failed to decode file. Reason: Invalid CRL')
+
+                # A URL that serves something undecodable is a failed load
+                # (MB-73929).  A lower bound: the URL timer retries every
+                # second while a URL is failing, so more may have been
+                # counted than the two forced reloads.
+                _, failed1 = _crl_load_counters(node)
+                assert failed1 >= failed0 + 2, \
+                    f'expected both failed URL loads to be counted ' \
+                    f'({failed0} -> {failed1})'
 
                 # Switch to a valid CRL → recovery.
                 valid_crl = generate_crl(ca_pem, ca_key_pem, [])
