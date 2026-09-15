@@ -1872,7 +1872,8 @@ handle_check_permission_for_cbauth(Req) ->
 handle_access_forbidden(Req, AuthnRes, Params) ->
     AuditProps = menelaus_auth:get_authn_res_audit_props(AuthnRes),
     Req1 = menelaus_auth:maybe_set_auth_audit_props(Req, AuditProps),
-    maybe_audit_access_forbidden(Req1, Params),
+    Req2 = menelaus_auth:store_cbauth_check_authn_res(Req1, AuthnRes),
+    maybe_audit_access_forbidden(Req2, Params),
     ns_server_stats:notify_counter(<<"rest_request_access_forbidden">>),
     %% This should have been 403 as the caller is authenticated but
     %% doesn't have necessary permissions.

@@ -1602,6 +1602,7 @@
         },
         "optional_fields" : {
             "real_userid" : {"domain" : "", "user" : ""},
+            "authenticated_userid" : {"domain" : "", "user" : ""},
             "type": "",
             "iss": "",
             "alg": "",

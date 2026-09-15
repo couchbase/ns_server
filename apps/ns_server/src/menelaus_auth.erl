@@ -54,6 +54,7 @@
          init_auth/1,
          on_behalf_extras/1,
          get_authn_res_from_on_behalf_of/3,
+         store_cbauth_check_authn_res/2,
          is_external_auth_allowed/1,
          get_authn_res_audit_props/1,
          maybe_set_auth_audit_props/2,
@@ -826,6 +827,19 @@ get_authn_res_from_on_behalf_of(User, Domain, EncodedExtras) ->
             end;
         _ -> AuthnRes0
     end.
+
+%% The cbauth permission check endpoints build the checked user's authn_res
+%% from query parameters rather than from verify_rest_auth, so the request
+%% still carries the calling service's authn_res. Audit records take
+%% real_userid from the request, so store the checked user's authn_res on it
+%% before auditing. The calling service is kept as the authenticated identity,
+%% so that it is recorded as authenticated_userid.
+-spec store_cbauth_check_authn_res(mochiweb_request(), #authn_res{}) ->
+          mochiweb_request().
+store_cbauth_check_authn_res(Req, #authn_res{} = AuthnRes) ->
+    store_authn_res(
+      AuthnRes#authn_res{
+        authenticated_identity = get_authenticated_identity(Req)}, Req).
 
 -spec apply_on_behalf_of_authn_res(#authn_res{}, mochiweb_request()) ->
           error | #authn_res{}.
