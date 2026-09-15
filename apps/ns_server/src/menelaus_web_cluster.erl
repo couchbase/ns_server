@@ -407,14 +407,21 @@ parse_join_cluster_params(Params, ThisIsJoin) ->
                        end
                end,
 
-    BasePList = case OtherClientCert of
-                    "true" -> [{client_cert_auth, true}];
-                    _ -> [{user, OtherUser}, {password, OtherPswd}]
-                end,
+    UseClientCert = (OtherClientCert =:= "true"),
+    Creds = [{user, OtherUser}, {password, OtherPswd}],
+    BasePList = [{client_cert_auth, true} || UseClientCert] ++ Creds,
 
-    MissingFieldErrors = [iolist_to_binary([atom_to_list(F), <<" is missing">>])
-                          || {F, V} <- BasePList,
-                             V =:= undefined],
+    %% Credentials are required on their own, but only optional alongside a
+    %% client certificate: whether they are needed depends on how the node
+    %% being talked to is configured, which we cannot see from here.
+    MissingFieldErrors =
+        case UseClientCert of
+            true ->
+                [];
+            false ->
+                [iolist_to_binary([atom_to_list(F), <<" is missing">>])
+                 || {F, V} <- Creds, V =:= undefined]
+        end,
 
     DefaultScheme = case cluster_compat_mode:tls_supported() of
                         true -> https;
@@ -471,12 +478,11 @@ handle_join_clean_node(Req) ->
             OtherScheme = proplists:get_value(scheme, Fields),
             OtherHost = proplists:get_value(host, Fields),
             OtherPort = proplists:get_value(port, Fields),
+            User = proplists:get_value(user, Fields),
+            Pswd = proplists:get_value(password, Fields),
             OtherAuth = case proplists:get_bool(client_cert_auth, Fields) of
-                            true -> client_cert_auth;
-                            false ->
-                                User = proplists:get_value(user, Fields),
-                                Pswd = proplists:get_value(password, Fields),
-                                {basic_auth, User, Pswd}
+                            true -> {client_cert_auth, User, Pswd};
+                            false -> {basic_auth, User, Pswd}
                         end,
             HiddenAuth = ?HIDE(OtherAuth),
             Services = proplists:get_value(services, Fields),
@@ -546,7 +552,13 @@ call_add_node(OtherScheme, OtherHost, OtherPort, HiddenAuth, AFamily,
     IsClientCertAuthMandatory =
         (ns_ssl_services_setup:client_cert_auth_state() =:= "mandatory"),
 
-    BasePayload = [{<<"hostname">>, list_to_binary(ThisNodeURL)}] ++
+    BasePayload = [{<<"hostname">>, list_to_binary(ThisNodeURL)},
+                   %% This node is not provisioned yet, so empty credentials
+                   %% authenticate against it. They are sent even alongside a
+                   %% client certificate, because this node may be configured
+                   %% not to accept that certificate as proof of identity.
+                   {<<"user">>, []},
+                   {<<"password">>, []}] ++
                    case IsClientCertAuthMandatory of
                        true ->
                            %% Letting the-cluster-node know that it should use
@@ -554,8 +566,7 @@ call_add_node(OtherScheme, OtherHost, OtherPort, HiddenAuth, AFamily,
                            %% node
                            [{<<"clientCertAuth">>, true}];
                        false ->
-                           [{<<"user">>, []},
-                            {<<"password">>, []}]
+                           []
                    end,
 
     {Payload, Endpoint} =
@@ -589,9 +600,16 @@ call_add_node(OtherScheme, OtherHost, OtherPort, HiddenAuth, AFamily,
         {error, rest_error, M, {bad_status, 401, _Msg}} ->
             Details =
                 case ?UNHIDE(HiddenAuth) of
-                    client_cert_auth ->
+                    {client_cert_auth, U, P} when U =:= undefined;
+                                                  P =:= undefined ->
                         <<"Ensure client certificate authentication is "
-                          "enabled for the cluster.">>;
+                          "enabled for the cluster. If the cluster does not "
+                          "accept the internal client certificate on its own, "
+                          "supply a username and password as well.">>;
+                    {client_cert_auth, _, _} ->
+                        <<"Ensure client certificate authentication is "
+                          "enabled for the cluster, and verify username and "
+                          "password.">>;
                     _ ->
                         <<"Verify username and password.">>
                 end,
@@ -913,7 +931,20 @@ do_handle_add_node(Req, GroupUUID) ->
         {ok, KV} ->
             {Auth, AuditUser} =
                 case proplists:get_bool(client_cert_auth, KV) of
-                    true -> {client_cert_auth, "<client_cert>"};
+                    true ->
+                        User = proplists:get_value(user, KV),
+                        Password = proplists:get_value(password, KV),
+                        %% The certificate is all that identifies us when no
+                        %% credentials accompany it; when they do, the audit
+                        %% record should name whoever they belong to. A node
+                        %% joining a cluster sends empty ones, since it is not
+                        %% provisioned yet.
+                        CertAuditUser = case User of
+                                            undefined -> "<client_cert>";
+                                            [] -> "<client_cert>";
+                                            _ -> User
+                                        end,
+                        {{client_cert_auth, User, Password}, CertAuditUser};
                     false ->
                         User = proplists:get_value(user, KV),
                         Password = proplists:get_value(password, KV),

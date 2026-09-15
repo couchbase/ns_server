@@ -975,9 +975,16 @@ post_json_to_joinee(Target, HiddenAuth, Options, Stuff) ->
         {error, rest_error, M, {bad_status, 401, _Msg}} ->
             Details =
                 case ?UNHIDE(HiddenAuth) of
-                    client_cert_auth ->
+                    {client_cert_auth, U, P} when U =:= undefined;
+                                                  P =:= undefined ->
                         <<"Ensure client certificate authentication is enabled "
-                        "on the node being added.">>;
+                        "on the node being added. If that node does not accept "
+                        "the internal client certificate on its own, supply a "
+                        "username and password as well.">>;
+                    {client_cert_auth, _, _} ->
+                        <<"Ensure client certificate authentication is enabled "
+                        "on the node being added, and verify username and "
+                        "password.">>;
                     _ ->
                         <<"Verify username and password.">>
                 end,
