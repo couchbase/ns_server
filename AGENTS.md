@@ -40,6 +40,27 @@ T_WILDCARD=menelaus_web_rbac make test_eunit
 T_WILDCARD=menelaus_web_rbac ninja -C ../build ns_test
 ```
 
+Run a single test by appending `:<test name>` to the wildcard. Only the runner
+that owns the test is started, so an eunit test never waits for triq:
+```bash
+T_WILDCARD=<module_name>:<test_name> make test_eunit
+T_WILDCARD=<module_name>:<test_name> ninja -C ../build ns_test
+```
+
+Examples:
+```bash
+T_WILDCARD=ns_config_log:sanitize_test make test_eunit
+T_WILDCARD=ns_janitor:janitor_buckets_group_test_ make test_eunit
+T_WILDCARD=misc:prop_upermutations make test_triq
+```
+
+The test name must end with `_test` or `_test_` (or start with `prop_` for a
+triq property); anything else is rejected.
+
+The module part stays a wildcard, so `T_WILDCARD='*:sanitize_test'` runs the
+test without having to know which module it lives in. Quote the value when it
+contains `*`.
+
 ### Other Test Targets
 
 - `make test` - runs all tests

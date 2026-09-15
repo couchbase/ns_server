@@ -63,7 +63,24 @@ run_tests(Enabled) ->
 run_tests(Enabled, Filter) ->
     fake_loggers(),
     setup_paths(),
-    Modules = get_modules(Filter),
+    {Wildcard, Test} = split_test(get_wildcard(Filter)),
+    case modules_to_test(Wildcard, Test) of
+        {error, Msg} ->
+            io:format("~s~n", [Msg]),
+            failed;
+        {ok, Modules} ->
+            run_tests(Enabled, Modules, Test)
+    end.
+
+modules_to_test(Wildcard, Test) ->
+    case check_test_name(Test) of
+        ok ->
+            select_modules(get_modules(Wildcard), Test);
+        {error, _} = Error ->
+            Error
+    end.
+
+run_tests(Enabled, Modules, Test) ->
     CoverageEnabled = (length(os:getenv("T_COVERAGE", "")) > 0),
     CodeCoverageDir = filename:join(config(root_dir), ".coverage"),
     FailedTests =
@@ -73,10 +90,56 @@ run_tests(Enabled, Filter) ->
                 fun ({Name, Runner}) ->
                     io:format("Running ~p tests for modules: ~p~n",
                               [Name, Modules]),
-                    Runner(Modules)
-                end, test_runners(Enabled))
+                    Runner(Modules, Test)
+                end, test_runners(Enabled, Test))
           end, CoverageEnabled, Modules, CodeCoverageDir),
     handle_failed_tests(FailedTests).
+
+%% A single test is selected by appending ":<test name>" to the module
+%% wildcard, e.g. T_WILDCARD=ns_config_log:sanitize_test. The wildcard still
+%% selects the modules to look the test up in, so the module part may stay a
+%% wildcard as long as exactly the intended modules export the test.
+split_test(Wildcard) ->
+    case string:split(Wildcard, ":") of
+        [Wildcard] ->
+            {Wildcard, undefined};
+        [ModuleWildcard, Test] ->
+            {ModuleWildcard, list_to_atom(Test)}
+    end.
+
+%% Tests are discovered by their names: eunit takes the "_test"/"_test_"
+%% suffix, triq the "prop_" prefix. Anything else is a typo or a plain
+%% function, which eunit would happily run as if it were a test.
+check_test_name(undefined) ->
+    ok;
+check_test_name(Test) ->
+    Name = atom_to_list(Test),
+    case is_triq_test(Test) orelse lists:suffix("_test", Name) orelse
+         lists:suffix("_test_", Name) of
+        true ->
+            ok;
+        false ->
+            {error, io_lib:format("Test name ~p must end with '_test' or "
+                                  "'_test_' (or start with 'prop_' for a "
+                                  "triq property)", [Test])}
+    end.
+
+select_modules([], _Test) ->
+    {error, "No modules match the wildcard"};
+select_modules(Modules, undefined) ->
+    {ok, Modules};
+select_modules(Modules, Test) ->
+    case [M || M <- Modules, exports_test(M, Test)] of
+        [] ->
+            {error, io_lib:format("None of the modules ~p export the test ~p",
+                                  [Modules, Test])};
+        Selected ->
+            {ok, Selected}
+    end.
+
+exports_test(Module, Test) ->
+    code:ensure_loaded(Module),
+    erlang:function_exported(Module, Test, 0).
 
 with_code_coverage(Fun, false, _Modules, _OutputDir) ->
     io:format("Code coverage is disabled~n"),
@@ -164,8 +227,8 @@ cover_analyze(Dir) ->
 cover_stop() -> catch cover:stop().
 
 all_test_runners() ->
-    [{eunit, fun run_eunit_tests/1},
-     {triq, fun run_triq_tests/1}].
+    [{eunit, fun run_eunit_tests/2},
+     {triq, fun run_triq_tests/2}].
 
 test_runners(all) ->
     all_test_runners();
@@ -177,6 +240,17 @@ test_runners(Enabled) when is_list(Enabled) ->
                 lists:member(Name, Enabled)
         end, all_test_runners()).
 
+%% The name of a single test tells us which runner owns it, so there is no
+%% point in starting the other one.
+test_runners(Enabled, undefined) ->
+    test_runners(Enabled);
+test_runners(Enabled, Test) ->
+    Owner = case is_triq_test(Test) of
+                true -> triq;
+                false -> eunit
+            end,
+    [R || {Name, _} = R <- test_runners(Enabled), Name =:= Owner].
+
 scan_modules_for_coverage(UnitTestModules) ->
     Wildcard = "./apps/*/src/**/*.erl",
     Files = filelib:wildcard(Wildcard, config(root_dir)),
@@ -185,23 +259,20 @@ scan_modules_for_coverage(UnitTestModules) ->
                                              sets:from_list(Candidates))),
     Modules -- [ale_transform, cut, ns_server_testrunner_api].
 
-get_modules(Filter) ->
-    Ext = code:objfile_extension(),
+get_wildcard(undefined) ->
+    %% Check env var
+    case os:getenv("T_WILDCARD") of
+        false -> "*";
+        X -> X
+    end;
+get_wildcard(Filter) ->
+    %% Filter when passed from the command line is a file name, and
+    %% we aren't quoting/escaping it, so it comes as an atom.
+    %% Making all of our filenames valid atoms is reasonable.
+    atom_to_list(Filter).
 
-    Wildcard =
-        case Filter of
-            undefined ->
-                %% Check env var
-                case os:getenv("T_WILDCARD") of
-                    false -> "*";
-                    X -> X
-                end;
-            _ ->
-                %% Filter when passed from the command line is a file name, and
-                %% we aren't quoting/escaping it, so it comes as an atom.
-                %% Making all of our filenames valid atoms is reasonable.
-                atom_to_list(Filter)
-        end,
+get_modules(Wildcard) ->
+    Ext = code:objfile_extension(),
 
     FullWildcard =
         case lists:member($/, Wildcard) of
@@ -226,7 +297,7 @@ get_modules(Filter) ->
     Files = filelib:wildcard(FullWildcard, config(root_dir)),
     lists:uniq([list_to_atom(filename:basename(F, Ext)) || F <- Files]).
 
-run_eunit_tests(Modules0) ->
+run_eunit_tests(Modules0, Test) ->
     %% eunit:test(module) will also run tests defined in module_tests. This
     %% will filter _tests modules out to avoid running tests twice.
     Modules  = filter_out_unneeded_tests_modules(Modules0),
@@ -236,7 +307,8 @@ run_eunit_tests(Modules0) ->
                              fun (_Module) -> ok end,
                              %% teardown for each module
                              fun (Module, _) -> test_teardown(Module) end,
-                             [{M, fun (_, _) -> M end} || M <- Modules]},
+                             [{M, fun (_, _) -> eunit_test(M, Test) end} ||
+                                 M <- Modules]},
                             [verbose, {report, Listener},
                              {print_depth, ?DEPTH}]),
 
@@ -256,6 +328,19 @@ run_eunit_tests(Modules0) ->
                           "have been caught by this harness.",
                     [Msg | FailedTests]
             end
+    end.
+
+%% Running the whole module is expressed as the module itself, a single test
+%% has to say whether it is a plain test or a generator (a "..._test_"
+%% function), since eunit has to run the latter to obtain the actual tests.
+eunit_test(Module, undefined) ->
+    Module;
+eunit_test(Module, Test) ->
+    case lists:suffix("_", atom_to_list(Test)) of
+        true ->
+            {generator, Module, Test};
+        false ->
+            {test, Module, Test}
     end.
 
 test_teardown(X) ->
@@ -300,15 +385,15 @@ is_tests_module(Module0) ->
 
 -define(TRIQ_ITERS, 100).
 
-run_triq_tests(Modules) ->
-    lists:flatmap(fun run_module_triq_tests/1, Modules).
+run_triq_tests(Modules, Test) ->
+    lists:flatmap(fun (M) -> run_module_triq_tests(M, Test) end, Modules).
 
-run_module_triq_tests(Module) ->
+run_module_triq_tests(Module, Test) ->
     lists:filter(
       fun (MFA) ->
               io:format("Testing ~s~n", [format_mfa(MFA)]),
               check_triq_prop(MFA) =/= ok
-      end, get_module_triq_tests(Module)).
+      end, get_module_triq_tests(Module, Test)).
 
 check_triq_prop({M, F, _}) ->
     {Prop, Options} =
@@ -345,10 +430,12 @@ triq_prop_diag(CounterExample, Options) ->
 is_extended_triq_prop(Name) ->
     lists:suffix("_", atom_to_list(Name)).
 
-get_module_triq_tests(Module) ->
+get_module_triq_tests(Module, undefined) ->
     Exports = Module:module_info(exports),
     [{Module, F, 0} || {F, 0} <- Exports,
-                       is_triq_test(F)].
+                       is_triq_test(F)];
+get_module_triq_tests(Module, Test) ->
+    [{Module, Test, 0}].
 
 is_triq_test(Name) when is_atom(Name) ->
     lists:prefix("prop_", atom_to_list(Name)).
