@@ -35,6 +35,7 @@ import time
 
 import jwt
 import testlib
+from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
 from testlib.util import Service
 
@@ -74,12 +75,13 @@ def shape_code(pred):
     )
 
 
-class JwtUpgradeChecks(UpgradeCheckSuite):
+class JwtUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     # JWT did not exist before 8.0, so there is no older format to carry.
     from_version = '8.0'
 
     reads = frozenset({'bucket:shared'})
-    writes = frozenset({'settings/jwt', 'rbac/groups'})
+    # config_profile: jwt_enabled, set on the old node below.
+    writes = frozenset({'settings/jwt', 'rbac/groups', 'config_profile'})
 
     def before_upgrade(self):
         # Reproduce the Enterprise Analytics profile on the old node. set_data

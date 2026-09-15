@@ -70,9 +70,10 @@ def discover_suites():
             if name.startswith('_'):
                 continue        # shared machinery, not a suite
             unset = _unset_by_version(cls)
-            assert not unset, \
-                f"{name} does not set {', '.join(unset)}, which its shared " \
-                f"base leaves to each source version"
+            if unset:
+                raise ValueError(
+                    f"{name} does not set {', '.join(unset)}, which its "
+                    f"shared base leaves to each source version")
             found[(cls.__module__, name)] = cls
     return [found[key] for key in sorted(found)]
 
@@ -87,6 +88,59 @@ def _unset_by_version(cls):
     for base in shared:
         names |= {n for n, v in vars(base).items() if v is None}
     return sorted(n for n in names if getattr(cls, n) is None)
+
+
+def suites_for(strategy, suites):
+    """The suites that opted into `strategy`, checked against its contract.
+
+    A suite opts in by inheriting the strategy's suite_base, so issubclass is
+    the whole of the question "does this suite run under this strategy".
+
+    The callbacks are abstract on that interface, so Python would refuse to
+    instantiate a suite that missed one -- but only once the cycle was
+    already running. Checking here instead names the suite and what it
+    misses before any cluster is built. Raises ValueError, which run.py
+    reports as a usage error.
+    """
+    if strategy.suite_base is None:
+        raise ValueError(f"strategy {strategy} declares no suite_base, so no "
+                         f"suite can opt into it")
+
+    undeclared = [name for name in strategy.callback_names()
+                  if not hasattr(strategy.suite_base, name)]
+    if undeclared:
+        raise ValueError(
+            f"strategy {strategy} invokes {', '.join(undeclared)}, which "
+            f"{strategy.suite_base.__name__} does not declare, so no suite "
+            f"can know to implement it")
+
+    selected = []
+    for suite in suites:
+        if not issubclass(suite, strategy.suite_base):
+            continue
+        # Computed by Python when the class is defined, so it covers every
+        # interface the suite inherits, not just this strategy's callbacks.
+        missing = sorted(getattr(suite, '__abstractmethods__', ()))
+        if missing:
+            raise ValueError(f"{suite.__name__} does not implement "
+                             f"{', '.join(missing)}")
+        selected.append(suite)
+    return selected
+
+
+def unclaimed_suites(strategies_=None, suites=None):
+    """Suites no strategy will ever run, because they opted into none.
+
+    A suite is only ever reached through a strategy's interface, so one that
+    inherits none is dead code. Easy to write by accident, and silent without
+    this. Asked of every strategy, not only the selected ones: a suite
+    written for a strategy this run leaves out is not an orphan.
+    """
+    strategies_ = strategies.all_strategies() if strategies_ is None \
+        else strategies_
+    suites = discover_suites() if suites is None else suites
+    bases = tuple(s.suite_base for s in strategies_ if s.suite_base)
+    return [s for s in suites if not issubclass(s, bases)]
 
 
 def conflicts(a, b):
@@ -124,9 +178,10 @@ def plan(strategies_=None, source_versions=None, suites=None):
     """[(strategy, from_version, group_index, [suite classes])] for the run.
 
     Every combination of a strategy and a source version is a separate
-    upgrade, and each group within one needs its own cluster. A suite applies
-    to a source version if it names that one, or names none at all -- in
-    which case it has to cope with whichever it is given.
+    upgrade, and each group within one needs its own cluster. A suite is run
+    by a strategy if it inherits that strategy's interface, and applies to a
+    source version if it names that one or names none at all -- in which case
+    it has to cope with whichever it is given.
     """
     strategies_ = strategies.selected() if strategies_ is None else strategies_
     source_versions = source_versions or versions.source_versions()
@@ -134,8 +189,9 @@ def plan(strategies_=None, source_versions=None, suites=None):
 
     planned = []
     for strategy in strategies_:
+        eligible = suites_for(strategy, suites)
         for from_version in source_versions:
-            applicable = [s for s in suites
+            applicable = [s for s in eligible
                           if s.from_version in (None, from_version)]
             for group_index, group in enumerate(partition(applicable)):
                 planned.append((strategy, from_version, group_index, group))
@@ -302,6 +358,14 @@ def install_testsets(verbose=True):
     cluster). Must run after the suites' modules are imported and before
     discover_testsets(). Returns the names installed.
     """
+    orphans = unclaimed_suites()
+    if orphans and verbose:
+        print(testlib.yellow(
+            "  WARNING: no strategy runs " +
+            ", ".join(s.__name__ for s in orphans) +
+            " -- a suite is run only by the strategies whose interface it "
+            "inherits"))
+
     planned = plan()
     if not planned:
         return []

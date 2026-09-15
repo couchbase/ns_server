@@ -10,13 +10,20 @@
 """Base class for upgrade check suites.
 
 A suite is a set of checks for one feature area, run at each point of an
-upgrade cycle. Subclass this, implement the hooks you need, and put the class
-in any module under testsets/ -- preferably the one that already tests the
-feature. Suites are discovered, not registered.
+upgrade cycle. Subclass this, put the class in any module under testsets/ --
+preferably the one that already tests the feature -- and inherit the
+interface of each upgrade strategy you want to be run by:
 
-    before_upgrade()        only the old version is present
-    mixed_cluster_checks()  both versions are active
-    post_upgrade_checks()   only the new version remains
+    class MyFeatureChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+
+Suites are discovered, not registered, and so are strategies.
+
+The callbacks are the strategy's, declared on the interface you inherit, and
+two strategies need not name the same ones -- see
+testlib/upgrade/strategies/. This class deliberately declares none of them,
+so that a callback you were required to implement cannot be quietly
+satisfied by a default it inherited from here.
+
     cleanup()               at the end of the cycle, however it ended
 
 Suites share a cluster with the others they do not conflict with, so name
@@ -141,16 +148,7 @@ class UpgradeCheckSuite:
         self.on_cleanup(lambda: testlib.ensure_deleted(self.cluster, path),
                         f"DELETE {path}")
 
-    # -- hooks: override the ones your checks need -----------------------
-
-    def before_upgrade(self):
-        """Only the old version is present. Capture what you will compare."""
-
-    def mixed_cluster_checks(self):
-        """Both versions are active."""
-
-    def post_upgrade_checks(self):
-        """Only the new version remains."""
+    # -- the one hook every strategy has ---------------------------------
 
     def cleanup(self):
         """Runs from the testset's teardown, so even after a hook failed or

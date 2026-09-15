@@ -784,7 +784,10 @@ def main():
         from testsets import upgrade_tests
         from testlib.upgrade import engine as upgrade_engine
         print("Generated upgrade testsets:")
-        upgrade_testset_names = upgrade_engine.install_testsets()
+        try:
+            upgrade_testset_names = upgrade_engine.install_testsets()
+        except ValueError as e:
+            bad_args_exit(str(e))
         if not upgrade_testset_names:
             bad_args_exit("no upgrade check suites were found, so there is "
                           "nothing to run.")

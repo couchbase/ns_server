@@ -12,9 +12,13 @@ Example upgrade check suite — copy this file as a starting point.
 
 Steps to add a new check suite:
   1. Create a new file in testsets/ (or add a class to an existing one).
-  2. Subclass UpgradeCheckSuite and implement the three hook methods below.
+  2. Subclass UpgradeCheckSuite and the interface of each upgrade strategy
+     you want to be run by -- OnlineUpgradeSuite here -- and implement that
+     interface's callbacks.
   3. Nothing else: suites are discovered, not registered. A module run.py
-     does not import must be imported from upgrade_tests.py.
+     does not import must be imported from upgrade_tests.py. A class whose
+     name begins with an underscore is treated as a shared base rather than
+     a suite to run.
 
 The following attributes are available on self inside every hook:
 
@@ -41,23 +45,24 @@ Helper methods inherited from UpgradeCheckSuite:
 """
 
 import testlib
+from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
 
 
-class ExampleUpgradeChecks(UpgradeCheckSuite):
+class ExampleUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     """Checks that /pools/default cluster name is preserved across upgrade."""
 
     reads = frozenset({'pools/default'})
 
     # ------------------------------------------------------------------
-    # Phase 1: old-version-only cluster
+    # Only the old version is present
     # ------------------------------------------------------------------
     def before_upgrade(self):
         pools = testlib.get_succ(self.old_node, "/pools/default").json()
         self.old_cluster_name = pools["name"]
 
     # ------------------------------------------------------------------
-    # Phase 3: mixed cluster (old and new nodes both active)
+    # Both versions are active
     # ------------------------------------------------------------------
     def mixed_cluster_checks(self):
         # Verify the cluster name is consistent across both versions.
@@ -68,7 +73,7 @@ class ExampleUpgradeChecks(UpgradeCheckSuite):
                 f"expected {self.old_cluster_name!r}, got {pools['name']!r}"
 
     # ------------------------------------------------------------------
-    # Phase 5: new-version-only cluster
+    # Only the new version remains
     # ------------------------------------------------------------------
     def post_upgrade_checks(self):
         pools = testlib.get_succ(self.new_node, "/pools/default").json()

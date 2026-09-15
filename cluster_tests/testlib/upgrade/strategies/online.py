@@ -16,13 +16,42 @@ the one kind of upgrade where a suite can compare the two versions side by
 side, which is what mixed_cluster_checks is for.
 """
 
+from abc import ABC, abstractmethod
+
 from testlib.upgrade.strategy import UpgradeStrategy, callback, transition
+
+
+class OnlineUpgradeSuite(ABC):
+    """The callbacks an online upgrade invokes on a suite.
+
+    A suite declares it wants to be run by the online strategies by
+    inheriting this, and this is also the contract: the callbacks are
+    abstract, so a suite that declares the interface without implementing one
+    of them is rejected by name when the run is planned.
+
+    A suite with nothing to check at one of these points still says so, with
+    an empty body. There is no way to inherit a default, on purpose: which
+    points a suite is asked about is the whole of what it is opting into.
+    """
+
+    @abstractmethod
+    def before_upgrade(self):
+        """Only the source version is present. Capture what you compare."""
+
+    @abstractmethod
+    def mixed_cluster_checks(self):
+        """Both versions are in the cluster and both are serving."""
+
+    @abstractmethod
+    def post_upgrade_checks(self):
+        """Only the version under test remains."""
 
 
 class OnlineUpgrade2to2(UpgradeStrategy):
     """Two nodes, replaced by two."""
 
     name = 'online-2to2'
+    suite_base = OnlineUpgradeSuite
     old_node_count = 2
     new_node_count = 2
 

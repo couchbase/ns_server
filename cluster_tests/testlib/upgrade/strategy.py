@@ -178,6 +178,12 @@ class UpgradeStrategy(ABC):
     # How this strategy is named on the command line and in test output.
     name = None
 
+    # The interface a suite inherits to declare it wants to be run by this
+    # strategy. The callbacks this strategy's stages name are declared on it,
+    # abstract, so inheriting it is both the declaration and the contract.
+    # Two strategies that should always travel together can share one.
+    suite_base = None
+
     # How many nodes the cluster starts with, and how many replacements the
     # cycle brings up. This is part of the strategy rather than a parameter of
     # one: an online 2-to-2 and an online 3-to-3 differ in the callbacks they

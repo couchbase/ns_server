@@ -18,6 +18,7 @@ why run.py imports it even though it defines no BaseTestSet of its own.
 """
 
 import testlib
+from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
 # Imported for its side effect: the engine discovers suites in any module
 # under testsets/, and this one is not in run.py's import list.
@@ -25,7 +26,7 @@ from testsets import example_upgrade_checks  # noqa: F401
 from testsets import jwt_upgrade_checks  # noqa: F401
 
 
-class _AlertsUpgradeChecks(UpgradeCheckSuite):
+class _AlertsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     """/settings/alerts across the upgrade."""
 
     reads = frozenset({'settings/alerts'})
@@ -100,7 +101,7 @@ class AlertsUpgradeChecksFrom76(_AlertsUpgradeChecks):
         'crl_unusable']
 
 
-class _BucketSettingsUpgradeChecks(UpgradeCheckSuite):
+class _BucketSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     """The test bucket's settings across the upgrade."""
 
     reads = frozenset({'bucket:shared'})
@@ -206,7 +207,7 @@ class BucketSettingsUpgradeChecksFrom76(_BucketSettingsUpgradeChecks):
         assert body == {'_': 'memcached buckets are no longer supported'}
 
 
-class _RbacRolesUpgradeChecks(UpgradeCheckSuite):
+class _RbacRolesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     """The set of defined roles across the upgrade."""
 
     reads = frozenset({'rbac/roles'})
@@ -253,7 +254,7 @@ class RbacRolesUpgradeChecksFrom76(_RbacRolesUpgradeChecks):
         'external_catalog_admin', 'external_catalog_reader']
 
 
-class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
+class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     """A user's roles across the upgrade, and across the version boundary."""
 
     reads = frozenset({'rbac/roles'})
@@ -361,7 +362,7 @@ class RbacRoleChangesUpgradeChecksFrom80(_RbacRoleChangesUpgradeChecks):
     }
 
 
-class _IndexSettingsUpgradeChecks(UpgradeCheckSuite):
+class _IndexSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
     """/settings/indexes across the upgrade."""
 
     reads = frozenset({'settings/indexes'})
@@ -401,7 +402,8 @@ class IndexSettingsUpgradeChecksFrom76(_IndexSettingsUpgradeChecks):
     EXPECTED_DIFF = ['deferBuild', 'generateScanReport']
 
 
-class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite):
+class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite,
+                                       OnlineUpgradeSuite):
     # The expected diff below is the one from 8.0.
     from_version = '8.0'
 
