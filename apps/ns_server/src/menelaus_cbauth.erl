@@ -147,6 +147,8 @@ node_disco_event(_Event) ->
 
 handle_config_event(client_cert_auth) ->
     ?MODULE ! client_cert_auth_event;
+handle_config_event(internal_identity_password_check_under_mtls) ->
+    ?MODULE ! client_cert_auth_event;
 handle_config_event({node, Node, membership}) when Node =:= node() ->
     ?MODULE ! node_status_changed;
 handle_config_event(_) ->
@@ -181,6 +183,7 @@ terminate_external_connections(#state{workers = Workers}) ->
 code_change(_OldVsn, State, _) -> {ok, State}.
 
 is_interesting(client_cert_auth) -> true;
+is_interesting(internal_identity_password_check_under_mtls) -> true;
 is_interesting({node, _, services}) -> true;
 is_interesting({node, _, membership}) -> true;
 is_interesting({node, _, memcached}) -> true;
@@ -406,6 +409,9 @@ build_auth_info_ctx() ->
     CcaState = ns_ssl_services_setup:client_cert_auth_state(),
     {AuthVersion, PermissionsVersion, CcaState, Config, Snapshot}.
 
+internal_identity_password_check_under_mtls() ->
+    ns_ssl_services_setup:internal_identity_password_check_under_mtls().
+
 
 %% this function promises to the external clients that any client with
 %% corresponding version of cbauth would be compatible. in order to make
@@ -538,8 +544,12 @@ user_version() ->
     B = term_to_binary([menelaus_users:get_users_version()]),
     base64:encode(crypto:hash(sha, B)).
 
+%% Services cache the identity they derived for a certificate under this
+%% version, so it has to cover everything that decides whether that identity is
+%% accepted on its own.
 client_cert_auth_version() ->
-    B = term_to_binary(ns_ssl_services_setup:client_cert_auth()),
+    B = term_to_binary({ns_ssl_services_setup:client_cert_auth(),
+                        internal_identity_password_check_under_mtls()}),
     base64:encode(crypto:hash(sha, B)).
 
 handle_cbauth_post(Req) ->
@@ -584,6 +594,12 @@ handle_extract_user_from_cert_post(Req) ->
             temporary_failure ->
                 Msg = <<"Temporary error occurred. Please try again later.">>,
                 menelaus_util:reply_json(Req, Msg, 503);
+            no_identity ->
+                %% The certificate maps to nobody, but nothing went wrong. The
+                %% user is omitted rather than empty, as getUserUuid omits a
+                %% uuid it does not have, and the caller is expected to
+                %% authenticate from the request's own credentials.
+                menelaus_util:reply_json(Req, {[]});
             {User, Domain} ->
                 UUID = menelaus_users:get_user_uuid({User, Domain}),
                 menelaus_util:reply_json(

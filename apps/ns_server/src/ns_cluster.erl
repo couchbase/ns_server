@@ -1914,7 +1914,12 @@ perform_leave() ->
                      {node, node(), address_family_only},
                      {node, node(), node_encryption},
                      {node, node(), erl_external_listeners},
-                     {node, node(), n2n_client_cert_auth}]),
+                     {node, node(), n2n_client_cert_auth},
+                     %% an operator who turned this off did so because
+                     %% something in the deployment cannot send credentials
+                     %% with the internal certificate; reverting it on leave
+                     %% would lock the node out of being added back
+                     internal_identity_password_check_under_mtls]),
 
 
     %% set_initial here clears vclock on nodes_wanted. Thus making
