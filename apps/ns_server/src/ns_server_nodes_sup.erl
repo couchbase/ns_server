@@ -44,6 +44,11 @@ init([]) ->
 
 child_specs() ->
     [
+     %% First, so that stats notified by anything below are not dropped:
+     %% ns_server_stats itself cannot start until the couchdb node is up.
+     {ns_server_stats_table, {ns_server_stats_table, start_link, []},
+      permanent, 1000, worker, [ns_server_stats_table]},
+
      {chronicle_compat_events, {chronicle_compat_events, start_link, []},
       permanent, 5000, worker, [chronicle_compat_events]},
 

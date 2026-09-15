@@ -227,8 +227,15 @@ ns_server_stats(PidMap0) ->
     os:putenv("NS_SERVER_BABYSITTER_PID", os:getpid()),
     fake_ns_config:update_snapshot(
       [{auto_failover_cfg, [{enabled, false}, {timeout, 1}, {count, 0}]}]),
+    %% Owns the metrics table, and starts before us in the supervision tree,
+    %% so anything that reports a metric needs it up as well.
+    PidMap1 = setup_mocks([ns_server_stats_table], PidMap0),
     {ok, NsServerStatsPid} = ?FUNCTION_NAME:start_link(),
-    PidMap0#{?FUNCTION_NAME => NsServerStatsPid}.
+    PidMap1#{?FUNCTION_NAME => NsServerStatsPid}.
+
+ns_server_stats_table(PidMap0) ->
+    {ok, Pid} = ?FUNCTION_NAME:start_link(),
+    PidMap0#{?FUNCTION_NAME => Pid}.
 
 %%%===================================================================
 %%% Mock setup functions

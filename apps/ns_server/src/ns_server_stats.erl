@@ -41,7 +41,8 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--export([init_stats/0, notify_counter/1, notify_counter/2, notify_counter_raw/1,
+-export([init_stats/0, init_metrics_table/0,
+         notify_counter/1, notify_counter/2, notify_counter_raw/1,
          notify_gauge/2, notify_gauge/3, notify_histogram/2, notify_histogram/4,
          notify_max/2, create_counter/1, delete_counter/1,
          garbage_collect_counters/2]).
@@ -917,7 +918,8 @@ report_stat(Histogram, ReportMetricFun, ReportMetaFun, _SkipMeta) ->
                      to_seconds_bin(Sum, Units)}).
 
 init([]) ->
-    init_stats(),
+    init_raw_table(),
+    init_system_stats_table(),
     increment_counter({request_leaves, rest}, 0),
     increment_counter({request_enters, hibernate}, 0),
     increment_counter({request_leaves, hibernate}, 0),
@@ -935,9 +937,25 @@ init([]) ->
                #state{pid_names = grab_pid_names()})))}.
 
 init_stats() ->
-    ets:new(?MODULE, [public, named_table, set]),
-    ets:new(?RAW_TABLE, [public, named_table, set]),
-    %% Deprecated table, will be removed:
+    init_metrics_table(),
+    init_raw_table(),
+    init_system_stats_table().
+
+%% The only one of the three with writers that run before we do, so it is
+%% created by ns_server_stats_table instead - see that module.
+init_metrics_table() ->
+    %% Every counter, gauge and histogram this node reports to prometheus,
+    %% keyed by metric name and labels.
+    ets:new(?MODULE, [public, named_table, set]).
+
+init_raw_table() ->
+    %% Counters reported by SDKs through app telemetry, kept apart because
+    %% they are scraped under the names the SDK sent, with no cm_ prefix.
+    ets:new(?RAW_TABLE, [public, named_table, set]).
+
+init_system_stats_table() ->
+    %% Deprecated, will be removed: the pre-prometheus @system counters and
+    %% histograms, still fed by the couchdb node and by our own timers.
     ets:new(ns_server_system_stats, [public, named_table, set]).
 
 handle_call(get_stats, _From, State) ->
