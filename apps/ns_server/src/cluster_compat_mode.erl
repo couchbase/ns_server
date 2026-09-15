@@ -90,7 +90,7 @@ search_cluster_capabilities(Version) ->
     end ++
     case is_enabled_at(Version, ?VERSION_TOTORO) of
         true ->
-            [scoreFusion];
+            [scoreFusion, udfQuery];
         false ->
             []
     end.

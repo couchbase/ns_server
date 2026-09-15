@@ -319,6 +319,40 @@ class IndexSettingsUpgradeChecks(UpgradeCheckSuite):
         assert sorted(mismatches) == sorted(expected)
 
 
+class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite):
+
+    def before_upgrade(self):
+        self.old_caps = testlib.get_succ(
+            self.old_node,
+            "/pools/default/nodeServices").json()["clusterCapabilities"]
+
+    def mixed_cluster_checks(self):
+        # Cluster compat mode doesn't advance until every node has been
+        # upgraded, so clusterCapabilities reported by either node must
+        # still match what was seen before the upgrade started.
+        for node in (self.old_node, self.new_node):
+            caps = testlib.get_succ(
+                node,
+                "/pools/default/nodeServices").json()["clusterCapabilities"]
+            assert caps == self.old_caps, \
+                f"clusterCapabilities changed on {node} in a mixed cluster: " \
+                f"{caps} vs {self.old_caps}"
+
+    def post_upgrade_checks(self):
+        new_caps = testlib.get_succ(
+            self.new_node,
+            "/pools/default/nodeServices").json()["clusterCapabilities"]
+
+        assert self.compare_json_keys(self.old_caps, new_caps) == []
+
+        n1ql_diff = self.diff_values_for_key("n1ql", self.old_caps, new_caps)
+        search_diff = self.diff_values_for_key("search", self.old_caps,
+                                               new_caps)
+        assert sorted(n1ql_diff) == sorted(['externalCollections',
+                                            'conversationalQuery'])
+        assert sorted(search_diff) == sorted(['scoreFusion', 'udfQuery'])
+
+
 class UpgradeChecks(testlib.BaseTestSet):
     """Drives upgrade check suites through a single upgrade cycle.
 
@@ -331,6 +365,7 @@ class UpgradeChecks(testlib.BaseTestSet):
         RbacRolesUpgradeChecks,
         RbacRoleChangesUpgradeChecks,
         IndexSettingsUpgradeChecks,
+        ClusterCapabilitiesUpgradeChecks,
         ExampleUpgradeChecks,
     ]
 
