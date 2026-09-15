@@ -42,12 +42,11 @@ ISSUER = "upgrade-test-issuer"
 AUDIENCE = "upgrade-test-audience"
 SUBJECT = "upgrade-test-subject"
 SECRET = "s" * 64
-GROUP = "jwt_upgrade_group"
 
 # Non-ASCII in the pattern is the point of the conversion. The pattern and the
 # token's group are utf8 bytes on both lines, so the rule matches before the
 # upgrade as well as after it.
-TOKEN_GROUP = "grün-" + GROUP
+GROUP_PREFIX = "grün-"
 GROUPS_MAP = "^grün-(.*)$ \\1"
 
 
@@ -95,10 +94,12 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
 
         # ro_admin covers the REST check. bucket_admin covers the memcached
         # check, which authenticates against the bucket.
+        group_path = f"/settings/rbac/groups/{self.name('group')}"
         testlib.put_succ(
-            self.old_node, f"/settings/rbac/groups/{GROUP}",
+            self.old_node, group_path,
             data={"roles": f"ro_admin,bucket_admin[{self.bucket_name}]",
                   "description": "JWT upgrade test group"})
+        self.delete_on_cleanup(group_path)
 
         testlib.put_succ(self.old_node, "/settings/jwt", json={
             "enabled": True,
@@ -115,6 +116,7 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
                 "groupsMaps": [GROUPS_MAP],
             }],
         })
+        self.delete_on_cleanup("/settings/jwt")
 
         self.assert_stored_shape(self.old_node, "is_list")
         self.assert_authenticates(self.old_node)
@@ -159,10 +161,6 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         testlib.assert_eq(issuer["groupsMaps"], [GROUPS_MAP],
                           name="groupsMaps")
 
-        testlib.ensure_deleted(self.new_node, "/settings/jwt")
-        testlib.ensure_deleted(self.new_node,
-                               f"/settings/rbac/groups/{GROUP}")
-
     # -------------------------------------------------------------------------
     # Helpers
     # -------------------------------------------------------------------------
@@ -176,7 +174,7 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         return jwt.encode({"iss": ISSUER,
                            "sub": SUBJECT,
                            "aud": AUDIENCE,
-                           "groups": [TOKEN_GROUP],
+                           "groups": [GROUP_PREFIX + self.name('group')],
                            "exp": int(time.time()) + 3600},
                           SECRET, algorithm="HS256")
 

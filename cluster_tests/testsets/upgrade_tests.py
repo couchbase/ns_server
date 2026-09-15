@@ -212,25 +212,32 @@ class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
     writes = frozenset({'rbac/users'})
 
     def before_upgrade(self):
-        pass
+        self.created = []
 
     def mixed_cluster_checks(self):
         # Users created on one version must be visible with identical roles
         # on the other version.
         def put_user(username, roles):
-            for node, suffix in [(self.old_node, 'old'), (self.new_node, 'new')]:
+            for node, suffix in [(self.old_node, 'old'),
+                                 (self.new_node, 'new')]:
+                user_id = self.name(f"{username}-{suffix}")
                 testlib.put_succ(
                     node,
-                    f"/settings/rbac/users/local/{username}-{suffix}",
+                    f"/settings/rbac/users/local/{user_id}",
                     data={'roles': roles, 'password': testlib.random_str(8)})
+                self.created.append(user_id)
+                self.delete_on_cleanup(
+                    f"/settings/rbac/users/local/{user_id}")
 
         def verify_cross_node_roles(username):
             on_old = testlib.get_succ(
                 self.old_node,
-                f"/settings/rbac/users/local/{username}-new").json()
+                f"/settings/rbac/users/local/"
+                f"{self.name(username + '-new')}").json()
             on_new = testlib.get_succ(
                 self.new_node,
-                f"/settings/rbac/users/local/{username}-old").json()
+                f"/settings/rbac/users/local/"
+                f"{self.name(username + '-old')}").json()
             assert (sorted(r['role'] for r in on_old['roles']) ==
                     sorted(r['role'] for r in on_new['roles']))
 
@@ -250,17 +257,21 @@ class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
             verify_cross_node_roles('securityAdmin')
             verify_cross_node_roles('localUserAdmin')
 
-        old_users = testlib.get_succ(self.old_node, "/settings/rbac/users").json()
-        new_users = testlib.get_succ(self.new_node, "/settings/rbac/users").json()
-        assert (sorted(u['id'] for u in old_users) ==
-                sorted(u['id'] for u in new_users))
-        self.user_ids = [u['id'] for u in old_users]
+        # Only this suite's own users: the listing is cluster-wide and shared
+        # with every other suite on this cluster.
+        assert (self._our_user_ids(self.old_node) ==
+                self._our_user_ids(self.new_node) ==
+                set(self.created))
+
+    def _our_user_ids(self, node):
+        users = testlib.get_succ(node, "/settings/rbac/users").json()
+        return {u['id'] for u in users if self.owns(u['id'])}
 
     def post_upgrade_checks(self):
         def verify_roles(username, expected_roles):
             r = testlib.get_succ(
                 self.new_node,
-                f"/settings/rbac/users/local/{username}").json()
+                f"/settings/rbac/users/local/{self.name(username)}").json()
             assert (sorted(item['role'] for item in r['roles']) ==
                     sorted(expected_roles))
 
@@ -286,11 +297,7 @@ class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
             raise AssertionError(
                 f"Unexpected prior_compat_mode: {self.prior_compat_mode!r}")
 
-        after = testlib.get_succ(self.new_node, "/settings/rbac/users").json()
-        assert sorted(u['id'] for u in after) == sorted(self.user_ids)
-        for user_id in self.user_ids:
-            testlib.ensure_deleted(self.new_node,
-                                   f"/settings/rbac/users/local/{user_id}")
+        assert self._our_user_ids(self.new_node) == set(self.created)
 
 
 class IndexSettingsUpgradeChecks(UpgradeCheckSuite):

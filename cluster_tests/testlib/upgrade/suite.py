@@ -17,6 +17,13 @@ feature. Suites are discovered, not registered.
     before_upgrade()        only the old version is present
     mixed_cluster_checks()  both versions are active
     post_upgrade_checks()   only the new version remains
+    cleanup()               at the end of the cycle, however it ended
+
+Suites share a cluster with the others they do not conflict with, so name
+anything you create through name(), filter any cluster-wide listing through
+owns(), and register the undo with delete_on_cleanup() or on_cleanup()
+rather than undoing it at the end of a hook -- a hook that fails never
+reaches its own last line.
 
 Each hook is reported as its own test, so a suite that fails one hook is
 skipped in its later ones while every other suite still reports its own
@@ -25,6 +32,8 @@ result.
 The cluster is reached through the properties below rather than through
 attributes the driver injects.
 """
+
+import testlib
 
 
 class UpgradeCheckSuite:
@@ -43,6 +52,7 @@ class UpgradeCheckSuite:
 
     def __init__(self, ctx):
         self._ctx = ctx
+        self._cleanups = []
 
     def __str__(self):
         return type(self).__name__
@@ -92,6 +102,40 @@ class UpgradeCheckSuite:
         assert nodes, f"[{self}] the cluster has no {which}-version node"
         return nodes[0]
 
+    # -- naming what you create ------------------------------------------
+
+    @property
+    def prefix(self):
+        """This suite's namespace.
+
+        Suites share a cluster, so everything a suite creates must be named
+        through name(), and any cluster-wide listing it asserts on must be
+        filtered through owns(). Otherwise a suite sees, and may delete,
+        another's data.
+        """
+        return f"ut_{type(self).__name__}_"
+
+    def name(self, suffix):
+        return f"{self.prefix}{suffix}"
+
+    def owns(self, name):
+        return name.startswith(self.prefix)
+
+    # -- undoing what you created ----------------------------------------
+
+    def on_cleanup(self, fn, description):
+        """Register something to undo at the end of the cycle."""
+        self._cleanups.append((fn, description))
+
+    def delete_on_cleanup(self, path):
+        """Register a DELETE for the end of the cycle.
+
+        Sent through the cluster, which picks a node that is still in it when
+        cleanup runs: the node this was created through may have left by then.
+        """
+        self.on_cleanup(lambda: testlib.ensure_deleted(self.cluster, path),
+                        f"DELETE {path}")
+
     # -- hooks: override the ones your checks need -----------------------
 
     def before_upgrade(self):
@@ -102,6 +146,23 @@ class UpgradeCheckSuite:
 
     def post_upgrade_checks(self):
         """Only the new version remains."""
+
+    def cleanup(self):
+        """Runs from the testset's teardown, so even after a hook failed or
+        was skipped.
+
+        The default drains the registry in reverse, attempting every entry
+        even if an earlier one fails, so one stuck deletion cannot leak the
+        rest. Override only for something the registry cannot express.
+        """
+        errors = []
+        for fn, description in reversed(self._cleanups):
+            try:
+                fn()
+            except Exception as e:
+                errors.append(f"{description}: {e}")
+        assert not errors, \
+            f"[{self}] cleanup failed:\n  " + "\n  ".join(errors)
 
     # -- helpers ---------------------------------------------------------
 

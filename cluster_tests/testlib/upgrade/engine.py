@@ -198,6 +198,19 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         # populated: that is now what marks the cluster as already upgraded.
         self.cluster.set_requirements(None)
 
+        # Every suite's cleanup, whatever happened to its hooks: a suite that
+        # failed may well have created something before it did. Here rather
+        # than as units of the cycle, since the harness can skip those but
+        # always runs teardown. Nothing reuses an upgrade cluster yet; this
+        # keeps it tidy for when something does.
+        errors = []
+        for suite in self.suites:
+            try:
+                suite.cleanup()
+            except Exception as e:
+                errors.append(str(e))
+        assert not errors, "\n".join(errors)
+
     # -- the cycle --------------------------------------------------------
 
     def _stages(self):
