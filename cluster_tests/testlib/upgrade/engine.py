@@ -7,24 +7,28 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-"""Runs one upgrade cycle and reports each suite's each hook separately.
+"""Plans the upgrade runs and reports each suite's each hook separately.
 
-The cycle itself is still fixed here -- start the replacement nodes, rebalance
-them in, rebalance the old ones out. What changes is that the checks are no
-longer a list this module holds: suites are discovered, and each hook of each
-suite becomes an ordinary generated test. So one suite failing no longer leaves
-every other suite without a verdict, and the report names the suite and the
-hook rather than just the driver.
+This module knows that an upgrade is a sequence of stages, that a transition
+moves the cluster and a callback asks the suites about it, and that each of
+those is worth reporting on its own. It does not know what any particular
+upgrade does: the stages come from a strategy, and strategies live in
+strategies/ where adding one needs no change here.
+
+What it does own is the planning. One cluster per (strategy, source version,
+group of suites that can share one), each generated as its own testset, so
+the harness builds one cluster for each and runs the cycle on it.
 """
 
-import collections
 import inspect
 import os
+import re
 import sys
 
 import testlib
 from testlib.requirements import UpgradeSpec
-from testlib.upgrade import versions
+from testlib.upgrade import strategies, versions
+from testlib.upgrade.strategy import CALLBACK, TRANSITION, UpgradeContext
 from testlib.upgrade.suite import UpgradeCheckSuite
 
 BUCKET_NAME = 'upgradeTestBucket'
@@ -35,11 +39,6 @@ HOST_MODULE = 'testsets.upgrade_tests'
 
 # Also selects every generated testset in --tests; see run.py.
 TESTSET_PREFIX = 'UpgradeChecks'
-
-Stage = collections.namedtuple('Stage', ['kind', 'name', 'fn'])
-
-CALLBACK = 'callback'
-TRANSITION = 'transition'
 
 
 def discover_suites():
@@ -121,89 +120,30 @@ def partition(suites):
     return groups
 
 
-def plan(source_versions=None, suites=None):
-    """[(from_version, group_index, [suite classes])] for the whole run.
+def plan(strategies_=None, source_versions=None, suites=None):
+    """[(strategy, from_version, group_index, [suite classes])] for the run.
 
-    A suite applies to a source version if it names that one, or names none
-    at all -- in which case it has to cope with whichever it is given.
+    Every combination of a strategy and a source version is a separate
+    upgrade, and each group within one needs its own cluster. A suite applies
+    to a source version if it names that one, or names none at all -- in
+    which case it has to cope with whichever it is given.
     """
+    strategies_ = strategies.selected() if strategies_ is None else strategies_
     source_versions = source_versions or versions.source_versions()
     suites = discover_suites() if suites is None else suites
 
     planned = []
-    for from_version in source_versions:
-        applicable = [s for s in suites
-                      if s.from_version in (None, from_version)]
-        for group_index, group in enumerate(partition(applicable)):
-            planned.append((from_version, group_index, group))
+    for strategy in strategies_:
+        for from_version in source_versions:
+            applicable = [s for s in suites
+                          if s.from_version in (None, from_version)]
+            for group_index, group in enumerate(partition(applicable)):
+                planned.append((strategy, from_version, group_index, group))
     return planned
 
 
-def cluster_compat_mode(cluster):
-    """The cluster's compat mode as a string, e.g. '8.0'."""
-    pools = testlib.get_succ(cluster, "/pools/default").json()
-    modes = set()
-    for node in pools["nodes"]:
-        compat = node["clusterCompatibility"]
-        modes.add(f"{compat >> 16}.{compat & 0xFFFF}")
-    assert len(modes) == 1, f"expected a single compat mode, got {modes}"
-    return modes.pop()
-
-
-def verify_cluster(cluster, mixed):
-    """Assert the cluster is healthy and return its compat mode.
-
-    With mixed=True exactly two node versions must be present, otherwise one.
-    """
-    pools = testlib.get_succ(cluster, "/pools/default").json()
-    # Carried by every assertion below rather than printed: what each node
-    # is running is the first thing wanted when one of these fails, and of
-    # no interest at all when they pass.
-    nodes = "\n  ".join(
-        f"{node['hostname']} version={node['version']} "
-        f"compat={node['clusterCompatibility'] >> 16}."
-        f"{node['clusterCompatibility'] & 0xFFFF} "
-        f"status={node['status']} membership={node['clusterMembership']}"
-        for node in pools["nodes"])
-
-    assert pools["balanced"], f"cluster is not balanced:\n  {nodes}"
-    for node in pools["nodes"]:
-        assert node["status"] == "healthy", \
-            f"{node['hostname']} is {node['status']}:\n  {nodes}"
-        assert node["clusterMembership"] == "active", \
-            f"{node['hostname']} is {node['clusterMembership']}:\n  {nodes}"
-
-    node_versions = {node["version"] for node in pools["nodes"]}
-    expected = 2 if mixed else 1
-    assert len(node_versions) == expected, \
-        f"expected {expected} node version(s), got " \
-        f"{sorted(node_versions)}:\n  {nodes}"
-    return cluster_compat_mode(cluster)
-
-
-class UpgradeContext:
-    """What the suites are given.
-
-    old_nodes are the cluster as it stands when the cycle starts. new_nodes is
-    empty until a transition starts replacement nodes and records them here,
-    so a suite asking for a new node before one exists gets a clear failure
-    rather than a stale answer.
-    """
-
-    def __init__(self, cluster, bucket_name):
-        self.cluster = cluster
-        self.bucket_name = bucket_name
-        self.old_nodes = list(cluster.connected_nodes)
-        self.new_nodes = []
-        self.prior_compat_mode = None
-
-    @property
-    def compat_mode(self):
-        return cluster_compat_mode(self.cluster)
-
-
 class UpgradeTestSetBase(testlib.BaseTestSet):
-    """Drives the cycle. Subclassed per generated testset."""
+    """Runs one strategy's cycle. Subclassed per generated testset."""
 
     _suite_classes = ()
 
@@ -212,10 +152,11 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         raise NotImplementedError("set by _make_testset")
 
     _from_version = None
+    _strategy = None
 
     def setup(self):
         self.ctx = UpgradeContext(self.cluster, BUCKET_NAME)
-        self.ctx.prior_compat_mode = verify_cluster(self.cluster, mixed=False)
+        self.ctx.prior_compat_mode = self.ctx.verify(mixed=False)
         # A cross-check: Upgrade.is_met has already refused any other cluster.
         assert self.ctx.prior_compat_mode == self._from_version, \
             f"cluster is at compat {self.ctx.prior_compat_mode}, expected " \
@@ -227,7 +168,8 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         # Set by a transition that fails, so the rest of the cycle is skipped
         # rather than reported as a pile of unrelated failures.
         self._cycle_aborted = None
-        print(f"upgrade from {self.ctx.prior_compat_mode}: "
+        print(f"{self._strategy} upgrade from "
+              f"{self.ctx.prior_compat_mode}: "
               f"{', '.join(str(s) for s in self.suites)}")
 
     def test_teardown(self):
@@ -259,45 +201,6 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
                 errors.append(str(e))
         assert not errors, "\n".join(errors)
 
-    # -- the cycle --------------------------------------------------------
-
-    def _stages(self):
-        return [Stage(CALLBACK, 'before_upgrade', None),
-                Stage(TRANSITION, 'add-new-nodes-and-rebalance-in',
-                      self._rebalance_in),
-                Stage(CALLBACK, 'mixed_cluster_checks', None),
-                Stage(TRANSITION, 'rebalance-out-old-nodes',
-                      self._rebalance_out),
-                Stage(CALLBACK, 'post_upgrade_checks', None)]
-
-    def _rebalance_in(self):
-        # The replacement nodes are started here, not when the cluster was
-        # built: it is this cycle that knows how many it needs and when.
-        self.ctx.new_nodes = self.cluster.start_new_version_nodes(
-            len(self.ctx.old_nodes))
-        # Join each new-version node with the same services as its
-        # corresponding old-version node, rather than relying on add_node's
-        # default (which would pick up the services of whichever connected
-        # node happens to handle the addNode request).
-        for old_node, new_node in zip(self.ctx.old_nodes, self.ctx.new_nodes):
-            self.cluster.add_node(new_node, services=old_node.get_services())
-        self.cluster.rebalance(wait=True)
-        verify_cluster(self.cluster, mixed=True)
-
-    def _rebalance_out(self):
-        self.cluster.rebalance(ejected_nodes=list(self.ctx.old_nodes),
-                               wait=True, verbose=True,
-                               node=self.ctx.new_nodes[0])
-        # The cluster's cached capability flags described the release it came
-        # from; they have to be resampled now it is on another one. Before the
-        # checks, so a failed one does not leave them stale for the next reuse
-        # check.
-        self.cluster.refresh_version_flags()
-        compat_mode = verify_cluster(self.cluster, mixed=False)
-        assert self.ctx.prior_compat_mode != compat_mode, \
-            f"Compat mode did not change after upgrade " \
-            f"(still {compat_mode!r})"
-
     # -- the cycle, as generated tests ------------------------------------
 
     def upgrade_test_gen(self):
@@ -311,7 +214,7 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
             assert name not in units, f"duplicate unit name {name!r}"
             units[name] = fn
 
-        for stage in self._stages():
+        for stage in self._strategy.stages():
             if stage.kind == TRANSITION:
                 add(f"transition:{stage.name}",
                     self._transition_unit(stage))
@@ -343,24 +246,30 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
                 raise testlib.TestNotRun(
                     f"cycle aborted at {self._cycle_aborted}")
             try:
-                stage.fn()
+                stage.fn(self.ctx)
             except Exception as e:
                 self._cycle_aborted = f"{stage.name} ({e!r})"
                 raise
         return run
 
 
-def testset_name(from_version, group_index):
-    return (f"{TESTSET_PREFIX}_from{from_version.replace('.', '')}"
+def testset_name(strategy, from_version, group_index):
+    # A testset name is a class name, so anything a strategy might have in
+    # its own name -- 'online-2to2' -- has to come out.
+    strategy_part = re.sub(r'[^0-9a-zA-Z]', '', str(strategy))
+    return (f"{TESTSET_PREFIX}_{strategy_part}"
+            f"_from{from_version.replace('.', '')}"
             f"_g{group_index}")
 
 
-def _make_testset(from_version, group_index, suite_classes):
-    spec = UpgradeSpec(from_version, group_index)
+def _make_testset(strategy, from_version, group_index, suite_classes):
+    spec = UpgradeSpec(str(strategy), from_version, group_index)
+    # The strategy says what shape of cluster its upgrade needs; everything
+    # else about the cluster is the same whichever upgrade is being tested.
+    shape = strategy.cluster_requirements()
 
-    def requirements(_spec=spec):
+    def requirements(_spec=spec, _shape=shape):
         return testlib.ClusterRequirements(
-            min_num_nodes=2,
             balanced=True,
             num_vbuckets=16,
             # Routes cluster.build_cluster through legacy_cluster so the
@@ -371,14 +280,16 @@ def _make_testset(from_version, group_index, suite_classes):
             buckets=[{"name": BUCKET_NAME,
                       "storageBackend": "couchstore",
                       "replicaNumber": 1,
-                      "ramQuota": 100}])
+                      "ramQuota": 100}],
+            **_shape)
 
-    name = testset_name(from_version, group_index)
+    name = testset_name(strategy, from_version, group_index)
     return name, type(name, (UpgradeTestSetBase,), {
         '_suite_classes': tuple(suite_classes),
         '_from_version': from_version,
+        '_strategy': strategy,
         '__module__': HOST_MODULE,
-        '__doc__': f"Upgrade checks from {from_version}: "
+        '__doc__': f"{strategy} upgrade from {from_version}: "
                    + ', '.join(c.__name__ for c in suite_classes),
         'requirements': staticmethod(requirements),
     })
@@ -387,9 +298,9 @@ def _make_testset(from_version, group_index, suite_classes):
 def install_testsets(verbose=True):
     """Generate the upgrade testsets and install them for discovery.
 
-    One per (source version, group of suites that can share a cluster). Must
-    run after the suites' modules are imported and before discover_testsets().
-    Returns the names installed.
+    One per (strategy, source version, group of suites that can share a
+    cluster). Must run after the suites' modules are imported and before
+    discover_testsets(). Returns the names installed.
     """
     planned = plan()
     if not planned:
@@ -400,8 +311,11 @@ def install_testsets(verbose=True):
         f"{HOST_MODULE} must be imported before installing upgrade testsets"
 
     names = []
-    for from_version, group_index, group in planned:
-        name, cls = _make_testset(from_version, group_index, group)
+    for strategy, from_version, group_index, group in planned:
+        name, cls = _make_testset(strategy, from_version, group_index, group)
+        # Two strategy names can differ only in what testset_name() strips.
+        if name in names:
+            raise ValueError(f"two upgrade testsets are named {name}")
         setattr(host, name, cls)
         names.append(name)
         if verbose:

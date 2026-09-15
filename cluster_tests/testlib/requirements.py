@@ -1050,18 +1050,21 @@ class DevPreview(Requirement):
 class UpgradeSpec:
     """Identifies one upgrade cycle.
 
-    The group index is part of the identity because two groups of suites are
-    two cycles, each needing its own cluster. Were their specs to compare
-    equal, the harness would put both testsets in one group, give the cluster
-    to the first and refuse the second.
+    The strategy and the group index are part of the identity, not just the
+    source version: two strategies are two upgrades, and two groups of suites
+    are two cycles, each needing its own cluster. Were any of those specs to
+    compare equal, the harness would put both testsets in one group, give the
+    cluster to the first and refuse the second.
     """
 
-    def __init__(self, from_version, group_index=0):
+    def __init__(self, strategy, from_version, group_index=0):
+        self.strategy = strategy
         self.from_version = from_version
         self.group_index = group_index
 
     def __str__(self):
-        return f"upgrade from {self.from_version}, group {self.group_index}"
+        return (f"{self.strategy} upgrade from {self.from_version}, "
+                f"group {self.group_index}")
 
     def __eq__(self, other):
         return isinstance(other, UpgradeSpec) and str(self) == str(other)

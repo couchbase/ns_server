@@ -227,6 +227,9 @@ Usage: {{program_name}}
         8.0. Example:
             --upgrade-from 7.6=/src/trinity/ns_server
             --upgrade-from 8.0=/src/morpheus/ns_server
+    [--upgrade-strategies <name>[,<name>...]]
+        Run only these kinds of upgrade. Every registered strategy is run by
+        default. Example: --upgrade-strategies online-2to2
     [--older-version=<older version number>]
     [--older-version-path=<path>]
         Deprecated aliases for a single --upgrade-from <version>=<path>, kept
@@ -577,6 +580,7 @@ def main():
                                            'diff-coverage-hide-uncovered',
                                            'exclude-services=',
                                            'upgrade-from=',
+                                           'upgrade-strategies=',
                                            'older-version=',
                                            'older-version-path='])
     except getopt.GetoptError as err:
@@ -610,6 +614,7 @@ def main():
     # Recorded in the loop, resolved after it, so the outcome does not depend
     # on the order the options were given in.
     upgrade_paths = {}
+    upgrade_strategies = None
     deprecated_older_version = None
     deprecated_older_version_path = None
     list_tests = False
@@ -735,6 +740,11 @@ def main():
                                                            into=upgrade_paths)
             except ValueError as e:
                 bad_args_exit(f"--upgrade-from: {e}")
+        elif o == '--upgrade-strategies':
+            try:
+                upgrade_strategies = upgrade.parse_strategies(a)
+            except ValueError as e:
+                bad_args_exit(f"--upgrade-strategies: {e}")
         elif o == '--older-version':
             deprecated_older_version = a
         elif o == '--older-version-path':
@@ -761,7 +771,12 @@ def main():
         except ValueError as e:
             bad_args_exit(f"--older-version/--older-version-path: {e}")
 
+    if upgrade_strategies is not None and not upgrade_paths:
+        bad_args_exit("'--upgrade-strategies' needs a source version to "
+                      "upgrade from; pass '--upgrade-from <version>=<path>'.")
+
     testlib.config['upgrade_paths'] = upgrade_paths
+    testlib.config['upgrade_strategies'] = upgrade_strategies
 
     if upgrade_paths:
         # Import the upgrade tests (only loaded when a source version was

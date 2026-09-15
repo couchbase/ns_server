@@ -7,6 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
+from testlib.upgrade.strategies import parse_strategies
 from testlib.upgrade.suite import UpgradeCheckSuite
 from testlib.upgrade.versions import (
     get_cluster_run_lib,
