@@ -18,6 +18,7 @@ why run.py imports it even though it defines no BaseTestSet of its own.
 """
 
 import testlib
+from testlib.upgrade.strategies.delta import DeltaRecoveryUpgradeSuite
 from testlib.upgrade.strategies.offline import OfflineUpgradeSuite
 from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
@@ -27,8 +28,10 @@ from testsets import example_upgrade_checks  # noqa: F401
 from testsets import jwt_upgrade_checks  # noqa: F401
 
 
-class _AlertsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
-                           OfflineUpgradeSuite):
+class _AlertsUpgradeChecks(UpgradeCheckSuite,
+                           OnlineUpgradeSuite,
+                           OfflineUpgradeSuite,
+                           DeltaRecoveryUpgradeSuite):
     """/settings/alerts across the upgrade."""
 
     reads = frozenset({'settings/alerts'})
@@ -103,8 +106,10 @@ class AlertsUpgradeChecksFrom76(_AlertsUpgradeChecks):
         'crl_unusable']
 
 
-class _BucketSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
-                                   OfflineUpgradeSuite):
+class _BucketSettingsUpgradeChecks(UpgradeCheckSuite,
+                                   OnlineUpgradeSuite,
+                                   OfflineUpgradeSuite,
+                                   DeltaRecoveryUpgradeSuite):
     """The test bucket's settings across the upgrade."""
 
     reads = frozenset({'bucket:shared'})
@@ -210,8 +215,10 @@ class BucketSettingsUpgradeChecksFrom76(_BucketSettingsUpgradeChecks):
         assert body == {'_': 'memcached buckets are no longer supported'}
 
 
-class _RbacRolesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
-                              OfflineUpgradeSuite):
+class _RbacRolesUpgradeChecks(UpgradeCheckSuite,
+                              OnlineUpgradeSuite,
+                              OfflineUpgradeSuite,
+                              DeltaRecoveryUpgradeSuite):
     """The set of defined roles across the upgrade."""
 
     reads = frozenset({'rbac/roles'})
@@ -258,13 +265,15 @@ class RbacRolesUpgradeChecksFrom76(_RbacRolesUpgradeChecks):
         'external_catalog_admin', 'external_catalog_reader']
 
 
-class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite,
+                                    OnlineUpgradeSuite,
+                                    DeltaRecoveryUpgradeSuite):
     """A user's roles across the upgrade, and across the version boundary.
 
-    Online only: the users are created in the mixed cluster, one copy from
+    Not offline: the users are created in the mixed cluster, one copy from
     each version, because half of what this checks is that the two versions
     agree about a user the other one created. An offline upgrade has no
-    mixed cluster to create them in.
+    mixed cluster to create them in; a delta-recovery one does.
     """
 
     reads = frozenset({'rbac/roles'})
@@ -372,8 +381,10 @@ class RbacRoleChangesUpgradeChecksFrom80(_RbacRoleChangesUpgradeChecks):
     }
 
 
-class _IndexSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
-                                  OfflineUpgradeSuite):
+class _IndexSettingsUpgradeChecks(UpgradeCheckSuite,
+                                  OnlineUpgradeSuite,
+                                  OfflineUpgradeSuite,
+                                  DeltaRecoveryUpgradeSuite):
     """/settings/indexes across the upgrade."""
 
     reads = frozenset({'settings/indexes'})
@@ -415,10 +426,10 @@ class IndexSettingsUpgradeChecksFrom76(_IndexSettingsUpgradeChecks):
 
 class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite,
                                        OnlineUpgradeSuite,
-                                       OfflineUpgradeSuite):
-    # The expected diff below is the one from 8.0.
-    from_version = '8.0'
-
+                                       OfflineUpgradeSuite,
+                                       DeltaRecoveryUpgradeSuite):
+    # No from_version: 7.6 and 8.0 differ from the version under test by the
+    # same capabilities.
     reads = frozenset({'pools/default/nodeServices'})
 
     def before_upgrade(self):

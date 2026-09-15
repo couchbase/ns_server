@@ -10,10 +10,10 @@
 """Offline upgrade: stop the whole cluster, bring it back on the new release.
 
 The nodes are upgraded in place -- the same data directories, different
-binaries -- so this is the only kind of upgrade that exercises
-ns_config_default:upgrade_config/1, the config ladder each node climbs as it
-boots on a release newer than the one that wrote its config. Coming from 7.6
-that means every rung from 7.2 up, in a single boot.
+binaries -- so each climbs ns_config_default:upgrade_config/1, the config
+ladder a node climbs as it boots on a release newer than the one that wrote
+its config. Coming from 7.6 that means every rung from 7.2 up, in a single
+boot, and all nodes at once.
 
 There is no mixed cluster at any point, and the interface says so by having
 no mixed callback: a suite running under this strategy is never asked a

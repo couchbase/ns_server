@@ -13,7 +13,7 @@ Example upgrade check suite — copy this file as a starting point.
 Steps to add a new check suite:
   1. Create a new file in testsets/ (or add a class to an existing one).
   2. Subclass UpgradeCheckSuite and the interface of each upgrade strategy
-     you want to be run by -- both of them here -- and implement every
+     you want to be run by -- all three here -- and implement every
      callback those interfaces declare. They need not declare the same
      ones: an offline upgrade has no mixed cluster, so it never asks.
   3. Nothing else: suites are discovered, not registered. A module run.py
@@ -46,13 +46,16 @@ Helper methods inherited from UpgradeCheckSuite:
 """
 
 import testlib
+from testlib.upgrade.strategies.delta import DeltaRecoveryUpgradeSuite
 from testlib.upgrade.strategies.offline import OfflineUpgradeSuite
 from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
 
 
-class ExampleUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
-                           OfflineUpgradeSuite):
+class ExampleUpgradeChecks(UpgradeCheckSuite,
+                           OnlineUpgradeSuite,
+                           OfflineUpgradeSuite,
+                           DeltaRecoveryUpgradeSuite):
     """Checks that /pools/default cluster name is preserved across upgrade."""
 
     reads = frozenset({'pools/default'})

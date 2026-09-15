@@ -11,9 +11,9 @@
 
 The cluster stays up throughout and never drops below its full complement of
 nodes: the replacements join first, so the mixed cluster is the original
-cluster plus the new nodes, and only then do the old ones leave. That makes it
-the one kind of upgrade where a suite can compare the two versions side by
-side, which is what mixed_cluster_checks is for.
+cluster plus the new nodes, and only then do the old ones leave. A suite can
+compare the two versions side by side there, which is what
+mixed_cluster_checks is for.
 """
 
 from abc import ABC, abstractmethod

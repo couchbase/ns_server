@@ -476,6 +476,29 @@ class Cluster:
 
         self.wait_for_nodes_to_be_healthy()
 
+    def upgrade_node_in_place(self, node):
+        """Stop one node and bring it back up on the version under test.
+
+        It keeps its data directory, so it comes back holding everything it
+        held before. That is what lets a node be delta-recovered after being
+        upgraded rather than having to resync from scratch.
+
+        The rest of the cluster stays up, so unlike the whole-cluster
+        version this does not wait for cluster-wide health: the node is
+        typically failed over while this runs, and the caller decides when
+        it rejoins.
+        """
+        assert not self.is_existing_cluster(), \
+            "Can't upgrade a node of a pre-existing cluster"
+
+        index = self._nodes.index(node)
+        self.stop_node(node)
+        # Set before starting, so a failure part-way leaves the version
+        # describing what was attempted rather than where we came from.
+        self.node_versions[index] = upgrade.CURRENT
+        self._start_nodes(upgrade.CURRENT, index, 1)
+        self.wait_for_web_service(node=node)
+
     def upgrade_all_nodes_in_place(self):
         """Stop every node and bring it back up on the version under test.
 
