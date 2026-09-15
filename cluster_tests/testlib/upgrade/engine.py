@@ -240,8 +240,9 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         # satisfies the upgrade requirement (whether or not it ran to
         # completion), so mark it as spent here rather than only on the success
         # path, ensuring it isn't handed to another testset expecting a fresh
-        # mixed-version cluster. Note new_version_nodes is deliberately left
-        # populated: that is now what marks the cluster as already upgraded.
+        # mixed-version cluster. Recorded on the cluster itself as well, since
+        # an in-place upgrade starts no new-version nodes to tell it by.
+        self.cluster.upgraded = True
         self.cluster.set_requirements(None)
 
         # Every suite's cleanup, whatever happened to its hooks: a suite that

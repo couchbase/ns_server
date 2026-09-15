@@ -35,6 +35,7 @@ import time
 
 import jwt
 import testlib
+from testlib.upgrade.strategies.offline import OfflineUpgradeSuite
 from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
 from testlib.util import Service
@@ -75,7 +76,8 @@ def shape_code(pred):
     )
 
 
-class JwtUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+class JwtUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
+                       OfflineUpgradeSuite):
     # JWT did not exist before 8.0, so there is no older format to carry.
     from_version = '8.0'
 

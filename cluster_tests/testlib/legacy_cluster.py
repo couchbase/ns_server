@@ -93,7 +93,11 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
 
         cluster = get_cluster(cluster_index, port, auth, processes, nodes,
                               start_args, address=address,
-                              protocol=disconnected_args['protocol'])
+                              protocol=disconnected_args['protocol'],
+                              # Every node here came from the older
+                              # release, so restarting one keeps it there
+                              # until something upgrades it on purpose.
+                              node_versions=[version] * num_nodes)
         add_cluster_to_auto_kill(cluster_index, processes, urls)
         return cluster, urls
     except Exception:

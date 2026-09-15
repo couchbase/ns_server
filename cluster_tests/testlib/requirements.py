@@ -1088,7 +1088,7 @@ class Upgrade(Requirement):
 
     def is_met(self, cluster):
         cluster_spec = getattr(cluster, 'upgrade_spec', None)
-        started = getattr(cluster, 'new_version_nodes', [])
+        upgraded = getattr(cluster, 'upgraded', False)
 
         if self.spec is None:
             return cluster_spec is None
@@ -1101,13 +1101,11 @@ class Upgrade(Requirement):
             print(f"Cluster was built for {cluster_spec}, not {self.spec}")
             return False
 
-        # Replacement nodes are not started when the cluster is built --
-        # whatever drives the upgrade starts them when it needs them. So their
-        # presence means this cluster has already been through an upgrade and
-        # cannot serve another.
-        if started:
-            print("New-version nodes have already been started into this "
-                  "cluster; it cannot be reused for another upgrade test")
+        # Set by the engine once a cycle has run on this cluster, however it
+        # ended, so it cannot serve another.
+        if upgraded:
+            print("This cluster has already been through an upgrade; it "
+                  "cannot be reused for another upgrade test")
             return False
 
         if not all(cluster.is_node_started(node) for node in cluster._nodes):

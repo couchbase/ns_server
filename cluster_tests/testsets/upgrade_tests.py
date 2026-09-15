@@ -18,6 +18,7 @@ why run.py imports it even though it defines no BaseTestSet of its own.
 """
 
 import testlib
+from testlib.upgrade.strategies.offline import OfflineUpgradeSuite
 from testlib.upgrade.strategies.online import OnlineUpgradeSuite
 from testlib.upgrade.suite import UpgradeCheckSuite
 # Imported for its side effect: the engine discovers suites in any module
@@ -26,7 +27,8 @@ from testsets import example_upgrade_checks  # noqa: F401
 from testsets import jwt_upgrade_checks  # noqa: F401
 
 
-class _AlertsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+class _AlertsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
+                           OfflineUpgradeSuite):
     """/settings/alerts across the upgrade."""
 
     reads = frozenset({'settings/alerts'})
@@ -101,7 +103,8 @@ class AlertsUpgradeChecksFrom76(_AlertsUpgradeChecks):
         'crl_unusable']
 
 
-class _BucketSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+class _BucketSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
+                                   OfflineUpgradeSuite):
     """The test bucket's settings across the upgrade."""
 
     reads = frozenset({'bucket:shared'})
@@ -207,7 +210,8 @@ class BucketSettingsUpgradeChecksFrom76(_BucketSettingsUpgradeChecks):
         assert body == {'_': 'memcached buckets are no longer supported'}
 
 
-class _RbacRolesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+class _RbacRolesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
+                              OfflineUpgradeSuite):
     """The set of defined roles across the upgrade."""
 
     reads = frozenset({'rbac/roles'})
@@ -255,7 +259,13 @@ class RbacRolesUpgradeChecksFrom76(_RbacRolesUpgradeChecks):
 
 
 class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
-    """A user's roles across the upgrade, and across the version boundary."""
+    """A user's roles across the upgrade, and across the version boundary.
+
+    Online only: the users are created in the mixed cluster, one copy from
+    each version, because half of what this checks is that the two versions
+    agree about a user the other one created. An offline upgrade has no
+    mixed cluster to create them in.
+    """
 
     reads = frozenset({'rbac/roles'})
     writes = frozenset({'rbac/users'})
@@ -362,7 +372,8 @@ class RbacRoleChangesUpgradeChecksFrom80(_RbacRoleChangesUpgradeChecks):
     }
 
 
-class _IndexSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite):
+class _IndexSettingsUpgradeChecks(UpgradeCheckSuite, OnlineUpgradeSuite,
+                                  OfflineUpgradeSuite):
     """/settings/indexes across the upgrade."""
 
     reads = frozenset({'settings/indexes'})
@@ -403,7 +414,8 @@ class IndexSettingsUpgradeChecksFrom76(_IndexSettingsUpgradeChecks):
 
 
 class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite,
-                                       OnlineUpgradeSuite):
+                                       OnlineUpgradeSuite,
+                                       OfflineUpgradeSuite):
     # The expected diff below is the one from 8.0.
     from_version = '8.0'
 

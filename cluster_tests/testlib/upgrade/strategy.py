@@ -143,6 +143,17 @@ class UpgradeContext:
     def verify(self, mixed):
         return verify_cluster(self.cluster, mixed)
 
+    def nodes_upgraded(self, nodes):
+        """Record that `nodes` now run the version under test.
+
+        An in-place upgrade has no separate replacement node to point at --
+        the nodes it upgraded are the nodes it started with -- so this is
+        how they come to answer new_nodes for the suites.
+        """
+        for node in nodes:
+            if node not in self.new_nodes:
+                self.new_nodes.append(node)
+
     def wait_for_compat_bump(self):
         """Wait for the compat mode to leave the version we upgraded from.
 

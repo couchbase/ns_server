@@ -10,6 +10,7 @@
 from testlib.upgrade.strategies import parse_strategies
 from testlib.upgrade.suite import UpgradeCheckSuite
 from testlib.upgrade.versions import (
+    CURRENT,
     get_cluster_run_lib,
     parse_upgrade_from,
 )

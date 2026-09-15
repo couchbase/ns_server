@@ -21,7 +21,7 @@ from urllib.error import URLError
 from copy import deepcopy
 
 import testlib
-from testlib import legacy_cluster
+from testlib import legacy_cluster, upgrade
 from testlib.util import services_to_strings, Service
 
 sys.path.append(testlib.get_pylib_dir())
@@ -169,8 +169,25 @@ def node_init(auth, num_nodes, start_index, protocol, hostname):
                      f"Status {r.status_code}, error: {r.text}")
 
 
+def _passwords_for_run(master_passwords, first_index, count):
+    """The master passwords covering one run of nodes, keyed for that run.
+
+    maybe_enter_master_passwords() reads the keys as offsets from the
+    start_index it was called with, so a run that does not begin at the
+    cluster's first node needs them re-keyed -- and needs only its own.
+    None rather than an empty dict when the run has none, so a run of nodes
+    without passwords is started exactly as it was before.
+    """
+    if not master_passwords:
+        return None
+    for_run = {index - first_index: password
+               for index, password in master_passwords.items()
+               if first_index <= index < first_index + count}
+    return for_run or None
+
+
 def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args,
-                address=None, protocol=None):
+                address=None, protocol=None, node_versions=None):
     connected_nodes = []
     for i, node in enumerate(nodes):
         pools_default = f"/pools/default"
@@ -216,14 +233,16 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args,
                       index=cluster_index,
                       start_args=start_args,
                       address=address,
-                      protocol=protocol)
+                      protocol=protocol,
+                      node_versions=node_versions)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
 
 
 class Cluster:
     def __init__(self, nodes, connected_nodes, first_node_index, processes,
-                 auth, index, start_args, address=None, protocol=None):
+                 auth, index, start_args, address=None, protocol=None,
+                 node_versions=None):
         self._nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
@@ -235,11 +254,21 @@ class Cluster:
         # Which upgrade cycle this cluster was built for, if any; set by
         # build_cluster.
         self.upgrade_spec = None
+        # Whether an upgrade cycle has run on this cluster; set by the engine.
+        self.upgraded = False
         # How to reach and initialise nodes started after the cluster was
         # built; decided by build_cluster.
         self.address = address
         self.protocol = protocol
         self.new_version_nodes = []
+        # Which release each node's processes came from, parallel to _nodes.
+        # upgrade.CURRENT means the checkout under test. Restarting a node
+        # has to use the same release it was started with, or the restart
+        # would silently upgrade it: what a node runs is decided by whose
+        # cluster_run_lib starts it, while its data directory is fixed by
+        # root_dir and start_index.
+        self.node_versions = list(node_versions) if node_versions \
+            else [upgrade.CURRENT] * len(nodes)
 
         self.refresh_version_flags()
 
@@ -373,6 +402,7 @@ class Cluster:
         # but do NOT join them.
         self._nodes.extend(nodes)
         self.new_version_nodes.extend(nodes)
+        self.node_versions.extend([upgrade.CURRENT] * count)
 
         remove_cluster_from_auto_kill(self.index)
         self.processes += processes
@@ -386,6 +416,51 @@ class Cluster:
         for node in self._nodes:
             self.stop_node(node)
 
+    def _start_nodes(self, version, first_index, count,
+                     master_passwords=None):
+        """Start `count` nodes at `first_index` from `version`'s binaries.
+
+        Which release a node runs is decided here, by whose cluster_run_lib
+        starts it. Its data comes from root_dir and start_index, which this
+        does not touch, so starting a node from a different release than
+        last time upgrades it in place.
+        """
+        lib = upgrade.get_cluster_run_lib(version)
+        start_args = {**deepcopy(self.start_args),
+                      'start_index': self.first_node_index + first_index,
+                      'num_nodes': count,
+                      'master_passwords': _passwords_for_run(
+                          master_passwords, first_index, count)}
+        # An older release's start_cluster may not take every argument this
+        # one does. This one's must take them all, so it is not filtered.
+        if version is not upgrade.CURRENT:
+            start_args = legacy_cluster.filter_to_supported_params(
+                lib.start_cluster, start_args)
+        processes = lib.start_cluster(**start_args)
+        assert len(processes) == count
+        # In place: atexit holds a reference to this exact list object.
+        for offset, process in enumerate(processes):
+            self.processes[first_index + offset] = process
+        return processes
+
+    def _version_runs(self):
+        """[(version, first index, count)] over maximal same-version runs.
+
+        start_cluster() takes a start index and a count, so it can only ever
+        start a contiguous block of nodes, all from the one release. A
+        cluster part-way through an upgrade has more than one release in it,
+        so restarting all of it means one call per run of nodes that share
+        a version.
+        """
+        runs = []
+        for index, version in enumerate(self.node_versions):
+            if runs and runs[-1][0] == version and \
+                    runs[-1][1] + runs[-1][2] == index:
+                runs[-1][2] += 1
+            else:
+                runs.append([version, index, 1])
+        return [tuple(run) for run in runs]
+
     def restart_all_nodes(self, master_passwords=None):
         assert not self.is_existing_cluster(), \
             "Can't restart pre-existing cluster"
@@ -394,15 +469,38 @@ class Cluster:
             if self.is_node_started(node):
                 self.stop_node(node)
 
-        # Not using start_node() here, as we want to start nodes in parallel
-        new_processes = cluster_run_lib.start_cluster(
-                          master_passwords=master_passwords, **self.start_args)
+        # Not using restart_node() here, as we want to start nodes in
+        # parallel -- which start_cluster() does, within one run.
+        for version, first_index, count in self._version_runs():
+            self._start_nodes(version, first_index, count, master_passwords)
 
-        # not replacing processes because atexit holds a reference to this
-        # list
-        for idx, node in enumerate(self._nodes):
-            self.processes[idx] = new_processes[idx]
+        self.wait_for_nodes_to_be_healthy()
 
+    def upgrade_all_nodes_in_place(self):
+        """Stop every node and bring it back up on the version under test.
+
+        This is what an offline upgrade is. The data directory is fixed by
+        root_dir and start_index, neither of which changes, while the
+        binaries come from whichever checkout's cluster_run_lib starts the
+        node -- so the nodes come back on the new release holding the old
+        release's config and data, and each climbs
+        ns_config_default:upgrade_config/1 as it boots.
+
+        The cluster is down for the duration, so the caller must keep this
+        inside a single reported test: the harness logs to every node
+        between tests and would report a pile of unrelated failures.
+        """
+        assert not self.is_existing_cluster(), \
+            "Can't upgrade a pre-existing cluster"
+
+        self.stop_all_nodes()
+        # Set before starting, so that a failure part-way leaves the versions
+        # describing what was attempted rather than the release we came from.
+        self.node_versions = [upgrade.CURRENT] * len(self._nodes)
+        for version, first_index, count in self._version_runs():
+            self._start_nodes(version, first_index, count)
+
+        self.wait_for_web_service()
         self.wait_for_nodes_to_be_healthy()
 
     def stop_node(self, node):
@@ -419,6 +517,8 @@ class Cluster:
         self.processes[idx] = None
 
     def restart_node(self, node, master_passwords=None):
+        # master_passwords is keyed by the node's index in the cluster, as
+        # for restart_all_nodes(), not from 0 for this node.
         assert not self.is_existing_cluster(), \
                "Can't restart a node on a pre-existing cluster"
 
@@ -427,13 +527,7 @@ class Cluster:
 
         print(f"Starting node {node}")
         idx = self._nodes.index(node)
-        start_args = deepcopy(self.start_args)
-        start_args['start_index'] = self.first_node_index + idx
-        start_args['num_nodes'] = 1
-        processes = cluster_run_lib.start_cluster(
-            master_passwords=master_passwords, **start_args)
-        assert len(processes) == 1
-        self.processes[idx] = processes[0]
+        self._start_nodes(self.node_versions[idx], idx, 1, master_passwords)
 
     def is_existing_cluster(self):
         return self.start_args is None

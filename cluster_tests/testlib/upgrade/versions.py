@@ -24,6 +24,10 @@ import os
 
 import testlib
 
+
+# Sentinel for "the checkout under test", as opposed to a source version.
+CURRENT = None
+
 # Source versions we know how to upgrade from. A version belongs here once
 # ns_config_default:upgrade_config/1 has a rung for its config_version.
 SUPPORTED_SOURCE_VERSIONS = ('7.6', '8.0')
@@ -77,7 +81,14 @@ def parse_upgrade_from(arg, into=None):
 
 
 def get_cluster_run_lib(version):
-    """The cluster_run_lib module whose binaries `version` should run."""
+    """The cluster_run_lib module whose binaries `version` should run.
+
+    CURRENT returns this checkout's module, i.e. the version under test.
+    """
+    if version is CURRENT:
+        import cluster_run_lib
+        return cluster_run_lib
+
     if version in _lib_cache:
         return _lib_cache[version]
 
