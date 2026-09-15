@@ -38,6 +38,11 @@ import testlib
 
 class UpgradeCheckSuite:
 
+    # The release this suite upgrades from, e.g. '8.0'. None means it applies
+    # to every source version the run was asked for, and so must cope with
+    # each of them itself.
+    from_version = None
+
     # What this suite touches, as opaque tags -- name the REST path by
     # convention ('settings/alerts', 'rbac/users'). The engine puts suites
     # that do not conflict on one cluster and one upgrade cycle, so declare

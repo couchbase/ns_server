@@ -787,11 +787,11 @@ class NumVbuckets(Requirement):
     def is_met(self, cluster):
         def get_default_num_vbuckets(bucket_type=None):
             # Checked against this cluster's actual version (rather than the
-            # global --older-version flag) so the check stays active for any
-            # cluster that does support the function -- including a fresh
-            # cluster used by an unrelated testset in the same run, and this
-            # same cluster once it's past the old-version-only phase of a
-            # mixed-version upgrade test.
+            # versions given with --upgrade-from) so the check stays active
+            # for any cluster that does support the function -- including a
+            # fresh cluster used by an unrelated testset in the same run, and
+            # this same cluster once it's past the old-version-only phase of
+            # a mixed-version upgrade test.
             if bucket_type is None:
                 # ns_bucket:get_default_num_vbuckets/1 (with a bucket-type
                 # arg) isn't supported pre-8.0 -- there's a single default
@@ -1056,11 +1056,12 @@ class UpgradeSpec:
     to the first and refuse the second.
     """
 
-    def __init__(self, group_index=0):
+    def __init__(self, from_version, group_index=0):
+        self.from_version = from_version
         self.group_index = group_index
 
     def __str__(self):
-        return f"upgrade, group {self.group_index}"
+        return f"upgrade from {self.from_version}, group {self.group_index}"
 
     def __eq__(self, other):
         return isinstance(other, UpgradeSpec) and str(self) == str(other)
@@ -1083,9 +1084,6 @@ class Upgrade(Requirement):
         return "not an upgrade" if self.spec is None else str(self.spec)
 
     def is_met(self, cluster):
-        # '--older-version'/'--older-version-path' are validated once, at
-        # argument-parsing time in run.py, since they describe how the test
-        # run was invoked rather than anything about this specific cluster.
         cluster_spec = getattr(cluster, 'upgrade_spec', None)
         started = getattr(cluster, 'new_version_nodes', [])
 
@@ -1114,15 +1112,14 @@ class Upgrade(Requirement):
                   "upgrade test")
             return False
 
-        older_version = testlib.config.get('older-version')
-        # The old-version nodes' compat mode (captured when the cluster was
-        # built) must still match --older-version.
+        # The nodes' compat mode (captured when the cluster was built) must
+        # still be the version this cycle upgrades from.
+        wanted = self.spec.from_version
         old_version_ok = {'7.6': cluster.is_76 and not cluster.is_80,
-                          '8.0': cluster.is_80}.get(older_version, False)
+                          '8.0': cluster.is_80}.get(wanted, False)
         if not old_version_ok:
-            print(f"Old-version nodes are not running the expected "
-                  f"'{older_version}' compat version; cluster cannot be "
-                  f"reused for an upgrade test")
+            print(f"Nodes are not running the expected '{wanted}' compat "
+                  f"version; cluster cannot be reused for an upgrade test")
             return False
 
         return True

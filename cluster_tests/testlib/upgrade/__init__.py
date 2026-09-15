@@ -8,3 +8,7 @@
 # licenses/APL2.txt.
 
 from testlib.upgrade.suite import UpgradeCheckSuite
+from testlib.upgrade.versions import (
+    get_cluster_run_lib,
+    parse_upgrade_from,
+)

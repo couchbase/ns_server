@@ -86,11 +86,10 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
         if upgrade_spec is not None:
             # Checked via the local flag rather than testlib.config so that
             # only tests that explicitly declare an upgrade in their
-            # ClusterRequirements take this path.  Checking
-            # testlib.config['older-version-path'] directly would route
-            # every cluster build through the legacy path whenever
-            # --older-version-path is supplied, including unrelated test
-            # suites.
+            # ClusterRequirements take this path. Keying off the configured
+            # checkout paths would route every cluster build through the
+            # legacy path whenever --upgrade-from is given, including
+            # unrelated testsets.
             # Create the cluster using nodes running the older release.
             # Only the old-release nodes are started here. Whatever runs the
             # upgrade asks for replacement nodes when it wants them, with
@@ -108,7 +107,8 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                     node_init=node_init,
                     add_cluster_to_auto_kill=add_cluster_to_auto_kill,
                     kill_nodes=kill_nodes,
-                    get_terminal_attrs=get_terminal_attrs)
+                    get_terminal_attrs=get_terminal_attrs,
+                    version=upgrade_spec.from_version)
             cluster.upgrade_spec = upgrade_spec
             return cluster
 
@@ -240,6 +240,18 @@ class Cluster:
         self.address = address
         self.protocol = protocol
         self.new_version_nodes = []
+
+        self.refresh_version_flags()
+
+    def refresh_version_flags(self):
+        """(Re-)read the cluster's capability flags.
+
+        They describe the cluster's compat mode, so they go stale the moment
+        it is upgraded. Anything that changes what the nodes are running has
+        to call this, or a later requirement check acts on the pre-upgrade
+        answer -- NumVbuckets.is_met branches on is_80 and would ask an
+        upgraded node for a function only the older release had.
+        """
 
         def get_bool(code):
             # We may be running these against an older release that doesn't

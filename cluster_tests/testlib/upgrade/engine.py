@@ -24,6 +24,7 @@ import sys
 
 import testlib
 from testlib.requirements import UpgradeSpec
+from testlib.upgrade import versions
 from testlib.upgrade.suite import UpgradeCheckSuite
 
 BUCKET_NAME = 'upgradeTestBucket'
@@ -95,6 +96,24 @@ def partition(suites):
         else:
             groups.append([suite])
     return groups
+
+
+def plan(source_versions=None, suites=None):
+    """[(from_version, group_index, [suite classes])] for the whole run.
+
+    A suite applies to a source version if it names that one, or names none
+    at all -- in which case it has to cope with whichever it is given.
+    """
+    source_versions = source_versions or versions.source_versions()
+    suites = discover_suites() if suites is None else suites
+
+    planned = []
+    for from_version in source_versions:
+        applicable = [s for s in suites
+                      if s.from_version in (None, from_version)]
+        for group_index, group in enumerate(partition(applicable)):
+            planned.append((from_version, group_index, group))
+    return planned
 
 
 def cluster_compat_mode(cluster):
@@ -169,9 +188,15 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
     def requirements():
         raise NotImplementedError("set by _make_testset")
 
+    _from_version = None
+
     def setup(self):
         self.ctx = UpgradeContext(self.cluster, BUCKET_NAME)
         self.ctx.prior_compat_mode = verify_cluster(self.cluster, mixed=False)
+        # A cross-check: Upgrade.is_met has already refused any other cluster.
+        assert self.ctx.prior_compat_mode == self._from_version, \
+            f"cluster is at compat {self.ctx.prior_compat_mode}, expected " \
+            f"{self._from_version}"
         self.suites = [cls(self.ctx) for cls in self._suite_classes]
         # A suite that failed one hook is skipped in its later ones: whatever
         # it meant to capture is not there.
@@ -240,6 +265,11 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         self.cluster.rebalance(ejected_nodes=list(self.ctx.old_nodes),
                                wait=True, verbose=True,
                                node=self.ctx.new_nodes[0])
+        # The cluster's cached capability flags described the release it came
+        # from; they have to be resampled now it is on another one. Before the
+        # checks, so a failed one does not leave them stale for the next reuse
+        # check.
+        self.cluster.refresh_version_flags()
         compat_mode = verify_cluster(self.cluster, mixed=False)
         assert self.ctx.prior_compat_mode != compat_mode, \
             f"Compat mode did not change after upgrade " \
@@ -297,8 +327,13 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         return run
 
 
-def _make_testset(group_index, suite_classes):
-    spec = UpgradeSpec(group_index)
+def testset_name(from_version, group_index):
+    return (f"{TESTSET_PREFIX}_from{from_version.replace('.', '')}"
+            f"_g{group_index}")
+
+
+def _make_testset(from_version, group_index, suite_classes):
+    spec = UpgradeSpec(from_version, group_index)
 
     def requirements(_spec=spec):
         return testlib.ClusterRequirements(
@@ -306,20 +341,21 @@ def _make_testset(group_index, suite_classes):
             balanced=True,
             num_vbuckets=16,
             # Routes cluster.build_cluster through legacy_cluster so the
-            # cluster starts on the older release's binaries. Requires
-            # --older-version-path to be supplied. Distinct specs are distinct
-            # requirements, which is what gives each group its own cluster.
+            # cluster starts on that release's binaries, from the checkout
+            # given for it with --upgrade-from. Distinct specs are distinct
+            # requirements, which is what gives each cycle its own cluster.
             upgrade=_spec,
             buckets=[{"name": BUCKET_NAME,
                       "storageBackend": "couchstore",
                       "replicaNumber": 1,
                       "ramQuota": 100}])
 
-    name = f"{TESTSET_PREFIX}_g{group_index}"
+    name = testset_name(from_version, group_index)
     return name, type(name, (UpgradeTestSetBase,), {
         '_suite_classes': tuple(suite_classes),
+        '_from_version': from_version,
         '__module__': HOST_MODULE,
-        '__doc__': "Upgrade checks: "
+        '__doc__': f"Upgrade checks from {from_version}: "
                    + ', '.join(c.__name__ for c in suite_classes),
         'requirements': staticmethod(requirements),
     })
@@ -328,12 +364,12 @@ def _make_testset(group_index, suite_classes):
 def install_testsets(verbose=True):
     """Generate the upgrade testsets and install them for discovery.
 
-    One per group of suites that can share a cluster. Must run after the
-    suites' modules are imported and before discover_testsets(). Returns the
-    names installed.
+    One per (source version, group of suites that can share a cluster). Must
+    run after the suites' modules are imported and before discover_testsets().
+    Returns the names installed.
     """
-    groups = partition(discover_suites())
-    if not groups:
+    planned = plan()
+    if not planned:
         return []
 
     host = sys.modules.get(HOST_MODULE)
@@ -341,8 +377,8 @@ def install_testsets(verbose=True):
         f"{HOST_MODULE} must be imported before installing upgrade testsets"
 
     names = []
-    for group_index, group in enumerate(groups):
-        name, cls = _make_testset(group_index, group)
+    for from_version, group_index, group in planned:
+        name, cls = _make_testset(from_version, group_index, group)
         setattr(host, name, cls)
         names.append(name)
         if verbose:

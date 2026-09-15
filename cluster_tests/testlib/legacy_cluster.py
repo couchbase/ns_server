@@ -10,12 +10,11 @@
 # This module is used to create a cluster running an older release to
 # be used in mixed-version and upgrade tests.
 
-import importlib.util
 import inspect
-import os
 from urllib.error import URLError
 
 import testlib
+from testlib import upgrade
 
 
 def get_node_urls(nodes):
@@ -38,24 +37,19 @@ def filter_to_supported_params(func, args):
     return filtered
 
 
-def get_legacy_cluster_run_lib():
-    path = testlib.config['older-version-path']
-    cluster_run_lib_path = f"{path}/pylib/cluster_run_lib.py"
-    if not os.path.exists(cluster_run_lib_path):
-        raise RuntimeError(
-            f"older-version-path {cluster_run_lib_path} not found")
+def get_legacy_cluster_run_lib(version):
+    """The cluster_run_lib providing `version`'s binaries.
 
-    spec = importlib.util.spec_from_file_location("legacy_cluster_run_lib",
-                                                  cluster_run_lib_path)
-    legacy_cluster_run_lib = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(legacy_cluster_run_lib)
-    return legacy_cluster_run_lib
+    The version is explicit because one run may cover several.
+    """
+    return upgrade.get_cluster_run_lib(version)
 
 
 def build_cluster(address, auth, cluster_index, start_args, connect,
                   connect_args, disconnected_args, get_cluster, node_init,
-                  add_cluster_to_auto_kill, kill_nodes, get_terminal_attrs):
-    legacy_cluster_run_lib = get_legacy_cluster_run_lib()
+                  add_cluster_to_auto_kill, kill_nodes, get_terminal_attrs,
+                  version):
+    legacy_cluster_run_lib = get_legacy_cluster_run_lib(version)
     # 'upgrade' is only a flag used to select this legacy build path;
     # it isn't a start_cluster()/connect() parameter, and it must not end up
     # stored on the resulting Cluster's start_args, or a later

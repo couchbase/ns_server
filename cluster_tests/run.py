@@ -42,6 +42,7 @@ from testlib import UnmetRequirementsError, TestError
 from testlib.cluster import InconsistentClusterError, StartClusterError
 from testlib import test_tag_decorator
 from testlib import diff_coverage
+from testlib import upgrade
 from testlib.util import Service, strings_to_services
 
 from testsets import \
@@ -219,9 +220,17 @@ Usage: {{program_name}}
         Skip all testsets whose requirements include any of the listed services.
         Services are specified by value: index, n1ql, fts, backup,
         eventing, cbas. Example: --exclude-services fts,cbas
+    [--upgrade-from <version>=<path>]
+        Test upgrades from <version>, whose binaries come from the checkout at
+        <path> (which must contain pylib/cluster_run_lib.py). May be repeated
+        to cover several source versions in one run. Supported versions: 7.6,
+        8.0. Example:
+            --upgrade-from 7.6=/src/trinity/ns_server
+            --upgrade-from 8.0=/src/morpheus/ns_server
     [--older-version=<older version number>]
     [--older-version-path=<path>]
-        Path to older version to test
+        Deprecated aliases for a single --upgrade-from <version>=<path>, kept
+        so existing invocations keep working.
     [--help]
         Show this help
 """
@@ -567,6 +576,7 @@ def main():
                                            'diff-coverage=',
                                            'diff-coverage-hide-uncovered',
                                            'exclude-services=',
+                                           'upgrade-from=',
                                            'older-version=',
                                            'older-version-path='])
     except getopt.GetoptError as err:
@@ -597,6 +607,12 @@ def main():
     diff_coverage_hide_uncovered = False
     diff_info = None
     diff_result = None
+    # Recorded in the loop, resolved after it, so the outcome does not depend
+    # on the order the options were given in.
+    upgrade_paths = {}
+    deprecated_older_version = None
+    deprecated_older_version_path = None
+    list_tests = False
 
     for o, a in optlist:
         if o in ('--cluster', '-c'):
@@ -709,48 +725,58 @@ def main():
         elif o == '--diff-coverage-hide-uncovered':
             diff_coverage_hide_uncovered = True
         elif o in ('--list', '-l'):
-            list_all_tests()
-            exit(0)
+            # Only recorded here: the listing has to happen once the upgrade
+            # options are resolved, or it would not see the testsets they
+            # bring into play.
+            list_tests = True
+        elif o == '--upgrade-from':
+            try:
+                upgrade_paths = upgrade.parse_upgrade_from(a,
+                                                           into=upgrade_paths)
+            except ValueError as e:
+                bad_args_exit(f"--upgrade-from: {e}")
         elif o == '--older-version':
-            if not a in ['7.6', '8.0']:
-                bad_args_exit("Must be one of: '7.6', '8.0'")
-            testlib.config['older-version'] = a
+            deprecated_older_version = a
         elif o == '--older-version-path':
-            testlib.config['older-version-path'] = a
+            deprecated_older_version_path = a
         elif o in ('--help', '-h'):
             usage()
             exit(0)
         else:
             assert False, f"unhandled options: {o}"
 
-    if ('older-version' in testlib.config) != \
-            ('older-version-path' in testlib.config):
-                bad_args_exit("Both or neither of '--older-version' and "
-                             "'--older-version-path' must be specified.")
-    if ('older-version-path' in testlib.config):
-        path = testlib.config['older-version-path']
-        cluster_run_lib_path = f"{path}/pylib/cluster_run_lib.py"
-        if not os.path.exists(cluster_run_lib_path):
-            bad_args_exit(f"Cannot access 'older-version-path' "
-                         f"{cluster_run_lib_path}")
-    if ('older-version' in testlib.config):
-        # Import upgrade tests (only loaded for mixed-version runs) and
-        # generate the testset that runs the check suites they define.
+    # Fold the deprecated options into the new one; they named a single
+    # source version.
+    if (deprecated_older_version is None) != \
+            (deprecated_older_version_path is None):
+        bad_args_exit("Both or neither of '--older-version' and "
+                      "'--older-version-path' must be specified.")
+    if deprecated_older_version is not None:
+        if upgrade_paths:
+            bad_args_exit("'--older-version' cannot be combined with "
+                          "'--upgrade-from'; use '--upgrade-from' alone.")
+        try:
+            upgrade_paths = upgrade.parse_upgrade_from(
+                f"{deprecated_older_version}={deprecated_older_version_path}")
+        except ValueError as e:
+            bad_args_exit(f"--older-version/--older-version-path: {e}")
+
+    testlib.config['upgrade_paths'] = upgrade_paths
+
+    if upgrade_paths:
+        # Import the upgrade tests (only loaded when a source version was
+        # named) and generate the testsets that run the suites they define.
         from testsets import upgrade_tests
         from testlib.upgrade import engine as upgrade_engine
         print("Generated upgrade testsets:")
         upgrade_testset_names = upgrade_engine.install_testsets()
+        if not upgrade_testset_names:
+            bad_args_exit("no upgrade check suites were found, so there is "
+                          "nothing to run.")
         if tests is None:
-            # Default to running all upgrade test classes when --older-version
-            # is specified without --tests
-            upgrade_test_names = [
-                name for name, cls in inspect.getmembers(upgrade_tests,
-                                                          inspect.isclass)
-                if issubclass(cls, testlib.BaseTestSet)
-                and cls is not testlib.BaseTestSet
-                and cls.__module__ == upgrade_tests.__name__
-            ]
-            tests = [(name, '*') for name in upgrade_test_names]
+            # Default to running just the upgrade testsets when a source
+            # version was named without --tests.
+            tests = [(name, '*') for name in upgrade_testset_names]
         else:
             # Before the suites were split into groups this was the name of
             # the one upgrade testset, so it still selects all of them.
@@ -758,6 +784,10 @@ def main():
                      for name in (upgrade_testset_names
                                   if testset == upgrade_engine.TESTSET_PREFIX
                                   else [testset])]
+
+    if list_tests:
+        list_all_tests()
+        exit(0)
 
     if ignore_unknown_tags:
         # Remove any unparsed tags
