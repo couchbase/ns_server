@@ -27,6 +27,8 @@ from testsets import jwt_upgrade_checks  # noqa: F401
 
 class AlertsUpgradeChecks(UpgradeCheckSuite):
 
+    reads = frozenset({'settings/alerts'})
+
     def before_upgrade(self):
         self.old_alerts = testlib.get_succ(self.old_node,
                                             "/settings/alerts").json()
@@ -86,6 +88,9 @@ class AlertsUpgradeChecks(UpgradeCheckSuite):
 
 
 class BucketSettingsUpgradeChecks(UpgradeCheckSuite):
+
+    reads = frozenset({'bucket:shared'})
+    writes = frozenset({'buckets'})
 
     def before_upgrade(self):
         path = f"/pools/default/buckets/{self.bucket_name}"
@@ -167,6 +172,8 @@ class BucketSettingsUpgradeChecks(UpgradeCheckSuite):
 
 class RbacRolesUpgradeChecks(UpgradeCheckSuite):
 
+    reads = frozenset({'rbac/roles'})
+
     def before_upgrade(self):
         self.old_roles = testlib.get_succ(self.old_node,
                                            "/settings/rbac/roles").json()
@@ -200,6 +207,9 @@ class RbacRolesUpgradeChecks(UpgradeCheckSuite):
 
 
 class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
+
+    reads = frozenset({'rbac/roles'})
+    writes = frozenset({'rbac/users'})
 
     def before_upgrade(self):
         pass
@@ -285,6 +295,8 @@ class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
 
 class IndexSettingsUpgradeChecks(UpgradeCheckSuite):
 
+    reads = frozenset({'settings/indexes'})
+
     def before_upgrade(self):
         self.old_index_settings = testlib.get_succ(
             self.old_node, "/settings/indexes").json()
@@ -311,6 +323,8 @@ class IndexSettingsUpgradeChecks(UpgradeCheckSuite):
 
 
 class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite):
+
+    reads = frozenset({'pools/default/nodeServices'})
 
     def before_upgrade(self):
         self.old_caps = testlib.get_succ(

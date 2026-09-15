@@ -738,7 +738,8 @@ def main():
         # generate the testset that runs the check suites they define.
         from testsets import upgrade_tests
         from testlib.upgrade import engine as upgrade_engine
-        upgrade_engine.install_testsets()
+        print("Generated upgrade testsets:")
+        upgrade_testset_names = upgrade_engine.install_testsets()
         if tests is None:
             # Default to running all upgrade test classes when --older-version
             # is specified without --tests
@@ -750,6 +751,13 @@ def main():
                 and cls.__module__ == upgrade_tests.__name__
             ]
             tests = [(name, '*') for name in upgrade_test_names]
+        else:
+            # Before the suites were split into groups this was the name of
+            # the one upgrade testset, so it still selects all of them.
+            tests = [(name, test) for testset, test in tests
+                     for name in (upgrade_testset_names
+                                  if testset == upgrade_engine.TESTSET_PREFIX
+                                  else [testset])]
 
     if ignore_unknown_tags:
         # Remove any unparsed tags

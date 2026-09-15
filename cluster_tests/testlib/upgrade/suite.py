@@ -29,6 +29,18 @@ attributes the driver injects.
 
 class UpgradeCheckSuite:
 
+    # What this suite touches, as opaque tags -- name the REST path by
+    # convention ('settings/alerts', 'rbac/users'). The engine puts suites
+    # that do not conflict on one cluster and one upgrade cycle, so declare
+    # these finely: a suite reading 'rbac/roles' and one writing 'rbac/users'
+    # can then share a cycle.
+    reads = frozenset()
+    writes = frozenset()
+
+    # Set on a suite that perturbs the whole cluster -- rebalances, fails a
+    # node over, restarts one. Such a suite gets a cluster to itself.
+    exclusive = False
+
     def __init__(self, ctx):
         self._ctx = ctx
 

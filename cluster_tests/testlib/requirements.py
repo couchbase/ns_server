@@ -31,7 +31,7 @@ class ClusterRequirements:
                  include_services=None, exclude_services=None,
                  master_password_state=None, num_vbuckets=None, encryption=None,
                  balanced=None, buckets=None, test_generated_cluster=None,
-                 dev_preview=None, mixed_version=None):
+                 dev_preview=None, upgrade=None):
 
         def maybe(ReqClass, *args):
             if all(x is None for x in args):
@@ -56,7 +56,7 @@ class ClusterRequirements:
                 'test_generated_cluster': maybe(TestGeneratedCluster,
                                                 test_generated_cluster),
                 'dev_preview': maybe(DevPreview, dev_preview),
-                'mixed_version': maybe(MixedVersion, mixed_version)
+                'upgrade': maybe(Upgrade, upgrade)
             }
 
     def __str__(self):
@@ -265,7 +265,7 @@ class ClusterRequirements:
                             ('buckets', Buckets),
                             ('test_generated_cluster', TestGeneratedCluster),
                             ('dev_preview', DevPreview),
-                            ('mixed_version', MixedVersion)]
+                            ('upgrade', Upgrade)]
         for req_name, req_class in generation_order:
             if self.requirements[req_name] is None:
                 new_req = req_class.random(req_dict)
@@ -1047,46 +1047,71 @@ class DevPreview(Requirement):
         return DevPreview(False)
 
 
-class MixedVersion(Requirement):
-    def __init__(self, enabled):
-        super().__init__(mixed_version=enabled)
-        self.enabled = enabled
-        self.start_args = {'mixed_version': enabled}
+class UpgradeSpec:
+    """Identifies one upgrade cycle.
+
+    The group index is part of the identity because two groups of suites are
+    two cycles, each needing its own cluster. Were their specs to compare
+    equal, the harness would put both testsets in one group, give the cluster
+    to the first and refuse the second.
+    """
+
+    def __init__(self, group_index=0):
+        self.group_index = group_index
 
     def __str__(self):
-        if self.enabled:
-            return "mixed version"
-        else:
-            return "not mixed version"
+        return f"upgrade, group {self.group_index}"
+
+    def __eq__(self, other):
+        return isinstance(other, UpgradeSpec) and str(self) == str(other)
+
+
+class Upgrade(Requirement):
+    """A cluster to run one upgrade cycle on, `spec` naming which cycle.
+
+    A spec of None is the absence of an upgrade.
+    """
+
+    def __init__(self, spec):
+        super().__init__(upgrade=spec)
+        self.spec = spec
+        # The spec object itself, not a description of it: build_cluster
+        # records it on the cluster and is_met() compares the two.
+        self.start_args = {'upgrade': spec}
+
+    def __str__(self):
+        return "not an upgrade" if self.spec is None else str(self.spec)
 
     def is_met(self, cluster):
         # '--older-version'/'--older-version-path' are validated once, at
         # argument-parsing time in run.py, since they describe how the test
         # run was invoked rather than anything about this specific cluster.
-        new_version_nodes = getattr(cluster, 'new_version_nodes', [])
-        mixed_version = getattr(cluster, 'mixed_version', False)
+        cluster_spec = getattr(cluster, 'upgrade_spec', None)
+        started = getattr(cluster, 'new_version_nodes', [])
 
-        if not self.enabled:
-            return not mixed_version
+        if self.spec is None:
+            return cluster_spec is None
 
-        if not mixed_version:
-            print("Cluster was not built on the older release; it cannot be "
-                  "used for a mixed-version upgrade test")
+        if cluster_spec is None:
+            print("Not an upgrade cluster")
             return False
 
-        # Replacement nodes are no longer started when the cluster is built
-        # -- whatever drives the upgrade starts them when it needs them. So
-        # their presence no longer means "ready"; it means this cluster has
-        # already been through an upgrade and cannot serve another.
-        if new_version_nodes:
+        if cluster_spec != self.spec:
+            print(f"Cluster was built for {cluster_spec}, not {self.spec}")
+            return False
+
+        # Replacement nodes are not started when the cluster is built --
+        # whatever drives the upgrade starts them when it needs them. So their
+        # presence means this cluster has already been through an upgrade and
+        # cannot serve another.
+        if started:
             print("New-version nodes have already been started into this "
-                  "cluster; it cannot be reused for a mixed-version upgrade "
-                  "test")
+                  "cluster; it cannot be reused for another upgrade test")
             return False
 
         if not all(cluster.is_node_started(node) for node in cluster._nodes):
-            print("Not every node is up; cluster cannot be reused for a "
-                  "mixed-version upgrade test")
+            print("Not every node is up; cluster cannot be reused for an "
+                  "upgrade test")
             return False
 
         older_version = testlib.config.get('older-version')
@@ -1097,7 +1122,7 @@ class MixedVersion(Requirement):
         if not old_version_ok:
             print(f"Old-version nodes are not running the expected "
                   f"'{older_version}' compat version; cluster cannot be "
-                  f"reused for a mixed-version upgrade test")
+                  f"reused for an upgrade test")
             return False
 
         return True
@@ -1107,4 +1132,4 @@ class MixedVersion(Requirement):
 
     @staticmethod
     def random(req_dict):
-        return MixedVersion(False)
+        return Upgrade(None)

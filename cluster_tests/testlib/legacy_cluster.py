@@ -56,12 +56,12 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                   connect_args, disconnected_args, get_cluster, node_init,
                   add_cluster_to_auto_kill, kill_nodes, get_terminal_attrs):
     legacy_cluster_run_lib = get_legacy_cluster_run_lib()
-    # 'mixed_version' is only a flag used to select this legacy build path;
+    # 'upgrade' is only a flag used to select this legacy build path;
     # it isn't a start_cluster()/connect() parameter, and it must not end up
     # stored on the resulting Cluster's start_args, or a later
     # restart_node()/restart_all_nodes() call would pass it on to
     # cluster_run_lib.start_cluster() and fail.
-    start_args.pop('mixed_version', None)
+    start_args.pop('upgrade', None)
     port = legacy_cluster_run_lib.base_api_port + start_args['start_index']
     num_nodes = start_args['num_nodes']
     nodes = [testlib.Node(host=address,

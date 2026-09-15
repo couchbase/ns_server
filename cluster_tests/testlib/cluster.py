@@ -77,15 +77,15 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                   connect_args, disconnected_args):
     processes = []
     urls = []
-    # Pop 'mixed_version' up front, whether or not it's truthy: it isn't a
+    # Pop 'upgrade' up front, whether or not it's set: it isn't a
     # cluster_run_lib.start_cluster() parameter, and left in start_args it
     # would reach that call in the non-legacy branch below and raise
     # TypeError.
-    mixed_version = start_args.pop('mixed_version', False)
+    upgrade_spec = start_args.pop('upgrade', None)
     try:
-        if mixed_version:
+        if upgrade_spec is not None:
             # Checked via the local flag rather than testlib.config so that
-            # only tests that explicitly declare mixed_version=True in their
+            # only tests that explicitly declare an upgrade in their
             # ClusterRequirements take this path.  Checking
             # testlib.config['older-version-path'] directly would route
             # every cluster build through the legacy path whenever
@@ -109,7 +109,7 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                     add_cluster_to_auto_kill=add_cluster_to_auto_kill,
                     kill_nodes=kill_nodes,
                     get_terminal_attrs=get_terminal_attrs)
-            cluster.mixed_version = True
+            cluster.upgrade_spec = upgrade_spec
             return cluster
 
         port = cluster_run_lib.base_api_port + start_args['start_index']
@@ -232,9 +232,9 @@ class Cluster:
         self.auth = auth
         self.requirements = None
         self.start_args = start_args
-        # Whether this cluster was built on the older release; set by
+        # Which upgrade cycle this cluster was built for, if any; set by
         # build_cluster.
-        self.mixed_version = False
+        self.upgrade_spec = None
         # How to reach and initialise nodes started after the cluster was
         # built; decided by build_cluster.
         self.address = address

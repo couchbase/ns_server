@@ -23,6 +23,7 @@ import os
 import sys
 
 import testlib
+from testlib.requirements import UpgradeSpec
 from testlib.upgrade.suite import UpgradeCheckSuite
 
 BUCKET_NAME = 'upgradeTestBucket'
@@ -31,8 +32,8 @@ BUCKET_NAME = 'upgradeTestBucket'
 # cluster_tests/testsets, since that is what discover_testsets() looks at.
 HOST_MODULE = 'testsets.upgrade_tests'
 
-# Kept as it was, so --tests UpgradeChecks still selects the upgrade tests.
-TESTSET_NAME = 'UpgradeChecks'
+# Also selects every generated testset in --tests; see run.py.
+TESTSET_PREFIX = 'UpgradeChecks'
 
 Stage = collections.namedtuple('Stage', ['kind', 'name', 'fn'])
 
@@ -63,6 +64,37 @@ def discover_suites():
                 continue        # a re-export, not a definition
             found[(cls.__module__, name)] = cls
     return [found[key] for key in sorted(found)]
+
+
+def conflicts(a, b):
+    """Whether two suites would tread on each other sharing a cluster.
+
+    Ordinary reader/writer rules over the tags: two readers of the same thing
+    are fine, a writer and anyone else are not. A suite marked exclusive
+    conflicts with everything.
+    """
+    if a.exclusive or b.exclusive:
+        return True
+    return bool((a.writes & b.writes) or (a.writes & b.reads) or
+                (a.reads & b.writes))
+
+
+def partition(suites):
+    """Split suites into groups that can each share one cluster.
+
+    Greedy first fit over suites in discovery order. Neither minimal nor
+    stable: a new suite can move others to another group, so a group index
+    means nothing across runs -- the testset's docstring lists its suites.
+    """
+    groups = []
+    for suite in suites:
+        for group in groups:
+            if all(not conflicts(suite, other) for other in group):
+                group.append(suite)
+                break
+        else:
+            groups.append([suite])
+    return groups
 
 
 def cluster_compat_mode(cluster):
@@ -135,18 +167,7 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
 
     @staticmethod
     def requirements():
-        return testlib.ClusterRequirements(
-            min_num_nodes=2,
-            balanced=True,
-            num_vbuckets=16,
-            # Puts mixed_version=True into start_args so that
-            # cluster.build_cluster routes through legacy_cluster to start
-            # old-version nodes.  Requires --older-version-path to be supplied.
-            mixed_version=True,
-            buckets=[{"name": BUCKET_NAME,
-                      "storageBackend": "couchstore",
-                      "replicaNumber": 1,
-                      "ramQuota": 100}])
+        raise NotImplementedError("set by _make_testset")
 
     def setup(self):
         self.ctx = UpgradeContext(self.cluster, BUCKET_NAME)
@@ -170,7 +191,7 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         # is_met() assumes a cluster still satisfies its requirements once a
         # testset has finished, so that the cluster can be reused by a later
         # testset. The cycle leaves the cluster in a state that no longer
-        # satisfies the mixed_version requirement (whether or not it ran to
+        # satisfies the upgrade requirement (whether or not it ran to
         # completion), so mark it as spent here rather than only on the success
         # path, ensuring it isn't handed to another testset expecting a fresh
         # mixed-version cluster. Note new_version_nodes is deliberately left
@@ -263,25 +284,54 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         return run
 
 
-def install_testsets():
-    """Generate the upgrade testset and install it for discovery.
+def _make_testset(group_index, suite_classes):
+    spec = UpgradeSpec(group_index)
 
-    Must run after the suites' modules are imported and before
-    discover_testsets(). Returns the names installed.
+    def requirements(_spec=spec):
+        return testlib.ClusterRequirements(
+            min_num_nodes=2,
+            balanced=True,
+            num_vbuckets=16,
+            # Routes cluster.build_cluster through legacy_cluster so the
+            # cluster starts on the older release's binaries. Requires
+            # --older-version-path to be supplied. Distinct specs are distinct
+            # requirements, which is what gives each group its own cluster.
+            upgrade=_spec,
+            buckets=[{"name": BUCKET_NAME,
+                      "storageBackend": "couchstore",
+                      "replicaNumber": 1,
+                      "ramQuota": 100}])
+
+    name = f"{TESTSET_PREFIX}_g{group_index}"
+    return name, type(name, (UpgradeTestSetBase,), {
+        '_suite_classes': tuple(suite_classes),
+        '__module__': HOST_MODULE,
+        '__doc__': "Upgrade checks: "
+                   + ', '.join(c.__name__ for c in suite_classes),
+        'requirements': staticmethod(requirements),
+    })
+
+
+def install_testsets(verbose=True):
+    """Generate the upgrade testsets and install them for discovery.
+
+    One per group of suites that can share a cluster. Must run after the
+    suites' modules are imported and before discover_testsets(). Returns the
+    names installed.
     """
-    suites = discover_suites()
-    if not suites:
+    groups = partition(discover_suites())
+    if not groups:
         return []
 
     host = sys.modules.get(HOST_MODULE)
     assert host is not None, \
         f"{HOST_MODULE} must be imported before installing upgrade testsets"
 
-    cls = type(TESTSET_NAME, (UpgradeTestSetBase,), {
-        '_suite_classes': tuple(suites),
-        '__module__': HOST_MODULE,
-        '__doc__': "Upgrade checks: "
-                   + ', '.join(c.__name__ for c in suites),
-    })
-    setattr(host, TESTSET_NAME, cls)
-    return [TESTSET_NAME]
+    names = []
+    for group_index, group in enumerate(groups):
+        name, cls = _make_testset(group_index, group)
+        setattr(host, name, cls)
+        names.append(name)
+        if verbose:
+            print(f"  {name}: " + ', '.join(c.__name__ for c in group))
+    return names

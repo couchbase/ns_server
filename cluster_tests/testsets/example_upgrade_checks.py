@@ -47,6 +47,8 @@ from testlib.upgrade.suite import UpgradeCheckSuite
 class ExampleUpgradeChecks(UpgradeCheckSuite):
     """Checks that /pools/default cluster name is preserved across upgrade."""
 
+    reads = frozenset({'pools/default'})
+
     # ------------------------------------------------------------------
     # Phase 1: old-version-only cluster
     # ------------------------------------------------------------------

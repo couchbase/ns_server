@@ -77,6 +77,9 @@ def shape_code(pred):
 
 class JwtUpgradeChecks(UpgradeCheckSuite):
 
+    reads = frozenset({'bucket:shared'})
+    writes = frozenset({'settings/jwt', 'rbac/groups'})
+
     def before_upgrade(self):
         # JWT did not exist before 8.0, so there is no older format to carry.
         self.applicable = self.compat_mode == '8.0'
