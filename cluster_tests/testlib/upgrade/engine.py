@@ -352,22 +352,26 @@ def _make_testset(strategy, from_version, group_index, suite_classes):
     })
 
 
-def install_testsets(verbose=True):
+def install_testsets(verbose=True, suite_names=None):
     """Generate the upgrade testsets and install them for discovery.
 
     One per (strategy, source version, group of suites that can share a
-    cluster). Must run after the suites' modules are imported and before
-    discover_testsets(). Returns the names installed.
+    cluster), built from the suites named in `suite_names`, or from every
+    suite if that is None. Must run after the suites' modules are imported
+    and before discover_testsets(). Returns the names installed.
     """
-    orphans = unclaimed_suites()
-    if orphans and verbose:
+    suites = discover_suites()
+    orphans = unclaimed_suites(suites=suites)
+    if orphans:
         print(testlib.yellow(
             "  WARNING: no strategy runs " +
             ", ".join(s.__name__ for s in orphans) +
             " -- a suite is run only by the strategies whose interface it "
             "inherits"))
 
-    planned = plan()
+    if suite_names is not None:
+        suites = [s for s in suites if s.__name__ in suite_names]
+    planned = plan(suites=suites)
     if not planned:
         return []
 

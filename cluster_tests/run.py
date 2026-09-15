@@ -131,7 +131,10 @@ Usage: {{program_name}}
         connected nodes. Only used with --cluster | -c
     [--tests | -t <test_spec>[, <test_spec> ...]]
         <test_spec> := <test_class>[.test_name]
-        Start only specified tests
+        Start only specified tests. With '--upgrade-from', <test_class> may
+        also be UpgradeChecks, for every upgrade testset, or an upgrade check
+        suite such as AlertsUpgradeChecksFrom76, for the upgrade testsets
+        built from that suite alone.
     [--list | -l]
         List all available tests and exit
     [--with-tags <tag>[, <tag> ...]
@@ -230,10 +233,16 @@ Usage: {{program_name}}
     [--upgrade-strategies <name>[,<name>...]]
         Run only these kinds of upgrade. Every registered strategy is run by
         default. Example: --upgrade-strategies online-2to2
+    [--upgrade-only]
+        Run only the generated upgrade testsets, skipping every other one.
+        Without this or '--tests', the upgrade testsets run along with every
+        other testset; with '--tests', only what it names runs. They get
+        their own clusters either way.
     [--older-version=<older version number>]
     [--older-version-path=<path>]
         Deprecated aliases for a single --upgrade-from <version>=<path>, kept
-        so existing invocations keep working.
+        so existing invocations keep working: without '--tests' they imply
+        '--upgrade-only', as before.
     [--help]
         Show this help
 """
@@ -260,16 +269,54 @@ def warning_exit(msg):
     sys.exit(3)
 
 
-def list_all_tests():
+def list_all_tests(upgrades_enabled, upgrade_error=None):
     testsets = discover_testsets()
     # Sort testsets alphabetically
     testsets.sort(key=lambda x: x[0])
     print("Available testsets and tests:")
-    for name, _, tests, _ in testsets:
-        tests.sort()
+    for name, testset, tests, _ in testsets:
         print(f"\n{name}:")
+        # A generated upgrade testset makes its tests only when it runs, so
+        # list the suites it is built from instead.
+        suites = getattr(testset, '_suite_classes', None)
+        if suites is not None:
+            print(f"  suites: {', '.join(s.__name__ for s in suites)}")
+            continue
+        tests.sort()
         for test in tests:
             print(f"  - {test}")
+
+    # A broken upgrade suite costs only the upgrade entries: everything
+    # else is listed, and the warning says why they are missing.
+    if upgrade_error is None:
+        try:
+            prefix, *suites = upgrade_selectors()
+        except ValueError as e:
+            upgrade_error = str(e)
+    if upgrade_error is not None:
+        print(testlib.yellow(f"\nWARNING: the upgrade testsets and suites "
+                             f"cannot be listed: {upgrade_error}"))
+        return
+    needs = "" if upgrades_enabled else " (with --upgrade-from only)"
+    print(f"\n{prefix}{needs}:")
+    print("  every upgrade testset")
+    print(f"\nUpgrade check suites{needs}, each selecting the upgrade testsets "
+          f"built from it alone:")
+    for suite in suites:
+        print(f"  - {suite}")
+
+
+def upgrade_selectors():
+    """What --tests accepts for upgrades besides the generated testsets:
+    UpgradeChecks, for all of them, then each suite's name.
+
+    Imports and checks every upgrade suite, and raises ValueError if one is
+    broken, so call it only when the upgrade names are actually needed.
+    """
+    from testsets import upgrade_tests  # noqa: F401 -- defines the suites
+    from testlib.upgrade import engine as upgrade_engine
+    suites = upgrade_engine.discover_suites()
+    return [upgrade_engine.TESTSET_PREFIX] + [s.__name__ for s in suites]
 
 
 def scan_modules_for_coverage():
@@ -581,6 +628,7 @@ def main():
                                            'exclude-services=',
                                            'upgrade-from=',
                                            'upgrade-strategies=',
+                                           'upgrade-only',
                                            'older-version=',
                                            'older-version-path='])
     except getopt.GetoptError as err:
@@ -615,6 +663,7 @@ def main():
     # on the order the options were given in.
     upgrade_paths = {}
     upgrade_strategies = None
+    upgrade_only = False
     deprecated_older_version = None
     deprecated_older_version_path = None
     list_tests = False
@@ -745,6 +794,8 @@ def main():
                 upgrade_strategies = upgrade.parse_strategies(a)
             except ValueError as e:
                 bad_args_exit(f"--upgrade-strategies: {e}")
+        elif o == '--upgrade-only':
+            upgrade_only = True
         elif o == '--older-version':
             deprecated_older_version = a
         elif o == '--older-version-path':
@@ -771,6 +822,14 @@ def main():
         except ValueError as e:
             bad_args_exit(f"--older-version/--older-version-path: {e}")
 
+    if upgrade_only and not upgrade_paths:
+        bad_args_exit("'--upgrade-only' needs a source version to upgrade "
+                      "from; pass '--upgrade-from <version>=<path>'.")
+    if upgrade_only and tests is not None:
+        bad_args_exit("'--upgrade-only' cannot be combined with '--tests': "
+                      "'--upgrade-only' runs the upgrade testsets and "
+                      "nothing else, while '--tests' asks for others too. "
+                      "Drop whichever you did not mean.")
     if upgrade_strategies is not None and not upgrade_paths:
         bad_args_exit("'--upgrade-strategies' needs a source version to "
                       "upgrade from; pass '--upgrade-from <version>=<path>'.")
@@ -778,33 +837,77 @@ def main():
     testlib.config['upgrade_paths'] = upgrade_paths
     testlib.config['upgrade_strategies'] = upgrade_strategies
 
+    # Set when the upgrade testsets cannot be generated and --list goes on
+    # without them.
+    upgrade_error = None
     if upgrade_paths:
         # Import the upgrade tests (only loaded when a source version was
         # named) and generate the testsets that run the suites they define.
         from testsets import upgrade_tests
         from testlib.upgrade import engine as upgrade_engine
-        print("Generated upgrade testsets:")
+        # '--tests' runs exactly what it names, which for upgrades may be
+        # UpgradeChecks -- before the suites were split into groups, the name
+        # of the one upgrade testset, so it still stands for all of them --
+        # or suites, which get testsets built from them alone.
+        named_suites = None
+        wants_upgrades = False
         try:
-            upgrade_testset_names = upgrade_engine.install_testsets()
+            if tests is not None:
+                suites = {s.__name__ for s in upgrade_engine.discover_suites()}
+                wants_all = any(testset == upgrade_engine.TESTSET_PREFIX
+                                for testset, _ in tests)
+                named = {testset for testset, _ in tests if testset in suites}
+                for testset, test in tests:
+                    if testset in named and test != '*':
+                        bad_args_exit(
+                            f"'{testset}.{test}': a suite's hooks only run "
+                            f"as part of its upgrade cycle; name the suite "
+                            f"alone.")
+                generated = [testset for testset, _ in tests
+                             if testset.startswith(
+                                 f"{upgrade_engine.TESTSET_PREFIX}_")]
+                if named and generated:
+                    bad_args_exit(
+                        f"'{generated[0]}' and '{sorted(named)[0]}': name "
+                        f"either upgrade check suites or generated upgrade "
+                        f"testsets, not both. Naming a suite changes which "
+                        f"testsets are generated.")
+                wants_upgrades = wants_all or bool(named)
+                if named and not wants_all:
+                    named_suites = named
+                tests = [(testset, test) for testset, test in tests
+                         if testset != upgrade_engine.TESTSET_PREFIX
+                         and testset not in suites]
+            if testlib.config['verbose']:
+                print("Generated upgrade testsets:")
+            upgrade_testset_names = upgrade_engine.install_testsets(
+                verbose=testlib.config['verbose'], suite_names=named_suites)
         except ValueError as e:
-            bad_args_exit(str(e))
-        if not upgrade_testset_names:
-            bad_args_exit("no upgrade check suites were found, so there is "
+            if not list_tests:
+                bad_args_exit(str(e))
+            upgrade_error = str(e)
+            upgrade_testset_names = []
+        if not upgrade_testset_names and upgrade_error is None:
+            bad_args_exit("no upgrade check suite applies to the source "
+                          "versions and strategies given, so there is "
                           "nothing to run.")
-        if tests is None:
-            # Default to running just the upgrade testsets when a source
-            # version was named without --tests.
+        if upgrade_only or \
+                (tests is None and deprecated_older_version is not None):
             tests = [(name, '*') for name in upgrade_testset_names]
-        else:
-            # Before the suites were split into groups this was the name of
-            # the one upgrade testset, so it still selects all of them.
-            tests = [(name, test) for testset, test in tests
-                     for name in (upgrade_testset_names
-                                  if testset == upgrade_engine.TESTSET_PREFIX
-                                  else [testset])]
+        elif wants_upgrades:
+            already_named = {name for name, _ in tests}
+            tests += [(name, '*') for name in upgrade_testset_names
+                      if name not in already_named]
+        # Given --upgrade-from and neither option, the upgrade testsets need
+        # no help: they are discovered along with every other testset.
+        #
+        # However they get into the run, they cannot end up sharing a
+        # cluster with an ordinary testset: an upgrade is a cluster
+        # requirement like any other, and it refuses to merge with a testset
+        # that did not ask for the same one.
 
     if list_tests:
-        list_all_tests()
+        list_all_tests(bool(upgrade_paths), upgrade_error)
         exit(0)
 
     if ignore_unknown_tags:
@@ -1221,6 +1324,22 @@ def get_testsets_by_names(test_names, discovered_list):
     test_list.sort()
     for class_name, test_name in test_names:
         if class_name not in discovered_dict:
+            # Only now, so that a broken upgrade suite cannot stop a run that
+            # never asked for one.
+            try:
+                prefix, *suites = upgrade_selectors()
+            except ValueError:
+                prefix, suites = None, []
+            upgrade_names = [prefix] + suites if prefix else []
+            if not testlib.config.get('upgrade_paths') and prefix and \
+                    (class_name in upgrade_names or
+                     class_name.startswith(f"{prefix}_")):
+                # Not a typo but a forgotten option, so say which.
+                raise ValueError(
+                    f"'{class_name}' is an upgrade test, which needs a "
+                    f"source version to upgrade from; pass "
+                    f"'--upgrade-from <version>=<path>'.")
+            test_list = sorted(test_list + upgrade_names)
             msg = f"Testset '{class_name}' is not found."
             similar = find_similar_tests(class_name, test_list,
                                          context='testset')

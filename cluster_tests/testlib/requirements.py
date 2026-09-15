@@ -56,7 +56,13 @@ class ClusterRequirements:
                 'test_generated_cluster': maybe(TestGeneratedCluster,
                                                 test_generated_cluster),
                 'dev_preview': maybe(DevPreview, dev_preview),
-                'upgrade': maybe(Upgrade, upgrade)
+                # Never left unset, unlike every other slot. intersect()
+                # treats an unset requirement as "anything will do", so a
+                # testset that said nothing about upgrades would merge into
+                # an upgrade testset's group and be handed a cluster in the
+                # middle of one. Upgrade(None) says "not an upgrade" and
+                # refuses to merge with an upgrade.
+                'upgrade': Upgrade(upgrade)
             }
 
     def __str__(self):
@@ -68,7 +74,10 @@ class ClusterRequirements:
         # List the requirements with mutables last, so that compatible
         # configurations would be adjacent when ordered by string
         requirements = immutable_requirements + mutable_requirements
-        return ', '.join([str(req) for req in requirements])
+        # Requirements with nothing to say are skipped rather than joined as
+        # empty strings: Upgrade(None) is on every set of requirements and
+        # has nothing to contribute to the name of an ordinary cluster.
+        return ', '.join([str(req) for req in requirements if str(req)])
 
     def __repr__(self):
         return str(self)
@@ -264,8 +273,7 @@ class ClusterRequirements:
                             ('balanced', Balanced),
                             ('buckets', Buckets),
                             ('test_generated_cluster', TestGeneratedCluster),
-                            ('dev_preview', DevPreview),
-                            ('upgrade', Upgrade)]
+                            ('dev_preview', DevPreview)]
         for req_name, req_class in generation_order:
             if self.requirements[req_name] is None:
                 new_req = req_class.random(req_dict)
@@ -1083,8 +1091,15 @@ class Upgrade(Requirement):
         # records it on the cluster and is_met() compares the two.
         self.start_args = {'upgrade': spec}
 
+    def __eq__(self, other):
+        # On the spec, not on str(): every Upgrade(None) prints as "".
+        return isinstance(other, Upgrade) and self.spec == other.spec
+
     def __str__(self):
-        return "not an upgrade" if self.spec is None else str(self.spec)
+        # Deliberately empty when there is no upgrade: this requirement is on
+        # every cluster, and "not an upgrade" in the name of every ordinary
+        # one would be noise. ClusterRequirements.__str__ drops it.
+        return "" if self.spec is None else str(self.spec)
 
     def is_met(self, cluster):
         cluster_spec = getattr(cluster, 'upgrade_spec', None)
@@ -1127,7 +1142,3 @@ class Upgrade(Requirement):
 
     def can_be_met(self):
         return False
-
-    @staticmethod
-    def random(req_dict):
-        return Upgrade(None)
