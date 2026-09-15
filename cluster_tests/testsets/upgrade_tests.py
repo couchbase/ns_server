@@ -25,9 +25,18 @@ from testsets import example_upgrade_checks  # noqa: F401
 from testsets import jwt_upgrade_checks  # noqa: F401
 
 
-class AlertsUpgradeChecks(UpgradeCheckSuite):
+class _AlertsUpgradeChecks(UpgradeCheckSuite):
+    """/settings/alerts across the upgrade."""
 
     reads = frozenset({'settings/alerts'})
+
+    # The alert names that differ between this source version and the version
+    # under test, as a symmetric difference.
+    EXPECTED_DIFF = None
+
+    # Whether the two nodes of a mixed cluster report the same enabled-alert
+    # lists.
+    MIXED_LISTS_AGREE = True
 
     def before_upgrade(self):
         self.old_alerts = testlib.get_succ(self.old_node,
@@ -36,11 +45,7 @@ class AlertsUpgradeChecks(UpgradeCheckSuite):
     def mixed_cluster_checks(self):
         new_alerts = testlib.get_succ(self.new_node, "/settings/alerts").json()
         assert self.compare_json_keys(self.old_alerts, new_alerts) == []
-        if self.compat_mode != '7.6':
-            # For a 7.6→8.x mixed cluster the 8.x node exposes its own alert
-            # definitions (alerts added and removed relative to 7.6) regardless
-            # of compat mode, so skip value comparison — post_upgrade_checks
-            # verifies the exact delta after the upgrade completes.
+        if self.MIXED_LISTS_AGREE:
             assert self.diff_values_for_key("alerts",
                                              self.old_alerts, new_alerts) == []
             assert self.diff_values_for_key("pop_up_alerts",
@@ -53,126 +58,162 @@ class AlertsUpgradeChecks(UpgradeCheckSuite):
         for field in ("alerts", "pop_up_alerts"):
             mismatches = self.diff_values_for_key(field, self.old_alerts,
                                                    new_alerts)
-            if self.prior_compat_mode == '7.6':
-                # Alerts added post-7.6 (in 8.0 or 8.5) plus alerts removed
-                # in 8.0 (stuck_rebalance) and added in 8.0 (disk_guardrail).
-                expected = [
-                    'encr_at_rest_key_test_failed',
-                    'encr_at_rest_errors_total',
-                    'xdcr_replication_deleted',
-                    'cm_bucket_autoreprovision_total',
-                    'backup_failure',
-                    'cont_backup_event_failed',
-                    'cont_backup_gaps',
-                    'disk_guardrail',
-                    'stuck_rebalance',
-                    'crl_expires_soon',
-                    'crl_unusable']
-                assert sorted(mismatches) == sorted(expected)
-            elif self.prior_compat_mode == '8.0':
-                expected = [
-                    'encr_at_rest_key_test_failed',
-                    'encr_at_rest_errors_total',
-                    'xdcr_replication_deleted',
-                    'cm_bucket_autoreprovision_total',
-                    'backup_failure',
-                    'cont_backup_event_failed',
-                    'cont_backup_gaps',
-                    'crl_expires_soon',
-                    'crl_unusable']
-                assert sorted(mismatches) == sorted(expected)
-            else:
-                raise AssertionError(
-                    f"Unexpected prior_compat_mode: "
-                    f"{self.prior_compat_mode!r}")
+            assert sorted(mismatches) == sorted(self.EXPECTED_DIFF)
 
 
-class BucketSettingsUpgradeChecks(UpgradeCheckSuite):
+class AlertsUpgradeChecksFrom80(_AlertsUpgradeChecks):
+    from_version = '8.0'
+
+    # Alerts added after 8.0.
+    EXPECTED_DIFF = [
+        'encr_at_rest_key_test_failed',
+        'encr_at_rest_errors_total',
+        'xdcr_replication_deleted',
+        'cm_bucket_autoreprovision_total',
+        'backup_failure',
+        'cont_backup_event_failed',
+        'cont_backup_gaps',
+        'crl_expires_soon',
+        'crl_unusable']
+
+
+class AlertsUpgradeChecksFrom76(_AlertsUpgradeChecks):
+    from_version = '7.6'
+
+    # The 8.x node exposes its own alert definitions (alerts added and removed
+    # relative to 7.6) whatever the compat mode, so the lists do not agree
+    # until the upgrade completes; post_upgrade_checks verifies the delta.
+    MIXED_LISTS_AGREE = False
+
+    # Alerts added after 7.6, plus the one 8.0 removed (stuck_rebalance).
+    EXPECTED_DIFF = [
+        'encr_at_rest_key_test_failed',
+        'encr_at_rest_errors_total',
+        'xdcr_replication_deleted',
+        'cm_bucket_autoreprovision_total',
+        'backup_failure',
+        'cont_backup_event_failed',
+        'cont_backup_gaps',
+        'disk_guardrail',
+        'stuck_rebalance',
+        'crl_expires_soon',
+        'crl_unusable']
+
+
+class _BucketSettingsUpgradeChecks(UpgradeCheckSuite):
+    """The test bucket's settings across the upgrade."""
 
     reads = frozenset({'bucket:shared'})
     writes = frozenset({'buckets'})
 
+    MEMCACHED_BODY = {"name": "memcachedBucket",
+                      "bucketType": "memcached",
+                      "ramQuota": 100}
+    NEW_MEMCACHED_ERROR = {"bucketType":
+                           "memcached buckets are no longer supported"}
+
+    # Bucket properties the source version exposes and the version under test
+    # does not, or the other way round, as a symmetric difference.
+    MIXED_DIFF = []
+    EXPECTED_DIFF = None
+
+    # assert_source_rejection(body): how the source version words its
+    # rejection of a memcached bucket.
+    assert_source_rejection = None
+
+    @property
+    def path(self):
+        return f"/pools/default/buckets/{self.bucket_name}"
+
     def before_upgrade(self):
-        path = f"/pools/default/buckets/{self.bucket_name}"
-        self.old_bucket_info = testlib.get_succ(self.old_node, path).json()
+        self.old_bucket_info = testlib.get_succ(self.old_node,
+                                                self.path).json()
 
     def mixed_cluster_checks(self):
-        path = f"/pools/default/buckets/{self.bucket_name}"
-        new_bucket_info = testlib.get_succ(self.new_node, path).json()
-        mismatches = self.compare_json_keys(self.old_bucket_info, new_bucket_info)
-        if self.compat_mode == '7.6':
-            expected = ['pitrEnabled', 'pitrGranularity', 'pitrMaxHistoryAge']
-        else:
-            expected = []
-        assert sorted(mismatches) == sorted(expected)
+        new_bucket_info = testlib.get_succ(self.new_node, self.path).json()
+        mismatches = self.compare_json_keys(self.old_bucket_info,
+                                            new_bucket_info)
+        assert sorted(mismatches) == sorted(self.MIXED_DIFF)
 
         # Memcached buckets must be rejected by both versions.
-        data = {"name": "memcachedBucket",
-                "bucketType": "memcached",
-                "ramQuota": 100}
-        expected_err = {"bucketType":
-                        "memcached buckets are no longer supported"}
-
         r = testlib.post_fail(self.old_node, "/pools/default/buckets",
-                              expected_code=400, data=data).json()
-        if self.compat_mode == '7.6':
-            assert r == {'_': 'memcached buckets are no longer supported'}
-        elif self.compat_mode == '8.0':
-            assert r['errors'] == expected_err
+                              expected_code=400,
+                              data=self.MEMCACHED_BODY).json()
+        self.assert_source_rejection(r)
 
         r = testlib.post_fail(self.new_node, "/pools/default/buckets",
-                              expected_code=400, data=data).json()
-        assert r['errors'] == expected_err
+                              expected_code=400,
+                              data=self.MEMCACHED_BODY).json()
+        assert r['errors'] == self.NEW_MEMCACHED_ERROR
 
     def post_upgrade_checks(self):
-        path = f"/pools/default/buckets/{self.bucket_name}"
-        new_bucket_info = testlib.get_succ(self.new_node, path).json()
-        mismatches = self.compare_json_keys(self.old_bucket_info, new_bucket_info)
-        if self.prior_compat_mode == '7.6':
-            expected = [
-                    # Removed post 7.6
-                    'pitrEnabled', 'pitrGranularity', 'pitrMaxHistoryAge',
-                    # Added in 8.0
-                    'accessScannerEnabled',
-                    'dcpBackfillIdleDiskThreshold',
-                    'dcpBackfillIdleLimitSeconds',
-                    'dcpBackfillIdleProtectionEnabled',
-                    'dcpConnectionsBetweenNodes',
-                    'durabilityImpossibleFallback',
-                    'encryptionAtRestDekLifetime',
-                    'encryptionAtRestDekRotationInterval',
-                    'encryptionAtRestInfo',
-                    'encryptionAtRestKeyId', 'expiryPagerSleepTime',
-                    'hlcMaxFutureThreshold', 'invalidHlcStrategy',
-                    'memoryHighWatermark', 'memoryLowWatermark',
-                    'warmupBehavior',
-                    # Added in 8.5
-                    'dataServiceRebalanceType',
-                    'continuousBackupCloudStorageCredId',
-                    'continuousBackupKmCredId', 'continuousBackupKmKeyUrl',
-                    'continuousBackupLocation', 'continuousBackupInterval',
-                    'continuousBackupRetentionPeriod',
-                    'chronicleRev',
-                    'externalCollectionsManifestUid', 'throttleHardLimit',
-                    'throttleReserved']
-        elif self.prior_compat_mode == '8.0':
-            expected = [
-                    'chronicleRev', 'dataServiceRebalanceType',
-                    'continuousBackupCloudStorageCredId',
-                    'continuousBackupKmCredId', 'continuousBackupKmKeyUrl',
-                    'continuousBackupLocation', 'continuousBackupInterval',
-                    'continuousBackupRetentionPeriod',
-                    'externalCollectionsManifestUid', 'throttleHardLimit',
-                    'throttleReserved']
-        else:
-            raise AssertionError(
-                f"Unexpected prior_compat_mode: {self.prior_compat_mode!r}")
-        assert sorted(mismatches) == sorted(expected)
+        new_bucket_info = testlib.get_succ(self.new_node, self.path).json()
+        mismatches = self.compare_json_keys(self.old_bucket_info,
+                                            new_bucket_info)
+        assert sorted(mismatches) == sorted(self.EXPECTED_DIFF)
 
 
-class RbacRolesUpgradeChecks(UpgradeCheckSuite):
+class BucketSettingsUpgradeChecksFrom80(_BucketSettingsUpgradeChecks):
+    from_version = '8.0'
+
+    # Properties added after 8.0.
+    EXPECTED_DIFF = [
+            'chronicleRev', 'dataServiceRebalanceType',
+            'continuousBackupCloudStorageCredId',
+            'continuousBackupKmCredId', 'continuousBackupKmKeyUrl',
+            'continuousBackupLocation', 'continuousBackupInterval',
+            'continuousBackupRetentionPeriod',
+            'externalCollectionsManifestUid', 'throttleHardLimit',
+            'throttleReserved']
+
+    def assert_source_rejection(self, body):
+        assert body['errors'] == self.NEW_MEMCACHED_ERROR
+
+
+class BucketSettingsUpgradeChecksFrom76(_BucketSettingsUpgradeChecks):
+    from_version = '7.6'
+
+    MIXED_DIFF = ['pitrEnabled', 'pitrGranularity', 'pitrMaxHistoryAge']
+
+    EXPECTED_DIFF = [
+            # Removed post 7.6
+            'pitrEnabled', 'pitrGranularity', 'pitrMaxHistoryAge',
+            # Added in 8.0
+            'accessScannerEnabled',
+            'dcpBackfillIdleDiskThreshold',
+            'dcpBackfillIdleLimitSeconds',
+            'dcpBackfillIdleProtectionEnabled',
+            'dcpConnectionsBetweenNodes',
+            'durabilityImpossibleFallback',
+            'encryptionAtRestDekLifetime',
+            'encryptionAtRestDekRotationInterval',
+            'encryptionAtRestInfo',
+            'encryptionAtRestKeyId', 'expiryPagerSleepTime',
+            'hlcMaxFutureThreshold', 'invalidHlcStrategy',
+            'memoryHighWatermark', 'memoryLowWatermark',
+            'warmupBehavior',
+            # Added in 8.5
+            'dataServiceRebalanceType',
+            'continuousBackupCloudStorageCredId',
+            'continuousBackupKmCredId', 'continuousBackupKmKeyUrl',
+            'continuousBackupLocation', 'continuousBackupInterval',
+            'continuousBackupRetentionPeriod',
+            'chronicleRev',
+            'externalCollectionsManifestUid', 'throttleHardLimit',
+            'throttleReserved']
+
+    def assert_source_rejection(self, body):
+        assert body == {'_': 'memcached buckets are no longer supported'}
+
+
+class _RbacRolesUpgradeChecks(UpgradeCheckSuite):
+    """The set of defined roles across the upgrade."""
 
     reads = frozenset({'rbac/roles'})
+
+    # Role names the source version and the version under test differ on, as a
+    # symmetric difference.
+    EXPECTED_DIFF = None
 
     def before_upgrade(self):
         self.old_roles = testlib.get_succ(self.old_node,
@@ -188,31 +229,51 @@ class RbacRolesUpgradeChecks(UpgradeCheckSuite):
         new_roles = testlib.get_succ(self.new_node,
                                       "/settings/rbac/roles").json()
         mismatches = self.diffs_for_key("role", self.old_roles, new_roles)
-        if self.prior_compat_mode == '7.6':
-            expected = [
-                'user_admin_external', 'ro_security_admin',
-                'credential_admin',
-                'application_telemetry_writer', 'query_manage_system_catalog',
-                'ui_access', 'security_admin', 'query_list_index',
-                'user_admin_local', 'security_admin_local',
-                'security_admin_external', 'credential_consumer',
-                'external_catalog_admin', 'external_catalog_reader']
-        elif self.prior_compat_mode == '8.0':
-            expected = ['ui_access', 'credential_consumer', 'credential_admin',
-                        'external_catalog_admin', 'external_catalog_reader']
-        else:
-            raise AssertionError(
-                f"Unexpected prior_compat_mode: {self.prior_compat_mode!r}")
-        assert sorted(mismatches) == sorted(expected)
+        assert sorted(mismatches) == sorted(self.EXPECTED_DIFF)
 
 
-class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
+class RbacRolesUpgradeChecksFrom80(_RbacRolesUpgradeChecks):
+    from_version = '8.0'
+
+    # Roles added after 8.0.
+    EXPECTED_DIFF = ['ui_access', 'credential_consumer', 'credential_admin',
+                     'external_catalog_admin', 'external_catalog_reader']
+
+
+class RbacRolesUpgradeChecksFrom76(_RbacRolesUpgradeChecks):
+    from_version = '7.6'
+
+    EXPECTED_DIFF = [
+        'user_admin_external', 'ro_security_admin',
+        'credential_admin',
+        'application_telemetry_writer', 'query_manage_system_catalog',
+        'ui_access', 'security_admin', 'query_list_index',
+        'user_admin_local', 'security_admin_local',
+        'security_admin_external', 'credential_consumer',
+        'external_catalog_admin', 'external_catalog_reader']
+
+
+class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
+    """A user's roles across the upgrade, and across the version boundary."""
 
     reads = frozenset({'rbac/roles'})
     writes = frozenset({'rbac/users'})
 
+    # Users every source version can be given.
+    COMMON_USERS = {'couchbaseAdmin': 'admin', 'roadmin': 'ro_admin'}
+
+    # Users only this source version knows the roles for.
+    EXTRA_USERS = {}
+
+    # What each user's roles must be once the upgrade is done, keyed by the
+    # name without the -old/-new suffix: both copies expect the same.
+    EXPECTED_ROLES = {}
+
     def before_upgrade(self):
         self.created = []
+
+    def users(self):
+        return {**self.COMMON_USERS, **self.EXTRA_USERS}
 
     def mixed_cluster_checks(self):
         # Users created on one version must be visible with identical roles
@@ -241,21 +302,10 @@ class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
             assert (sorted(r['role'] for r in on_old['roles']) ==
                     sorted(r['role'] for r in on_new['roles']))
 
-        put_user('couchbaseAdmin', 'admin')
-        put_user('roadmin', 'ro_admin')
-        verify_cross_node_roles('couchbaseAdmin')
-        verify_cross_node_roles('roadmin')
-
-        if self.compat_mode == '7.6':
-            put_user('localUserSecurityAdmin', 'security_admin_local')
-            put_user('clusterAdmin', 'cluster_admin')
-            verify_cross_node_roles('localUserSecurityAdmin')
-            verify_cross_node_roles('clusterAdmin')
-        elif self.compat_mode == '8.0':
-            put_user('securityAdmin', 'security_admin')
-            put_user('localUserAdmin', 'user_admin_local')
-            verify_cross_node_roles('securityAdmin')
-            verify_cross_node_roles('localUserAdmin')
+        for username, roles in self.users().items():
+            put_user(username, roles)
+        for username in self.users():
+            verify_cross_node_roles(username)
 
         # Only this suite's own users: the listing is cluster-wide and shared
         # with every other suite on this cluster.
@@ -275,34 +325,50 @@ class RbacRoleChangesUpgradeChecks(UpgradeCheckSuite):
             assert (sorted(item['role'] for item in r['roles']) ==
                     sorted(expected_roles))
 
-        if self.prior_compat_mode == '7.6':
-            verify_roles('roadmin-old',
-                         ['ro_admin', 'ro_security_admin', 'ui_access'])
-            verify_roles('roadmin-new',
-                         ['ro_admin', 'ro_security_admin', 'ui_access'])
-            verify_roles('localUserSecurityAdmin-old',
-                         ['security_admin', 'user_admin_local', 'ui_access'])
-            verify_roles('localUserSecurityAdmin-new',
-                         ['security_admin', 'user_admin_local', 'ui_access'])
-            verify_roles('clusterAdmin-old', ['cluster_admin', 'ui_access'])
-            verify_roles('clusterAdmin-new', ['cluster_admin', 'ui_access'])
-        elif self.prior_compat_mode == '8.0':
-            verify_roles('roadmin-old', ['ro_admin', 'ui_access'])
-            verify_roles('roadmin-new', ['ro_admin', 'ui_access'])
-            verify_roles('securityAdmin-old', ['security_admin', 'ui_access'])
-            verify_roles('securityAdmin-new', ['security_admin', 'ui_access'])
-            verify_roles('localUserAdmin-old', ['user_admin_local', 'ui_access'])
-            verify_roles('localUserAdmin-new', ['user_admin_local', 'ui_access'])
-        else:
-            raise AssertionError(
-                f"Unexpected prior_compat_mode: {self.prior_compat_mode!r}")
+        for username, expected in self.EXPECTED_ROLES.items():
+            verify_roles(f"{username}-old", expected)
+            verify_roles(f"{username}-new", expected)
 
         assert self._our_user_ids(self.new_node) == set(self.created)
 
 
-class IndexSettingsUpgradeChecks(UpgradeCheckSuite):
+class RbacRoleChangesUpgradeChecksFrom76(_RbacRoleChangesUpgradeChecks):
+    from_version = '7.6'
+
+    EXTRA_USERS = {'localUserSecurityAdmin': 'security_admin_local',
+                   'clusterAdmin': 'cluster_admin'}
+
+    EXPECTED_ROLES = {
+        'couchbaseAdmin': ['admin'],
+        'roadmin': ['ro_admin', 'ro_security_admin', 'ui_access'],
+        'localUserSecurityAdmin': ['security_admin', 'user_admin_local',
+                                   'ui_access'],
+        'clusterAdmin': ['cluster_admin', 'ui_access'],
+    }
+
+
+class RbacRoleChangesUpgradeChecksFrom80(_RbacRoleChangesUpgradeChecks):
+    from_version = '8.0'
+
+    EXTRA_USERS = {'securityAdmin': 'security_admin',
+                   'localUserAdmin': 'user_admin_local'}
+
+    EXPECTED_ROLES = {
+        'couchbaseAdmin': ['admin'],
+        'roadmin': ['ro_admin', 'ui_access'],
+        'securityAdmin': ['security_admin', 'ui_access'],
+        'localUserAdmin': ['user_admin_local', 'ui_access'],
+    }
+
+
+class _IndexSettingsUpgradeChecks(UpgradeCheckSuite):
+    """/settings/indexes across the upgrade."""
 
     reads = frozenset({'settings/indexes'})
+
+    # Settings the source version and the version under test differ on, by
+    # key or by value.
+    EXPECTED_DIFF = None
 
     def before_upgrade(self):
         self.old_index_settings = testlib.get_succ(
@@ -310,26 +376,34 @@ class IndexSettingsUpgradeChecks(UpgradeCheckSuite):
 
     def mixed_cluster_checks(self):
         # Index settings must be identical on both versions while mixed.
-        new_settings = testlib.get_succ(self.new_node, "/settings/indexes").json()
+        new_settings = testlib.get_succ(self.new_node,
+                                        "/settings/indexes").json()
         assert self.compare_json_keys(self.old_index_settings, new_settings,
                                        check_values=True) == []
 
     def post_upgrade_checks(self):
         new_settings = testlib.get_succ(self.new_node,
                                          "/settings/indexes").json()
-        mismatches = self.compare_json_keys(self.old_index_settings, new_settings,
-                                             check_values=True)
-        if self.prior_compat_mode == '7.6':
-            expected = ['deferBuild', 'generateScanReport']
-        elif self.prior_compat_mode == '8.0':
-            expected = ['generateScanReport']
-        else:
-            raise AssertionError(
-                f"Unexpected prior_compat_mode: {self.prior_compat_mode!r}")
-        assert sorted(mismatches) == sorted(expected)
+        mismatches = self.compare_json_keys(self.old_index_settings,
+                                            new_settings, check_values=True)
+        assert sorted(mismatches) == sorted(self.EXPECTED_DIFF)
+
+
+class IndexSettingsUpgradeChecksFrom80(_IndexSettingsUpgradeChecks):
+    from_version = '8.0'
+
+    EXPECTED_DIFF = ['generateScanReport']
+
+
+class IndexSettingsUpgradeChecksFrom76(_IndexSettingsUpgradeChecks):
+    from_version = '7.6'
+
+    EXPECTED_DIFF = ['deferBuild', 'generateScanReport']
 
 
 class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite):
+    # The expected diff below is the one from 8.0.
+    from_version = '8.0'
 
     reads = frozenset({'pools/default/nodeServices'})
 

@@ -75,16 +75,13 @@ def shape_code(pred):
 
 
 class JwtUpgradeChecks(UpgradeCheckSuite):
+    # JWT did not exist before 8.0, so there is no older format to carry.
+    from_version = '8.0'
 
     reads = frozenset({'bucket:shared'})
     writes = frozenset({'settings/jwt', 'rbac/groups'})
 
     def before_upgrade(self):
-        # JWT did not exist before 8.0, so there is no older format to carry.
-        self.applicable = self.compat_mode == '8.0'
-        if not self.applicable:
-            return
-
         # Reproduce the Enterprise Analytics profile on the old node. set_data
         # writes a persistent_term, so this is node local and is gone when the
         # node is ejected.
@@ -122,9 +119,6 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         self.assert_authenticates(self.old_node)
 
     def mixed_cluster_checks(self):
-        if not self.applicable:
-            return
-
         # Nothing rewrites the stored term while a node that cannot read the
         # new format is still in the cluster.
         self.assert_stored_shape(self.old_node, "is_list")
@@ -146,9 +140,6 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         testlib.get_fail(self.new_node, "/settings/jwt", expected_code=400)
 
     def post_upgrade_checks(self):
-        if not self.applicable:
-            return
-
         self.assert_stored_shape(self.new_node, "is_binary")
         self.assert_authenticates(self.new_node)
 

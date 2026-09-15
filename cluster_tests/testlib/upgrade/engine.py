@@ -45,6 +45,11 @@ TRANSITION = 'transition'
 def discover_suites():
     """Every UpgradeCheckSuite subclass defined in a module under testsets/.
 
+    A leading underscore marks shared machinery -- the part of a suite that
+    does not depend on the source version -- rather than a suite to run. A
+    suite built on one must set from_version and whatever the shared base
+    leaves as None; checked here rather than partway through a cycle.
+
     Walks sys.modules rather than importing the directory: importing it would
     pull in modules run.py deliberately leaves out, and discover_testsets()
     would then start running them.
@@ -63,8 +68,26 @@ def discover_suites():
                 continue
             if cls.__module__ != module.__name__:
                 continue        # a re-export, not a definition
+            if name.startswith('_'):
+                continue        # shared machinery, not a suite
+            unset = _unset_by_version(cls)
+            assert not unset, \
+                f"{name} does not set {', '.join(unset)}, which its shared " \
+                f"base leaves to each source version"
             found[(cls.__module__, name)] = cls
     return [found[key] for key in sorted(found)]
+
+
+def _unset_by_version(cls):
+    shared = [base for base in cls.__mro__[1:]
+              if issubclass(base, UpgradeCheckSuite) and
+              base.__name__.startswith('_')]
+    if not shared:
+        return []
+    names = {'from_version'}
+    for base in shared:
+        names |= {n for n, v in vars(base).items() if v is None}
+    return sorted(n for n in names if getattr(cls, n) is None)
 
 
 def conflicts(a, b):
