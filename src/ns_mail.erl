@@ -158,5 +158,5 @@ config_to_options(ServerConfig) ->
                          end,
             [{tls, always}, {tls_options, TlsOptions} | Options2];
         false ->
-            Options2
+            [{tls, never} | Options2]
     end.
