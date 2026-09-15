@@ -7,32 +7,22 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-"""
-Upgrade checks grouped by feature area, driven by a single UpgradeChecks
-testset.
+"""Upgrade check suites, grouped by feature area.
 
-UpgradeChecks runs one upgrade cycle and calls each check suite in turn at
-each phase:
+Each suite implements the hooks it needs and is discovered automatically -- see
+testlib/upgrade/suite.py. A suite may live in any module under testsets/;
+putting it beside the feature it covers is preferred.
 
-    Phase 1  before_upgrade()       – old-version cluster; capture state
-    Phase 3  mixed_cluster_checks() – both versions active; cross-version checks
-    Phase 5  post_upgrade_checks()  – new-version cluster; verify final state
-
-To add a new check suite, subclass UpgradeCheckSuite, implement the three
-hooks, and add the class to UpgradeChecks._check_classes.
-
-Available on self within hook methods:
-  self.old_node / self.new_node   representative nodes for each version
-  self.compat_mode                current compat mode (updates after upgrade)
-  self.prior_compat_mode          compat mode before upgrade
-                                  (set at start of phase 5)
-  self.bucket_name                name of the pre-created test bucket
+This module is also where the generated upgrade testset is installed, which is
+why run.py imports it even though it defines no BaseTestSet of its own.
 """
 
 import testlib
-from testlib.upgrade_test_base import UpgradeChecks as UpgradeCheckSuite
-from testsets.example_upgrade_checks import ExampleUpgradeChecks
-from testsets.jwt_upgrade_checks import JwtUpgradeChecks
+from testlib.upgrade.suite import UpgradeCheckSuite
+# Imported for its side effect: the engine discovers suites in any module
+# under testsets/, and this one is not in run.py's import list.
+from testsets import example_upgrade_checks  # noqa: F401
+from testsets import jwt_upgrade_checks  # noqa: F401
 
 
 class AlertsUpgradeChecks(UpgradeCheckSuite):
@@ -352,154 +342,3 @@ class ClusterCapabilitiesUpgradeChecks(UpgradeCheckSuite):
         assert sorted(n1ql_diff) == sorted(['externalCollections',
                                             'conversationalQuery'])
         assert sorted(search_diff) == sorted(['scoreFusion', 'udfQuery'])
-
-
-class UpgradeChecks(testlib.BaseTestSet):
-    """Drives upgrade check suites through a single upgrade cycle.
-
-    Use --tests UpgradeChecks to run all check suites.
-    """
-
-    _check_classes = [
-        AlertsUpgradeChecks,
-        BucketSettingsUpgradeChecks,
-        RbacRolesUpgradeChecks,
-        RbacRoleChangesUpgradeChecks,
-        IndexSettingsUpgradeChecks,
-        ClusterCapabilitiesUpgradeChecks,
-        JwtUpgradeChecks,
-        ExampleUpgradeChecks,
-    ]
-
-    @staticmethod
-    def requirements():
-        return testlib.ClusterRequirements(
-            min_num_nodes=2,
-            balanced=True,
-            num_vbuckets=16,
-            # Puts mixed_version=True into start_args so that
-            # cluster.build_cluster routes through legacy_cluster to start
-            # old-version nodes.  Requires --older-version-path to be supplied.
-            mixed_version=True,
-            buckets=[{"name": "upgradeTestBucket",
-                      "storageBackend": "couchstore",
-                      "replicaNumber": 1,
-                      "ramQuota": 100}])
-
-    def setup(self):
-        self.bucket_name = "upgradeTestBucket"
-
-    def test_teardown(self):
-        pass
-
-    def teardown(self):
-        # is_met() assumes a cluster still satisfies its requirements once a
-        # testset has finished, so that the cluster can be reused by a later
-        # testset. upgrade_test() leaves the cluster in a state that no
-        # longer satisfies the mixed_version requirement (whether or not it
-        # ran to completion), so mark it as spent here rather than only on
-        # the success path, ensuring it isn't handed to another testset
-        # expecting a fresh mixed-version cluster.
-        self.cluster.new_version_nodes = []
-        self.cluster.set_requirements(None)
-
-    def upgrade_test(self):
-        check_classes = self._check_classes
-
-        old_nodes = list(self.cluster.connected_nodes)
-        new_nodes = self.cluster.new_version_nodes
-        old_node = old_nodes[0]
-        new_node = new_nodes[0]
-
-        checks = [cls() for cls in check_classes]
-
-        def set_attrs(**kwargs):
-            for check in checks:
-                for k, v in kwargs.items():
-                    setattr(check, k, v)
-
-        set_attrs(cluster=self.cluster,
-                  old_nodes=old_nodes, new_nodes=new_nodes,
-                  old_node=old_node, new_node=new_node,
-                  bucket_name=self.bucket_name)
-
-        # ------------------------------------------------------------------
-        # Phase 1: old-version-only cluster
-        # ------------------------------------------------------------------
-        compat_mode = self._verify_cluster_info(mixed=False)
-        set_attrs(compat_mode=compat_mode)
-        for check in checks:
-            check.before_upgrade()
-
-        # ------------------------------------------------------------------
-        # Phase 2: join new-version nodes and rebalance in
-        # ------------------------------------------------------------------
-        # Join each new-version node with the same services as its
-        # corresponding old-version node, rather than relying on add_node's
-        # default (which would pick up the services of whichever connected
-        # node happens to handle the addNode request).
-        for old_node_, new_node_ in zip(old_nodes, new_nodes):
-            self.cluster.add_node(new_node_, services=old_node_.get_services())
-        self.cluster.rebalance(wait=True)
-
-        # ------------------------------------------------------------------
-        # Phase 3: mixed cluster
-        # ------------------------------------------------------------------
-        self._verify_cluster_info(mixed=True)
-        for check in checks:
-            check.mixed_cluster_checks()
-
-        # ------------------------------------------------------------------
-        # Phase 4: rebalance out old-version nodes
-        # ------------------------------------------------------------------
-        prior_compat_mode = compat_mode
-        self.cluster.rebalance(ejected_nodes=list(old_nodes),
-                               wait=True, verbose=True,
-                               node=new_node)
-
-        # ------------------------------------------------------------------
-        # Phase 5: new-version-only cluster
-        # ------------------------------------------------------------------
-        compat_mode = self._verify_cluster_info(mixed=False)
-        assert prior_compat_mode != compat_mode, \
-            f"Compat mode did not change after upgrade " \
-            f"(still {compat_mode!r})"
-        set_attrs(compat_mode=compat_mode, prior_compat_mode=prior_compat_mode)
-        for check in checks:
-            check.post_upgrade_checks()
-
-    # -------------------------------------------------------------------------
-    # Private helpers
-    # -------------------------------------------------------------------------
-
-    def _verify_cluster_info(self, mixed):
-        """Assert cluster health and return the compat mode string.
-
-        When mixed=True, asserts exactly two node versions are present.
-        When mixed=False, asserts all nodes run the same version.
-        Always asserts a single compat mode, all nodes healthy and active.
-        """
-        pools = testlib.get_succ(self.cluster, "/pools/default").json()
-        assert pools["balanced"]
-        versions = {}
-        compat_modes = {}
-        for node in pools["nodes"]:
-            compat = node["clusterCompatibility"]
-            compat_str = f"{compat >> 16}.{compat & 0xFFFF}"
-            print(f">>> Node {node['hostname']} version={node['version']} "
-                  f"compat={compat_str} status={node['status']} "
-                  f"membership={node['clusterMembership']} <<<")
-            assert node["status"] == "healthy"
-            assert node["clusterMembership"] == "active"
-            versions[node["version"]] = versions.get(node["version"], 0) + 1
-            compat_modes[compat_str] = compat_modes.get(compat_str, 0) + 1
-
-        if mixed:
-            assert len(versions) == 2, \
-                f"Expected 2 versions in mixed cluster, got {list(versions)}"
-        else:
-            assert len(versions) == 1, \
-                f"Expected 1 version in uniform cluster, got {list(versions)}"
-        assert len(compat_modes) == 1, \
-            f"Expected single compat mode, got {compat_modes}"
-        return next(iter(compat_modes))

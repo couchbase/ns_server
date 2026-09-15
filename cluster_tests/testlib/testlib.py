@@ -57,6 +57,18 @@ config={'colors': support_colors(),
         'report_time_format': '%H:%M:%S',
         'test_timeout': 600}
 
+
+class TestNotRun(Exception):
+    """Raised by a test that could not run, saying why.
+
+    It joins the run's not_ran list, alongside the tests the harness itself
+    could not get to, rather than its errors -- so it still fails the run,
+    but it is not reported as a defect of its own. Raise it only when the
+    test genuinely did not run; one that ran and found nothing wrong should
+    simply pass.
+    """
+
+
 @dataclass
 class TestError:
     name: str
@@ -98,6 +110,9 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
                 stop_after_first_error=False):
     errors = []
     not_ran = []
+    # Counted so it can come off `executed` at the end: a test that raised
+    # TestNotRun did not run, whatever the loop below counted.
+    not_run_by_request = 0
     executed = 0
     print_wrapped(f"\nStarting testset[{testset['#']}/{total_testsets_num}]: " \
                   f"{testset['name']}",
@@ -188,7 +203,14 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
             cluster = testset_instance.cluster
 
             if err is not None:
-                errors.append(err)
+                if isinstance(err.error, TestNotRun):
+                    # The test said it could not run. Note we must not
+                    # decrement `executed` here: it doubles as the index into
+                    # tests_to_run used below to list the remaining tests.
+                    not_ran.append(err)
+                    not_run_by_request += 1
+                else:
+                    errors.append(err)
 
             if tdown_err is not None:
                 errors.append(tdown_err)
@@ -220,7 +242,7 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
         if err is not None:
             errors.append(err)
 
-    return executed, errors, not_ran, cluster
+    return executed - not_run_by_request, errors, not_ran, cluster
 
 
 def test_name(testset, testname, testiter, short_form=False):
@@ -286,7 +308,9 @@ def safe_test_function_call(testset, testfunction, args, testiter,
         end_report(None, None, finish_time - start_time,
                    time.time() - finish_time)
     except Exception as e:
-        print_traceback()
+        not_run = isinstance(e, TestNotRun) and not test_successful
+        if not not_run:
+            print_traceback()
         if hasattr(testset, 'cluster'):
             cluster_name = testset.cluster.short_name()
         else:
@@ -1041,6 +1065,20 @@ def start_verbose_report(name, single_line=True):
                 print(f"{prefix}Finished: " + green("ok") + times_str)
             return
 
+        if isinstance(test_e, TestNotRun) and teardown_e is None:
+            # Say why it could not run, rather than showing a traceback of
+            # the raise that said so.
+            if single_line:
+                res = right_aligned("not run", taken=width_taken,
+                                    width=config['screen_width'] -
+                                          space_reserved_for_time)
+                print(yellow(res) + times_str, show_time=False)
+            else:
+                print(f"{prefix}Finished: " + yellow("not run") + times_str)
+            print_wrapped(f'{yellow(str(test_e))}', indent=2,
+                          max_width=config['screen_width'])
+            return
+
         res_prefix = 'teardown ' if test_e is None else ''
 
         if single_line:
@@ -1064,7 +1102,9 @@ def start_verbose_report(name, single_line=True):
 
 def start_silent_report(full_name):
     def end_report(test_e, teardown_e, time_delta, teardown_time_delta):
-        if test_e is not None:
+        if isinstance(test_e, TestNotRun):
+            print(yellow(f"{full_name} not run ({test_e})"))
+        elif test_e is not None:
             print(red(f"{full_name} failed ({format_exception(test_e)})"))
         if teardown_e is not None:
             print(red(f"teardown exception: {format_exception(teardown_e)}"))

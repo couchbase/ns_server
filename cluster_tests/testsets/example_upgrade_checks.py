@@ -12,9 +12,9 @@ Example upgrade check suite — copy this file as a starting point.
 
 Steps to add a new check suite:
   1. Create a new file in testsets/ (or add a class to an existing one).
-  2. Subclass UpgradeChecks and implement the three hook methods below.
-  3. Import the class in upgrade_tests.py and append it to
-     UpgradeChecks._check_classes.
+  2. Subclass UpgradeCheckSuite and implement the three hook methods below.
+  3. Nothing else: suites are discovered, not registered. A module run.py
+     does not import must be imported from upgrade_tests.py.
 
 The following attributes are available on self inside every hook:
 
@@ -24,10 +24,10 @@ The following attributes are available on self inside every hook:
     self.old_nodes          — all old-version nodes
     self.new_nodes          — all new-version nodes
     self.compat_mode        — current compat-mode string, e.g. '8.0'
-    self.prior_compat_mode  — compat mode before upgrade (phase 5 only)
+    self.prior_compat_mode  — compat mode before upgrade
     self.bucket_name        — name of the pre-created test bucket
 
-Helper methods inherited from UpgradeChecks:
+Helper methods inherited from UpgradeCheckSuite:
 
     compare_json_keys(j1, j2, check_values=False)
         Returns keys present in one dict but not the other.  Pass
@@ -41,10 +41,10 @@ Helper methods inherited from UpgradeChecks:
 """
 
 import testlib
-from testlib.upgrade_test_base import UpgradeChecks
+from testlib.upgrade.suite import UpgradeCheckSuite
 
 
-class ExampleUpgradeChecks(UpgradeChecks):
+class ExampleUpgradeChecks(UpgradeCheckSuite):
     """Checks that /pools/default cluster name is preserved across upgrade."""
 
     # ------------------------------------------------------------------

@@ -734,8 +734,11 @@ def main():
             bad_args_exit(f"Cannot access 'older-version-path' "
                          f"{cluster_run_lib_path}")
     if ('older-version' in testlib.config):
-        # Import upgrade tests (only loaded for mixed-version runs)
+        # Import upgrade tests (only loaded for mixed-version runs) and
+        # generate the testset that runs the check suites they define.
         from testsets import upgrade_tests
+        from testlib.upgrade import engine as upgrade_engine
+        upgrade_engine.install_testsets()
         if tests is None:
             # Default to running all upgrade test classes when --older-version
             # is specified without --tests

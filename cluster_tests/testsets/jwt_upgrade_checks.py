@@ -35,7 +35,7 @@ import time
 
 import jwt
 import testlib
-from testlib.upgrade_test_base import UpgradeChecks as UpgradeCheckSuite
+from testlib.upgrade.suite import UpgradeCheckSuite
 from testlib.util import Service
 
 ISSUER = "upgrade-test-issuer"
