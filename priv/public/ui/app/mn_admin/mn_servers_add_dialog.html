@@ -84,42 +84,14 @@ licenses/APL2.txt.
                 <span class="icon fa-info fa-stack-1x"></span>
              </span>
           </label>
-          <input
-              type="radio"
-              id="auth-password"
-              ng-model="serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth"
-              name="certValidation"
-              value="false" />
-          <label
-              for="auth-password">
-              Username/Password
-          </label>
-          <input
-              type="radio"
-              id="auth-cert"
-              ng-model="serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth"
-              name="certValidation"
-              value="true" />
-          <label
-              for="auth-cert">
-             Client Certificate
-             <span
-                 class="fa-stack icon-info"
-                 uib-tooltip="Use the client certificate already loaded in this Couchbase node."
-                 tooltip-trigger="mouseenter"
-                 tooltip-placement="top">
-                <span class="icon fa-circle-thin fa-stack-2x"></span>
-                <span class="icon fa-info fa-stack-1x"></span>
-             </span>
-          </label>
        </div>
 
-      <div class="formrow" ng-if="serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth === 'false'">
+      <div class="formrow">
         <label for="user_inp" class="inline">Username&nbsp;</label>
         <small>a user with admin access to this server</small>
         <br>
         <input
-           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors || serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth === 'true'"
+           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
            type="text"
            id="user_inp"
            ng-model="serversAddDialogCtl.addNodeConfig.credentials.user"
@@ -128,16 +100,36 @@ licenses/APL2.txt.
            autocapitalize="off">
       </div>
 
-      <div class="formrow" ng-if="serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth === 'false'">
+      <div class="formrow">
         <label for="password_inp">Password</label>
         <input
-           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors || serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth === 'true'"
+           ng-disabled="!!serversAddDialogCtl.postDiskStorageErrors"
            mn-autocomplete-off
            type="password"
            id="password_inp"
            ng-model="serversAddDialogCtl.addNodeConfig.credentials.password"
            autocorrect="off"
            spellcheck="false">
+      </div>
+
+      <div class="formrow">
+         <input
+             type="checkbox"
+             id="auth-cert"
+             ng-true-value="'true'"
+             ng-false-value="'false'"
+             ng-model="serversAddDialogCtl.addNodeConfig.credentials.clientCertAuth" />
+         <label for="auth-cert">
+            The node being added requires a client certificate
+            <span
+                class="fa-stack icon-info"
+                uib-tooltip="Check this when the node being added has client certificate authentication set to Mandatory. This cluster node's client certificate will be presented when connecting."
+                tooltip-trigger="mouseenter"
+                tooltip-placement="top">
+               <span class="icon fa-circle-thin fa-stack-2x"></span>
+               <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+         </label>
       </div>
 
       <label class="inline">Services</label>

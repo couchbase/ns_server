@@ -96,7 +96,7 @@ var wizardForm = {
   joinCluster: new FormGroup({
     clusterAdmin: new FormGroup({
       hostname: new FormControl(null, [Validators.required]),
-      clientCertAuth: new FormControl("true"),
+      clientCertAuth: new FormControl(false),
       user: new FormControl("Administrator"),
       password: new FormControl('', [Validators.required])
     }),

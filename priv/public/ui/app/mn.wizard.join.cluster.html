@@ -68,39 +68,8 @@ licenses/APL2.txt.
         </div>
         <div class="formrow">
            <label>Authentication</label>
-           <div class="radio-group">
-              <input
-                  type="radio"
-                  id="for_user_password"
-                  formControlName="clientCertAuth"
-                  value="false">
-              <label for="for_user_password">
-                 Username/Password
-              </label>
-              <input
-                  type="radio"
-                  id="for-certificate"
-                  formControlName="clientCertAuth"
-                  value="true">
-              <label for="for-certificate">
-                 Client Certificate
-                 <span
-                     class="fa-stack icon-info"
-                     [ngbTooltip]="clientCert"
-                     triggers="mouseenter"
-                     placement="top">
-                    <span class="icon fa-circle-thin fa-stack-2x"></span>
-                    <span class="icon fa-info fa-stack-1x"></span>
-                 </span>
-              </label>
-              <ng-template #clientCert>
-                <div>
-                  Use the client certificate already loaded in this Couchbase node.
-                </div>
-              </ng-template>
-           </div>
         </div>
-        <div class="formrow" [hidden]="joinClusterForm.get('clusterAdmin.clientCertAuth').value === 'true'">
+        <div class="formrow">
           <label for="secure-user">Cluster Admin Username</label>
           <input
             type="text"
@@ -111,7 +80,7 @@ licenses/APL2.txt.
             spellcheck="false"
             autocapitalize="off">
         </div>
-        <div class="formrow" [hidden]="joinClusterForm.get('clusterAdmin.clientCertAuth').value === 'true'">
+        <div class="formrow">
           <div class="column">
             <label for="secure-password">Cluster Admin Password</label>
             <input
@@ -123,6 +92,30 @@ licenses/APL2.txt.
               placeholder="Existing cluster password">
             <!-- mn-autocomplete-off -->
           </div>
+        </div>
+        <div class="formrow">
+          <input
+            type="checkbox"
+            id="for-certificate"
+            formControlName="clientCertAuth">
+          <label for="for-certificate">
+            The cluster requires a client certificate
+            <span
+                class="fa-stack icon-info"
+                [ngbTooltip]="clientCert"
+                triggers="mouseenter"
+                placement="top">
+               <span class="icon fa-circle-thin fa-stack-2x"></span>
+               <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+          </label>
+          <ng-template #clientCert>
+            <div>
+              Check this when the cluster has client certificate authentication
+              set to Mandatory. This node's client certificate will be presented
+              when connecting.
+            </div>
+          </ng-template>
         </div>
       </div>
 

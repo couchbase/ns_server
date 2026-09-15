@@ -62,13 +62,16 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
 
     const clusterAdminGroup = this.joinClusterForm.get('clusterAdmin');
     const clientCertAuthControl = clusterAdminGroup.get('clientCertAuth');
-    clientCertAuthControl.setValue(uploadedCert ? 'true' : 'false');
+    clientCertAuthControl.setValue(uploadedCert);
     const userControl = clusterAdminGroup.get('user');
     const passwordControl = clusterAdminGroup.get('password');
 
-    // need to make user/password validation contingent on clientCertAuth
-    const updateUserValidation = (clientCertAuthValue) => {
-      if (clientCertAuthValue === 'true') {
+    // The credentials are always offered and always sent. They are only
+    // required when the certificate is not presented, because a cluster that
+    // accepts the certificate on its own needs nothing else -- and whether it
+    // does is not visible from here.
+    const updateUserValidation = (useClientCert) => {
+      if (useClientCert) {
         userControl.clearValidators();
         passwordControl.clearValidators();
       } else {
@@ -120,10 +123,8 @@ class MnWizardJoinClusterComponent extends MnLifeCycleHooksToStream {
         if (servicesValue.length) {
           data.services = mnWizardService.getServicesValues(services).join(",");
         }
-        if (data.clientCertAuth === 'true') {
-          delete data.user;
-          delete data.password;
-        }
+        // The checkbox is a boolean; the API takes the strings
+        data.clientCertAuth = data.clientCertAuth ? 'true' : 'false';
         return data;
       }))
       .setPostRequest(this.joinClusterHttp)

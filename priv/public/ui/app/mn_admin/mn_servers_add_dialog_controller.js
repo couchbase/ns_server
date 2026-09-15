@@ -35,6 +35,7 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
       password: ''
     }
   };
+
   if ($scope.poolDefault.isEnterprise) {
     vm.addNodeConfig.services.model.cbas = true;
     vm.addNodeConfig.services.model.eventing = true;
@@ -109,16 +110,11 @@ function mnServersAddDialogController($scope, $rootScope, $q, $uibModal, mnServe
         $uibModalInstance.close();
       }
     } else {
-      // don't send username/password if client cert auth is enabled
-      const creds = {...vm.addNodeConfig.credentials};
-      if (creds.clientCertAuth === 'true') {
-        delete creds.user;
-        delete creds.password;
-      }
-
+      // The credentials are always sent: whether the node being added needs
+      // them alongside the certificate is not visible from here
       promise = mnServersService
         .addServer(vm.addNodeConfig.selectedGroup,
-                   creds,
+                   vm.addNodeConfig.credentials,
                    servicesList);
       if (vm.specifyDisk) {
         promise = promise.then(postDiskStorage);
