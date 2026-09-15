@@ -8,3 +8,4 @@ traceback-with-variables~=2.0.4
 cryptography~=38.0.1
 jsondiff~=2.0.0
 setuptools
+aiosmtpd~=1.4.6
