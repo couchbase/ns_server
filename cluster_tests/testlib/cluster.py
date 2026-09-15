@@ -92,7 +92,11 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
             # --older-version-path is supplied, including unrelated test
             # suites.
             # Create the cluster using nodes running the older release.
-            cluster, old_urls = legacy_cluster.build_cluster(
+            # Only the old-release nodes are started here. Whatever runs the
+            # upgrade asks for replacement nodes when it wants them, with
+            # cluster.start_new_version_nodes() -- one kind of upgrade swaps
+            # nodes in, another never needs any.
+            cluster, _ = legacy_cluster.build_cluster(
                     address=address,
                     auth=auth,
                     cluster_index=cluster_index,
@@ -105,12 +109,8 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                     add_cluster_to_auto_kill=add_cluster_to_auto_kill,
                     kill_nodes=kill_nodes,
                     get_terminal_attrs=get_terminal_attrs)
-            # Add nodes running the new release, but don't yet rebalance
-            # them into the cluster. This allows tests to run their
-            # before_upgrade functions.
-            return _add_new_version_nodes(address, auth, cluster_index,
-                                          cluster, start_args,
-                                          disconnected_args, old_urls)
+            cluster.mixed_version = True
+            return cluster
 
         port = cluster_run_lib.base_api_port + start_args['start_index']
         num_nodes = start_args['num_nodes']
@@ -139,7 +139,8 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                         f"Perhaps a node has already been started at "
                         f"{address}:{port}?\n")
         cluster = get_cluster(cluster_index, port, auth, processes, nodes,
-                              start_args)
+                              start_args, address=address,
+                              protocol=disconnected_args['protocol'])
         add_cluster_to_auto_kill(cluster_index, processes, urls)
         return cluster
     except StartClusterError:
@@ -150,50 +151,6 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
         # here to avoid leaving them running
         if processes:
             kill_nodes(processes, urls, get_terminal_attrs())
-        raise StartClusterError(e, cluster_index)
-
-
-def _add_new_version_nodes(address, auth, cluster_index, cluster,
-                            start_args, disconnected_args, old_urls):
-    num_nodes = start_args['num_nodes']
-    new_start_index = start_args['start_index'] + num_nodes
-    new_port = cluster_run_lib.base_api_port + new_start_index
-    new_start_args = {**start_args, 'start_index': new_start_index}
-    new_processes = []
-    new_nodes = []
-    new_urls = []
-    try:
-        print(f"Starting {num_nodes} new-version node(s)")
-        new_processes = cluster_run_lib.start_cluster(**new_start_args)
-        new_nodes = [testlib.Node(host=address, port=new_port + i, auth=auth)
-                     for i in range(num_nodes)]
-        new_urls = get_node_urls(new_nodes)
-
-        node_init(auth,
-                  num_nodes=num_nodes,
-                  start_index=new_start_index,
-                  protocol=disconnected_args['protocol'],
-                  hostname=disconnected_args['hostname'])
-
-        # Track new nodes in _nodes for smog_check and process management,
-        # but do NOT join them — the upgrade test controls when they join.
-        for new_node in new_nodes:
-            cluster._nodes.append(new_node)
-        cluster.new_version_nodes = new_nodes
-
-        remove_cluster_from_auto_kill(cluster_index)
-        cluster.processes += new_processes
-        add_cluster_to_auto_kill(cluster_index, cluster.processes,
-                                  old_urls + new_urls)
-        return cluster
-    except Exception as e:
-        if new_processes:
-            kill_nodes(new_processes, new_urls, get_terminal_attrs())
-        # The old cluster is still running at this point (registered for
-        # auto-kill by legacy_cluster.build_cluster) -- tear it down now
-        # instead of leaving it running until process exit.
-        remove_cluster_from_auto_kill(cluster_index)
-        kill_nodes(cluster.processes, old_urls, get_terminal_attrs())
         raise StartClusterError(e, cluster_index)
 
 
@@ -212,7 +169,8 @@ def node_init(auth, num_nodes, start_index, protocol, hostname):
                      f"Status {r.status_code}, error: {r.text}")
 
 
-def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args):
+def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args,
+                address=None, protocol=None):
     connected_nodes = []
     for i, node in enumerate(nodes):
         pools_default = f"/pools/default"
@@ -256,14 +214,16 @@ def get_cluster(cluster_index, start_port, auth, processes, nodes, start_args):
                       processes=processes,
                       auth=auth,
                       index=cluster_index,
-                      start_args=start_args)
+                      start_args=start_args,
+                      address=address,
+                      protocol=protocol)
     print(f"Successfully connected to cluster: {cluster}")
     return cluster
 
 
 class Cluster:
     def __init__(self, nodes, connected_nodes, first_node_index, processes,
-                 auth, index, start_args):
+                 auth, index, start_args, address=None, protocol=None):
         self._nodes = nodes
         self.connected_nodes = connected_nodes
         self.first_node_index = first_node_index
@@ -272,6 +232,13 @@ class Cluster:
         self.auth = auth
         self.requirements = None
         self.start_args = start_args
+        # Whether this cluster was built on the older release; set by
+        # build_cluster.
+        self.mixed_version = False
+        # How to reach and initialise nodes started after the cluster was
+        # built; decided by build_cluster.
+        self.address = address
+        self.protocol = protocol
         self.new_version_nodes = []
 
         def get_bool(code):
@@ -348,6 +315,58 @@ class Cluster:
             print(
                 f"Collected logs for {node.url}: {path}")
         return time.time_ns() - collect_start_time
+
+    def start_new_version_nodes(self, count):
+        """Start `count` nodes on the version under test, outside the cluster.
+
+        They are running but not joined: whatever drives the upgrade decides
+        when, and whether, they become cluster members. That is the point --
+        one kind of upgrade swaps replacement nodes in, another upgrades the
+        existing nodes in place and never asks for any, and a rolling one
+        wants them a node at a time.
+
+        Returns the new nodes.
+        """
+        assert not self.is_existing_cluster(), \
+            "Can't start nodes on a pre-existing cluster"
+        assert self.address is not None, \
+            "cluster was built without an address; cannot start more nodes"
+
+        start_index = self.first_node_index + len(self._nodes)
+        port = cluster_run_lib.base_api_port + start_index
+        start_args = {**deepcopy(self.start_args),
+                      'start_index': start_index,
+                      'num_nodes': count}
+
+        processes = []
+        nodes = []
+        urls = []
+        try:
+            print(f"Starting {count} node(s) on the version under test")
+            processes = cluster_run_lib.start_cluster(**start_args)
+            nodes = [testlib.Node(host=self.address, port=port + i,
+                                  auth=self.auth)
+                     for i in range(count)]
+            urls = get_node_urls(nodes)
+            node_init(self.auth, num_nodes=count, start_index=start_index,
+                      protocol=self.protocol, hostname=self.address)
+        except Exception:
+            # Only tear down what this call started; the cluster it was
+            # called on is the caller's to deal with.
+            if processes:
+                kill_nodes(processes, urls, get_terminal_attrs())
+            raise
+
+        # Track them in _nodes so smog_check and process management see them,
+        # but do NOT join them.
+        self._nodes.extend(nodes)
+        self.new_version_nodes.extend(nodes)
+
+        remove_cluster_from_auto_kill(self.index)
+        self.processes += processes
+        add_cluster_to_auto_kill(self.index, self.processes,
+                                 get_node_urls(self._nodes))
+        return nodes
 
     def stop_all_nodes(self):
         assert not self.is_existing_cluster(), "Can't stop pre-existing cluster"

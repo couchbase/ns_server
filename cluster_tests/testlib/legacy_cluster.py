@@ -98,7 +98,8 @@ def build_cluster(address, auth, cluster_index, start_args, connect,
                                    f"at {address}:{port}?\n")
 
         cluster = get_cluster(cluster_index, port, auth, processes, nodes,
-                              start_args)
+                              start_args, address=address,
+                              protocol=disconnected_args['protocol'])
         add_cluster_to_auto_kill(cluster_index, processes, urls)
         return cluster, urls
     except Exception:

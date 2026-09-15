@@ -9,12 +9,12 @@
 
 """Runs one upgrade cycle and reports each suite's each hook separately.
 
-The cycle itself is still fixed here -- add the new nodes, rebalance them in,
-rebalance the old ones out. What changes is that the checks are no longer a
-list this module holds: suites are discovered, and each hook of each suite
-becomes an ordinary generated test. So one suite failing no longer leaves every
-other suite without a verdict, and the report names the suite and the hook
-rather than just the driver.
+The cycle itself is still fixed here -- start the replacement nodes, rebalance
+them in, rebalance the old ones out. What changes is that the checks are no
+longer a list this module holds: suites are discovered, and each hook of each
+suite becomes an ordinary generated test. So one suite failing no longer leaves
+every other suite without a verdict, and the report names the suite and the
+hook rather than just the driver.
 """
 
 import collections
@@ -110,16 +110,17 @@ def verify_cluster(cluster, mixed):
 class UpgradeContext:
     """What the suites are given.
 
-    old_nodes and new_nodes are captured once, when the cycle starts: the old
-    nodes are the ones in the cluster, the new ones are staged alongside it and
-    join partway through.
+    old_nodes are the cluster as it stands when the cycle starts. new_nodes is
+    empty until a transition starts replacement nodes and records them here,
+    so a suite asking for a new node before one exists gets a clear failure
+    rather than a stale answer.
     """
 
     def __init__(self, cluster, bucket_name):
         self.cluster = cluster
         self.bucket_name = bucket_name
         self.old_nodes = list(cluster.connected_nodes)
-        self.new_nodes = list(cluster.new_version_nodes)
+        self.new_nodes = []
         self.prior_compat_mode = None
 
     @property
@@ -172,8 +173,8 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
         # satisfies the mixed_version requirement (whether or not it ran to
         # completion), so mark it as spent here rather than only on the success
         # path, ensuring it isn't handed to another testset expecting a fresh
-        # mixed-version cluster.
-        self.cluster.new_version_nodes = []
+        # mixed-version cluster. Note new_version_nodes is deliberately left
+        # populated: that is now what marks the cluster as already upgraded.
         self.cluster.set_requirements(None)
 
     # -- the cycle --------------------------------------------------------
@@ -188,6 +189,10 @@ class UpgradeTestSetBase(testlib.BaseTestSet):
                 Stage(CALLBACK, 'post_upgrade_checks', None)]
 
     def _rebalance_in(self):
+        # The replacement nodes are started here, not when the cluster was
+        # built: it is this cycle that knows how many it needs and when.
+        self.ctx.new_nodes = self.cluster.start_new_version_nodes(
+            len(self.ctx.old_nodes))
         # Join each new-version node with the same services as its
         # corresponding old-version node, rather than relying on add_node's
         # default (which would pick up the services of whichever connected

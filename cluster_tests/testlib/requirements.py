@@ -1064,18 +1064,24 @@ class MixedVersion(Requirement):
         # argument-parsing time in run.py, since they describe how the test
         # run was invoked rather than anything about this specific cluster.
         new_version_nodes = getattr(cluster, 'new_version_nodes', [])
+        mixed_version = getattr(cluster, 'mixed_version', False)
 
         if not self.enabled:
-            return not new_version_nodes
+            return not mixed_version
 
-        if not new_version_nodes:
-            print("No staged new-version nodes; cluster cannot be reused for "
-                  "a mixed-version upgrade test")
+        if not mixed_version:
+            print("Cluster was not built on the older release; it cannot be "
+                  "used for a mixed-version upgrade test")
             return False
 
-        if any(node in cluster.connected_nodes for node in new_version_nodes):
-            print("New-version nodes are already joined to the cluster; "
-                  "cluster cannot be reused for a mixed-version upgrade test")
+        # Replacement nodes are no longer started when the cluster is built
+        # -- whatever drives the upgrade starts them when it needs them. So
+        # their presence no longer means "ready"; it means this cluster has
+        # already been through an upgrade and cannot serve another.
+        if new_version_nodes:
+            print("New-version nodes have already been started into this "
+                  "cluster; it cannot be reused for a mixed-version upgrade "
+                  "test")
             return False
 
         if not all(cluster.is_node_started(node) for node in cluster._nodes):
