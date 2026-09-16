@@ -40,19 +40,23 @@ class AlertTests(testlib.BaseTestSet):
             self.cluster,
             "ns_config:set({ns_mail, disable_verify_peer}, true).")
 
-        # Set up mock SMTP server for email verification
+        # Set up mock SMTP servers for email verification
         self.mock_smtp_server = self.setup_mock_email_server(
             smtp_host='127.0.0.1',
             smtp_port=None,  # auto-assign port
-            sender='alerts_test@example.com',
-            recipients='admin@example.com',
             use_tls=True,
-            enable_alerts=None  # preserve existing/default alerts
+            require_tls=False
+        )
+        self.mock_tls_required_smtp_server = self.setup_mock_email_server(
+            smtp_host='127.0.0.1',
+            smtp_port=None,  # auto-assign port
+            use_tls=True,
+            require_tls=True
         )
 
     def teardown(self):
         # Stop mock SMTP server and restore email configuration
-        self.teardown_mock_email_server()
+        self.teardown_mock_email_servers()
 
         testlib.diag_eval(self.cluster, 'menelaus_web_alerts_srv:reset().')
         testlib.post_succ(self.cluster, '/settings/alerts/limits',
@@ -67,72 +71,59 @@ class AlertTests(testlib.BaseTestSet):
     def test_teardown(self):
         # Clear captured emails after each test to ensure clean state for next
         # test
-        if hasattr(self, 'mock_smtp_server') and self.mock_smtp_server:
-            try:
-                self.mock_smtp_server.clear_emails()
-            except Exception:
-                pass
+        for server_type in ('mock_tls_smtp_server', 'mock_both_smtp_server'):
+            server = getattr(self, server_type, None)
+            if server is not None:
+                try:
+                    server.clear_emails()
+                except Exception:
+                    pass
 
     def setup_mock_email_server(self, smtp_host='127.0.0.1', smtp_port=None,
-                                sender='test_sender@example.com',
-                                recipients='test_recipient@example.com',
-                                enable_alerts=None, use_tls=False):
+                                use_tls=False, require_tls=False):
         """
-        Set up a mock SMTP server and configure the cluster to use it for
-        email alerts.
+        Set up a mock SMTP server.
 
         Args:
             smtp_host: Host for the mock SMTP server (default: 127.0.0.1)
             smtp_port: Port for the mock SMTP server (None for auto-assign)
-            sender: Email sender address (default: test_sender@example.com)
-            recipients: Comma-separated list of email recipients
-            enable_alerts: List of alert types to enable for email (None to
-                           preserve existing)
-            use_tls: Whether to use TLS for SMTP (STARTTLS)
+            use_tls: Whether to support TLS for SMTP (STARTTLS)
+            require_tls: Whether to reject clients that do not use STARTTLS
 
         Returns:
             SMTPServerRunner instance
         """
         # Log next to the node's data, as there is no cluster-wide log dir
         node_data_dir = self.cluster.connected_nodes[0].data_path()
-        self.smtp_log_path = os.path.join(node_data_dir, 'mock_smtp.log')
-        print(f"SMTP server log will be written to: {self.smtp_log_path}")
+        log_name = f'mock_smtp_{"tls_required" if require_tls else ""}.log'
+        smtp_log_path = os.path.join(node_data_dir, log_name)
+        print(f"SMTP server log will be written to: {smtp_log_path}")
 
         # Start mock SMTP server
-        self.mock_smtp_server = start_mock_smtp_server(
+        mock_smtp_server = start_mock_smtp_server(
                                   host=smtp_host,
                                   port=smtp_port or 0,
                                   use_tls=use_tls,
-                                  require_starttls=use_tls,
-                                  log_file_path=self.smtp_log_path)
-        actual_port = self.mock_smtp_server.port
+                                  require_starttls=require_tls,
+                                  log_file_path=smtp_log_path)
 
-        # Configure cluster email settings
-        self.configure_email_alerts(
-            enabled=True,
-            sender=sender,
-            recipients=recipients,
-            smtp_host=smtp_host,
-            smtp_port=actual_port,
-            smtp_encrypt=use_tls,
-            enable_alerts=enable_alerts
-        )
+        return mock_smtp_server
 
-        return self.mock_smtp_server
-
-    def teardown_mock_email_server(self):
-        """Stop the mock SMTP server and restore original email
+    def teardown_mock_email_servers(self):
+        """Stop the mock SMTP servers and restore original email
         configuration."""
-        if hasattr(self, 'mock_smtp_server') and self.mock_smtp_server:
-            try:
-                self.mock_smtp_server.clear_emails()
-            except:
-                pass
-            try:
-                self.mock_smtp_server.stop_server()
-            except:
-                pass
-            self.mock_smtp_server = None
+        for server_type in ('mock_tls_smtp_server', 'mock_both_smtp_server'):
+            server = getattr(self, server_type, None)
+            if server is not None:
+                try:
+                    server.clear_emails()
+                except:
+                    pass
+                try:
+                    server.stop_server()
+                except:
+                    pass
+                setattr(self, server_type, None)
 
         # Restore certificate verification setting
         testlib.diag_eval(
@@ -201,13 +192,36 @@ class AlertTests(testlib.BaseTestSet):
               f"sender={response['sender']}, "
               f"recipients={response['recipients']}")
 
-    def send_test_email_test(self):
+    def wait_for_test_email(self, server, sender, recipients):
+        # Wait for the email to be captured by the mock SMTP server
+        def check_test_email_received():
+            emails = server.captured_emails
+            for email in emails:
+                if 'Test Email Subject' in email.subject:
+                    print(f"Test email received: {email}")
+                    # Verify sender
+                    assert email.sender == sender, \
+                        f"Sender mismatch: expected {sender}, " \
+                        f"got {email.sender}"
+                    # Verify body
+                    assert 'This is a test email body' in email.body, \
+                        f"Email body mismatch: {email.body}"
+                    for recipient in recipients:
+                        assert recipient in email.recipients, \
+                            f"Recipient {recipient} did not receive the " \
+                            f"email. Actual recipients: {email.recipients}"
+                        print(f"  - {recipient}: OK")
+                    return True
+            return False
+
+        testlib.poll_for_condition(check_test_email_received, sleep_time=1,
+                                   timeout=30,
+                                   msg='wait for test email to be received')
+
+    def send_test_email_tls_test(self):
         """Test sending a test email via /settings/alerts/testEmail."""
         # Clear any previously captured emails
-        self.mock_smtp_server.clear_emails()
-
-        # Get current email settings to get host/port
-        settings = testlib.get_succ(self.cluster, '/settings/alerts').json()
+        self.mock_tls_required_smtp_server.clear_emails()
 
         # Use new sender and multiple recipients
         test_sender = f'{testlib.random_str(10)}@example.com'
@@ -222,9 +236,9 @@ class AlertTests(testlib.BaseTestSet):
             'enabled': 'true',
             'sender': test_sender,
             'recipients': ','.join(test_recipients),
-            'emailHost': settings['emailServer']['host'],
-            'emailPort': str(settings['emailServer']['port']),
-            'emailUser': settings['emailServer']['user'],
+            'emailHost': '127.0.0.1',
+            'emailPort': str(self.mock_tls_required_smtp_server.port),
+            'emailUser': '',
             'emailPass': '',
             'emailEncrypt': 'false'
         }
@@ -240,30 +254,50 @@ class AlertTests(testlib.BaseTestSet):
         testlib.post_succ(self.cluster, '/settings/alerts/testEmail',
                           data=test_data)
 
-        # Wait for the email to be captured by the mock SMTP server
-        def check_test_email_received():
-            emails = self.mock_smtp_server.captured_emails
-            for email in emails:
-                if 'Test Email Subject' in email.subject:
-                    print(f"Test email received: {email}")
-                    # Verify sender
-                    assert email.sender == test_sender, \
-                        f"Sender mismatch: expected {test_sender}, " \
-                        f"got {email.sender}"
-                    # Verify body
-                    assert 'This is a test email body' in email.body, \
-                        f"Email body mismatch: {email.body}"
-                    for recipient in test_recipients:
-                        assert recipient in email.recipients, \
-                            f"Recipient {recipient} did not receive the " \
-                            f"email. Actual recipients: {test_email.recipients}"
-                        print(f"  - {recipient}: OK")
-                    return True
-            return False
+        self.wait_for_test_email(self.mock_tls_required_smtp_server, test_sender,
+                                 test_recipients)
 
-        testlib.poll_for_condition(check_test_email_received, sleep_time=1,
-                                   timeout=30,
-                                   msg='wait for test email to be received')
+    def send_test_email_non_tls_test(self):
+        """Test sending a test email via /settings/alerts/testEmail."""
+        # Clear any previously captured emails
+        self.mock_smtp_server.clear_emails()
+
+        # Use new sender and multiple recipients
+        test_sender = f'{testlib.random_str(10)}@example.com'
+        test_recipients = ['recipient1@example.com',
+                           'recipient2@example.com',
+                           'recipient3@example.com']
+
+        # Send test email - use real host/port but new sender/recipients
+        test_data = {
+            'subject': 'Test Email Subject',
+            'body': 'This is a test email body',
+            'enabled': 'true',
+            'sender': test_sender,
+            'recipients': ','.join(test_recipients),
+            'emailHost': '127.0.0.1',
+            'emailPort': str(self.mock_smtp_server.port),
+            'emailUser': '',
+            'emailPass': '',
+            'emailEncrypt': 'true'
+        }
+
+        # The mail server accepts, but does not require tls
+        testlib.post_succ(self.cluster, '/settings/alerts/testEmail',
+                          data=test_data)
+
+        self.wait_for_test_email(self.mock_smtp_server, test_sender,
+                                 test_recipients)
+
+        self.mock_smtp_server.clear_emails()
+
+        # The mail server also accepts non-tls connection
+        test_data['emailEncrypt'] = 'false'
+        testlib.post_succ(self.cluster, '/settings/alerts/testEmail',
+                          data=test_data)
+
+        self.wait_for_test_email(self.mock_smtp_server, test_sender,
+                                 test_recipients)
 
     def cert_about_to_expire_alert_test(self):
         node_data_dir = self.cluster.connected_nodes[0].data_path()
