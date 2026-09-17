@@ -32,6 +32,7 @@ Available on self within hook methods:
 import testlib
 from testlib.upgrade_test_base import UpgradeChecks as UpgradeCheckSuite
 from testsets.example_upgrade_checks import ExampleUpgradeChecks
+from testsets.jwt_upgrade_checks import JwtUpgradeChecks
 
 
 class AlertsUpgradeChecks(UpgradeCheckSuite):
@@ -366,6 +367,7 @@ class UpgradeChecks(testlib.BaseTestSet):
         RbacRoleChangesUpgradeChecks,
         IndexSettingsUpgradeChecks,
         ClusterCapabilitiesUpgradeChecks,
+        JwtUpgradeChecks,
         ExampleUpgradeChecks,
     ]
 
