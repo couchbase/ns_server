@@ -420,12 +420,13 @@ do_push(State) ->
     do_push(ns_config:get_kv_map(?SELF_PULL_TIMEOUT), State).
 
 do_push(RawKVs, #state{nodes_rev = Revision} = State) ->
-    Payload = case cluster_compat_mode:is_cluster_totoro() of
-        true ->
-            ns_config:ensure_config_is_map(RawKVs);
-        false ->
-            ns_config:ensure_config_is_list(RawKVs)
-    end,
+    Payload =
+        case cluster_compat_mode:is_cluster_totoro() of
+            true ->
+                ns_config:ensure_config_is_map(RawKVs);
+            false ->
+                ns_config:ensure_config_is_list(RawKVs)
+        end,
     Blob = misc:compress(Payload),
     do_push_local(Blob),
     LiveNodes = live_other_nodes(State),
