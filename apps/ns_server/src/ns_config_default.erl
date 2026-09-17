@@ -249,7 +249,10 @@ default(Vsn) ->
        {max_client_connection_details, 0},
        {dcp_consumer_max_marker_version, <<"2.2">>},
        {dcp_snapshot_marker_hps_enabled, true},
-       {dcp_snapshot_marker_purge_seqno_enabled, true}]},
+       {dcp_snapshot_marker_purge_seqno_enabled, true},
+       %% How much space all of the memcached log files are allowed to take
+       %% together before memcached starts purging the oldest ones.
+       {log_max_aggregated_size, ?MCD_LOG_MAX_AGGREGATED_SIZE}]},
 
      %% Memcached config
      {{node, node(), memcached},
@@ -281,7 +284,7 @@ default(Vsn) ->
        {log_generations, 20},
        %% how big log file needs to grow before memcached starts using
        %% next file
-       {log_cyclesize, 1024*1024*10},
+       {log_cyclesize, ?MCD_LOG_CYCLE_SIZE},
        %% Milliseconds between log rotation runs.
        {log_rotation_period, 39003}]},
 
@@ -322,7 +325,8 @@ default(Vsn) ->
 
         {logger,
          {[{filename, {"~s/~s", [log_path, log_prefix]}},
-           {cyclesize, log_cyclesize}]}},
+           {cyclesize, log_cyclesize},
+           {max_aggregated_size, log_max_aggregated_size}]}},
 
         {external_auth_service,
          {memcached_config_mgr, get_external_auth_service, []}},

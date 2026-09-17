@@ -66,7 +66,11 @@ supported_setting_names() ->
      {max_client_connection_details, {int, 0, ?MAX_32BIT_SIGNED_INT}},
      {dcp_consumer_max_marker_version, {one_of, ["2.0", "2.2"]}},
      {dcp_snapshot_marker_hps_enabled, bool},
-     {dcp_snapshot_marker_purge_seqno_enabled, bool}]
+     {dcp_snapshot_marker_purge_seqno_enabled, bool},
+     %% Memcached purges its oldest log files once they take up more than this,
+     %% so there is no point in allowing less than a single log file.
+     {log_max_aggregated_size,
+      {int, ?MCD_LOG_CYCLE_SIZE, ?MAX_64BIT_UNSIGNED_INT}}]
         ++
         %% KV stopped supporting this is 7.6, they just ignore it, but we
         %% should probably support it in mixed mode. Even though we "support" it
