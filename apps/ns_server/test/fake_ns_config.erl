@@ -20,7 +20,7 @@
 %%
 %% This module can be started with setup() and torn down with teardown().
 %%
-%% All config is stored in an ets table as a proplist (similarly to ns_config).
+%% All config is stored in an ets table as a map (similarly to ns_config).
 %%
 %% This helper is minimal, it was written to solve an issue for a specific
 %% test, so the ns_config interface that has been implemented here is not
@@ -102,20 +102,16 @@ teardown_ns_config_events() ->
 %% -------------------------
 -spec update_snapshot(atom(), term()) -> true.
 update_snapshot(Key, Value) ->
-    OldSnapshot = get_ets_snapshot(),
-    StoreSnapshot = misc:update_proplist(OldSnapshot, [{Key, Value}]),
-    store_ets_snapshot(StoreSnapshot).
+    store_ets_snapshot(maps:put(Key, Value, get_ets_snapshot())).
 
 -spec update_snapshot(proplists:proplist()) -> true.
 update_snapshot(NewSnapshot) when is_list(NewSnapshot) ->
-    OldSnapshot = get_ets_snapshot(),
-    StoreSnapshot = misc:update_proplist(OldSnapshot, NewSnapshot),
-    store_ets_snapshot(StoreSnapshot).
+    store_ets_snapshot(maps:merge(get_ets_snapshot(),
+                                  maps:from_list(NewSnapshot))).
 
 -spec delete_key(atom()) -> true.
 delete_key(Key) ->
-    OldSnapshot = get_ets_snapshot(),
-    store_ets_snapshot(proplists:delete(Key, OldSnapshot)).
+    store_ets_snapshot(maps:remove(Key, get_ets_snapshot())).
 
 %% ----------------------
 %% API - Helper Functions
@@ -157,16 +153,14 @@ meck_setup() ->
     %% and pass it through to the base function, which should stop this from
     %% ever getting out of sync.
     meck:expect(ns_config, fold,
-                fun(Fun, Acc, ?NS_CONFIG_LATEST_MARKER) ->
-                        meck:passthrough([Fun, Acc, [get_ets_snapshot()]]);
-                   (Fun, Acc, Snapshot) ->
-                        meck:passthrough([Fun, Acc, [Snapshot]])
+                fun(Fun, Acc, Snapshot) ->
+                        meck:passthrough([Fun, Acc, Snapshot])
                 end),
     meck:expect(ns_config, get_node_uuid_map,
                 fun(?NS_CONFIG_LATEST_MARKER) ->
-                        meck:passthrough([[get_ets_snapshot()]]);
+                        meck:passthrough([get_ets_snapshot()]);
                    (Snapshot) ->
-                        meck:passthrough([[Snapshot]])
+                        meck:passthrough([Snapshot])
                 end),
 
     meck:expect(ns_config, do_announce_changes,
@@ -272,39 +266,33 @@ meck_setup_getters() ->
                 end),
     meck:expect(ns_config, get_kv_list,
                 fun () ->
-                        get_ets_snapshot()
+                        maps:to_list(maps:iterator(get_ets_snapshot(), ordered))
                 end),
     meck:expect(ns_config, kvlist_to_dynamic, 1, meck:passthrough()),
     meck:expect(ns_config, get_kv_map,
                 fun() ->
-                        ns_config:kvlist_to_dynamic(get_ets_snapshot())
+                        get_ets_snapshot()
                 end),
     meck:expect(ns_config, get_kv_map,
                 fun(Timeout) when is_integer(Timeout)
                                   orelse Timeout =:= infinity ->
-                        ns_config:kvlist_to_dynamic(get_ets_snapshot());
-                   (Config) when is_list(Config) ->
-                        ns_config:kvlist_to_dynamic(Config)
+                        get_ets_snapshot();
+                   (Config) when is_map(Config) ->
+                        Config
                 end).
 
 meck_setup_setters() ->
     meck:expect(ns_config, update_key,
                 fun(Key, Fun) ->
-                        Snapshot = get_ets_snapshot(),
-                        OldValue = proplists:get_value(Key, Snapshot),
-                        true = (OldValue =/= undefined),
-                        NewSnapshot =
-                            misc:update_proplist(Snapshot,
-                                                 [{Key, Fun(OldValue)}]),
-                        update_snapshot(NewSnapshot),
+                        {ok, OldValue} = maps:find(Key, get_ets_snapshot()),
+                        update_snapshot(Key, Fun(OldValue)),
                         ok
                 end),
 
     meck:expect(ns_config, update,
                 fun(Fun) ->
                         Snapshot = get_ets_snapshot(),
-                        NewSnapshot = apply_update_fun(Snapshot, Fun),
-                        update_snapshot(NewSnapshot),
+                        store_ets_snapshot(apply_update_fun(Snapshot, Fun)),
                         ok
                 end),
 
@@ -326,37 +314,31 @@ meck_setup_setters() ->
 get_ets_snapshot() ->
     case ets:lookup(?TABLE_NAME, snapshot) of
         [{snapshot, Snapshot}] -> Snapshot;
-        [] -> []
+        [] -> #{}
     end.
 
 store_ets_snapshot(Snapshot) ->
     OldSnapshot = get_ets_snapshot(),
     ets:insert(?TABLE_NAME, {snapshot, Snapshot}),
 
-    Diff = lists:foldl(
-             fun ({Key, NewValue}, Acc) ->
-                     case proplists:get_value(Key, OldSnapshot) =:= NewValue of
-                         true -> Acc;
-                         false -> Acc#{Key => NewValue}
-                     end
-             end, #{}, Snapshot),
+    Diff = maps:filter(
+             fun (Key, NewValue) ->
+                     maps:find(Key, OldSnapshot) =/= {ok, NewValue}
+             end, Snapshot),
 
     ns_config:do_announce_changes(Diff).
 
 fetch_from_snapshot(Snapshot, Key)  ->
-    case proplists:get_value(Key, Snapshot, not_found) of
-        not_found -> false;
-        V -> {value, V}
+    case maps:find(Key, Snapshot) of
+        {ok, V} -> {value, V};
+        error -> false
     end.
 
 fetch_from_latest_snapshot(Key) ->
     fetch_from_snapshot(get_ets_snapshot(), Key).
 
 fetch_with_default(Snapshot, Key, Default) ->
-    case proplists:get_value(Key, Snapshot, undefined) of
-        undefined -> Default;
-        V -> V
-    end.
+    maps:get(Key, Snapshot, Default).
 
 fetch_with_default_from_latest_snapshot(Key, Default) ->
     fetch_with_default(get_ets_snapshot(), Key, Default).
@@ -399,14 +381,14 @@ fetch_prop(Snapshot, Key, SubKey, DefaultSubVal) ->
 
 apply_update_fun(Snapshot, Fun) ->
     UpdateFun =
-        fun({Key, Value}, Acc) ->
+        fun(Key, Value, Acc) ->
                 case Fun({Key, Value}) of
                     delete ->
-                        lists:keydelete(Key, 1, Acc);
+                        maps:remove(Key, Acc);
                     skip ->
                         Acc;
                     NewValue ->
-                        lists:keystore(Key, 1, Acc, {Key, NewValue})
+                        Acc#{Key => NewValue}
                 end
         end,
-    lists:foldl(UpdateFun, Snapshot, Snapshot).
+    maps:fold(UpdateFun, Snapshot, Snapshot).
