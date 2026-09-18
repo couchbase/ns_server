@@ -731,7 +731,7 @@ attach_vclock(Value, Node) ->
 %%
 %% Pre-Totoro version considers the deleted keys when calculating the rev.
 compute_global_rev_pre_totoro(?NS_CONFIG_LATEST_MARKER) ->
-    compute_global_rev(ns_config:get());
+    compute_global_rev_pre_totoro(ns_config:get());
 compute_global_rev_pre_totoro(Config) ->
     KVList = get_kv_list_with_config(Config),
     lists:foldl(
