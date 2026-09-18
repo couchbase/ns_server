@@ -1393,7 +1393,7 @@ upgrade_props(?VERSION_79, UserOrGroup, UserProps)
   when UserOrGroup == user; UserOrGroup == group ->
     {ok, functools:chain(UserProps,
                          [maybe_substitute_7_9_user_roles(_)])};
-upgrade_props(?VERSION_TOTORO, UserOrGroup, Props)
+upgrade_props(?VERSION_85, UserOrGroup, Props)
                             when UserOrGroup == user; UserOrGroup == group ->
     {ok, functools:chain(Props,
                          [convert_roles_from_atom_to_binary(roles, _),
@@ -1418,7 +1418,7 @@ convert_roles_from_atom_to_binary(Key, Props) ->
     end.
 
 maybe_add_ui_access_role(Props) ->
-    AllUIRoles = menelaus_old_roles:pre_totoro_ui_roles(),
+    AllUIRoles = menelaus_old_roles:pre_85_ui_roles(),
     ShouldAddUIRole = fun ({R, _}) -> lists:member(R, AllUIRoles);
                           (R) -> lists:member(R, AllUIRoles)
                       end,
@@ -1603,7 +1603,7 @@ upgrade_test_() ->
              [{roles, [eventing_admin]}]}],
            [CheckUser("unchanged-admin", roles,
                       [eventing_admin])]),
-      Test(?VERSION_TOTORO,
+      Test(?VERSION_85,
            [{{user, {"u1", local}}, []},
             {{user, {"u2", local}}, [{roles, []}]},
             {{user, {"u3", local}}, [{roles, [<<"admin">>]}]},

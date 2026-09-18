@@ -670,7 +670,7 @@ class UsersBackupTests(testlib.BaseTestSet):
             testlib.ensure_deleted(self.cluster, group_path)
 
     def service_role_grants_backed_up_and_restored_test(self):
-        # Service identities can hold credential_consumer grants (totoro+).
+        # Service identities can hold credential_consumer grants (8.5+).
         # The backup carries them and restore re-applies them, dropping (and
         # reporting) any naming a credential absent on the target -- same
         # treatment as users/groups. The service identity always exists, so

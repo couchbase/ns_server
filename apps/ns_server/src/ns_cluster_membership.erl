@@ -466,13 +466,13 @@ remove_nodes(RemoteNodes, Transaction) ->
             %% merges from these nodes will be made.
 
             %% We should be able to read our own nodes_wanted write.
-            IsTotoro = cluster_compat_mode:is_cluster_totoro(),
-            case IsTotoro of
+            Is85 = cluster_compat_mode:is_cluster_85(),
+            case Is85 of
                 false ->
-                    update_ns_config_for_node_removal_pre_totoro(RemoteNodes);
+                    update_ns_config_for_node_removal_pre_85(RemoteNodes);
                 true ->
                     %% chronicle_compat:push_and_sync_events/1 was added for
-                    %% Totoro, this doesn't work before
+                    %% 8.5, this doesn't work before
                     NodesWanted = nodes_wanted(),
                     ok = chronicle_compat:push_and_sync_events(NodesWanted),
                     ok = ns_config_rep:pull_remotes(NodesWanted),
@@ -486,7 +486,7 @@ remove_nodes(RemoteNodes, Transaction) ->
     end,
     RV.
 
-update_ns_config_for_node_removal_pre_totoro(RemoteNodes) ->
+update_ns_config_for_node_removal_pre_85(RemoteNodes) ->
     ok = ns_config:update(
            fun ({{node, Node, _}, _}) ->
                    case lists:member(Node, RemoteNodes) andalso

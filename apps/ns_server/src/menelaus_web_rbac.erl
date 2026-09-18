@@ -1257,7 +1257,7 @@ handle_put_user_with_identity({_UserId, Domain} = Identity, Req) ->
                                           Domain == local, false, CompatVer)).
 
 handle_get_service_roles(ServiceName, Req) ->
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         false ->
             menelaus_util:reply_global_error(
               Req,
@@ -1280,9 +1280,9 @@ do_get_service_roles(ServiceName, Req) ->
 
 handle_put_service_roles(ServiceName, Req) ->
     %% Per-service role grants are only allowed after cluster compat mode
-    %% switches to totoro. During rolling upgrade, old nodes don't recognize
+    %% switches to 8.5. During rolling upgrade, old nodes don't recognize
     %% these entries in chronicle.
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         false ->
             menelaus_util:reply_global_error(
               Req,
@@ -1463,9 +1463,9 @@ handle_delete_user(Domain, UserId, Req) ->
 
 handle_delete_service_roles(ServiceName, Req) ->
     %% Per-service role grants are only allowed after cluster compat mode
-    %% switches to totoro. During rolling upgrade, old nodes don't recognize
+    %% switches to 8.5. During rolling upgrade, old nodes don't recognize
     %% these entries in chronicle.
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         false ->
             menelaus_util:reply_global_error(
               Req,
@@ -2463,10 +2463,10 @@ handle_backup(Req) ->
 
 %% The services section of a backup: the credential_consumer grants held by
 %% each service identity. Returns `skip' when the section must be omitted --
-%% caller lacks service-role read permission, the cluster predates totoro, a
+%% caller lacks service-role read permission, the cluster predates 8.5, a
 %% top-level exclude ('any') drops it, or there are no grants to report.
 backup_services_section(Req, ExcludeFilters) ->
-    case cluster_compat_mode:is_cluster_totoro() andalso
+    case cluster_compat_mode:is_cluster_85() andalso
         menelaus_auth:has_permission(?SECURITY_READ, Req) andalso
         not lists:member(any, ExcludeFilters) of
         false ->
@@ -2816,7 +2816,7 @@ handle_backup_restore_validated(Req, Params) ->
     %% reported), never aborting the restore. When every grant in an entry
     %% drops (missing credentials), the end state still matches the backup:
     %% any live entry is removed, mirroring users/groups overwrite semantics.
-    ServicesSupported = cluster_compat_mode:is_cluster_totoro() andalso
+    ServicesSupported = cluster_compat_mode:is_cluster_85() andalso
         menelaus_auth:has_permission(?SECURITY_WRITE, Req),
     ExistingServices = menelaus_roles:get_all_service_roles(),
     Services = proplists:get_value(services, Backup),
@@ -3322,7 +3322,7 @@ validator_validate_id(Name, State) ->
                       end, Name, State).
 
 handle_get_custom_roles(Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     menelaus_util:assert_config_profile_flag(custom_roles_enabled),
     Roles = menelaus_roles:get_all_mutable_roles(),
 
@@ -3330,7 +3330,7 @@ handle_get_custom_roles(Req) ->
     menelaus_util:reply_json(Req, {Json}).
 
 handle_get_custom_role(RoleId, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     menelaus_util:assert_config_profile_flag(custom_roles_enabled),
     case menelaus_roles:get_role(list_to_binary(RoleId)) of
         undefined ->
@@ -3346,7 +3346,7 @@ handle_get_custom_role(RoleId, Req) ->
     end.
 
 handle_put_custom_role(RoleId, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     menelaus_util:assert_config_profile_flag(custom_roles_enabled),
 
     validator:handle(
@@ -3642,7 +3642,7 @@ order_permissions_test_() ->
 -endif.
 
 handle_delete_custom_role(RoleId, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     menelaus_util:assert_config_profile_flag(custom_roles_enabled),
     case menelaus_roles:delete_role(list_to_binary(RoleId)) of
         ok ->

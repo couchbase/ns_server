@@ -429,7 +429,7 @@ engine_param_type_to_int(dcp) ->
 engine_param_type_to_int(vbucket) ->
     5;
 %% The config type can be used to set any parameter, but is only available from
-%% version Totoro and up.
+%% version 8.5 and up.
 engine_param_type_to_int(config) ->
     6.
 

@@ -158,7 +158,7 @@
          sanitize_sensitive_data/1,
          maybe_reencrypt_data/5,
          get_latest_test_results/0,
-         alert_keys_added_in_totoro/0,
+         alert_keys_added_in_85/0,
          alert_keys_default/0,
          alert_keys_all/0,
          notify_cbauth/1]).
@@ -1027,7 +1027,7 @@ node_supports_encryption_type(EncryptionType, NodeInfo) ->
             case proplists:get_value(supported_compat_version, NodeInfo) of
                 undefined -> no_info;
                 SupportedVersion ->
-                    cluster_compat_mode:is_version_totoro(SupportedVersion)
+                    cluster_compat_mode:is_version_85(SupportedVersion)
             end;
         true -> true
     end.
@@ -1123,16 +1123,16 @@ get_latest_test_results() ->
 alert_keys_default() ->
     [].
 
-%% These keys should be moved to alert_keys_default/0 when totoro is the lowest
+%% These keys should be moved to alert_keys_default/0 when 8.5 is the lowest
 %% supported release
--spec alert_keys_added_in_totoro() -> [atom()].
-alert_keys_added_in_totoro () ->
+-spec alert_keys_added_in_85() -> [atom()].
+alert_keys_added_in_85 () ->
     [encr_at_rest_key_test_failed].
 
 %% Returns a list of all alerts that might send out an email notification.
 -spec alert_keys_all() -> [atom()].
 alert_keys_all() ->
-    alert_keys_default() ++ alert_keys_added_in_totoro().
+    alert_keys_default() ++ alert_keys_added_in_85().
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -1714,14 +1714,14 @@ synchronize_deks_on_all_nodes(AffectedKinds) ->
               ({N, {error, {exception, undef,
                             [{cb_cluster_secrets,
                               synchronize_deks_local, _, _}]}}}) ->
-                  %% Pre-totoro nodes don't have synchronize_deks_local
-                  %% We can safely ignore them here, because pre-totoro nodes
+                  %% Pre-8.5 nodes don't have synchronize_deks_local
+                  %% We can safely ignore them here, because pre-8.5 nodes
                   %% don't use encryption-at-rest for services and they don't
                   %% support file-based rebalance.
                   try erpc:call(N, cluster_compat_mode,
                                 supported_compat_version, [], ?RPC_TIMEOUT) of
                       SupportedVsn ->
-                          cluster_compat_mode:is_version_totoro(SupportedVsn)
+                          cluster_compat_mode:is_version_85(SupportedVsn)
                   catch Class:Reason ->
                           ?log_error("exception (~p:~p) when calling "
                                      "supported_compat_version on node ~p",

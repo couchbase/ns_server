@@ -77,7 +77,7 @@
          ui_folders/0,
          get_visible_role_definitions/0,
          strip_ids/2,
-         chronicle_upgrade_to_totoro/1,
+         chronicle_upgrade_to_85/1,
          old_role_to_new/1,
          map_roles_for_compat/1,
          map_roles_for_compat/2,
@@ -99,8 +99,8 @@
 %% for RPC from ns_couchdb node
 -export([build_compiled_roles/1]).
 
--spec default_roles_totoro() -> [rbac_role_def(), ...].
-default_roles_totoro() ->
+-spec default_roles_85() -> [rbac_role_def(), ...].
+default_roles_85() ->
     [{<<"admin">>, [],
       [{name, <<"Full Admin">>},
        {folder, admin},
@@ -942,7 +942,7 @@ internal_roles() ->
     [{<<"stats_reader">>, [], [], [{[admin, internal, stats], [read]}]},
      {<<"metakv2_access">>, [], [], [{[admin, internal, metakv2], all}]},
      %% service_admin is an internal-only role implicitly assigned to service
-     %% users (e.g. @backup, @cbq-engine) from totoro onwards. It has all Full
+     %% users (e.g. @backup, @cbq-engine) from 8.5 onwards. It has all Full
      %% Admin permissions except security and user administration writes and
      %% credential consume.
      %% [admin, security, admin] impersonate is required so service users can
@@ -996,7 +996,7 @@ public_definitions(Version) ->
 public_definitions() ->
     [{?VERSION_76, fun menelaus_old_roles:roles_pre_76/0},
      {?VERSION_79, fun menelaus_old_roles:roles_pre_79/0},
-     {?VERSION_TOTORO, fun menelaus_old_roles:roles_pre_totoro/0},
+     {?VERSION_85, fun menelaus_old_roles:roles_pre_85/0},
      {undefined, ?cut(roles() ++ maybe_add_developer_preview_roles())}].
 
 
@@ -1317,7 +1317,7 @@ find_object(Name, Find) when is_list(Name) ->
 params_version() ->
     Fetchers =
         [ns_bucket:fetch_snapshot(all, _, [collections, props, uuid])] ++
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             true -> [menelaus_web_external_catalogs:catalog_fetcher(_)];
             false -> []
         end,
@@ -1464,7 +1464,7 @@ get_roles_for_identity(?ANONYMOUS_IDENTITY) ->
             []
     end;
 get_roles_for_identity({[$@ | Name], admin}) ->
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true ->
             %% service_admin omits credential permissions. Ongoing work to
             %% narrow service_admin to an explicit allow-list is tracked in
@@ -1754,7 +1754,7 @@ get_roles_snapshot() ->
     Fetchers =
         [ns_bucket:fetch_snapshot(all, _, [collections, uuid]),
          cb_credentials_store:fetch_index_snapshot(_)] ++
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             true -> [menelaus_web_external_catalogs:catalog_fetcher(_)];
             false -> []
         end,
@@ -1783,7 +1783,7 @@ validate_roles(Roles, Scope, Snapshot) ->
 %% @doc Restore-only: drop `credential_consumer' grants that name a specific
 %% credential id (or a prefix matching nothing) which does not exist on this
 %% cluster. Such a grant would otherwise fail `validate_roles' and abort the
-%% entire restore. Credentials have no restore path in Totoro.
+%% entire restore. Credentials have no restore path in 8.5.
 %%
 %% Wildcard grants (`[*]'/`any') and grants for existing credentials are kept.
 %% If `credential_consumer' is not even a visible role on this cluster, nothing
@@ -1866,15 +1866,15 @@ map_roles_for_compat(Roles) ->
     map_roles_for_compat(Roles, cluster_compat_mode:get_compat_version()).
 
 map_roles_for_compat(Roles, Version) ->
-    case cluster_compat_mode:is_version_totoro(Version) of
+    case cluster_compat_mode:is_version_85(Version) of
         true ->
             Roles;
         false ->
             lists:map(fun new_role_to_old/1, Roles)
     end.
 
-chronicle_upgrade_to_totoro(ChronicleTxn) ->
-    RoleDefinitions = default_roles_totoro(),
+chronicle_upgrade_to_85(ChronicleTxn) ->
+    RoleDefinitions = default_roles_85(),
     chronicle_upgrade:set_key(role_definitions, RoleDefinitions,
                               ChronicleTxn).
 
@@ -2077,7 +2077,7 @@ diff_roles_test() ->
 
 set_role_definitions() ->
     fake_chronicle_kv:update_snapshot(
-      #{role_definitions => default_roles_totoro()}).
+      #{role_definitions => default_roles_85()}).
 
 setup_meck() ->
     meck:new(cluster_compat_mode, [passthrough]),
@@ -3328,8 +3328,8 @@ roles_pre_76_format_test__() ->
 roles_pre_79_format_test__() ->
     validate_test_roles(menelaus_old_roles:roles_pre_79()).
 
-roles_pre_totoro_format_test__() ->
-    validate_test_roles(menelaus_old_roles:roles_pre_totoro()).
+roles_pre_85_format_test__() ->
+    validate_test_roles(menelaus_old_roles:roles_pre_85()).
 
 extended_roles_test__() ->
     MyRoles = [{<<"superman">>, [],
@@ -3649,7 +3649,7 @@ default_profile_test_() ->
       fun roles_format_test__/0,
       fun roles_pre_76_format_test__/0,
       fun roles_pre_79_format_test__/0,
-      fun roles_pre_totoro_format_test__/0,
+      fun roles_pre_85_format_test__/0,
       fun extended_roles_test__/0,
       fun simple_custom_roles_test__/0,
       fun complex_custom_roles_test__/0]}.

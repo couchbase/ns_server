@@ -1318,7 +1318,7 @@ compiled_roles(Req) ->
 %% The MFA is applied inside a chronicle transaction, so it must not block on
 %% a process that itself reads chronicle, or they deadlock (MB-71799). Hence
 %% the roles are compiled now rather than by the MFA. is_writable_remote/4
-%% keeps its arity so a pre-totoro master can still apply the MFA: it does not
+%% keeps its arity so a pre-8.5 master can still apply the MFA: it does not
 %% handle {roles, _} itself, but erpcs it back to this node to evaluate.
 is_writable_mfa(Req) ->
     {?MODULE, is_writable_remote, [{roles, compiled_roles(Req)}, node()]}.
@@ -1543,9 +1543,9 @@ assert_is_79() ->
 
 is_writable_remote({roles, Roles}, _Node, Secret, Snapshot) ->
     is_writable_with_roles(Roles, Secret, Snapshot);
-%% Legacy clauses for MFAs built by pre-totoro nodes, which close over the
+%% Legacy clauses for MFAs built by pre-8.5 nodes, which close over the
 %% request and must evaluate it on the node that built them. Can be removed
-%% when pre-totoro support ends.
+%% when pre-8.5 support ends.
 is_writable_remote(ReqHidden, Node, Secret, Snapshot) when Node =:= node() ->
     is_writable(Secret, ?UNHIDE(ReqHidden), Snapshot);
 is_writable_remote(ReqHidden, Node, Secret, Snapshot) ->

@@ -16,8 +16,8 @@
 
 -export([roles_pre_76/0,
          roles_pre_79/0,
-         roles_pre_totoro/0,
-         pre_totoro_ui_roles/0]).
+         roles_pre_85/0,
+         pre_85_ui_roles/0]).
 
 -spec roles_pre_76() -> [rbac_role_def(), ...].
 roles_pre_76() ->
@@ -1191,8 +1191,8 @@ roles_pre_79() ->
        {[pools], [read]}]}
     ].
 
--spec roles_pre_totoro() -> [rbac_role_def(), ...].
-roles_pre_totoro() ->
+-spec roles_pre_85() -> [rbac_role_def(), ...].
+roles_pre_85() ->
     [{<<"admin">>, [],
       [{name, <<"Full Admin">>},
        {folder, admin},
@@ -1922,7 +1922,7 @@ roles_pre_totoro() ->
        {[pools], [read]}]}
     ].
 
-pre_totoro_ui_roles() ->
+pre_85_ui_roles() ->
     [<<"ro_admin">>,
      <<"security_admin">>,
      <<"ro_security_admin">>,

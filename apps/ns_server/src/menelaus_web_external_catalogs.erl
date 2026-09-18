@@ -39,14 +39,14 @@
 %% rev value for the affected catalog.
 
 handle_get_catalogs(Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     State = get_state(),
 
     menelaus_util:reply_json(
       Req, format_catalogs(State)).
 
 handle_get_catalog(Name, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     BinName = list_to_binary(Name),
     case find_catalog(BinName, get_catalogs(get_state())) of
         {ok, Catalog} ->
@@ -57,7 +57,7 @@ handle_get_catalog(Name, Req) ->
     end.
 
 handle_post_catalog(Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               %% It's easier to treat everything as binaries.
@@ -94,7 +94,7 @@ handle_post_catalog(Req) ->
       end, Req, form, [validator:prohibited(rev, _) | name_validators()]).
 
 handle_put_catalogs(Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     ValidOnUid = proplists:get_value("validOnUid",
                                      mochiweb_request:parse_qs(Req)),
     validator:handle(
@@ -188,7 +188,7 @@ validate_catalog_manifest([{Name, Params} | Rest], Acc) ->
     end.
 
 handle_put_catalog(Name, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               %% Name is prohibited in params, so we can append it safely.
@@ -229,7 +229,7 @@ handle_put_catalog(Name, Req) ->
                        validator:integer(rev, _)]).
 
 handle_patch_catalog(Name, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               %% Name is prohibited in params, so we can append it safely.
@@ -291,7 +291,7 @@ maybe_patch_catalog(Name, Params, UserRev, Req, Retries) ->
     end.
 
 handle_delete_catalog(Name, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     BinName = list_to_binary(Name),
     case delete_catalog(BinName) of
         {ok, _} ->

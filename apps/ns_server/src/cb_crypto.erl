@@ -140,18 +140,14 @@ encrypt(_Data, _AD, #derived_ds{ds = #dek_snapshot{active_key = undefined}}) ->
 encrypt(Data, AD, #derived_ds{ds = #dek_snapshot{active_key = ActiveDek,
                                                  iv_random = IVRandom,
                                                  iv_atomic_counter = IVAtomic}}) ->
-    encrypt_internal(Data, AD, IVRandom, IVAtomic, ActiveDek);
-%% Make it possible to pass in a dek snapshot directly while not all code
-%% has been updated to use derived DS. To be removed in Totoro.
-encrypt(Data, AD, #dek_snapshot{} = DS) ->
-    encrypt(Data, AD, #derived_ds{ds = DS}).
+    encrypt_internal(Data, AD, IVRandom, IVAtomic, ActiveDek).
 
 -spec decrypt(binary(), binary(), #derived_ds{}) ->
           {ok, binary()} | {error, term()}.
 decrypt(Data, AD, #derived_ds{ds = #dek_snapshot{all_keys = AllKeys}}) ->
     decrypt_internal(Data, AD, AllKeys);
-%% Backward compatibility with pre-totoro data.
-%% Remove when support for pre-totoro data is dropped.
+%% Backward compatibility with pre-8.5 data.
+%% Remove when support for pre-8.5 data is dropped.
 decrypt(Data, AD, #dek_snapshot{} = DS) ->
     decrypt(Data, AD, #derived_ds{ds = DS}).
 

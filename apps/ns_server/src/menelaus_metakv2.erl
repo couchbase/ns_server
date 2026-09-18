@@ -309,7 +309,7 @@ sensitive_validators() ->
     [validator:boolean(sensitive, _),
      validator:validate(
        fun (true) ->
-               case cluster_compat_mode:is_cluster_totoro() of
+               case cluster_compat_mode:is_cluster_85() of
                    true ->
                        ok;
                    false ->

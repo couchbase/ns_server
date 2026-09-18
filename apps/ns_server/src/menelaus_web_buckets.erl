@@ -315,7 +315,7 @@ build_bucket_info(Id, Ctx, InfoLevel, SkipMap) ->
              {authType, sasl},
              NsServerBucketInfo,
              build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx)])),
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true ->
             %% Derive ns_server-owned params from build_ns_server_bucket_info
             %% so that services can validate them. This is the same list that
@@ -540,7 +540,7 @@ build_dynamic_bucket_info(InfoLevel, Id, BucketConfig, Ctx) ->
          false ->
             []
      end,
-     case cluster_compat_mode:is_cluster_totoro() of
+     case cluster_compat_mode:is_cluster_85() of
          true ->
              [{chronicleRev, menelaus_web_pools:get_chronicle_revision()},
               {dataServiceRebalanceType,
@@ -1592,8 +1592,8 @@ parse_bucket_params_without_warnings_internal(Ctx, Params0) ->
 parse_bucket_params_without_warnings(Ctx, Params) ->
     case parse_bucket_params_without_warnings_internal(Ctx, Params) of
         {ok, OKs, JSONSummaries} ->
-            %% For Totoro, we need to continue the validation via services.
-            case cluster_compat_mode:is_cluster_totoro() of
+            %% For 8.5, we need to continue the validation via services.
+            case cluster_compat_mode:is_cluster_85() of
                 false ->
                     {ok, OKs, JSONSummaries};
                 true ->
@@ -2297,7 +2297,7 @@ validate_membase_bucket_params(CommonParams, Params, Name,
     IsStorageModeMigration = is_storage_mode_migration(
                                IsNew, BucketConfig, Params),
     Is79 = cluster_compat_mode:is_version_79(Version),
-    IsTotoro = cluster_compat_mode:is_version_totoro(Version),
+    Is85 = cluster_compat_mode:is_version_85(Version),
     IsPersistent = is_ephemeral(Params, BucketConfig, IsNew) =:= false,
 
     HistRetSecs = parse_validate_history_retention_seconds(
@@ -2350,8 +2350,8 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                       IsStorageModeMigration),
          parse_validate_dcp_connections_between_nodes(Params, IsNew, Is79,
                                                       IsEnterprise),
-         parse_validate_fusion_enabled(Params, IsNew, IsTotoro, IsEnterprise),
-         parse_validate_fusion_state(Params, IsNew, IsTotoro, IsEnterprise),
+         parse_validate_fusion_enabled(Params, IsNew, Is85, IsEnterprise),
+         parse_validate_fusion_state(Params, IsNew, Is85, IsEnterprise),
          parse_validate_dcp_backfill_idle_protection_enabled(Params,
                                                              BucketConfig,
                                                              IsNew,
@@ -2360,10 +2360,10 @@ validate_membase_bucket_params(CommonParams, Params, Name,
                                                         Is79),
          parse_validate_dcp_backfill_idle_disk_threshold(Params, IsNew,
                                                          Is79),
-         parse_validate_data_service_rebalance_type(Params, IsNew, IsTotoro),
-         parse_validate_throttle_reserved(Params, IsNew, IsTotoro,
+         parse_validate_data_service_rebalance_type(Params, IsNew, Is85),
+         parse_validate_throttle_reserved(Params, IsNew, Is85,
                                           IsEnterprise),
-         parse_validate_throttle_hard_limit(Params, IsNew, IsTotoro,
+         parse_validate_throttle_hard_limit(Params, IsNew, Is85,
                                             IsEnterprise),
          parse_validate_workload_pattern_default(Params)
         | validate_bucket_auto_compaction_settings(Params)] ++
@@ -2985,8 +2985,8 @@ parse_validate_param_not_supported(Key, Params, ErrorFun) ->
 not_supported_until_79_error(Param) ->
     not_supported_until_error(Param, "7.9").
 
-not_supported_until_totoro_error(Param) ->
-    not_supported_until_error(Param, "Totoro").
+not_supported_until_85_error(Param) ->
+    not_supported_until_error(Param, "8.5").
 
 not_supported_until_error(Param, Version) ->
     {error, Param,
@@ -3996,11 +3996,11 @@ parse_validate_flush_enabled("0") -> {ok, flush_enabled, false};
 parse_validate_flush_enabled("1") -> {ok, flush_enabled, true};
 parse_validate_flush_enabled(_ReplicaValue) -> {error, flushEnabled, <<"flushEnabled can only be 1 or 0">>}.
 
-parse_validate_data_service_rebalance_type(Params, _IsNew, false = _IsTotoro) ->
+parse_validate_data_service_rebalance_type(Params, _IsNew, false = _Is85) ->
     parse_validate_param_not_supported(
       "dataServiceRebalanceType", Params,
-      fun not_supported_until_totoro_error/1);
-parse_validate_data_service_rebalance_type(Params, IsNew, _IsTotoro) ->
+      fun not_supported_until_85_error/1);
+parse_validate_data_service_rebalance_type(Params, IsNew, _Is85) ->
     validate_with_missing(
         proplists:get_value("dataServiceRebalanceType", Params), "auto", IsNew,
         fun parse_validate_data_service_rebalance_type/1).
@@ -4016,25 +4016,25 @@ parse_validate_data_service_rebalance_type(_Other) ->
      <<"Data service rebalance type must be 'auto', 'preferFileBased' or "
        "'preferDcp'">>}.
 
-parse_validate_throttle_reserved(Params, _IsNew, _IsTotoro,
+parse_validate_throttle_reserved(Params, _IsNew, _Is85,
                                  false = _IsEnterprise) ->
     parse_validate_param_not_enterprise("throttleReserved", Params);
-parse_validate_throttle_reserved(Params, _IsNew, false = _IsTotoro,
+parse_validate_throttle_reserved(Params, _IsNew, false = _Is85,
                                  _IsEnterprise) ->
     parse_validate_param_not_supported("throttleReserved", Params,
-                                       fun not_supported_until_totoro_error/1);
-parse_validate_throttle_reserved(Params, IsNew, _IsTotoro, _IsEnterprise) ->
+                                       fun not_supported_until_85_error/1);
+parse_validate_throttle_reserved(Params, IsNew, _Is85, _IsEnterprise) ->
     parse_validate_numeric_param(Params, throttleReserved, throttle_reserved,
                                  IsNew).
 
-parse_validate_throttle_hard_limit(Params, _IsNew, _IsTotoro,
+parse_validate_throttle_hard_limit(Params, _IsNew, _Is85,
                                    false = _IsEnterprise) ->
     parse_validate_param_not_enterprise("throttleHardLimit", Params);
-parse_validate_throttle_hard_limit(Params, _IsNew, false = _IsTotoro,
+parse_validate_throttle_hard_limit(Params, _IsNew, false = _Is85,
                                    _IsEnterprise) ->
     parse_validate_param_not_supported("throttleHardLimit", Params,
-                                       fun not_supported_until_totoro_error/1);
-parse_validate_throttle_hard_limit(Params, IsNew, _IsTotoro, _IsEnterprise) ->
+                                       fun not_supported_until_85_error/1);
+parse_validate_throttle_hard_limit(Params, IsNew, _Is85, _IsEnterprise) ->
     parse_validate_numeric_param(Params, throttleHardLimit, throttle_hard_limit,
                                  IsNew).
 
@@ -4222,24 +4222,24 @@ parse_validate_conflict_resolution_type(_Other) ->
      <<"Conflict resolution type must be 'seqno' or 'lww' or 'custom'">>}.
 
 
-parse_validate_fusion_enabled(Params, IsNew, IsTotoro, IsEnterprise) ->
+parse_validate_fusion_enabled(Params, IsNew, Is85, IsEnterprise) ->
     parse_validate_fusion_enabled(
-      Params, IsNew, IsTotoro, IsEnterprise,
+      Params, IsNew, Is85, IsEnterprise,
       ?cut(not lists:member(fusion_uploaders:get_state(),
                             [disabled, disabling]))).
 
 parse_validate_fusion_enabled(
-  Params, _IsNew, _IsTotoro, _IsEnterprise = false, _CanBeEnabledFun) ->
+  Params, _IsNew, _Is85, _IsEnterprise = false, _CanBeEnabledFun) ->
     parse_validate_param_not_enterprise(?FUSION_ENABLED, Params);
 parse_validate_fusion_enabled(
-  Params, _IsNew, _IsTotoro = false, _IsEnterprise, _CanBeEnabledFun) ->
+  Params, _IsNew, _Is85 = false, _IsEnterprise, _CanBeEnabledFun) ->
     parse_validate_param_not_supported(
-      ?FUSION_ENABLED, Params, fun not_supported_until_totoro_error/1);
+      ?FUSION_ENABLED, Params, fun not_supported_until_85_error/1);
 parse_validate_fusion_enabled(
-  Params, _IsNew = false, _IsTotoro, _IsEnterprise, _CanBeEnabledFun) ->
+  Params, _IsNew = false, _Is85, _IsEnterprise, _CanBeEnabledFun) ->
     parse_validate_create_only(?FUSION_ENABLED, Params);
 parse_validate_fusion_enabled(
-  Params, _IsNew = true, _IsTotoro = true, _IsEnterprise = true,
+  Params, _IsNew = true, _Is85 = true, _IsEnterprise = true,
   CanBeEnabledFun) ->
     IsMagma = is_magma(Params, undefined, true, false),
     case IsMagma of
@@ -4271,7 +4271,7 @@ parse_validate_fusion_enabled(
     end.
 
 parse_validate_fusion_state(
-  Params, IsNew, _IsTotoro = true, _IsEnterprise = true) ->
+  Params, IsNew, _Is85 = true, _IsEnterprise = true) ->
     case proplists:is_defined("magmaFusionState", Params) of
         true ->
             case IsNew of
@@ -4284,7 +4284,7 @@ parse_validate_fusion_state(
             end;
         false -> ignore
     end;
-parse_validate_fusion_state(_Params, _IsNew, _IsTotoro, _IsEnterprise) ->
+parse_validate_fusion_state(_Params, _IsNew, _Is85, _IsEnterprise) ->
     ignore.
 
 %% We are not validating any compat mode here, we need to support this change in
@@ -4594,7 +4594,7 @@ basic_bucket_params_screening_setup() ->
                 fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_79,
                 fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_totoro,
+    meck:expect(cluster_compat_mode, is_cluster_85,
                 fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise,
                 fun () -> true end),
@@ -5586,13 +5586,13 @@ parse_validate_fusion_enabled_test_() ->
                                 ++ [["true", "false", "other", undefined]]),
     {foreach, fun () -> ok end, fun (_) -> ok end,
      lists:map(
-       fun ([IsNew, IsTotoro, IsEnterprise, IsMagma, CanBeEnabled,
+       fun ([IsNew, Is85, IsEnterprise, IsMagma, CanBeEnabled,
              Value]) ->
                {lists:flatten(
                   io_lib:format(
-                    "IsNew=~p, IsTotoro=~p, IsEnterprise=~p, IsMagma=~p, "
+                    "IsNew=~p, Is85=~p, IsEnterprise=~p, IsMagma=~p, "
                     "CanBeEnabled=~p Value=~p",
-                    [IsNew, IsTotoro, IsEnterprise, IsMagma, CanBeEnabled,
+                    [IsNew, Is85, IsEnterprise, IsMagma, CanBeEnabled,
                      Value])),
                 fun () ->
                         BackendParam =
@@ -5603,7 +5603,7 @@ parse_validate_fusion_enabled_test_() ->
                         Params = [{"bucketType", "membase"}] ++ BackendParam ++
                             [{?FUSION_ENABLED, Value} || Value =/= undefined] ,
                         Resp = parse_validate_fusion_enabled(
-                                 Params, IsNew, IsTotoro, IsEnterprise,
+                                 Params, IsNew, Is85, IsEnterprise,
                                  ?cut(CanBeEnabled)),
                         ExpectedErrors =
                             lists:flatten(
@@ -5614,7 +5614,7 @@ parse_validate_fusion_enabled_test_() ->
                                [<<"\"fusionEnabled\" can only be set in "
                                   "Enterprise edition">> || not IsEnterprise],
                                [<<"Argument is not supported until cluster is "
-                                  "fully Totoro">> || not IsTotoro],
+                                  "fully 8.5">> || not Is85],
                                [<<"\"fusionEnabled\" allowed only during "
                                   "bucket creation">> || not IsNew],
                                [?CANNOT_ENABLE_FUSION ||
@@ -5649,7 +5649,7 @@ parse_validate_fusion_state_test_() ->
     CreateMsg = <<"Cannot set magmaFusionState, use fusionEnabled instead">>,
     UpdateMsg =
         <<"Cannot update magmaFusionState, use the fusion API instead">>,
-    Tests = [{"pre-totoro",
+    Tests = [{"pre-8.5",
               ParamsSet,
               {false, false, true},
               ignore},
@@ -5674,8 +5674,8 @@ parse_validate_fusion_state_test_() ->
      [{Name,
        ?_assertEqual(
           Expected,
-          parse_validate_fusion_state(Params, IsNew, IsTotoro, IsEnterprise))}
-      || {Name, Params, {IsNew, IsTotoro, IsEnterprise}, Expected} <- Tests]}.
+          parse_validate_fusion_state(Params, IsNew, Is85, IsEnterprise))}
+      || {Name, Params, {IsNew, Is85, IsEnterprise}, Expected} <- Tests]}.
 
 parse_validate_max_magma_shards_test() ->
     meck:new(config_profile, [passthrough]),

@@ -147,7 +147,7 @@ reply_wrong_buckets(Req, BucketErrors) ->
 
 handle_enable(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               %% do it in orchestrator to prevent fusion state changes during
@@ -181,7 +181,7 @@ handle_enable(Req) ->
 
 handle_disable(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     case ns_orchestrator:disable_fusion() of
         ok ->
             ns_audit:request_fusion_state(Req, disable, undefined),
@@ -194,7 +194,7 @@ handle_disable(Req) ->
 
 handle_stop(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     case ns_orchestrator:stop_fusion() of
         ok ->
             ns_audit:request_fusion_state(Req, stop, undefined),
@@ -274,7 +274,7 @@ maybe_reply_plan_validation_error(_, _) ->
 
 handle_abort_prepared_rebalance(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               PlanUUID = proplists:get_value(planUUID, Params),
@@ -352,7 +352,7 @@ handle_get_active_guest_volumes(Req) ->
 
 handle_diag_active_guest_volumes(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     case lists:member(kv, ns_cluster_membership:node_services(
                             direct, node())) of
         false ->
@@ -489,7 +489,7 @@ do_sync_log_store(Req, Timeout, Reset, BucketsSpec) ->
 
 handle_prepare_snapshot_restore(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               Buckets = proplists:get_value(buckets, Params),
@@ -585,7 +585,7 @@ validate_bucket_config(Name, State) ->
 
 handle_restore_snapshot(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Params) ->
               PlanUUID = proplists:get_value(planUUID, Params),

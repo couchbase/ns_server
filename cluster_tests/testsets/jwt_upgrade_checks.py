@@ -9,10 +9,10 @@
 
 """JWT settings survive an upgrade from the 8.0.x format.
 
-Before Totoro every string in jwt_settings was a list of utf8 bytes. Totoro
+Before 8.5 every string in jwt_settings was a list of utf8 bytes. 8.5
 holds them as binaries. MB-73361 made that switch and MB-73362 added the
 conversion: get_settings/0 converts on read until cluster compat reaches
-Totoro, and chronicle_upgrade_to_totoro/1 rewrites the stored term once it
+8.5, and chronicle_upgrade_to_85/1 rewrites the stored term once it
 does.
 
 to_binary_format_test_/0 pins the conversion against a term the test itself
@@ -124,7 +124,7 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         # new format is still in the cluster.
         self.assert_stored_shape(self.old_node, "is_list")
 
-        # The Totoro node reads the old term through the conversion in
+        # The 8.5 node reads the old term through the conversion in
         # get_settings/0. This is the case a customer is in for the length of
         # a rolling upgrade.
         self.assert_authenticates(self.new_node)
@@ -136,8 +136,8 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         # through a rolling upgrade. REST passing says nothing about SASL.
         self.assert_memcached_authenticates(self.new_node)
 
-        # The Totoro node refuses to serve its own settings endpoint until
-        # compat reaches Totoro.
+        # The 8.5 node refuses to serve its own settings endpoint until
+        # compat reaches 8.5.
         testlib.get_fail(self.new_node, "/settings/jwt", expected_code=400)
 
     def post_upgrade_checks(self):

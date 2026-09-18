@@ -858,7 +858,7 @@ do_handle_client_cert_auth_settings_post(Req, JSON) ->
     end.
 
 max_client_cert_prefixes() ->
-    Default = case cluster_compat_mode:is_cluster_totoro() of
+    Default = case cluster_compat_mode:is_cluster_85() of
                   true -> 50;
                   false -> 10
               end,

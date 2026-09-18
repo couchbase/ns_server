@@ -1007,7 +1007,7 @@ idle({create_bucket, BucketType, BucketName, BucketConfig}, From, _State) ->
                 create_membase_bucket(BucketName, BucketConfig, undefined)
         end,
     {keep_state_and_data, [{reply, From, Reply}]};
-%% Synchronous flush_bucket call issued by a pre-totoro node. Converted to
+%% Synchronous flush_bucket call issued by a pre-8.5 node. Converted to
 %% the asynchronous operation. The caller still gets the reply only after the
 %% flush is completed, so it is fully compatible with the old behavior.
 idle({flush_bucket, BucketName}, From, _State) ->

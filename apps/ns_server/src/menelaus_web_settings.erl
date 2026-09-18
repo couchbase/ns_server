@@ -553,7 +553,7 @@ is_allowed_on_cluster([argon2id_mem]) ->
 is_allowed_on_cluster([pbkdf2_sha512_iterations]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([ssl_security_level]) ->
-    cluster_compat_mode:is_cluster_totoro();
+    cluster_compat_mode:is_cluster_85();
 is_allowed_on_cluster([{serverless, bucket_weight_limit}]) ->
     bucket_placer:is_enabled();
 is_allowed_on_cluster([{serverless, tenant_limit}]) ->
@@ -822,7 +822,7 @@ conf(internal) ->
                 []
         end ++
         case cluster_compat_mode:is_enterprise() andalso
-            cluster_compat_mode:is_cluster_totoro() of
+            cluster_compat_mode:is_cluster_85() of
             true ->
                 [{data_service_file_based_rebalance_enabled,
                   dataServiceFileBasedRebalanceEnabled,
@@ -2003,7 +2003,7 @@ parse_post_data_test() ->
                 fun() ->
                         true
                 end),
-    meck:expect(cluster_compat_mode, is_cluster_totoro, fun() -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_85, fun() -> true end),
 
     Conf = test_conf(),
     RH = ejson:encode({[{"Strict-Transport-Security",

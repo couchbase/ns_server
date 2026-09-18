@@ -148,8 +148,8 @@ validate_chronicle_params_for_cluster_compat_and_edition(Params) ->
                             lists:member(atom_to_list(K), ParamNames)],
 
     %% We do not allow any chronicle related params to be set in
-    %% cluster on compat version prior to totoro as memcached
-    %% chronicle settings are introduced in totoro. In addition, check
+    %% cluster on compat version prior to 8.5 as memcached
+    %% chronicle settings are introduced in 8.5. In addition, check
     %% that the setting is supported only on Enterprise Edition.
     lists:foreach(
       fun (Param) ->
@@ -157,7 +157,7 @@ validate_chronicle_params_for_cluster_compat_and_edition(Params) ->
                   true -> menelaus_util:assert_is_enterprise(Param);
                   false -> ok
               end,
-              menelaus_util:assert_is_totoro(Param)
+              menelaus_util:assert_is_85(Param)
       end, ChronicleParams).
 
 supported_nodes() ->

@@ -211,7 +211,7 @@ server_groups_uri_json(GroupsV) ->
         cluster_compat_mode:is_enterprise()].
 
 build_external_catalogs() ->
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true ->
             [{externalCatalogsManifestUid,
               menelaus_web_external_catalogs:get_uid()}];

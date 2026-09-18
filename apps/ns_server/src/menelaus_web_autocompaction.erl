@@ -31,7 +31,7 @@
          parse_validate_number/4,
          parse_validate_boolean_field/3]).
 
--define(MAX_PURGE_INTERVAL_PRE_TOTORO, ?get_param(max_purge_interval, 60)).
+-define(MAX_PURGE_INTERVAL_PRE_85, ?get_param(max_purge_interval, 60)).
 -define(MAX_PURGE_INTERVAL, ?get_param(max_purge_interval, 3 * 365)).
 
 
@@ -326,13 +326,13 @@ parse_validate_purge_interval(Params, _) ->
     do_parse_validate_purge_interval(Params, MinInterval).
 
 do_parse_validate_purge_interval(Params, LowerLimit) ->
-    MaxInterval = case cluster_compat_mode:is_cluster_totoro() of
+    MaxInterval = case cluster_compat_mode:is_cluster_85() of
                       false ->
-                          %% Prior to totoro the maximum was 60 but could
+                          %% Prior to 8.5 the maximum was 60 but could
                           %% be changed via /diag/eval
-                          ?MAX_PURGE_INTERVAL_PRE_TOTORO;
+                          ?MAX_PURGE_INTERVAL_PRE_85;
                       true ->
-                          %% Starting with totoro the maximum is 3 years but
+                          %% Starting with 8.5 the maximum is 3 years but
                           %% can be changed via /diag/eval
                           ?MAX_PURGE_INTERVAL
                   end,

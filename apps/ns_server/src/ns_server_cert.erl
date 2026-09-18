@@ -59,7 +59,7 @@
          format_name/1,
          get_subject/1,
          get_ootb_crl/0,
-         chronicle_upgrade_to_totoro/1]).
+         chronicle_upgrade_to_85/1]).
 
 inbox_ca_path() ->
     filename:join(path_config:component_path(data, "inbox"), "CA").
@@ -681,7 +681,7 @@ get_ootb_crl() ->
 %% conflict, so generate_cert may be invoked more than once and only the
 %% committed result is kept.  That is the same trade jwt_issuer makes when it
 %% generates signing keys in its own upgrade step.
-chronicle_upgrade_to_totoro(ChronicleUpgradeTxn) ->
+chronicle_upgrade_to_85(ChronicleUpgradeTxn) ->
     case chronicle_upgrade:get_key(root_cert_and_pkey, ChronicleUpgradeTxn) of
         {ok, {CA, Key}} when is_binary(Key) ->
             case chronicle_upgrade:get_key(ootb_crl, ChronicleUpgradeTxn) of
@@ -1966,7 +1966,7 @@ run_chronicle_upgrade() ->
     chronicle_kv:txn(
       kv, fun (Txn) ->
               chronicle_upgrade:build_commit(
-                chronicle_upgrade_to_totoro({#{}, Txn}))
+                chronicle_upgrade_to_85({#{}, Txn}))
           end).
 
 upgrade_without_ca_t() ->

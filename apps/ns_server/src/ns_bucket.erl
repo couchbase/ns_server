@@ -194,7 +194,7 @@
          chronicle_upgrade_to_76/1,
          chronicle_upgrade_to_79/1,
          chronicle_upgrade_to_80/1,
-         chronicle_upgrade_to_totoro/1,
+         chronicle_upgrade_to_85/1,
          config_upgrade_to_80/1,
          extract_bucket_props/1,
          build_bucket_props_json/1,
@@ -3143,7 +3143,7 @@ props_to_add_for_79(BucketConfig) ->
             end
     end.
 
-props_to_add_for_totoro(BucketConfig) ->
+props_to_add_for_85(BucketConfig) ->
     case bucket_type(BucketConfig) of
         memcached ->
             [];
@@ -3194,16 +3194,16 @@ chronicle_upgrade_bucket_props_to_80(BucketName, ChronicleTxn) ->
             end
     end.
 
-chronicle_upgrade_bucket_props_to_totoro(BucketName, ChronicleTxn) ->
+chronicle_upgrade_bucket_props_to_85(BucketName, ChronicleTxn) ->
     Txn2 = chronicle_update_bucket_props(BucketName, ChronicleTxn,
-                                         fun props_to_add_for_totoro/1),
+                                         fun props_to_add_for_85/1),
 
     CollectionsKey = sub_key(BucketName, collections),
     case chronicle_upgrade:get_key(CollectionsKey, ChronicleTxn) of
         {error, not_found} ->
             Txn2;
         {ok, Manifest} ->
-            NewManifest = collections:upgrade_to_totoro(Manifest),
+            NewManifest = collections:upgrade_to_85(Manifest),
             chronicle_upgrade:set_key(CollectionsKey, NewManifest,
                                       Txn2)
     end.
@@ -3243,13 +3243,13 @@ chronicle_upgrade_to_80(ChronicleTxn) ->
     chronicle_upgrade_bucket(chronicle_upgrade_bucket_props_to_80(_, _),
                              BucketNames, ChronicleTxn).
 
-chronicle_upgrade_to_totoro(ChronicleTxn) ->
+chronicle_upgrade_to_85(ChronicleTxn) ->
     {ok, BucketNames} = chronicle_upgrade:get_key(root(), ChronicleTxn),
     chronicle_upgrade_bucket(
         fun (Name, Txn) ->
             functools:chain(
               Txn,
-              [chronicle_upgrade_bucket_props_to_totoro(Name, _)])
+              [chronicle_upgrade_bucket_props_to_85(Name, _)])
         end, BucketNames, ChronicleTxn).
 
 default_76_enterprise_props(true = _IsEnterprise) ->
@@ -4295,11 +4295,11 @@ upgrade_to_80_test() ->
         fake_chronicle_kv:teardown()
     end.
 
-upgrade_to_totoro_test() ->
+upgrade_to_85_test() ->
     meck:new(cluster_compat_mode, [passthrough]),
     try
         meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
-        meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
+        meck:expect(cluster_compat_mode, is_cluster_85, fun () -> true end),
         meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
 
         %% Normal upgrade
@@ -4307,7 +4307,7 @@ upgrade_to_totoro_test() ->
                {num_vbuckets, 16},
                {servers, [node1, node2]},
                {ram_quota, 100 * ?MIB}],
-        AddProps1 = props_to_add_for_totoro(BC1),
+        AddProps1 = props_to_add_for_85(BC1),
         NewBC1 = check_for_preset_bucket_settings(AddProps1, BC1),
         ?assertEqual(attribute_default(throttle_reserved),
                      proplists:get_value(throttle_reserved, NewBC1)),
@@ -4324,7 +4324,7 @@ upgrade_to_totoro_test() ->
                %% Preset values
                {throttle_reserved, 500},
                {throttle_hard_limit, 1000}],
-        AddProps2 = props_to_add_for_totoro(BC2),
+        AddProps2 = props_to_add_for_85(BC2),
         NewBC2 = check_for_preset_bucket_settings(AddProps2, BC2),
         ?assertEqual(500, proplists:get_value(throttle_reserved, NewBC2)),
         ?assertEqual(1000, proplists:get_value(throttle_hard_limit, NewBC2)),
@@ -4335,7 +4335,7 @@ upgrade_to_totoro_test() ->
                {servers, [node1, node2]},
                {ram_quota, 100 * ?MIB},
                {storage_mode, couchstore}],
-        AddProps3 = props_to_add_for_totoro(BC3),
+        AddProps3 = props_to_add_for_85(BC3),
         NewBC3 = check_for_preset_bucket_settings(AddProps3, BC3),
         ?assertEqual(couchstore, proplists:get_value(storage_mode, NewBC3))
     after

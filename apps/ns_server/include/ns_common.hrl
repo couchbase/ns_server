@@ -59,9 +59,9 @@
 
 -define(MAX_BUCKETS_SUPPORTED, 30).
 
--define(MAX_SCOPES_SUPPORTED_PRE_TOTORO, 1200).
+-define(MAX_SCOPES_SUPPORTED_PRE_85, 1200).
 -define(MAX_SCOPES_SUPPORTED, 10200).
--define(MAX_COLLECTIONS_SUPPORTED_PRE_TOTORO, 1200).
+-define(MAX_COLLECTIONS_SUPPORTED_PRE_85, 1200).
 -define(MAX_COLLECTIONS_SUPPORTED, 10200).
 
 -define(MIN_REPLICAS_SUPPORTED, 0).
@@ -270,7 +270,7 @@
 -define(VERSION_76, [7, 6]).
 -define(VERSION_79, [7, 9]).
 -define(VERSION_80, [8, 0]).
--define(VERSION_TOTORO, [8, 5]).
+-define(VERSION_85, [8, 5]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_72).
 
@@ -281,7 +281,7 @@
 %% This require coordination with the UI to update the version.
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
--define(LATEST_VERSION_NUM, ?VERSION_TOTORO).
+-define(LATEST_VERSION_NUM, ?VERSION_85).
 %% The master advertised version is derived at runtime from the ns_server
 %% application 'vsn' (i.e. NS_SERVER_VERSION) - see
 %% cluster_compat_mode:mb_master_advertised_version/0. This constant is only the

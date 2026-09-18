@@ -16,7 +16,7 @@ Once the config is loaded into memory they are held unencrypted.
 
 **Prerequisites for credential operations.** Every credential store operation — create, read, list, update, delete, **and** consume — calls `ensure_prerequisites/1`, which requires:
 
-1. **All nodes at Totoro (8.5) or later** — the credential store is a Totoro feature; mixed-version clusters with pre-8.5 nodes cannot use it.
+1. **All nodes at 8.5 or later** — the credential store is an 8.5 feature; mixed-version clusters with pre-8.5 nodes cannot use it.
 
 2. **Enterprise edition** — the credential store is an Enterprise-only feature.
 
@@ -86,7 +86,7 @@ Credential ids are opaque strings; `/` may appear in an id but has no special me
 | Role | Parameterised By | Capability | Assignable To |
 |---|---|---|---|
 | `credential_consumer` | `credential_id` | Consume a matching credential | End users **and** services |
-| `service_admin` | *(internal)* | Administrative operations for service identities; no credential management or consume (services consume via cbauth, not via REST CRUD) | Service identities only (implicit, Totoro+) |
+| `service_admin` | *(internal)* | Administrative operations for service identities; no credential management or consume (services consume via cbauth, not via REST CRUD) | Service identities only (implicit, 8.5+) |
 | `admin` (Full Admin) | — | All operations including credential CRUD and service role grants | Human administrators |
 | `credential_admin` | — | Credential CRUD (metadata only); cannot consume secrets, change store settings, or grant roles | Human administrators |
 | `security_admin` | — | Credential CRUD and credential store settings; cannot manage users or service roles | Human administrators |
@@ -105,7 +105,7 @@ Administrative duties are split so that no single non-Full-Admin role can both p
 | Assign roles to service identities | **Full Admin only** |
 
 The separation of User Admin and Security Admin dates back to Morpheus (8.0).
-New in Totoro (8.5):
+New in 8.5:
 - The **credential store** itself (CRUD, consume, guardrails).
 - The **`service_admin`** internal role, which removes credential access from service identities so they must be granted `credential_consumer` explicitly.
 - The **`credential_consumer`** role and the service roles endpoint (`/settings/rbac/services/:name/roles`).
@@ -153,8 +153,8 @@ flowchart TD
 
 ## `service_admin`
 
-Prior to Totoro, all `@`-prefixed service identities (e.g. `@backup`, `@cbq-engine`) received the implicit `admin` role — effectively Full Admin.
-In Totoro, they receive `service_admin` instead, which denies `cluster.admin.security!write` and `cluster.admin.users!write` (so a service cannot grant itself or another service any role, modify security settings, or write credentials) and denies `consume` on every credential (so a service cannot use any credential unless a Full Admin explicitly grants `credential_consumer[<pattern>]` to it via `PUT /settings/rbac/services/:service/roles`).
+Prior to 8.5, all `@`-prefixed service identities (e.g. `@backup`, `@cbq-engine`) received the implicit `admin` role — effectively Full Admin.
+In 8.5, they receive `service_admin` instead, which denies `cluster.admin.security!write` and `cluster.admin.users!write` (so a service cannot grant itself or another service any role, modify security settings, or write credentials) and denies `consume` on every credential (so a service cannot use any credential unless a Full Admin explicitly grants `credential_consumer[<pattern>]` to it via `PUT /settings/rbac/services/:service/roles`).
 
 Ongoing work to narrow `service_admin` to an explicit allow-list of operations is tracked in [MB-71508](https://jira.issues.couchbase.com/browse/MB-71508).
 

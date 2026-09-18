@@ -41,7 +41,7 @@
 -export([alert_keys_added_in_76/0,
          alert_keys_added_in_79/0,
          alert_keys_default/0,
-         alert_keys_added_in_totoro/0,
+         alert_keys_added_in_85/0,
          alert_keys_all/0]).
 
 %% @doc Hold client state for any alerts that need to be shown in
@@ -580,10 +580,10 @@ alert_keys_default() ->
      cert_expires_soon, cert_expired, memory_threshold, history_size_warning,
      memcached_connections, disk_guardrail].
 
-%% These keys should be moved to alert_keys_default/0 when totoro is the lowest
+%% These keys should be moved to alert_keys_default/0 when 8.5 is the lowest
 %% supported release
--spec alert_keys_added_in_totoro() -> [atom()].
-alert_keys_added_in_totoro() ->
+-spec alert_keys_added_in_85() -> [atom()].
+alert_keys_added_in_85() ->
     [xdcr_replication_deleted,
      encr_at_rest_errors_total,
      backup_failure,
@@ -602,7 +602,7 @@ alert_keys_disabled_by_default() ->
 %% manually enabled.
 -spec alert_keys_all() -> [atom()].
 alert_keys_all() ->
-    alert_keys_default() ++ alert_keys_added_in_totoro() ++
+    alert_keys_default() ++ alert_keys_added_in_85() ++
         alert_keys_disabled_by_default().
 
 %% @doc Sends any previously queued email alerts. Generally called when we first
@@ -998,7 +998,7 @@ check(xdcr_certs, Opaque, _History, _Stats) ->
 
 check(crls, Opaque, _History, _Stats) ->
     case mb_master:master_node() == node() andalso
-        cluster_compat_mode:is_cluster_totoro() of
+        cluster_compat_mode:is_cluster_85() of
         true -> check_crls();
         false -> ok
     end,

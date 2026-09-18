@@ -644,7 +644,7 @@ code_change(_OldVsn, State, _Extra) ->
 -ifdef(TEST).
 mock_compat_mode() ->
     meck:new(cluster_compat_mode, [passthrough]),
-    meck:expect(cluster_compat_mode, is_cluster_totoro, fun() -> true end).
+    meck:expect(cluster_compat_mode, is_cluster_85, fun() -> true end).
 
 cache_lookup_test() ->
     meck:new(chronicle_compat_events, [passthrough]),

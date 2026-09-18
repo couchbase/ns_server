@@ -62,12 +62,12 @@
          search_node_with_default/4,
          reload/0,
          get_key_ids_in_use/0,
-         config_upgrade_to_totoro/1,
+         config_upgrade_to_85/1,
          remove_nodes_config_keys/3,
          ensure_config_is_map/1,
          ensure_config_is_list/1]).
 
--export([compute_global_rev_pre_totoro/1,
+-export([compute_global_rev_pre_85/1,
          compute_global_rev/1]).
 
 -export([save_config_sync/3, do_not_save_config/2]).
@@ -729,10 +729,10 @@ attach_vclock(Value, Node) ->
 %% "natural" way to track revision of data, e.g. ZAB's/RAFT's txn ids
 %% or equivalent multi-paxos thing).
 %%
-%% Pre-Totoro version considers the deleted keys when calculating the rev.
-compute_global_rev_pre_totoro(?NS_CONFIG_LATEST_MARKER) ->
-    compute_global_rev_pre_totoro(ns_config:get());
-compute_global_rev_pre_totoro(Config) ->
+%% Pre-8.5 version considers the deleted keys when calculating the rev.
+compute_global_rev_pre_85(?NS_CONFIG_LATEST_MARKER) ->
+    compute_global_rev_pre_85(ns_config:get());
+compute_global_rev_pre_85(Config) ->
     KVList = get_kv_list_with_config(Config),
     lists:foldl(
       fun ({{local_changes_count, _}, Value}, Acc) ->
@@ -740,7 +740,7 @@ compute_global_rev_pre_totoro(Config) ->
               %% to ignore the purge timestamp
               %%
               %% N.B. this is no longer correct - we delete the keys on node
-              %% ejection/compat upgrade to Totoro. See also
+              %% ejection/compat upgrade to 8.5. See also
               %% `compute_global_rev/1` below.
               {_, VC} = extract_vclock(Value),
               Acc + vclock:count_changes(VC);
@@ -748,7 +748,7 @@ compute_global_rev_pre_totoro(Config) ->
               Acc
       end, 0, KVList).
 
-%% Post-Totoro version of this function skips deleted keys when calculating the
+%% Post-8.5 version of this function skips deleted keys when calculating the
 %% rev. This lets us delete them when we eject a node from a cluster without
 %% the rev going backwards (as we can roll up the ejected node's vclock counters
 %% into the orchestrators to prevent the rev from going backwards). This stops
@@ -1686,13 +1686,13 @@ sync_announcements() ->
 latest() ->
     ?NS_CONFIG_LATEST_MARKER.
 
-config_upgrade_to_totoro(Config) ->
+config_upgrade_to_85(Config) ->
     %% We need to roll up all of the vclocks of
     %% `{local_changes_count, <node uuid>}` keys from nodes that are no longer
     %% in the cluster into the vclock of the orchestrator (this node) and delete
-    %% them. Prior to Totoro we kept these keys forever, and it was observed
+    %% them. Prior to 8.5 we kept these keys forever, and it was observed
     %% that in some clusters we were retaining tens of thousands of keys. In
-    %% Totoro (and newer versions) we will perform this action when we remove
+    %% 8.5 (and newer versions) we will perform this action when we remove
     %% the node from the cluster to ensure that the number of these keys does
     %% not grow out of control.
     UuidMap = get_node_uuid_map(Config),
@@ -1885,8 +1885,8 @@ all_test_() ->
          {"test_local_changes_count", fun test_local_changes_count/0},
          {"test_upgrade_config_explicitly",
           fun test_upgrade_config_explicitly/0},
-         {"test_config_upgrade_to_totoro",
-          fun test_config_upgrade_to_totoro/0},
+         {"test_config_upgrade_to_85",
+          fun test_config_upgrade_to_85/0},
          {"test_remove_nodes_config_keys_announces_unique_keys",
           fun test_remove_nodes_config_keys_announces_unique_keys/0}]}},
 
@@ -2221,7 +2221,7 @@ test_local_changes_count() ->
 
     ok.
 
-%% End-to-end coverage of config_upgrade_to_totoro/1 driven through
+%% End-to-end coverage of config_upgrade_to_85/1 driven through
 %% upgrade_config_explicitly/1: seed local_changes_count counters for two
 %% departed nodes, upgrade, and verify that:
 %%   a) the departed counters are removed,
@@ -2231,7 +2231,7 @@ test_local_changes_count() ->
 %%      summed into our own counter rather than merged in as extra components,
 %%      so the vclock size is bounded by the live-node count regardless of how
 %%      many nodes have ever departed.
-test_config_upgrade_to_totoro() ->
+test_config_upgrade_to_85() ->
     true = erlang:register(save_config_target, self()),
     Ack = fun () -> receive {saving, R, _C, P} -> P ! {R, ok} end end,
 
@@ -2264,7 +2264,7 @@ test_config_upgrade_to_totoro() ->
         RevBefore = compute_global_rev(ns_config:get()),
 
         ?assertEqual(ok,
-                     upgrade_config_explicitly(config_upgrade_to_totoro(_))),
+                     upgrade_config_explicitly(config_upgrade_to_85(_))),
         Ack(),
 
         RevAfter = compute_global_rev(ns_config:get()),
@@ -2466,7 +2466,7 @@ test_upgrade_config_delete_not_resurrected() ->
     ?assertEqual(?DELETED_MARKER, strip_metadata(Merged)).
 
 %% Covers how the two global-rev computations treat DELETED (tombstoned)
-%% local_changes_count keys: the pre-Totoro version counts them (its historical
+%% local_changes_count keys: the pre-8.5 version counts them (its historical
 %% behaviour), while compute_global_rev/1 skips them - which is what lets us
 %% delete stale counters on ejection/compat upgrade without the rev going
 %% backwards.
@@ -2492,21 +2492,21 @@ test_compute_global_rev_deleted_keys() ->
     DeletedKV = {{local_changes_count, U2}, Deleted},
 
     %% No deleted keys present: both versions agree.
-    ?assertEqual(1, compute_global_rev_pre_totoro(Cfg([LiveKV]))),
+    ?assertEqual(1, compute_global_rev_pre_85(Cfg([LiveKV]))),
     ?assertEqual(1, compute_global_rev(Cfg([LiveKV]))),
 
-    %% Only a deleted key: pre-Totoro counts it (2), the current version
+    %% Only a deleted key: pre-8.5 counts it (2), the current version
     %% skips it (0).
-    ?assertEqual(2, compute_global_rev_pre_totoro(Cfg([DeletedKV]))),
+    ?assertEqual(2, compute_global_rev_pre_85(Cfg([DeletedKV]))),
     ?assertEqual(0, compute_global_rev(Cfg([DeletedKV]))),
 
-    %% Mixed: pre-Totoro counts both (1 + 2), the current version counts only
+    %% Mixed: pre-8.5 counts both (1 + 2), the current version counts only
     %% the live key (1).
-    ?assertEqual(3, compute_global_rev_pre_totoro(Cfg([LiveKV, DeletedKV]))),
+    ?assertEqual(3, compute_global_rev_pre_85(Cfg([LiveKV, DeletedKV]))),
     ?assertEqual(1, compute_global_rev(Cfg([LiveKV, DeletedKV]))),
 
     %% Empty config: both are 0.
-    ?assertEqual(0, compute_global_rev_pre_totoro(Cfg([]))),
+    ?assertEqual(0, compute_global_rev_pre_85(Cfg([]))),
     ?assertEqual(0, compute_global_rev(Cfg([]))),
 
     ok.

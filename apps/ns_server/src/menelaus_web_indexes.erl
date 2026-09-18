@@ -113,7 +113,7 @@ settings_post_validators() ->
             false ->
                 []
         end ++
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             true ->
                 [validator:boolean(generateScanReport, _)];
             false ->

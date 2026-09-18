@@ -130,7 +130,7 @@ check_sensitive_supported(KVR) ->
         [] ->
             ok;
         [Key | _] ->
-            case cluster_compat_mode:is_cluster_totoro() of
+            case cluster_compat_mode:is_cluster_85() of
                 true ->
                     ok;
                 false ->
@@ -555,7 +555,7 @@ sync_quorum(Timeout) ->
 setup() ->
     fake_chronicle_kv:setup(),
     %% the sensitive flag is refused below this
-    fake_chronicle_kv:setup_cluster_compat_version(?VERSION_TOTORO).
+    fake_chronicle_kv:setup_cluster_compat_version(?VERSION_85).
 
 teardown(_) ->
     fake_chronicle_kv:teardown().
@@ -1090,7 +1090,7 @@ basic_test_() ->
                ?assertEqual(v1, stored_value(Key)),
 
                %% and the flag is taken once the cluster is upgraded
-               fake_chronicle_kv:setup_cluster_compat_version(?VERSION_TOTORO),
+               fake_chronicle_kv:setup_cluster_compat_version(?VERSION_85),
                Key2 = [key2, subkey1, root],
                ?assertMatch({ok, _, create},
                             test_set(Key2, v1, new, true, true)),

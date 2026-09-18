@@ -593,7 +593,7 @@ do_upgrade_config_from_76_to_79(_Config, DefaultConfig) ->
      upgrade_key(memcached_defaults, DefaultConfig)].
 
 upgrade_config_from_80_to_85() ->
-    DefaultConfig = default(?VERSION_TOTORO),
+    DefaultConfig = default(?VERSION_85),
     [upgrade_key(memcached_config, DefaultConfig),
      upgrade_key(memcached_defaults, DefaultConfig)].
 

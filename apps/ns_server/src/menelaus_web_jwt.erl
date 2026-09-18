@@ -15,21 +15,21 @@
 %% Release history:
 %% JWT shipped on two lines with different gating, which is the reason for
 %% several compat checks in this area. On Couchbase Server, /settings/jwt was
-%% developer preview in 8.0 and generally available in Totoro. Enterprise
+%% developer preview in 8.0 and generally available in 8.5. Enterprise
 %% Analytics shipped it supported from its 2.2 release, built on ns_server
 %% 8.0.1, by setting jwt_enabled in its config profile (MB-70613), which
-%% bypassed the developer preview requirement. So a pre-Totoro cluster with
+%% bypassed the developer preview requirement. So a pre-8.5 cluster with
 %% JWT configured is either a Server cluster in developer preview, which
 %% cannot be upgraded, or an Enterprise Analytics cluster, which can.
-%% MB-73362 removed jwt_enabled once Enterprise Analytics moved to Totoro, so
-%% this endpoint now requires Totoro compat unconditionally. Settings written
+%% MB-73362 removed jwt_enabled once Enterprise Analytics moved to 8.5, so
+%% this endpoint now requires 8.5 compat unconditionally. Settings written
 %% by the older line are read natively. The same distinction is why the
 %% memcached OAUTHBEARER mechanism is gated on oauthbearer_enabled alone
 %% rather than on cluster compat.
 %%
-%% The consequence for an Enterprise Analytics cluster upgrading to Totoro is
+%% The consequence for an Enterprise Analytics cluster upgrading to 8.5 is
 %% deliberate and covers every method, so an upgraded node can neither read
-%% nor change JWT settings until cluster compat reaches Totoro. Nodes still
+%% nor change JWT settings until cluster compat reaches 8.5. Nodes still
 %% to be upgraded keep serving the endpoint meanwhile. Authentication against
 %% the settings already stored proceeds throughout the upgrade, over REST and
 %% over the memcached path alike.
@@ -104,20 +104,20 @@
 
 -export([handle_settings/2,
          get_settings/0,
-         chronicle_upgrade_to_totoro/1,
+         chronicle_upgrade_to_85/1,
          is_enabled/0,
          issuers_requiring_config_encryption/1,
          issuers_requiring_n2n_encryption/0,
          get_jwt_warnings/1,
          sanitize_chronicle_cfg/1]).
 
-%% Reading settings written before Totoro.
+%% Reading settings written before 8.5.
 %%
-%% Every string in the stored term is a list of utf8 bytes before Totoro and a
-%% binary from Totoro on.
+%% Every string in the stored term is a list of utf8 bytes before 8.5 and a
+%% binary from 8.5 on.
 %%
-%% chronicle_upgrade_to_totoro/1 rewrites the stored term when cluster compat
-%% mode switches to Totoro. Until that happens, the conversion is done on read:
+%% chronicle_upgrade_to_85/1 rewrites the stored term when cluster compat
+%% mode switches to 8.5. Until that happens, the conversion is done on read:
 %% EA shipped using 8.0.x JWT (outside dev preview). A node with the older
 %% format must continue to be able to authenticate during the rolling upgrade.
 %%
@@ -127,7 +127,7 @@
 %% stored as a binary on both lines.
 %%
 %% The tables hold the issuer keys that exist on the older line. oidc_settings,
-%% custom_claims and display_name were added in Totoro.
+%% custom_claims and display_name were added in 8.5.
 %% jwks_uri_tls_extra_opts (8.0.x only) was never stored/written.
 -define(ISSUER_STRING_KEYS,
         [aud_claim, groups_claim, jwks_uri, jwks_uri_tls_sni, name,
@@ -146,7 +146,7 @@ get_settings() ->
 
 -spec read_format(map()) -> map().
 read_format(Settings) ->
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true -> Settings;
         false -> to_binary_format(Settings)
     end.
@@ -201,8 +201,8 @@ to_binary_issuer(Props) ->
         ?ISSUER_STRING_LIST_KEYS,
         convert_keys(?ISSUER_STRING_KEYS, Props))).
 
--spec chronicle_upgrade_to_totoro(term()) -> term().
-chronicle_upgrade_to_totoro(ChronicleTxn) ->
+-spec chronicle_upgrade_to_85(term()) -> term().
+chronicle_upgrade_to_85(ChronicleTxn) ->
     case chronicle_upgrade:get_key(jwt_settings, ChronicleTxn) of
         {ok, Settings} ->
             chronicle_upgrade:set_key(jwt_settings, to_binary_format(Settings),
@@ -472,7 +472,7 @@ encode_response(Value) ->
 handle_settings(Method, Req) ->
     try
         menelaus_util:assert_is_enterprise(),
-        menelaus_util:assert_is_totoro(),
+        menelaus_util:assert_is_85(),
         case Method of
             'GET' -> handle_settings_get(Req);
             'PUT' -> handle_settings_put(Req);
@@ -1539,9 +1539,9 @@ proplist_to_map_test_() ->
         proplist_to_map(<<"simple">>))
     ].
 
-%% The pre-Totoro term, as the Couchbase Server line and Enterprise Analytics
+%% The pre-8.5 term, as the Couchbase Server line and Enterprise Analytics
 %% 8.0.x both wrote it: every string a list of utf8 bytes.
-pre_totoro_settings() ->
+pre_85_settings() ->
     #{enabled => true,
       jwks_uri_refresh_interval_s => 14400,
       issuers =>
@@ -1570,7 +1570,7 @@ pre_totoro_settings() ->
                   sub_maps => [{binary_to_list(<<"^(.*)@exämple.com$"/utf8>>),
                                 "\\1"}]}}}.
 
-totoro_settings() ->
+settings_in_85() ->
     #{enabled => true,
       jwks_uri_refresh_interval_s => 14400,
       issuers =>
@@ -1600,16 +1600,16 @@ totoro_settings() ->
                                 <<"\\1">>}]}}}.
 
 to_binary_format_test_() ->
-    [{"a pre-Totoro term converts byte for byte",
+    [{"a pre-8.5 term converts byte for byte",
       fun() ->
-              ?assertEqual(totoro_settings(),
-                           to_binary_format(pre_totoro_settings()))
+              ?assertEqual(settings_in_85(),
+                           to_binary_format(pre_85_settings()))
       end},
      {"conversion is idempotent, so a compat check that disagrees with the "
       "stored term costs a walk and nothing else",
       fun() ->
-              ?assertEqual(totoro_settings(),
-                           to_binary_format(totoro_settings()))
+              ?assertEqual(settings_in_85(),
+                           to_binary_format(settings_in_85()))
       end}].
 
 %% @doc Tests for format conversion functions.

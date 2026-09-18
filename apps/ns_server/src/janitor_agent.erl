@@ -315,7 +315,7 @@ apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Options,
     apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Options,
                             ?APPLY_NEW_CONFIG_TIMEOUT);
 apply_new_bucket_config(Bucket, Servers, NewBucketConfig, Options, Timeout) ->
-    ApplyCall = case cluster_compat_mode:is_cluster_totoro() of
+    ApplyCall = case cluster_compat_mode:is_cluster_85() of
                     false -> {apply_new_config, NewBucketConfig};
                     true -> {apply_new_config, NewBucketConfig, Options}
                 end,
@@ -942,7 +942,7 @@ do_handle_call({delete_vbucket, VBucket} = Call, From, State) ->
     NewState = apply_new_vbucket_state(VBucket, missing, undefined, State),
     delegate_apply_vbucket_state(Call, From, NewState);
 do_handle_call({apply_new_config, NewBucketConfig}, _From, State) ->
-    %% backwards compat with pre-Totoro
+    %% backwards compat with pre-8.5
     handle_apply_new_config(NewBucketConfig, [], State);
 do_handle_call({apply_new_config, NewBucketConfig, Options}, _From, State) ->
     handle_apply_new_config(NewBucketConfig, Options, State);

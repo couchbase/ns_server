@@ -532,7 +532,7 @@ init([]) ->
     %% Make chronicle authoritative for the generated OOTB CRL on disk + in the
     %% cache.  The CRL itself is created elsewhere: transactionally with the CA
     %% in ns_server_cert:generate_cluster_CA/2 for fresh clusters, and by
-    %% ns_server_cert:chronicle_upgrade_to_totoro/1 for upgraded ones.  There
+    %% ns_server_cert:chronicle_upgrade_to_85/1 for upgraded ones.  There
     %% may be no CRL at all - a CA older than cRLSign cannot sign one.
     %% Not forced: populate_cache_from_dir/2 above seeded the checksum but no
     %% load status, so this still loads (and re-verifies the on-disk copy).

@@ -781,7 +781,7 @@ reply_no_ootb_crl() ->
 
 assert_supported() ->
     menelaus_util:assert_is_enterprise(),
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true -> ok;
         false ->
             menelaus_util:web_exception(

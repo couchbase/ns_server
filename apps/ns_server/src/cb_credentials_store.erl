@@ -206,7 +206,7 @@ consume_credential(Id) ->
 
 -spec ensure_prerequisites(map()) -> ok | {error, credential_error_reason()}.
 ensure_prerequisites(Snapshot) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     menelaus_util:assert_is_enterprise(),
     maybe
         ok ?= ensure_config_encryption(Snapshot),

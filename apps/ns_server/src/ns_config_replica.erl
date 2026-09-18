@@ -86,7 +86,7 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(get_compressed, _From, State) ->
-    Payload = case cluster_compat_mode:is_cluster_totoro() of
+    Payload = case cluster_compat_mode:is_cluster_85() of
                   false -> ns_config:get_kv_list();
                   true -> ns_config:get_kv_map()
               end,

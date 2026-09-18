@@ -34,7 +34,7 @@
          get_config/0,
          config_upgrade_to_76/1,
          config_upgrade_to_79/1,
-         config_upgrade_to_totoro/1]).
+         config_upgrade_to_85/1]).
 
 -export([category_bin/1]).
 
@@ -245,13 +245,13 @@ build_alerts_config(Args) ->
      {pop_up_alerts, proplists:get_value(pop_up_alerts, Args, [])}].
 
 %% This should ideally be the set of alerts as of the minimum supported
-%% version for upgrades from. Prior to totoro however, this was instead set
+%% version for upgrades from. Prior to 8.5 however, this was instead set
 %% to the latest set of alerts, which meant that the defaults could override
 %% existing alerts, the first time a newer node is added to the cluster.
 %% While this just means that the expected upgrade just occurs earlier than
 %% intended, whether the upgrade occurs early is essentially arbitrary, so it
 %% would not be good to depend on.
-%% To maintain consistent upgrade behaviour from totoro onwards, we will upgrade
+%% To maintain consistent upgrade behaviour from 8.5 onwards, we will upgrade
 %% this list as if the minimum supported version was 7.9, until the actual
 %% minimum catches up.
 %% At that point, when we remove a no-longer applicable config upgrade (e.g.
@@ -317,7 +317,7 @@ config_upgrade_to_79(Config) ->
                      add_proplist_list_elem(pop_up_alerts, Alert, _)]
             end, menelaus_web_alerts_srv:alert_keys_added_in_79())).
 
-config_upgrade_to_totoro(Config) ->
+config_upgrade_to_85(Config) ->
     {value, EmailAlerts} = ns_config:search(Config, email_alerts),
     upgrade_alerts(
       EmailAlerts,
@@ -325,8 +325,8 @@ config_upgrade_to_totoro(Config) ->
         fun (Alert) ->
                 [add_proplist_list_elem(alerts, Alert, _),
                  add_proplist_list_elem(pop_up_alerts, Alert, _)]
-        end, menelaus_web_alerts_srv:alert_keys_added_in_totoro() ++
-            cb_cluster_secrets:alert_keys_added_in_totoro())).
+        end, menelaus_web_alerts_srv:alert_keys_added_in_85() ++
+            cb_cluster_secrets:alert_keys_added_in_85())).
 
 move_memory_alert_email_alerts(Key, NsConfigKey, PList) ->
     {case ns_config:read_key_fast(NsConfigKey, true) of
@@ -963,7 +963,7 @@ config_upgrade_to_79_test() ->
     %% Don't remove stuck_rebalance keys if a threshold has been set
     ?assertEqual(Expected4, config_upgrade_to_79(Config4)).
 
-config_upgrade_to_totoro_test() ->
+config_upgrade_to_85_test() ->
     Config1 =
         [[{email_alerts,
            [{pop_up_alerts, [ip, disk]},
@@ -983,5 +983,5 @@ config_upgrade_to_totoro_test() ->
                      encr_at_rest_errors_total,
                      encr_at_rest_key_test_failed, ip, time_out_of_sync,
                      xdcr_replication_deleted]}]}],
-    ?assertEqual(Expected1, config_upgrade_to_totoro(Config1)).
+    ?assertEqual(Expected1, config_upgrade_to_85(Config1)).
 -endif.

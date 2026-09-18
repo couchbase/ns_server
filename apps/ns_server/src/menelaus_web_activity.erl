@@ -22,7 +22,7 @@
          get_config/0,
          is_config_key/1,
          is_enabled/1,
-         config_upgrade_to_totoro/1]).
+         config_upgrade_to_85/1]).
 
 -define(CONFIG_KEY, user_activity).
 
@@ -117,7 +117,7 @@ bad_roles_test() ->
         ?assertEqual({value, []}, get_roles([])),
         ?assertEqual({value, [cluster_admin]}, get_roles(["cluster_admin"])),
         %% Test new role format
-        fake_chronicle_kv:setup_cluster_compat_version(?VERSION_TOTORO),
+        fake_chronicle_kv:setup_cluster_compat_version(?VERSION_85),
         menelaus_roles:set_role_definitions(),
         ?assertEqual({value, [<<"cluster_admin">>, <<"data_reader">>]},
                      get_roles(["cluster_admin", "data_reader"])),
@@ -181,7 +181,7 @@ is_config_key(_) -> false.
 is_enabled(Config) ->
     proplists:get_bool(enabled, Config).
 
-config_upgrade_to_totoro(Config) ->
+config_upgrade_to_85(Config) ->
     Default = default(),
     case ns_config:search(Config, ?CONFIG_KEY) of
         false ->

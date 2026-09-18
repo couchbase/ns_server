@@ -310,7 +310,7 @@ build_collections_manifest_id(Id, Snapshot) ->
     end.
 
 build_external_collections_manifest_id(Id, Snapshot) ->
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true ->
             case collections:external_uid(Id, Snapshot) of
                 undefined ->
@@ -387,9 +387,9 @@ compute_global_rev(Config, no_rev) ->
     compute_global_rev(Config, 0);
 compute_global_rev(Config, ChronicleRev) when is_integer(ChronicleRev) ->
     ConfigRev =
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             false ->
-                ns_config:compute_global_rev_pre_totoro(Config);
+                ns_config:compute_global_rev_pre_85(Config);
             true ->
                 ns_config:compute_global_rev(Config)
         end,
@@ -681,7 +681,7 @@ verify_compatibility_test() ->
     config_profile:load_default_profile_for_test(),
     meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_85, fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
     meck:expect(cluster_compat_mode, get_cluster_capabilities,
                 fun () -> [{n1ql, [costBasedOptimizer, indexAdvisor]}] end),

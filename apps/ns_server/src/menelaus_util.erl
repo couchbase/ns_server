@@ -75,8 +75,8 @@
          assert_profile_flag/2,
          assert_is_76/0,
          assert_is_79/0,
-         assert_is_totoro/0,
-         assert_is_totoro/1,
+         assert_is_85/0,
+         assert_is_85/1,
          assert_config_profile_flag/1,
          assert_not_config_profile_flag/1,
          choose_node_consistently/2,
@@ -805,13 +805,13 @@ assert_is_76() ->
 assert_is_79() ->
     assert_cluster_version(fun cluster_compat_mode:is_cluster_79/0).
 
-assert_is_totoro() ->
-    assert_cluster_version(fun cluster_compat_mode:is_cluster_totoro/0).
+assert_is_85() ->
+    assert_cluster_version(fun cluster_compat_mode:is_cluster_85/0).
 
-assert_is_totoro(ParamName) ->
-    assert(fun cluster_compat_mode:is_cluster_totoro/0,
+assert_is_85(ParamName) ->
+    assert(fun cluster_compat_mode:is_cluster_85/0,
            [param_error_prefix(ParamName),
-            io_lib:format("the cluster to be fully totoro", [])]).
+            io_lib:format("the cluster to be fully 8.5", [])]).
 
 assert_cluster_version(Fun) ->
     assert(

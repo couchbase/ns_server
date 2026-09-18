@@ -53,7 +53,7 @@ params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
      {"couch_bucket", [], BucketName},
      {"max_vbuckets", [], proplists:get_value(num_vbuckets, BucketConfig)},
      %% Compat version carries the cluster compat version. It is available
-     %% from Totoro. We always set it on the local node, to allow the data
+     %% from 8.5. We always set it on the local node, to allow the data
      %% service to apply compatibility settings suitable for lower versions.
      {"compat_version", [{reload, config}], get_compat_version_string()},
      {"alog_path", [], persistent_alog_path(BucketConfig, DBSubDir)},
@@ -121,7 +121,7 @@ params_without_extras(membase, BucketName, BucketConfig, MemQuota, UUID,
                  {"dcp_backfill_idle_disk_threshold", [{reload, dcp}],
                   ns_bucket:get_dcp_backfill_idle_disk_threshold(BucketConfig)}]
         end ++
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             false -> [];
             true ->
                 %% Continuous backup need this for some cross-param validation.
@@ -456,7 +456,7 @@ has_changed(BucketName, Name, Value, Dict) ->
             true;
         error ->
             %% KV doesn't know about the parameters, setting it would result in
-            %% some error. This is valid in Totoro/8.5, buckets may have config
+            %% some error. This is valid in 8.5, buckets may have config
             %% for other services such as continuous backup.
             false
     end.

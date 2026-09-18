@@ -32,8 +32,8 @@
          is_version_79/1,
          is_cluster_80/0,
          is_version_80/1,
-         is_cluster_totoro/0,
-         is_version_totoro/1,
+         is_cluster_85/0,
+         is_version_85/1,
          is_enterprise/0,
          is_enterprise/1,
          is_enterprise/2,
@@ -74,7 +74,7 @@ n1ql_cluster_capabilities(Version) ->
             false ->
                 []
         end ++
-        case is_enabled_at(Version, ?VERSION_TOTORO) of
+        case is_enabled_at(Version, ?VERSION_85) of
             true ->
                 [externalCollections, conversationalQuery];
             false ->
@@ -88,7 +88,7 @@ search_cluster_capabilities(Version) ->
         false ->
             []
     end ++
-    case is_enabled_at(Version, ?VERSION_TOTORO) of
+    case is_enabled_at(Version, ?VERSION_85) of
         true ->
             [scoreFusion, udfQuery];
         false ->
@@ -212,11 +212,11 @@ is_version_80(ClusterVersion) ->
 is_cluster_80() ->
     is_enabled(?VERSION_80).
 
-is_version_totoro(ClusterVersion) ->
-    is_enabled_at(ClusterVersion, ?VERSION_TOTORO).
+is_version_85(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_85).
 
-is_cluster_totoro() ->
-    is_enabled(?VERSION_TOTORO).
+is_cluster_85() ->
+    is_enabled(?VERSION_85).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).
@@ -254,7 +254,7 @@ is_data_service_file_based_rebalance_enabled() ->
     is_data_service_file_based_rebalance_enabled(ns_config:latest()).
 
 is_data_service_file_based_rebalance_enabled(Config) ->
-    is_cluster_totoro() andalso
+    is_cluster_85() andalso
         is_enterprise(Config) andalso
         ns_config:search(Config,
                          data_service_file_based_rebalance_enabled,
@@ -311,7 +311,7 @@ upgrades() ->
     [{?VERSION_76, rbac, menelaus_users, upgrade},
      {?VERSION_79, rbac, menelaus_users, upgrade},
      {?VERSION_79, metakv, chronicle_metakv, upgrade_to_79},
-     {?VERSION_TOTORO, rbac, menelaus_users, upgrade}] ++
+     {?VERSION_85, rbac, menelaus_users, upgrade}] ++
     config_profile:get_value(upgrades, []).
 
 do_upgrades(undefined, _, _, _) ->

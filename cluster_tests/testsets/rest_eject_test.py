@@ -100,19 +100,19 @@ class RestEjectTest(testlib.BaseTestSet):
 
     @tag(Tag.LowUrgency)
     def local_changes_count_removed_on_eject_test(self):
-        # When a node is rebalanced out of a Totoro cluster, its
+        # When a node is rebalanced out of an 8.5 cluster, its
         # {local_changes_count, <node-uuid>} counter must be removed from
         # ns_config (by ns_cluster_membership:remove_nodes/2). Previously these
         # keys were retained forever, so they grew unbounded across node churn.
         orchestrator = self.cluster.connected_nodes[0]
         eject_node = self.cluster.connected_nodes[-1]
 
-        # The removal is gated on Totoro compat; a fresh cluster is at LATEST
-        # (== Totoro), so this should hold.
+        # The removal is gated on 8.5 compat; a fresh cluster is at LATEST
+        # (== 8.5), so this should hold.
         assert testlib.diag_eval(
-            orchestrator, "cluster_compat_mode:is_cluster_totoro()."
+            orchestrator, "cluster_compat_mode:is_cluster_85()."
             ).text.strip() == "true", \
-            "cluster must be at Totoro compat for the counter to be removed"
+            "cluster must be at 8.5 compat for the counter to be removed"
 
         uuid = self._node_config_uuid(eject_node)
 
@@ -152,9 +152,9 @@ class RestEjectTest(testlib.BaseTestSet):
 
         # ...and the ns_config global rev must NOT go backwards across the
         # eject. Deleting the departed counter removes its count from the rev
-        # (compute_global_rev skips deleted keys in Totoro), so the count must
+        # (compute_global_rev skips deleted keys in 8.5), so the count must
         # be folded into a surviving node's counter - as
-        # config_upgrade_to_totoro does - rather than simply dropped.
+        # config_upgrade_to_85 does - rather than simply dropped.
         rev_after = self._cfg_rev(orchestrator)
         assert rev_after >= rev_before, \
             f"ns_config global rev went backwards across eject: " \

@@ -61,7 +61,7 @@
          last_seen_ids_key/2,
          last_seen_ids_set/3,
          upgrade_to_76/2,
-         upgrade_to_totoro/1,
+         upgrade_to_85/1,
          history_retention_enabled/2]).
 
 %% rpc from other nodes
@@ -70,7 +70,7 @@
 %% After a quorum failover, increment the manifest UID by this value
 %% to eliminate the probability that collections created after quorum
 %% failover will conflict with those created before.
--define(EPOCH_PRE_TOTORO, 16#1000).
+-define(EPOCH_PRE_85, 16#1000).
 -define(EPOCH, 16#10000).
 
 -define(INCREMENT_COUNTER, 1).
@@ -100,9 +100,9 @@ start_link() ->
       end).
 
 epoch() ->
-    case cluster_compat_mode:is_cluster_totoro() of
+    case cluster_compat_mode:is_cluster_85() of
         true -> ?EPOCH;
-        false -> ?EPOCH_PRE_TOTORO
+        false -> ?EPOCH_PRE_85
     end.
 
 enabled(BucketConfig) ->
@@ -238,7 +238,7 @@ is_system_scope_enabled() ->
     cluster_compat_mode:is_cluster_76().
 
 are_external_collections_enabled() ->
-    cluster_compat_mode:is_cluster_totoro().
+    cluster_compat_mode:is_cluster_85().
 
 %% Properties for collections within the _system scope.
 system_scope_collection_properties() ->
@@ -513,15 +513,15 @@ include_collection(Coll, couchbase) ->
     not proplists:is_defined(external, Coll).
 
 get_max_supported(num_scopes) ->
-    MaxSupported = case cluster_compat_mode:is_cluster_totoro() of
+    MaxSupported = case cluster_compat_mode:is_cluster_85() of
                        true -> ?MAX_SCOPES_SUPPORTED;
-                       false -> ?MAX_SCOPES_SUPPORTED_PRE_TOTORO
+                       false -> ?MAX_SCOPES_SUPPORTED_PRE_85
                    end,
     get_max_supported_inner(max_scopes_count, MaxSupported);
 get_max_supported(num_collections) ->
-    MaxSupported = case cluster_compat_mode:is_cluster_totoro() of
+    MaxSupported = case cluster_compat_mode:is_cluster_85() of
                        true -> ?MAX_COLLECTIONS_SUPPORTED;
-                       false -> ?MAX_COLLECTIONS_SUPPORTED_PRE_TOTORO
+                       false -> ?MAX_COLLECTIONS_SUPPORTED_PRE_85
                    end,
     get_max_supported_inner(max_collections_count, MaxSupported).
 
@@ -1557,7 +1557,7 @@ upgrade_to_76(ManifestIn, BucketConfig) ->
     %% manifest.
     advance_manifest_id(upgrade, Manifest2).
 
-upgrade_to_totoro(ManifestIn) ->
+upgrade_to_85(ManifestIn) ->
     %% Just need to add the external collection counters
     ManifestIn ++ starting_external_collection_counters().
 
@@ -1635,7 +1635,7 @@ update_manifest_test_setup() ->
 
     meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
-    meck:expect(cluster_compat_mode, is_cluster_totoro, fun () -> true end),
+    meck:expect(cluster_compat_mode, is_cluster_85, fun () -> true end),
     meck:expect(cluster_compat_mode, is_enterprise, fun () -> true end),
     meck:expect(config_profile, get,
                 fun () ->
@@ -2682,7 +2682,7 @@ set_manifest_with_external_collections_t() ->
                     get_collection(
                       "c2", get_scope("s1", Manifest5))).
 
-upgrade_to_totoro_t() ->
+upgrade_to_85_t() ->
     ManifestIn = [{uid, 1},
                   {next_uid, 2},
                   {next_scope_uid, 9},
@@ -2690,7 +2690,7 @@ upgrade_to_totoro_t() ->
                   {num_scopes, 0},
                   {num_collections, 0},
                   {scopes, []}],
-    ManifestOut = upgrade_to_totoro(ManifestIn),
+    ManifestOut = upgrade_to_85(ManifestIn),
     ?assertEqual(
        0,
        proplists:get_value(
@@ -2781,8 +2781,8 @@ basic_collections_manifest_test_() ->
        fun() ->
                set_manifest_with_external_collections_t()
        end},
-      {"upgrade to totoro test",
-       fun() -> upgrade_to_totoro_t() end}]}.
+      {"upgrade to 8.5 test",
+       fun() -> upgrade_to_85_t() end}]}.
 
 create_snapshot(Bucket, Props) ->
     Manifest =

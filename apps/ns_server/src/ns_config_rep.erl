@@ -262,7 +262,7 @@ handle_info({pull_and_push, Nodes}, State) ->
     ?log_info("Replicating config to/from:~n~p", [KnownNodes]),
     pull_one_node(KnownNodes, length(KnownNodes)),
     Payload =
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             false -> ns_config:get_kv_list(?SELF_PULL_TIMEOUT);
             true -> ns_config:get_kv_map(?SELF_PULL_TIMEOUT)
         end,
@@ -421,7 +421,7 @@ do_push(State) ->
 
 do_push(RawKVs, #state{nodes_rev = Revision} = State) ->
     Payload =
-        case cluster_compat_mode:is_cluster_totoro() of
+        case cluster_compat_mode:is_cluster_85() of
             true ->
                 ns_config:ensure_config_is_map(RawKVs);
             false ->
@@ -500,7 +500,7 @@ merge_remote_configs(Fun, Payloads) ->
                   %% memory bloat
                   Decompressed = Fun(RemoteKVs),
 
-                  %% Older versions (pre-Totoro) send config as lists, not maps
+                  %% Older versions (pre-8.5) send config as lists, not maps
                   RemoteKVMap = ns_config:ensure_config_is_map(Decompressed),
 
                   do_merge_one_remote_config(UUID,
@@ -563,7 +563,7 @@ do_push_keys_test_() ->
      fun () ->
              meck:new([cluster_compat_mode, misc, ns_node_disco],
                       [passthrough]),
-             meck:expect(cluster_compat_mode, is_cluster_totoro,
+             meck:expect(cluster_compat_mode, is_cluster_85,
                          fun () -> true end),
              meck:expect(misc, parallel_map, fun (_, _, _) -> [] end),
              meck:expect(ns_node_disco, local_sub_nodes, fun () -> [] end),

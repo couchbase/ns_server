@@ -33,7 +33,7 @@
          on_update/2,
          config_upgrade_to_76/1,
          config_upgrade_to_79/1,
-         config_upgrade_to_totoro/1]).
+         config_upgrade_to_85/1]).
 
 -import(json_settings_manager,
         [id_lens/1, allow_missing_lens/1]).
@@ -183,7 +183,7 @@ general_settings_lens_props(ClusterVersion) ->
         false ->
             []
     end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TOTORO) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_85) of
         true ->
             [{generateScanReport,
               id_lens(<<"indexer.settings.generateScanReport">>)}];
@@ -237,7 +237,7 @@ general_settings_defaults(ClusterVersion) ->
         false ->
             []
     end ++
-    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_TOTORO) of
+    case cluster_compat_mode:is_enabled_at(ClusterVersion, ?VERSION_85) of
         true ->
             [{generateScanReport, false}];
         false ->
@@ -346,8 +346,8 @@ config_upgrade_to_76(Config) ->
 config_upgrade_to_79(Config) ->
     config_upgrade_settings(Config, ?VERSION_76, ?VERSION_79).
 
-config_upgrade_to_totoro(Config) ->
-    config_upgrade_settings(Config, ?VERSION_79, ?VERSION_TOTORO).
+config_upgrade_to_85(Config) ->
+    config_upgrade_settings(Config, ?VERSION_79, ?VERSION_85).
 
 -spec(default_shard_affinity() -> boolean()).
 default_shard_affinity() ->
@@ -420,7 +420,7 @@ config_upgrade_settings(Config, OldVersion, NewVersion) ->
 default_test() ->
     config_profile:load_default_profile_for_test(),
     Versions = [?MIN_SUPPORTED_VERSION, ?VERSION_76, ?VERSION_79,
-                ?VERSION_TOTORO],
+                ?VERSION_85],
     lists:foreach(fun(V) -> default_versioned(V) end, Versions),
     config_profile:unload_profile_for_test().
 
@@ -532,7 +532,7 @@ config_upgrade_test_generic(Config, ShardAffinityValue) ->
     ?assertEqual(<<"{\"indexer.settings.defer_build\":false}">>,
                  Data2),
 
-    CmdList3 = config_upgrade_to_totoro(Config),
+    CmdList3 = config_upgrade_to_85(Config),
     [{set, {metakv, Meta3}, Data3}] = CmdList3,
     ?assertEqual(<<"/indexing/settings/config">>, Meta3),
     ?assertEqual(<<"{\"indexer.settings.generateScanReport\":false}">>,

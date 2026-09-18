@@ -29,7 +29,7 @@ sequenceDiagram
 
     REST->>REST: Validate External Catalog/Collection
 
-    Note over REST,Services: If cluster is Totoro
+    Note over REST,Services: If cluster is 8.5
     loop Validate Over All Services
         Note over REST,cbauth: via JSON RPC
         REST->>cbauth: Validate External Catalog/Collection Config

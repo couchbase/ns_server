@@ -262,7 +262,7 @@ set_chronicle_deks_snapshot(DeksSnapshot) ->
     KDFContext =  #kdf_context{context = "ns_server/chronicle",
                                label = "encryption-at-rest"},
     DerivedSnapshot = cb_crypto:derive_deks_snapshot(DeksSnapshot, KDFContext),
-    %% Pre-totoro nodes use DEKs directly, while totoro nodes use derived DEKs.
+    %% Pre-8.5 nodes use DEKs directly, while 8.5 nodes use derived DEKs.
     ok = persistent_term:put(chronicle_deks_snapshot,
                              #{legacy => DeksSnapshot,
                                current => DerivedSnapshot}).
@@ -294,7 +294,7 @@ encrypt_data(<<131, _/binary>> = Data) ->
     end.
 
 decrypt_data(<<131, _/binary>> = D) -> {ok, D};
-%% Backward compatibility with pre-totoro data
+%% Backward compatibility with pre-8.5 data
 decrypt_data(<<?ENCRYPTION_MAGIC, 0, Data/binary>>) ->
     case get_legacy_chronicle_deks_snapshot() of
         undefined -> {error, no_keys};

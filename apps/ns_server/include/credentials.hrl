@@ -60,7 +60,7 @@
 -type credential_fields() :: #{atom() => binary() | integer() | boolean()}.
 
 %% missing_sensitive_fields marks a credential whose sensitive portion is absent
-%% after restore. Restore always knows which sensitive fields it omitted. Totoro
+%% after restore. Restore always knows which sensitive fields it omitted. 8.5
 %% does not restore credentials, so missing_sensitive_fields is never populated.
 %% A future maintenance release that opts to restore only credential metadata
 %% will omit sensitive fields. Those credentials return an error on consume. The

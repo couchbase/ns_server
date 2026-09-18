@@ -2534,7 +2534,6 @@ class JWTTests(testlib.BaseTestSet):
             headers=headers,
         )
 
-
 JWT_ENDPOINT = "/settings/jwt"
 ENCR_AT_REST_CONFIG = "/settings/security/encryptionAtRest/config"
 

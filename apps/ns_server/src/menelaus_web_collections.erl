@@ -40,7 +40,7 @@ handle_get(Bucket, Req) ->
         couchbase ->
             ok;
         _ ->
-            menelaus_util:assert_is_totoro()
+            menelaus_util:assert_is_85()
     end,
 
     menelaus_util:reply_json(
@@ -226,7 +226,7 @@ handle_post_couchbase_collection(Bucket, Scope, Req, BucketConf) ->
       collection_validators(default_not_allowed, BucketConf)).
 
 handle_post_external_collection(Bucket, Scope, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Values) ->
               CollectionParams = collection_params(Values),
@@ -300,7 +300,7 @@ process_patch_return_value(RV, Bucket, Scope, Name, Req) ->
     handle_rv(RV, collection_patch, Req).
 
 handle_patch_external_collection(Bucket, Scope, Name, Req) ->
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Values) ->
               UserRev = proplists:get_value(rev, Values),
@@ -356,7 +356,7 @@ handle_delete_collection(Bucket, Scope, Name, Req) ->
             false ->
                 handle_delete_couchbase_collection(Bucket, Scope, Name, Req);
             true ->
-                menelaus_util:assert_is_totoro(),
+                menelaus_util:assert_is_85(),
                 handle_delete_external_collection(Bucket, Scope, Name, Req)
         end,
     maybe_add_event_log(RV, Bucket, []),

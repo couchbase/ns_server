@@ -135,10 +135,10 @@ upgrade_to(?VERSION_79, UpgradeTxn) ->
     {?VERSION_80, ns_bucket:chronicle_upgrade_to_80(UpgradeTxn)};
 
 upgrade_to(?VERSION_80, UpgradeTxn) ->
-    {?VERSION_TOTORO,
+    {?VERSION_85,
      functools:chain(
        UpgradeTxn,
-       [ns_bucket:chronicle_upgrade_to_totoro(_),
-        menelaus_roles:chronicle_upgrade_to_totoro(_),
-        menelaus_web_jwt:chronicle_upgrade_to_totoro(_),
-        ns_server_cert:chronicle_upgrade_to_totoro(_)])}.
+       [ns_bucket:chronicle_upgrade_to_85(_),
+        menelaus_roles:chronicle_upgrade_to_85(_),
+        menelaus_web_jwt:chronicle_upgrade_to_85(_),
+        ns_server_cert:chronicle_upgrade_to_85(_)])}.

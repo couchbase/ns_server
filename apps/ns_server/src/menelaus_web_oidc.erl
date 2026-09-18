@@ -183,7 +183,7 @@ port_matches(Map, ReqPort) ->
 
 handle_auth(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Props) ->
               %% A query string parameter is a list of utf8 bytes, while the
@@ -207,7 +207,7 @@ handle_callback_post(Req) ->
 
 handle_callback(Req, InputType) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
     validator:handle(
       fun (Props) ->
               Code = proplists:get_value(code, Props),
@@ -665,7 +665,7 @@ format_access_denied_error(ExtraGroups, ExtraRoles) ->
 %% RP-initiated logout for OIDC UI sessions
 handle_deauth(Req) ->
     menelaus_util:assert_is_enterprise(),
-    menelaus_util:assert_is_totoro(),
+    menelaus_util:assert_is_85(),
 
     %% Authenticate the request first since serve_ui doesn't do it
     Auth = menelaus_auth:extract_auth(Req),
