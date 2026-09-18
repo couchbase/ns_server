@@ -1742,6 +1742,7 @@ bump_vclock_by_counter(Val, Uuid, StaleCount) ->
           {{term(), term()} | [], non_neg_integer(), [{delete, term()}]}.
 process_config_to_delete_stale_local_changes_counters(KVMap, MyUuid,
                                                       ValidUuids) ->
+    MyKey = {local_changes_count, MyUuid},
     maps:fold(
       fun ({local_changes_count, U} = K, RawVal,
            {MyVal, Counter, Deletes} = Acc) ->
@@ -1767,7 +1768,7 @@ process_config_to_delete_stale_local_changes_counters(KVMap, MyUuid,
               end;
           (_, _, Acc) ->
               Acc
-      end, {[], 0, []}, KVMap).
+      end, {{MyKey, []}, 0, []}, KVMap).
 
 %% We can't merge vclocks here, we'd track a value for every node that had ever
 %% been ejected in the cluster in it which would bloat space. Given that the
@@ -1820,7 +1821,18 @@ remove_nodes_config_keys(RemoteNodes, ValidUuids, MyUuid) ->
                                                      MyNewVal),
                                  Acc}
                         end, unused, KVMap, UUID),
-                  {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
+                  %% do_update_rec only visits keys already in KVMap, so
+                  %% without this the folded-in stale count is dropped and
+                  %% the rev goes backwards.
+                  case MyNewVal =/= undefined andalso
+                      not is_map_key(MyKey, KVMap) of
+                      true ->
+                          {[{MyKey, MyNewVal} | NewPairs], Erased,
+                           maps:to_list(NewConfig#{MyKey => MyNewVal}),
+                           NewAcc};
+                      false ->
+                          {NewPairs, Erased, maps:to_list(NewConfig), NewAcc}
+                  end
           end),
     ok.
 
