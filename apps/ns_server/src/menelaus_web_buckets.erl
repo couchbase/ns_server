@@ -2582,7 +2582,11 @@ parse_validate_max_magma_shards(Params, _BucketConfig, Version, true) ->
                             case cluster_compat_mode:is_version_76(Version) of
                                 false ->
                                     {error, magmaMaxShards,
-                                     <<"Not allowed until entire cluster is upgraded to 7.6">>};
+                                     list_to_binary(
+                                       io_lib:format(
+                                         "Not allowed until entire cluster "
+                                         "is upgraded to ~s",
+                                         [?version_string(?VERSION_76)]))};
                                 true ->
                                     parse_validate_max_magma_shards_inner(Params)
                             end
@@ -2678,8 +2682,11 @@ validate_bucket_encryption_at_rest_settings(Name, Params, Version, IsEnterprise,
         [{ok, encryption_secret_id, Id}] when not Allowed,
                                               Id /= ?SECRET_ID_NOT_SET ->
             [{error, encryptionAtRestKeyId,
-              <<"Encryption At-Rest is not allowed until the entire cluster "
-                "is upgraded to 7.9">>}];
+              list_to_binary(
+                io_lib:format(
+                  "Encryption At-Rest is not allowed until the entire "
+                  "cluster is upgraded to ~s",
+                  [?version_string(?VERSION_79)]))}];
         [{ok, encryption_secret_id, Id}] when not IsPersistent,
                                               Id /= ?SECRET_ID_NOT_SET ->
             [{error, encryptionAtRestKeyId,
@@ -2855,8 +2862,11 @@ parse_validate_storage_mode(Params, _BucketConfig, false = _IsNew, Version,
     case cluster_compat_mode:is_version_76(Version) of
         false ->
             {error, storageBackend,
-             <<"Storage mode migration is not allowed until the entire cluster "
-               "is upgraded to 7.6">>};
+             list_to_binary(
+               io_lib:format(
+                 "Storage mode migration is not allowed until the entire "
+                 "cluster is upgraded to ~s",
+                 [?version_string(?VERSION_76)]))};
         true ->
             StorageBackend = proplists:get_value("storageBackend", Params),
             case do_get_storage_mode_based_on_storage_backend(StorageBackend) of
@@ -2967,12 +2977,17 @@ value_not_boolean_error(Param) ->
 
 cross_cluster_versioning_not_supported_error(Param) ->
     {error, Param,
-     <<"Cross Cluster Versioning is not supported until cluster is fully "
-       "7.6">>}.
+     list_to_binary(
+       io_lib:format(
+         "Cross Cluster Versioning is not supported until cluster is "
+         "fully ~s", [?version_string(?VERSION_76)]))}.
 
 version_pruning_not_supported_error(Param) ->
     {error, Param,
-     <<"Version pruning is not supported until cluster is fully 7.6">>}.
+     list_to_binary(
+       io_lib:format(
+         "Version pruning is not supported until cluster is fully ~s",
+         [?version_string(?VERSION_76)]))}.
 
 parse_validate_param_not_supported(Key, Params, ErrorFun) ->
     case proplists:is_defined(Key, Params) of
@@ -2983,10 +2998,10 @@ parse_validate_param_not_supported(Key, Params, ErrorFun) ->
     end.
 
 not_supported_until_79_error(Param) ->
-    not_supported_until_error(Param, "7.9").
+    not_supported_until_error(Param, ?version_string(?VERSION_79)).
 
 not_supported_until_85_error(Param) ->
-    not_supported_until_error(Param, "8.5").
+    not_supported_until_error(Param, ?version_string(?VERSION_85)).
 
 not_supported_until_error(Param, Version) ->
     {error, Param,
@@ -3491,8 +3506,10 @@ parse_validate_rank_inner(false, undefined, _IsNew) ->
     ignore;
 parse_validate_rank_inner(false, _Value, _IsNew) ->
     {error, rank,
-     <<"Bucket rank cannot be set until the cluster is fully "
-       "upgraded to 7.6.">>}.
+     list_to_binary(
+       io_lib:format(
+         "Bucket rank cannot be set until the cluster is fully "
+         "upgraded to ~s.", [?version_string(?VERSION_76)]))}.
 
 parse_validate_rank_inner(Rank) ->
     case menelaus_util:parse_validate_number(Rank, ?MIN_BUCKET_RANK,

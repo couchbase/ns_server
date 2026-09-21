@@ -264,8 +264,10 @@ parse_dn_mapping({[{<<"advanced">>, List}]}) when is_list(List) ->
     case cluster_compat_mode:is_cluster_76() of
         true -> ok;
         false ->
-            throw({error, "Advanced user-to-dn-mapping isn't supported "
-                          "in pre-7.6 mixed version clusters"})
+            throw({error, io_lib:format(
+                            "Advanced user-to-dn-mapping isn't supported "
+                            "in pre-~s mixed version clusters",
+                            [?version_string(?VERSION_76)])})
     end,
     CheckRE =
         fun (RE) ->

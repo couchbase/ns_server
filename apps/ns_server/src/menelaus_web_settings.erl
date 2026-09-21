@@ -1570,8 +1570,12 @@ settings_stats_validators() ->
                case not cluster_compat_mode:is_enterprise() andalso
                     cluster_compat_mode:is_cluster_76() of
                    true ->
-                       {error, <<"sendStats cannot be false for Community "
-                                 "Edition clusters running 7.6 or later">>};
+                       {error,
+                        list_to_binary(
+                          io_lib:format(
+                            "sendStats cannot be false for Community "
+                            "Edition clusters running ~s or later",
+                            [?version_string(?VERSION_76)]))};
                    false ->
                        ok
                end;

@@ -222,8 +222,11 @@ type_spec({encryption_method, AllowedInMixedClusters}) ->
                      ?cut(validator:validate(
                             fun (disabled) -> ok;
                                 (_V) when AllowedInMixedClusters -> ok;
-                                (_V) -> {error, "Not supported until cluster "
-                                                "is fully 7.9"}
+                                (_V) -> {error,
+                                         io_lib:format(
+                                           "Not supported until cluster is "
+                                           "fully ~s",
+                                           [?version_string(?VERSION_79)])}
                             end, _1, _2)),
                      ?cut(validator:validate(
                             fun (encryption_service) ->

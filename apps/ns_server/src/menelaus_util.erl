@@ -811,7 +811,8 @@ assert_is_85() ->
 assert_is_85(ParamName) ->
     assert(fun cluster_compat_mode:is_cluster_85/0,
            [param_error_prefix(ParamName),
-            io_lib:format("the cluster to be fully 8.5", [])]).
+            io_lib:format("the cluster to be fully ~s",
+                           [?version_string(?VERSION_85)])]).
 
 assert_cluster_version(Fun) ->
     assert(

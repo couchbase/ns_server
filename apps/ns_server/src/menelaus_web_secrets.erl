@@ -1538,7 +1538,9 @@ assert_is_79() ->
         false ->
             menelaus_util:global_error_exception(
               400,
-              <<"Not supported until cluster is fully 7.9">>)
+              list_to_binary(
+                io_lib:format("Not supported until cluster is fully ~s",
+                               [?version_string(?VERSION_79)])))
     end.
 
 is_writable_remote({roles, Roles}, _Node, Secret, Snapshot) ->

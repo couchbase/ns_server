@@ -699,8 +699,9 @@ validate_state("hybrid", CfgPair, Cfg, Errors) ->
         true ->
             {[CfgPair | Cfg], Errors};
         false ->
-            M = "Cannot set 'state' to 'hybrid' until the cluster is fully "
-                "7.9",
+            M = io_lib:format(
+                  "Cannot set 'state' to 'hybrid' until the cluster is "
+                  "fully ~s", [?version_string(?VERSION_79)]),
             {Cfg, [{error, M}, Errors]}
     end;
 validate_state(_, CfgPair, Cfg, Errors) ->

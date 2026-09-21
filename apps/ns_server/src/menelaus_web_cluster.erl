@@ -1041,7 +1041,9 @@ parse_expected_topology_params(Params, Is79) ->
             case Is79 of
                 false ->
                     {error,
-                     "Cannot use expected topology in pre-7.9 cluster"};
+                     io_lib:format(
+                       "Cannot use expected topology in pre-~s cluster",
+                       [?version_string(?VERSION_79)])};
                 true ->
                     validate_expected_topology_nodes(ActiveNodes,
                                                      InactiveFailedNodes,
