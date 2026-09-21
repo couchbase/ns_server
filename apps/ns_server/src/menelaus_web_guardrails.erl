@@ -546,7 +546,7 @@ update_configs_t() ->
                                 {minimum, 5}]}]}]}]).
 
 basic_test_teardown() ->
-    meck:unload(meck_modules()).
+    meck:unload().
 
 basic_test_() ->
     {setup,
