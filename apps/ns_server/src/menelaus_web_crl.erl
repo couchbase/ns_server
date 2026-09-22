@@ -334,7 +334,7 @@ handle_post_diagnostics_validate(Req) ->
               DerCerts = proplists:get_value(certs, Values),
               Body =
                   case DerCerts of
-                      undefined -> validate_cluster_certs(Policy);
+                      undefined -> validate_cluster_certs(Req, Policy);
                       _         -> validate_supplied_certs(DerCerts, Policy)
                   end,
               menelaus_util:reply_json(
@@ -385,15 +385,15 @@ validate_supplied_certs(CertChains, Policy) ->
 
 %% Cluster mode: check the cluster's own certs (both client and node certs
 %% for every node).
-validate_cluster_certs(Policy) ->
+validate_cluster_certs(Req, Policy) ->
     Checked =
         [begin
              {Allowed, Props} = check_der_cert(Der, Policy),
-             FullProps = [{node, atom_to_binary(Node, utf8)},
+             FullProps = [{node, Hostname},
                           {certificateType, atom_to_binary(CertType, utf8)}
                           | Props],
              {Allowed, {FullProps}}
-         end || {Node, CertType, Der} <- collect_cluster_certs()],
+         end || {Hostname, CertType, Der} <- collect_cluster_certs(Req)],
     Results    = [R || {_, R} <- Checked],
     Disallowed = [R || {false, R} <- Checked],
     [{usingClusterCertificates, true},
@@ -405,9 +405,10 @@ validate_cluster_certs(Policy) ->
 %% Gather every certificate in the stored chain of both types (client_cert and
 %% node_cert) from every node in the cluster.  Nodes without a stored cert of a
 %% given type are skipped.
-collect_cluster_certs() ->
-    [{Node, CertType, Der}
-     || Node     <- ns_node_disco:nodes_wanted(),
+collect_cluster_certs(Req) ->
+    [{Hostname, CertType, Der}
+     || {Node, Hostname} <- menelaus_web_node:get_hostnames(
+                              Req, ns_node_disco:nodes_wanted()),
         CertType <- [client_cert, node_cert],
         {ok, DerChain} <- [chain_certs(Node, CertType)],
         Der            <- DerChain].

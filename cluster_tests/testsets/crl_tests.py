@@ -967,6 +967,10 @@ class CRLTests(testlib.BaseTestSet):
             cert_types = {res['certificateType'] for res in r['results']}
             assert 'node_cert' in cert_types, \
                 f'Expected node_cert among checked cluster certs: {r}'
+            hostnames = {n.hostname() for n in self.cluster.connected_nodes}
+            for res in r['results']:
+                assert res['node'] in hostnames, \
+                    f'Expected node as host:port from {hostnames}: {res}'
             print("Cluster-mode: all OOTB cluster certs allowed under Require "
                   f"(checked types: {sorted(cert_types)})")
 
