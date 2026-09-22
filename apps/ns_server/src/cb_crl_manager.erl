@@ -2424,7 +2424,7 @@ fetch_one_url(URL, TS, Force, TrustedCAs,
     URLStr = binary_to_list(URL),
     ?log_debug("CRL URL fetching ~s (etag=~p)", [URL, StoredETag]),
     case lhttpc:request(URLStr, "GET", ReqHeaders, [],
-                        ?URL_FETCH_TIMEOUT_MS, []) of
+                        ?URL_FETCH_TIMEOUT_MS, url_fetch_options(URLStr)) of
         {ok, {{304, _}, _, _}} ->
             %% Deliberately not counted as a load: nothing was fetched or
             %% installed, and this is what every poll of an unchanged URL
@@ -2460,6 +2460,15 @@ fetch_one_url(URL, TS, Force, TrustedCAs,
                                         errors = format_load_errors(R)},
             State#state{url_file_state = maps:put(URL, Status, UrlFS)}
     end.
+
+%% Peer verification is disabled to avoid a chicken-and-egg problem: fully
+%% verifying the server certificate would need a CRL, possibly the very one
+%% being downloaded. It is safe because the CRL is signed, and its signature
+%% is checked against the trusted CAs before it is installed.
+url_fetch_options("https://" ++ _) ->
+    [{connect_options, [{verify, verify_none}]}];
+url_fetch_options(_) ->
+    [].
 
 %% Verify a downloaded CRL body and install it into the cache.
 %% On success the file and its ETag sidecar are written atomically.

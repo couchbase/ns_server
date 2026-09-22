@@ -635,6 +635,13 @@ class CRLTests(testlib.BaseTestSet):
         self._run_crl_revocation_checks(setup_fn, update_fn,
                                         reload_in_loop=True)
 
+    def client_cert_https_url_crl_test(self):
+        """Test CRL revocation using full CRLs served over HTTPS URLs."""
+        with CRLHttpServer(https=True) as srv:
+            setup_fn, update_fn = self._make_url_crl_ops(srv)
+            self._run_crl_revocation_checks(setup_fn, update_fn,
+                                            reload_in_loop=True)
+
     def client_cert_url_delta_crl_test(self):
         """Test delta CRL revocation served over HTTP URLs (base + delta)."""
         setup_fn, update_fn = self._make_url_delta_crl_ops(self._url_server)
@@ -4194,13 +4201,14 @@ class CRLHttpServer:
 
     _DEFAULT_PATH = '/crl.pem'
 
-    def __init__(self):
+    def __init__(self, https=False):
         self._lock = threading.Lock()
         # path -> {'content': bytes, 'status': int, 'version': int}
         self._paths = {}
         self._httpd = None
         self._thread = None
         self._port = None
+        self._https = https
 
     def set_path_content(self, path, data, status_code=200):
         """Set the response body for a path and bump its ETag version."""
@@ -4231,7 +4239,8 @@ class CRLHttpServer:
               f"(status=503, version={version})")
 
     def url_for(self, path):
-        return f'http://127.0.0.1:{self._port}{path}'
+        scheme = 'https' if self._https else 'http'
+        return f'{scheme}://127.0.0.1:{self._port}{path}'
 
     @property
     def url(self):
@@ -4271,6 +4280,21 @@ class CRLHttpServer:
         self._httpd = socketserver.TCPServer(
             ('127.0.0.1', 0), _Handler)
         self._port = self._httpd.server_address[1]
+        if self._https:
+            # Self-signed and trusted by nothing: the node must fetch the
+            # CRL without verifying the server certificate.
+            cert_pem, key_pem = generate_root_ca(common_name='127.0.0.1')
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            with tempfile.TemporaryDirectory() as d:
+                cert_path = os.path.join(d, 'cert.pem')
+                key_path = os.path.join(d, 'key.pem')
+                with open(cert_path, 'w') as f:
+                    f.write(cert_pem)
+                with open(key_path, 'w') as f:
+                    f.write(key_pem)
+                ctx.load_cert_chain(cert_path, key_path)
+            self._httpd.socket = ctx.wrap_socket(self._httpd.socket,
+                                                 server_side=True)
         self._thread = threading.Thread(
             target=self._httpd.serve_forever)
         self._thread.daemon = True
