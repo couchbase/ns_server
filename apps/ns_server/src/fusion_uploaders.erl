@@ -28,6 +28,7 @@
          build_initial/1,
          get_moves/1,
          get_current/1,
+         get_discontinuous_uploaders/3,
          fail_nodes/2,
          get_config/0,
          get_state/0,
@@ -159,6 +160,28 @@ get_moves({Moves, _}) ->
 -spec get_current(fast_forward_info()) -> uploaders().
 get_current({_, Current}) ->
     Current.
+
+-spec get_discontinuous_uploaders(vbucket_map(), uploaders(), vbucket_map()) ->
+          [vbucket_id()].
+get_discontinuous_uploaders(Map, Uploaders, CurrentMap) ->
+    Zipped =
+        misc:zipwithN(fun (L) -> L end, [lists:seq(0, length(Map) - 1),
+                                         Map, Uploaders, CurrentMap]),
+    lists:filtermap(
+      fun ([Vb, Chain, {Uploader, _}, CurrentChain]) ->
+              Active = hd(Chain),
+              case Uploader of
+                  Active ->
+                      false;
+                  _ ->
+                      case lists:member(Active, CurrentChain) of
+                          true ->
+                              {true, Vb};
+                          false ->
+                              false
+                      end
+              end
+      end, Zipped).
 
 %% uploader becomes discontinuous if it is moved to a node that was not
 %% filled from s3, so basically to any node that is not a current uploader

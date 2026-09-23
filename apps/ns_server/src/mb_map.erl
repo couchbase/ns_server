@@ -529,26 +529,6 @@ do_find_matching_past_maps(NodesSet, Map, Options, History, Trivial) ->
                   end, History).
 
 
-get_discontinuous_uploaders(Map, Uploaders, CurrentMap) ->
-    Zipped =
-        misc:zipwithN(fun (L) -> L end, [lists:seq(0, length(Map) - 1),
-                                         Map, Uploaders, CurrentMap]),
-    lists:filtermap(
-      fun ([Vb, Chain, {Uploader, _}, CurrentChain]) ->
-              Active = hd(Chain),
-              case Uploader of
-                  Active ->
-                      false;
-                  _ ->
-                      case lists:member(Active, CurrentChain) of
-                          true ->
-                              {true, Vb};
-                          false ->
-                              false
-                      end
-              end
-      end, Zipped).
-
 %% @doc Count moves where destination is an existing node not in source chain
 count_moves_to_existing_nodes(ExistingSet, SrcMap, DstMap) ->
     lists:sum([length([D || D <- DstChain,
@@ -565,8 +545,8 @@ score_maps(CurrentMap, undefined, undefined, Maps) ->
 score_maps(CurrentMap, Uploaders, ExistingNodesSet, Maps) ->
     lists:map(
       fun (M) ->
-              Discontinuous = get_discontinuous_uploaders(M, Uploaders,
-                                                          CurrentMap),
+              Discontinuous = fusion_uploaders:get_discontinuous_uploaders(
+                                M, Uploaders, CurrentMap),
               MovesToExistingNodes = count_moves_to_existing_nodes(
                                        ExistingNodesSet, CurrentMap, M),
 
@@ -1564,8 +1544,8 @@ test_generating_map_with_uploaders(
         generate_map(InitialMap, NReplicas, KeepNodes,
                      Options ++ [{maps_history, [{InitialMap, Options}]},
                                  {uploaders, Uploaders}]),
-    Discontinuous = get_discontinuous_uploaders(FastForwardMap, Uploaders,
-                                                InitialMap),
+    Discontinuous = fusion_uploaders:get_discontinuous_uploaders(
+                      FastForwardMap, Uploaders, InitialMap),
     ?assertEqual(Discontinuous, []),
     MovesToExistingNodes = count_moves_to_existing_nodes(
                              ExistingNodesSet, InitialMap, FastForwardMap),
