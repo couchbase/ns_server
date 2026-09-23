@@ -1007,28 +1007,28 @@ verify_special(P) ->
 
 get_verifier(uppercase, P) ->
     {fun verify_uppercase/1, P,
-     <<"The password must contain at least one uppercase letter">>};
+     <<"contain at least one uppercase letter">>};
 get_verifier(lowercase, P) ->
     {fun verify_lowercase/1, P,
-     <<"The password must contain at least one lowercase letter">>};
+     <<"contain at least one lowercase letter">>};
 get_verifier(digits, P) ->
     {fun verify_digits/1, P,
-     <<"The password must contain at least one digit">>};
+     <<"contain at least one digit">>};
 get_verifier(special, P) ->
     {fun verify_special/1, P,
      list_to_binary(
-       "The password must contain at least one of the following characters: " ++
+       "contain at least one of the following characters: " ++
            password_special_characters())}.
 
-execute_verifiers([]) ->
-    true;
-execute_verifiers([{Fun, Arg, Error} | Rest]) ->
-    case Fun(Arg) of
-        true ->
-            execute_verifiers(Rest);
-        false ->
-            Error
-    end.
+%% Returns the (possibly empty) list of unmet requirement descriptions.
+execute_verifiers(Verifiers) ->
+    lists:filtermap(
+      fun ({Fun, Arg, Error}) ->
+              case Fun(Arg) of
+                  true -> false;
+                  false -> {true, Error}
+              end
+      end, Verifiers).
 
 get_password_policy() ->
     {value, Policy} = ns_config:search(password_policy),
@@ -1064,17 +1064,23 @@ validate_id(Id, Fieldname) ->
 
 is_valid_password(P, {MinLength, MustPresent}) ->
     LengthError = io_lib:format(
-                    "The password must be at least ~p characters long.",
-                    [MinLength]),
+                    "be at least ~p characters long", [MinLength]),
 
     Verifiers =
         [{fun verify_length/1, [P, MinLength], list_to_binary(LengthError)},
-         {fun verify_utf8/1, P, <<"The password must be valid utf8">>},
+         {fun verify_utf8/1, P, <<"be valid utf8">>},
          {fun verify_control_chars/1, P,
-          <<"The password must not contain control characters">>}] ++
+          <<"not contain control characters">>}] ++
         [get_verifier(V, P) || V <- MustPresent],
 
-    execute_verifiers(Verifiers).
+    case execute_verifiers(Verifiers) of
+        [] ->
+            true;
+        Errors ->
+            iolist_to_binary(
+              [<<"The password must ">>, lists:join(<<", ">>, Errors),
+               <<".">>])
+    end.
 
 handle_patch_user(UserId, Req) ->
     assert_no_users_upgrade(),
