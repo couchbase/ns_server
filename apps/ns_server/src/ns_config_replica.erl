@@ -13,6 +13,8 @@
 
 -behaviour(gen_server).
 
+-include("ns_common.hrl").
+
 -define(SERVER, ns_config_remote).
 
 %% API
@@ -86,7 +88,7 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 handle_call(get_compressed, _From, State) ->
-    Payload = case cluster_compat_mode:is_cluster_85() of
+    Payload = case map_format_safe_to_use() of
                   false -> ns_config:get_kv_list();
                   true -> ns_config:get_kv_map()
               end,
@@ -150,3 +152,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% Chronicle is wiped whilst joining a cluster but we keep serving pulls, so
+%% fall back to the list format, which all versions accept. Once min version is
+%% totoro this can be removed.
+map_format_safe_to_use() ->
+    try
+        cluster_compat_mode:is_cluster_85()
+    catch
+        T:E ->
+            ?log_debug("Failed to read cluster compat version: ~p",
+                       [{T, E}]),
+            false
+    end.
