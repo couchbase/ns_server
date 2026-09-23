@@ -160,18 +160,17 @@ get_moves({Moves, _}) ->
 get_current({_, Current}) ->
     Current.
 
-%% uploader starts uploading from scratch if it is moved to a
-%% node that was not filled from s3, so basically to any node that
-%% is not a current uploader and is present in old chain
+%% uploader becomes discontinuous if it is moved to a node that was not
+%% filled from s3, so basically to any node that is not a current uploader
+%% and is present in old chain
 %%
 %% we calculate uploader moves doing the best effort to minimize
-%% the number of uploaders started from scratch and distribute
-%% uploaders evenly between nodes
+%% the number of discontinuous uploaders and distribute uploaders evenly
+%% between nodes
 %%
 %% parameter Allowance restricts how many uploaders can be
 %% started from each node thus defining how much unbalance
-%% we are ready to tolerate for the sake of not uploading from
-%% scratch
+%% we are ready to tolerate for the sake of avoiding discontinuous uploaders
 %%
 %% The algorithm works as such:
 %% 1. Sort the candidates so the candidates with less choice are
@@ -197,33 +196,32 @@ calculate_moves(Bucket, Map, FastForwardMap, CurrentUploaders, Allowance) ->
 
 candidates({OldChain, NewChain, UploaderNode}) ->
     NewChainNoUndefineds = mb_map:only_defined(NewChain),
-    NotFromScratch = NewChainNoUndefineds --
-        lists:delete(UploaderNode, OldChain),
-    FromScratch = NewChainNoUndefineds -- NotFromScratch,
-    Choices = case NotFromScratch of
+    Continuous = NewChainNoUndefineds -- lists:delete(UploaderNode, OldChain),
+    Discontinuous = NewChainNoUndefineds -- Continuous,
+    Choices = case Continuous of
                   [] ->
-                      FromScratch;
+                      Discontinuous;
                   _ ->
-                      NotFromScratch
+                      Continuous
               end,
     {[Choices], length(Choices)};
 candidates({NodesWithUploadedData, Chain}) ->
-    FromScratch = Chain -- [N || {N, _, _} <- NodesWithUploadedData],
+    Discontinuous = Chain -- [N || {N, _, _} <- NodesWithUploadedData],
     %% each node with data is a list of one here, because we want
     %% the term and seqno to prevail over usage during the uploader
     %% selection
-    NotFromScratch =
+    Continuous =
         [[N] || {N, _, _} <- lists:sort(
                                fun ({_, TermA, SeqnoA}, {_, TermB, SeqnoB}) ->
                                        {TermA, SeqnoA} > {TermB, SeqnoB}
                                end, NodesWithUploadedData)],
-    Choices = case NotFromScratch of
+    Choices = case Continuous of
                   [] ->
-                      length(FromScratch);
+                      length(Discontinuous);
                   _ ->
-                      length(NotFromScratch)
+                      length(Continuous)
               end,
-    {NotFromScratch ++ [FromScratch], Choices}.
+    {Continuous ++ [Discontinuous], Choices}.
 
 select_uploader(Bucket, VBucket, Candidates, {CurrentUploader, Term} = CU,
                 Usage, Allowance) ->
@@ -1443,12 +1441,12 @@ do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
             Allowance = allowance(FastForwardMap, length(Nodes)),
             Moves = calculate_moves("test", InitialMap, FastForwardMap,
                                     InitialUploaders, Allowance),
-            {UsageMap, UploadingFromScratch} =
+            {UsageMap, Discontinuous} =
                 get_report(InitialMap, InitialUploaders, Moves),
 
             ?log_debug("Rebalance from ~p to ~p, allowance = ~p",
                        [InitialNodes, Nodes, Allowance]),
-            NumNodes =< NReplicas orelse ?assertEqual([], UploadingFromScratch),
+            NumNodes =< NReplicas orelse ?assertEqual([], Discontinuous),
             Balanced = lists:all(_ =< Allowance, maps:values(UsageMap)),
 
             ReportList = case erlang:get(TestKey) of
@@ -1456,7 +1454,7 @@ do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
                              L -> L
                          end,
             NewReportList =
-                [{Balanced, UploadingFromScratch =:= [], InitialNodes, Nodes,
+                [{Balanced, Discontinuous =:= [], InitialNodes, Nodes,
                   Allowance, UsageMap} | ReportList],
             erlang:put(TestKey, NewReportList),
 
@@ -1473,19 +1471,19 @@ do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
 
 get_report(InitialMap, InitialUploaders, Moves) ->
     lists:foldl(
-      fun ([_, _, same, {Uploader, _}], {NodesMap, FromScratch}) ->
-              {maps:update_with(Uploader, _ + 1, 1, NodesMap), FromScratch};
+      fun ([_, _, same, {Uploader, _}], {NodesMap, Discontinuous}) ->
+              {maps:update_with(Uploader, _ + 1, 1, NodesMap), Discontinuous};
           ([N, Chain, {NewUploader, _}, {Uploader, _}],
-           {NodesMap, FromScratch}) ->
-              NewFromScratch =
+           {NodesMap, Discontinuous}) ->
+              NewDiscontinuous =
                   case lists:member(NewUploader, Chain) of
                       true ->
-                          [{N, Chain, Uploader, NewUploader} | FromScratch];
+                          [{N, Chain, Uploader, NewUploader} | Discontinuous];
                       false ->
-                          FromScratch
+                          Discontinuous
                   end,
               {maps:update_with(NewUploader, _ + 1, 1, NodesMap),
-               NewFromScratch}
+               NewDiscontinuous}
       end, {#{}, []},
       misc:zipwithN(
         fun functools:id/1,

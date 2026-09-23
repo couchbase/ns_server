@@ -382,8 +382,8 @@ generate_map_new(Map, NumReplicas, Nodes, Options) ->
                 [] ->
                     ok;
                 _ ->
-                    ?log_warning("Uploaders for vbuckets ~w will be started "
-                                 "from scratch", [BestMapInfo])
+                    ?log_warning("Uploaders for vbuckets ~w will be "
+                                 "discontinuous", [BestMapInfo])
             end
     end,
     BestMap.
@@ -529,7 +529,7 @@ do_find_matching_past_maps(NodesSet, Map, Options, History, Trivial) ->
                   end, History).
 
 
-get_from_scratch_uploaders(Map, Uploaders, CurrentMap) ->
+get_discontinuous_uploaders(Map, Uploaders, CurrentMap) ->
     Zipped =
         misc:zipwithN(fun (L) -> L end, [lists:seq(0, length(Map) - 1),
                                          Map, Uploaders, CurrentMap]),
@@ -565,14 +565,14 @@ score_maps(CurrentMap, undefined, undefined, Maps) ->
 score_maps(CurrentMap, Uploaders, ExistingNodesSet, Maps) ->
     lists:map(
       fun (M) ->
-              FromScratch = get_from_scratch_uploaders(M, Uploaders,
-                                                       CurrentMap),
+              Discontinuous = get_discontinuous_uploaders(M, Uploaders,
+                                                          CurrentMap),
               MovesToExistingNodes = count_moves_to_existing_nodes(
                                        ExistingNodesSet, CurrentMap, M),
 
-              {M, {length(FromScratch), MovesToExistingNodes,
+              {M, {length(Discontinuous), MovesToExistingNodes,
                    vbucket_movements(CurrentMap, M)},
-               FromScratch}
+               Discontinuous}
       end, Maps).
 
 best_map(Options, Maps) ->
@@ -1564,9 +1564,9 @@ test_generating_map_with_uploaders(
         generate_map(InitialMap, NReplicas, KeepNodes,
                      Options ++ [{maps_history, [{InitialMap, Options}]},
                                  {uploaders, Uploaders}]),
-    FromScratch = get_from_scratch_uploaders(FastForwardMap, Uploaders,
-                                             InitialMap),
-    ?assertEqual(FromScratch, []),
+    Discontinuous = get_discontinuous_uploaders(FastForwardMap, Uploaders,
+                                                InitialMap),
+    ?assertEqual(Discontinuous, []),
     MovesToExistingNodes = count_moves_to_existing_nodes(
                              ExistingNodesSet, InitialMap, FastForwardMap),
     MovesToExistingNodes == 0 orelse
