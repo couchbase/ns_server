@@ -304,7 +304,7 @@ function mnAdminController($scope, $rootScope, $state, $window, $uibModal, mnAle
           });
       })
           .setInterval(function (result) {
-            return (_.chain(result.tasks).pluck('recommendedRefreshPeriod').compact().min().value() * 1000) >> 0 || 10000;
+            return (_.chain(result.tasks).map('recommendedRefreshPeriod').compact().min().value() * 1000) >> 0 || 10000;
           })
           .subscribe(function (tasks, prevTask) {
             vm.showTasksSpinner = false;
