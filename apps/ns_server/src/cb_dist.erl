@@ -50,6 +50,7 @@
          format_error/1,
          netsettings2str/1,
          restart_tls/0,
+         reload_client_cert/0,
          netsettings2proto/1,
          proto2netsettings/1]).
 
@@ -294,6 +295,13 @@ update_config(Props) ->
 restart_tls() ->
     gen_server:call(?MODULE, restart_tls, infinity).
 
+%% Makes new outgoing tls connections use the new client cert. Unlike
+%% restart_tls/0, it doesn't touch listeners and existing connections, because
+%% listeners don't use the client cert, and established connections don't need
+%% to be reauthenticated.
+reload_client_cert() ->
+    gen_server:call(?MODULE, reload_client_cert, infinity).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -464,6 +472,18 @@ handle_call(restart_tls, _From, #s{listeners = Listeners} = State) ->
     {reply, ok, ensure_config(State3#s{
                                 is_pkey_encrypted = PKeysEncrypted,
                                 client_passphrase_updated = false})};
+
+handle_call(reload_client_cert, _From,
+            #s{is_pkey_encrypted = PKeysEncrypted} = State) ->
+    info_msg("Reloading tls distribution client cert", []),
+    gen_server:call(
+      ssl_pem_cache:name(dist),
+      {unconditionally_clear_pem_cache, self()},
+      infinity),
+    NewPKeysEncrypted = PKeysEncrypted#{client => is_pkey_encrypted(client)},
+    {reply, ok, maybe_update_client_pkey_passphrase(
+                  State#s{is_pkey_encrypted = NewPKeysEncrypted,
+                          client_passphrase_updated = false})};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
