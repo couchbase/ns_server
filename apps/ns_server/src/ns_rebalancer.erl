@@ -929,6 +929,9 @@ maybe_report_discontinuous_uploaders(Bucket, Map, FastForwardMap,
         VBuckets ->
             ?rebalance_warning("Uploaders for vbuckets ~w of bucket ~p will "
                                "be discontinuous", [VBuckets, Bucket]),
+            ns_server_stats:notify_counter(
+              {<<"fusion_rebalance_discontinuous_uploaders">>,
+               [{bucket, Bucket}]}),
             ns_rebalance_observer:report_discontinuous_uploaders(Bucket,
                                                                  VBuckets)
     end.

@@ -1595,6 +1595,17 @@
             }
         ]
     },
+    "cm_fusion_rebalance_discontinuous_uploaders_total": {
+        "type": "counter",
+        "help": "Number of rebalances that resulted in discontinuous fusion uploaders for the bucket. Only reported by the orchestrator node",
+        "added": "8.5.0",
+        "labels": [
+            {
+                "name": "bucket",
+                "help": "Name of the bucket associated with the stat"
+            }
+        ]
+    },
     "cm_fusion_bucket_state_timestamp_seconds": {
         "type": "gauge",
         "help": "Timestamp when bucket entered the fusion state",
