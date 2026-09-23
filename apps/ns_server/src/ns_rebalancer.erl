@@ -909,10 +909,29 @@ do_rebalance_membase_bucket(Bucket, Config,
 
     FusionUploaders = fusion_uploaders:build_fast_forward_info(
                         Bucket, Config, Map, FastForwardMap, length(Servers)),
+    maybe_report_discontinuous_uploaders(Bucket, Map, FastForwardMap,
+                                         FusionUploaders),
 
     {run_mover(Bucket, Config, Servers, ProgressFun, Map, FastForwardMap,
                RebalancePlan, FusionUploaders, FileBasedEnabled),
      MapOptions}.
+
+maybe_report_discontinuous_uploaders(_Bucket, _Map, _FastForwardMap,
+                                     undefined) ->
+    ok;
+maybe_report_discontinuous_uploaders(Bucket, Map, FastForwardMap,
+                                     FusionUploaders) ->
+    case fusion_uploaders:get_discontinuous_uploaders(
+           FastForwardMap, fusion_uploaders:get_current(FusionUploaders),
+           Map) of
+        [] ->
+            ok;
+        VBuckets ->
+            ?rebalance_warning("Uploaders for vbuckets ~w of bucket ~p will "
+                               "be discontinuous", [VBuckets, Bucket]),
+            ns_rebalance_observer:report_discontinuous_uploaders(Bucket,
+                                                                 VBuckets)
+    end.
 
 sleep_for_sdk_clients(Type) ->
     SecondsToWait = ns_config:read_key_fast(rebalance_out_delay_seconds, 10),

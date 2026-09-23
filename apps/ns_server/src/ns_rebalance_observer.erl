@@ -28,6 +28,7 @@
          record_rebalance_report/1,
          record_initial_info/5,
          report_rebalance_method/2,
+         report_discontinuous_uploaders/2,
          update_progress/3,
          submit_master_event/1,
          get_current_rebalance_report/0]).
@@ -89,6 +90,7 @@
                             replication_info = dict:new(),
                             compaction_info = #compaction_info{},
                             rebalance_method = undefined,
+                            discontinuous_uploaders = [],
                             mounting_volumes_info = undefined,
                             vbucket_level_info = #vbucket_level_info{}}).
 
@@ -174,6 +176,9 @@ record_initial_info(RebalanceType, NumNodesAdded, NodesAdded, NumNodesRemoved,
 
 report_rebalance_method(Bucket, RebalanceMethod) ->
     gen_server:cast(?SERVER, {rebalance_method, Bucket, RebalanceMethod}).
+
+report_discontinuous_uploaders(Bucket, VBuckets) ->
+    gen_server:cast(?SERVER, {discontinuous_uploaders, Bucket, VBuckets}).
 
 get_registered_local_name() ->
     ?MODULE.
@@ -453,6 +458,13 @@ handle_cast({rebalance_method, BucketName, RebalanceMethod},
             #state{bucket_info = OldBI} = State) ->
     {ok, OldBLI} = dict:find(BucketName, OldBI),
     NewBLI = OldBLI#bucket_level_info{rebalance_method = RebalanceMethod},
+    NewBI = dict:store(BucketName, NewBLI, OldBI),
+    {noreply, State#state{bucket_info = NewBI}};
+
+handle_cast({discontinuous_uploaders, BucketName, VBuckets},
+            #state{bucket_info = OldBI} = State) ->
+    {ok, OldBLI} = dict:find(BucketName, OldBI),
+    NewBLI = OldBLI#bucket_level_info{discontinuous_uploaders = VBuckets},
     NewBI = dict:store(BucketName, NewBLI, OldBI),
     {noreply, State#state{bucket_info = NewBI}};
 
@@ -1191,6 +1203,7 @@ construct_bucket_level_info_json(
                      replication_info = ReplicationInfo,
                      compaction_info = CompactionInfo,
                      rebalance_method = RebalanceMethod,
+                     discontinuous_uploaders = DiscontinuousUploaders,
                      vbucket_level_info = VBLevelInfo}, Options) ->
     case construct_compaction_info_json(CompactionInfo) ++
         construct_per_node_data_size_moved(VBLevelInfo) ++
@@ -1202,6 +1215,8 @@ construct_bucket_level_info_json(
             _ ->
                 [{rebalance_method, RebalanceMethod}]
         end ++
+        [{discontinuousUploaders, DiscontinuousUploaders} ||
+            DiscontinuousUploaders =/= []] ++
         construct_mounting_volumes_info_json(MV) of
         [] ->
             [];
