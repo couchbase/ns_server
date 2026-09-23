@@ -1229,7 +1229,7 @@ get_snapshots(BucketUUID, VBuckets, SnapshotUUID, Validity, KVNodes) ->
       [BucketUUID, VBuckets, SnapshotUUID, Validity],
       ?GET_SNAPSHOTS_TIMEOUT,
       "Getting fusion storage snapshot",
-      failed_to_get_snapshots).
+      failed_to_get_snapshot).
 
 -spec do_get_snapshots(binary(), [vbucket_id()], string(), non_neg_integer()) ->
           [{non_neg_integer(), term()}].
