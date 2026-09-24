@@ -986,6 +986,13 @@ class FusionTests(testlib.BaseTestSet):
             f"Expected dict response, got: {type(restore_plan)}"
         restore_plan_uuid = restore_plan["planUUID"]
 
+        plan_volumes = [v for vs in restore_plan["nodes"].values() for v in vs]
+        for key in ["logicalSize", "storageSize"]:
+            assert all(key in v for v in plan_volumes), \
+                f"{key} is missing from some volumes in the restore plan"
+            testlib.assert_eq(restore_plan[key],
+                              sum(v[key] for v in plan_volumes))
+
         restore_plan_path = os.path.join(work_dir, 'restore_plan.json')
         with open(restore_plan_path, 'w') as f:
             json.dump(restore_plan, f)

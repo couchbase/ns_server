@@ -82,8 +82,17 @@ prepare_snapshot_restore(BucketInfos) ->
     {ok, RestorePlan, RestoreBlueprint}.
 
 build_restore_plan(PlanUUID, KVNodes, BucketResults) ->
+    {NodesInfo} = build_nodes_info(KVNodes, BucketResults),
+    {LogicalSize, StorageSize} =
+        lists:foldl(
+          fun ({Volume}, {LAcc, SAcc}) ->
+                  {LAcc + proplists:get_value(logicalSize, Volume),
+                   SAcc + proplists:get_value(storageSize, Volume)}
+          end, {0, 0}, lists:append([Vs || {_, Vs} <- NodesInfo])),
     [{planUUID, PlanUUID},
-     {nodes, build_nodes_info(KVNodes, BucketResults)}].
+     {nodes, {NodesInfo}},
+     {logicalSize, LogicalSize},
+     {storageSize, StorageSize}].
 
 build_nodes_info(KVNodes, BucketResults) ->
     {[{Node, lists:flatmap(
