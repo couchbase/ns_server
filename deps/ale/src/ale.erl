@@ -49,9 +49,15 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% How often we check that our logger handlers are still there; see
+%% handle_info/2.
+-define(HANDLER_PERIODIC_CHECK_INTERVAL, 10000).
+
 -record(state, {compile_frozen = false :: boolean(),
                 sinks                  :: dict:dict(),
-                loggers                :: dict:dict()}).
+                loggers                :: dict:dict(),
+                periodic_handler_check_timer = undefined
+                    :: undefined | reference()}).
 
 -record(logger, {name      :: atom(),
                  loglevel  :: loglevel(),
@@ -326,7 +332,8 @@ init([]) ->
 
     ok = set_error_logger_handler(),
     ok = set_noisy_progress_reports_handler(),
-    {ok, State3}.
+    {ok, State3#state{periodic_handler_check_timer =
+                          schedule_periodic_handler_check()}}.
 
 handle_call(get_state, _From, State) ->
     {reply, State, State};
@@ -388,19 +395,33 @@ handle_call(thaw_compilations, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+%% Sent by our removing_handler/1 whenever one of our handlers is being
+%% removed. logger calls removing_handler/1 before it commits the removal, so
+%% the handler is typically still installed when we get this, and adding it
+%% back right away would fail with already_exist. So just log it; the
+%% periodic check in handle_info/2 puts the handler back.
 handle_cast({removing_handler, Logger}, State) ->
-    ale:error(?ALE_LOGGER, "~p has been removed. Setting it up again.",
-              [Logger]),
-    case Logger of
-        ?ERROR_LOGGER ->
-            ok = set_error_logger_handler();
-        ?TRACE_LOGGER ->
-            ok = set_noisy_progress_reports_handler()
-    end,
+    ale:error(?ALE_LOGGER, "Logger handler ~p is being removed. It will be "
+              "set up again within ~bs.",
+              [Logger, ?HANDLER_PERIODIC_CHECK_INTERVAL div 1000]),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+%% Puts back our logger handlers if they have been removed, and catches
+%% removals we were never told about, for instance ones made while this
+%% process was restarting.
+%%
+%% Anybody can send us this message, not just our timer. So cancel the timer
+%% we have and drop any more of the message that is queued before we set a
+%% new timer, or else every extra message would start another chain of
+%% checks.
+handle_info(periodic_check_logger_handlers,
+            #state{periodic_handler_check_timer = TRef} = State) ->
+    cancel_timer(TRef, periodic_check_logger_handlers),
+    ok = ensure_logger_handlers(),
+    {noreply, State#state{periodic_handler_check_timer =
+                              schedule_periodic_handler_check()}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -666,6 +687,62 @@ set_noisy_progress_reports_handler() ->
         filter_default => stop,
         filters => [{log_noisy_progress_reports,
                      {fun noisy_progress_reports/2, log}}]}).
+
+set_logger_handler(?ERROR_LOGGER) ->
+    set_error_logger_handler();
+set_logger_handler(?TRACE_LOGGER) ->
+    set_noisy_progress_reports_handler().
+
+schedule_periodic_handler_check() ->
+    erlang:send_after(?HANDLER_PERIODIC_CHECK_INTERVAL, self(),
+                      periodic_check_logger_handlers).
+
+%% Cancels TRef, the timer that sends us Msg, if there is one, and drops any
+%% Msg that is already in our mailbox: sent by that timer before we could
+%% cancel it, or by somebody else.
+cancel_timer(undefined, Msg) ->
+    flush(Msg);
+cancel_timer(TRef, Msg) ->
+    erlang:cancel_timer(TRef),
+    flush(Msg).
+
+flush(Msg) ->
+    receive
+        Msg ->
+            flush(Msg)
+    after
+        0 ->
+            ok
+    end.
+
+%% Adds back those of our logger handlers that are gone. Only looks at whether
+%% the handler's config is there, which is also all logger:add_handler/3
+%% looks at.
+%%
+%% Never removes a handler: logger's removals of different handlers aren't
+%% safe against each other (each one writes back the handler list as it was
+%% when the removal was requested), so removing one of ours while somebody
+%% else removes the other could leave logger's handler list corrupted.
+ensure_logger_handlers() ->
+    lists:foreach(fun ensure_logger_handler/1, [?ERROR_LOGGER, ?TRACE_LOGGER]).
+
+ensure_logger_handler(Logger) ->
+    case logger:get_handler_config(Logger) of
+        {ok, _} ->
+            ok;
+        {error, {not_found, Logger}} ->
+            ale:error(?ALE_LOGGER, "~p has been removed. Setting it up again.",
+                      [Logger]),
+            case set_logger_handler(Logger) of
+                ok ->
+                    ok;
+                Error ->
+                    %% say, somebody else added it in the meantime; we'll
+                    %% look again on the next check
+                    ale:error(?ALE_LOGGER, "Failed to set up ~p again: ~p",
+                              [Logger, Error])
+            end
+    end.
 
 compile(#state{compile_frozen = Frozen,
                loggers=Loggers} = State,
