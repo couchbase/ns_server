@@ -301,9 +301,25 @@ removing_handler(#{id:=Logger}) ->
     gen_server:cast(?MODULE, {removing_handler, Logger}),
     ok.
 
+%% Never raises. logger removes a handler whose log/2 raises, from whichever
+%% process happened to be logging. When a sink we log to is down (say, while
+%% ale_sup restarts) that is lots of processes at once, for both of our
+%% handlers, and logger's removals of different handlers aren't safe against
+%% each other (see ensure_logger_handlers/0): they can leave one of our
+%% handlers installed but never called. We'd only put the handler back anyway,
+%% so just drop the event.
 -spec log(logger:log_event(), logger:handler_config()) -> ok.
 log(#{level:=Level, msg:=Msg, meta:=Meta}, #{id:=Logger}) ->
-    ale_error_logger_handler:log(Logger, Level, Msg, Meta).
+    try
+        ale_error_logger_handler:log(Logger, Level, Msg, Meta)
+    catch
+        C:R ->
+            %% straight to our sinks, not through logger, so this can't
+            %% recurse; it may well fail too, for the same reason
+            catch ale:error(?ALE_LOGGER, "Failed to log a ~p event via ~p: ~p",
+                            [Level, Logger, {C, R}], [{chars_limit, 1000}]),
+            ok
+    end.
 %%%-----------------------------------------------------------------
 %%% End: Callbacks for logger
 %%%-----------------------------------------------------------------

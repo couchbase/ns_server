@@ -158,6 +158,50 @@ assert_reinstalled(Logger) ->
     ?assertEqual([{remove_handler, Logger}, {add_handler, Logger}], Changes),
     assert_handlers_intact().
 
+%% ale's log/2 must not raise: logger would remove the handler, and when a
+%% sink is down (say, while ale_sup restarts) that is lots of processes
+%% removing both of our handlers at once, which can leave one of them
+%% installed but never called.
+%%
+%% The sink is taken down by unregistering the name the loggers call it by,
+%% which fails those calls with noproc just like a sink that is gone. Runs on
+%% a peer node, since other tests log through the sinks of the node running
+%% the tests.
+sink_outage_test_() ->
+    {setup, fun start_ale_peer/0, fun stop_ale_peer/1,
+     fun (Peer) ->
+             {"a handler that fails to log is not removed",
+              fun () ->
+                      on_peer(Peer, assert_log_failure_kept, [], 4000)
+              end}
+     end}.
+
+assert_log_failure_kept() ->
+    %% keep the events logged here off the console of the peer, which is the
+    %% output of the tests
+    ok = logger:remove_handler(default),
+    ok = ale:start_sink(test_sink, ale_stderr_sink, []),
+    ok = ale:add_sink(?ERROR_LOGGER, test_sink),
+    ok = ale:add_sink(?TRACE_LOGGER, test_sink),
+    ok = ale:set_loglevel(?TRACE_LOGGER, debug),
+    SinkId = ale_utils:sink_id(test_sink),
+    Sink = whereis(SinkId),
+
+    Watch = watch_handler_changes(),
+    true = unregister(SinkId),
+    try
+        logger:error("logged while the sink is down"),
+        %% the kind of event ?TRACE_LOGGER is there for
+        logger:notice(#{label => {supervisor, progress},
+                        report => [{supervisor,
+                                    {self(), tls_dyn_connection_sup}},
+                                   {started, [{pid, self()}]}]})
+    after
+        true = register(SinkId, Sink)
+    end,
+    ?assertEqual([], handler_changes(Watch)),
+    assert_handlers_intact().
+
 %% Runs ?MODULE:Fun(Args...) on Peer, failing the test unless it returns ok.
 on_peer(Peer, Fun, Args, Timeout) ->
     ?assertEqual(ok, peer:call(Peer, ?MODULE, Fun, Args, Timeout)).
