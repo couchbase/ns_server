@@ -84,7 +84,11 @@ ns_config_setting_names() ->
      {magma_compaction_rate_limit, {int, 0, ?MAX_64BIT_UNSIGNED_INT}},
      {magma_enable_compaction_dataonly_ratelimiting, bool},
      {sync_writes_return_committed_seqno, bool},
-     {snapshot_download_fadvise, {one_of, ["normal", "dont-need"]}}]
+     {snapshot_download_fadvise, {one_of, ["normal", "dont-need"]}},
+     %% Memcached purges its oldest log files once they take up more than this,
+     %% so there is no point in allowing less than a single log file.
+     {log_max_aggregated_size,
+      {int, ?MCD_LOG_CYCLE_SIZE, ?MAX_64BIT_UNSIGNED_INT}}]
         ++
         %% KV stopped supporting this is 7.6, they just ignore it, but we
         %% should probably support it in mixed mode. Even though we "support" it

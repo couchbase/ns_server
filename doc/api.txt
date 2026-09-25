@@ -433,6 +433,7 @@ GET /pools/default/serverGroups =>
   (subdoc_offload_size_threshold: <number>)?
   (subdoc_offload_paths_threshold: <number>)?
   (magma_flusher_thread_percentage: <number>)?
+  (log_max_aggregated_size: <number>)?
 }
 
 

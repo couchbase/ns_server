@@ -619,4 +619,12 @@
 -type crl_policy() :: disabled | permissive | require.
 -type crl_scope() :: client_auth | node_to_node.
 
+%% How big a memcached log file is allowed to grow before memcached starts
+%% writing to the next one.
+-define(MCD_LOG_CYCLE_SIZE, 10 * 1024 * 1024).
+
+%% How much space all of the memcached log files are allowed to take together
+%% before memcached starts purging the oldest ones.
+-define(MCD_LOG_MAX_AGGREGATED_SIZE, 200 * 1024 * 1024).
+
 -endif.
