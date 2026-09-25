@@ -339,9 +339,7 @@ init([]) ->
                                    ?DEFAULT_LOGLEVEL,
                                    ?DEFAULT_FORMATTER, State2),
 
-    lists:foreach(fun (Logger) ->
-                          _ = logger:remove_handler(Logger)
-                  end, [?ERROR_LOGGER, ?TRACE_LOGGER]),
+    lists:foreach(fun remove_handler_in_init/1, [?ERROR_LOGGER, ?TRACE_LOGGER]),
 
     %% Erlang starts this for us when we disable default handler.
     _ = logger:remove_handler(simple),
@@ -411,10 +409,11 @@ handle_call(thaw_compilations, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-%% Sent by our removing_handler/1 whenever one of our handlers is being
-%% removed. logger calls removing_handler/1 before it commits the removal, so
-%% the handler is typically still installed when we get this, and adding it
-%% back right away would fail with already_exist. So just log it; the
+%% Sent by our removing_handler/1, when somebody other than init/1 removes one
+%% of our handlers (init/1 drops the casts its own removals provoke: see
+%% remove_handler_in_init/1). That only happens when somebody removes it
+%% explicitly with logger:remove_handler/1: logger itself only removes a
+%% handler whose log/2 raises, which ours never does. So just log it; the
 %% periodic check in handle_info/2 puts the handler back.
 handle_cast({removing_handler, Logger}, State) ->
     ale:error(?ALE_LOGGER, "Logger handler ~p is being removed. It will be "
@@ -703,6 +702,20 @@ set_noisy_progress_reports_handler() ->
         filter_default => stop,
         filters => [{log_noisy_progress_reports,
                      {fun noisy_progress_reports/2, log}}]}).
+
+%% Removes logger handler Id, as left behind by a previous incarnation of this
+%% process, for init/1 to add back. If the handler is ours, logger calls our
+%% removing_handler/1 for it, which casts {removing_handler, Id} to us; drop
+%% that cast here, since init/1 puts the handler back anyway. logger commits
+%% the removal, and replies to us, only after removing_handler/1 has returned,
+%% so the cast is in our mailbox by now. (Strictly, Erlang only orders the
+%% messages of each sender, and these are from two different processes;
+%% should the cast ever turn up later, all it costs is a log message.)
+%% Any other {removing_handler, Id} cast here is about a removal that has
+%% already been committed too, so init/1 undoes that one as well.
+remove_handler_in_init(Id) ->
+    _ = logger:remove_handler(Id),
+    flush({'$gen_cast', {removing_handler, Id}}).
 
 set_logger_handler(?ERROR_LOGGER) ->
     set_error_logger_handler();
