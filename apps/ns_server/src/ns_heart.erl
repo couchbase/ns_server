@@ -334,7 +334,9 @@ current_status_slow_inner() ->
          {interesting_stats, InterestingStats},
          {per_bucket_interesting_stats, PerBucketInterestingStats},
          {processes_stats, ProcessesStats},
-         {encryption_at_rest_info, get_encryption_at_rest_info()}
+         {encryption_at_rest_info, get_encryption_at_rest_info()},
+         {prod, cluster_compat_mode:prod()},
+         {prod_name, cluster_compat_mode:prod_name()}
         | BasicInfo].
 
 get_encryption_at_rest_info() ->
@@ -502,7 +504,7 @@ status_slow_keys() ->
      interesting_stats, per_bucket_interesting_stats, processes_stats, version,
      supported_compat_version, advertised_version, system_arch, wall_clock,
      memory_data, disk_data, encryption_at_rest_info, data_disk_bytes_available,
-     data_disk_bytes_used].
+     data_disk_bytes_used, prod, prod_name].
 
 status_slow_keys_linux() ->
     [cpu_pressure,io_pressure,loadavg,meminfo, memory_pressure].

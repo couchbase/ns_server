@@ -716,8 +716,6 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
           {nodeUUID, NodeUUID},
           {clusterCompatibility,
            cluster_compat_mode:effective_cluster_compat_version()},
-          {prod, list_to_binary(cluster_compat_mode:prod())},
-          {prodName, list_to_binary(cluster_compat_mode:prod_name())},
           {version, list_to_binary(Version)},
           {os, list_to_binary(OS)},
           {cpuCount, CpuCount},
@@ -729,6 +727,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
           {configuredHostname, list_to_binary(ConfiguredHostname)}
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
         ++ [{externalListeners, Listeners} || Listeners =/= undefined]
+        ++ build_node_prod_info(WantENode, InfoNode)
         ++ [{prodCompatVersion, ProdCompatVersion} ||
                ProdCompatVersion =/= undefined]
         ++ alternate_addresses_json(WantENode, Config, Snapshot,
@@ -740,6 +739,25 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr) ->
             [{thisNode, true} | RV];
         _ -> RV
     end.
+
+%% The product a node runs comes from its own config profile. For this node
+%% that is read directly, which the join checks rely on; any other node
+%% advertises it in its heartbeat. A node from before that was added does not;
+%% it is reported with this node's product, as every node was before, so the
+%% fields are always present.
+build_node_prod_info(Node, InfoNode) ->
+    {Prod, ProdName} =
+        case Node =:= node() of
+            true ->
+                {cluster_compat_mode:prod(), cluster_compat_mode:prod_name()};
+            false ->
+                {proplists:get_value(prod, InfoNode,
+                                     cluster_compat_mode:prod()),
+                 proplists:get_value(prod_name, InfoNode,
+                                     cluster_compat_mode:prod_name())}
+        end,
+    [{prod, list_to_binary(Prod)},
+     {prodName, list_to_binary(ProdName)}].
 
 get_hostnames(Req, Arg) ->
     get_hostnames(Req, Arg, []).
@@ -1442,6 +1460,29 @@ validate_ix_cbas_path_test() ->
     ?assertMatch({true, _}, validate_ix_cbas_path({path2, "/ab/de/f"}, "/ab")),
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc/def"}, "/abc/de")),
     ?assertEqual(false, validate_ix_cbas_path({path2, "/abc"}, "/abc/hi")).
+
+build_node_prod_info_test() ->
+    Profile = [{name, "analytics"},
+               {prod, "analytics"},
+               {prod_name, "New Name"}],
+    Peer = 'ns_1@peer',
+    Advertised = [{prod, "analytics"}, {prod_name, "Other Name"}],
+    meck:new(config_profile, [passthrough]),
+    try
+        meck:expect(config_profile, get, fun () -> Profile end),
+        %% This node is described from its own profile, whatever its
+        %% heartbeat holds.
+        ?assertEqual([{prod, <<"analytics">>}, {prodName, <<"New Name">>}],
+                     build_node_prod_info(node(), Advertised)),
+        %% Another node is described by what it advertises...
+        ?assertEqual([{prod, <<"analytics">>}, {prodName, <<"Other Name">>}],
+                     build_node_prod_info(Peer, Advertised)),
+        %% ...and one that advertises nothing as running this node's product.
+        ?assertEqual([{prod, <<"analytics">>}, {prodName, <<"New Name">>}],
+                     build_node_prod_info(Peer, []))
+    after
+        meck:unload(config_profile)
+    end.
 -endif.
 
 handle_export_chronicle_snapshot(Req) ->
