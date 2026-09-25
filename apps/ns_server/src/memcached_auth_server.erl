@@ -251,7 +251,8 @@ authenticate(<<"OAUTHBEARER">>, AuthReq) ->
                              AuditProps};
                         {error, _RespHeaders, AuditProps} ->
                             Reason =
-                                case proplists:get_value(reason, AuditProps,
+                                case proplists:get_value(<<"reason">>,
+                                                         AuditProps,
                                                          undefined) of
                                     ReasonBin when is_binary(ReasonBin) ->
                                         binary_to_list(ReasonBin);
@@ -553,7 +554,7 @@ process_data_test() ->
                      {Props}) ->
                         [{<<"error">>,
                           {[{<<"context">>,
-                             <<"Authentication failed: ", _/binary>>},
+                             <<"Authentication failed: Token has expired">>},
                             {<<"ref">>, _}]}},
                          {<<"audit_props">>, {AuditProps}}] = Props,
 
