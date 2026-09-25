@@ -361,7 +361,6 @@ maybe_restore_backup() ->
             queue:new()
     end.
 
--ifndef(TEST).
 code(login_success) ->
     8192;
 code(login_failure) ->
@@ -588,6 +587,7 @@ code(reload_crl) ->
 code(jwt_auth_success) ->
     8311.
 
+-ifndef(TEST).
 send_to_memcached(ParentPID, {Code, EncodedBody, IsSync}) ->
     case (catch ns_memcached_sockets_pool:executing_on_socket(
                   fun (Sock) ->
@@ -1233,10 +1233,18 @@ drop_external_collection(Req, BucketName, ScopeName,
          {collection_name, CollectionName},
          {new_manifest_uid, Uid}]).
 
+%% Fires on every request a JWT authenticates and ships disabled. Check
+%% before building the body: put/3 would otherwise do all of the work and
+%% write the record to debug.log, only for memcached to drop it.
 jwt_auth_success(Req) ->
-    RawPath = mochiweb_request:get(raw_path, Req),
-    AuthProps = get_auth_audit_props(Req),
-    put(jwt_auth_success, Req, [{raw_url, RawPath}] ++ AuthProps).
+    case ns_audit_cfg:is_event_enabled(code(jwt_auth_success), false) of
+        true ->
+            RawPath = mochiweb_request:get(raw_path, Req),
+            AuthProps = get_auth_audit_props(Req),
+            put(jwt_auth_success, Req, [{raw_url, RawPath}] ++ AuthProps);
+        false ->
+            ok
+    end.
 
 auth_failure(Req0) ->
     Req =
