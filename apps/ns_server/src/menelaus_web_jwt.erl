@@ -669,6 +669,7 @@ basic_validators() ->
      validator:convert(audienceHandling, fun binary_to_existing_atom/1, _),
      validator:required(audiences, _),
      validator:string_array(audiences, _),
+     validator:array_length(audiences, 1, infinity, _),
      validator:integer(expiryLeewayS,
                        ?EXPIRY_LEEWAY_MIN_S,
                        ?EXPIRY_LEEWAY_MAX_S, _),
