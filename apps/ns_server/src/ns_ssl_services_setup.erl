@@ -1618,7 +1618,9 @@ do_notify_service(server_cert_event) ->
 do_notify_service(client_cert_event) ->
     gen_event:notify(ssl_service_events, client_cert_changed);
 do_notify_service(cb_dist_tls) ->
-    cb_dist:restart_tls().
+    cb_dist:restart_tls();
+do_notify_service(cb_dist_client_cert) ->
+    cb_dist:reload_client_cert().
 
 security_settings_state() ->
     {ssl_minimum_protocol(ns_server),
@@ -2229,7 +2231,7 @@ time_left_to_client_cert_regen() ->
     end.
 
 services_to_reload(node_cert) -> all_services() -- [client_cert_event];
-services_to_reload(client_cert) -> [cb_dist_tls, client_cert_event].
+services_to_reload(client_cert) -> [cb_dist_client_cert, client_cert_event].
 
 -ifdef(TEST).
 
