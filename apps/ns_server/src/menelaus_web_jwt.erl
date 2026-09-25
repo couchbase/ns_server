@@ -656,6 +656,13 @@ issuer_validators() ->
 basic_validators() ->
     [validator:required(name, _),
      validator:non_empty_string(name, _),
+     validator:validate(
+       fun (Name) ->
+               case Name =:= jwt_issuer:name() of
+                   true -> {error, "Name is reserved for the internal issuer"};
+                   false -> ok
+               end
+       end, name, _),
      validator:non_empty_string(displayName, _),
      validator:required(signingAlgorithm, _),
      validator:one_of(signingAlgorithm,

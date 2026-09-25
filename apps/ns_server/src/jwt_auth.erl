@@ -71,7 +71,7 @@ authenticate(Token) ->
                 #{}
         end,
     TokenBin = list_to_binary(Token),
-    Settings = maps:merge(jwt_issuer:settings(), Persisted),
+    Settings = maps:merge(Persisted, jwt_issuer:settings()),
     case extract_claims(TokenBin, Settings) of
         {ok, Claims, IssProps} ->
             validate_token(TokenBin, Claims, IssProps);
