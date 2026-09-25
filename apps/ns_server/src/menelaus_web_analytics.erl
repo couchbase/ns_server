@@ -297,7 +297,10 @@ cluster_init_validators_test() ->
 common_settings_args() ->
     Columnar = config_profile:search({cbas, columnar}, false),
     ["-deploymentModel=" ++ config_profile:name(),
-    "-columnar=" ++ atom_to_list(Columnar)].
+     "-columnar=" ++ atom_to_list(Columnar),
+     %% scratch space for the blob storage validator, which would otherwise
+     %% use /tmp (MB-74135)
+     "-tmpDir=" ++ path_config:component_path(tmp)].
 
 %% Similar to misc:run_external_tool/4 but streams stderr to the debug log
 %% incrementally (line by line) instead of buffering it all in memory.
