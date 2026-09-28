@@ -24,7 +24,8 @@
          maybe_apply_new_keys/0, get_key_ids_in_use/0]).
 
 -export([upgrade_descriptors/0, get_descriptors/1, is_enabled/0,
-         jsonifier/1, get_non_filterable_descriptors/0, read_config/1]).
+         is_event_enabled/2, event_enabled/4, jsonifier/1,
+         get_non_filterable_descriptors/0, read_config/1]).
 
 -record(state, {global,
                 merged,
@@ -198,6 +199,33 @@ audit_json_path() ->
 is_enabled() ->
     ns_config:search_node_prop(
       ns_config:latest(), audit, auditd_enabled, false).
+
+%% Whether an event is on: explicitly enabled, or on by default and not
+%% explicitly disabled.
+event_enabled(Id, Enabled, Disabled, DefaultEnabled) ->
+    case lists:member(Id, Enabled) of
+        true -> true;
+        false -> DefaultEnabled =:= true andalso not lists:member(Id, Disabled)
+    end.
+
+%% Whether memcached will keep a record of the filterable event Id.
+%%
+%% IfUnknown is the answer for an Id missing from the stored descriptors.
+%% (e.g. 8311 is missing in 8.0.x). POST /settings/audit rejects such an Id,
+%% so it cannot have been configured, and memcached applies the default in the
+%% binary's own descriptors: the caller passes that default.
+is_event_enabled(Id, IfUnknown) ->
+    is_enabled() andalso
+        begin
+            Audit = ns_config:read_key_fast(audit, []),
+            Descriptors = get_descriptors(ns_config:latest()),
+            Default = case lists:keyfind(Id, 1, Descriptors) of
+                          {Id, Props} -> proplists:get_value(enabled, Props);
+                          false -> IfUnknown
+                      end,
+            event_enabled(Id, proplists:get_value(enabled, Audit, []),
+                          proplists:get_value(disabled, Audit, []), Default)
+        end.
 
 get_log_path() ->
     case is_enabled() of

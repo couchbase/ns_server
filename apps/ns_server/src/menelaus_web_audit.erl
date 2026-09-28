@@ -148,10 +148,9 @@ pre_process_get(Props) ->
     ActuallyDisabled =
         lists:filtermap(
           fun ({Id, P}) ->
-                  IsEnabledByDefault = proplists:get_value(enabled, P),
-                  case lists:member(Id, Enabled) orelse
-                       (IsEnabledByDefault andalso
-                        not lists:member(Id, Disabled)) of
+                  case ns_audit_cfg:event_enabled(
+                         Id, Enabled, Disabled,
+                         proplists:get_value(enabled, P)) of
                       true ->
                           false;
                       false ->

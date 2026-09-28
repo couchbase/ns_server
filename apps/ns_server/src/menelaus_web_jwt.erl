@@ -656,6 +656,13 @@ issuer_validators() ->
 basic_validators() ->
     [validator:required(name, _),
      validator:non_empty_string(name, _),
+     validator:validate(
+       fun (Name) ->
+               case Name =:= jwt_issuer:name() of
+                   true -> {error, "Name is reserved for the internal issuer"};
+                   false -> ok
+               end
+       end, name, _),
      validator:non_empty_string(displayName, _),
      validator:required(signingAlgorithm, _),
      validator:one_of(signingAlgorithm,
@@ -669,6 +676,7 @@ basic_validators() ->
      validator:convert(audienceHandling, fun binary_to_existing_atom/1, _),
      validator:required(audiences, _),
      validator:string_array(audiences, _),
+     validator:array_length(audiences, 1, infinity, _),
      validator:integer(expiryLeewayS,
                        ?EXPIRY_LEEWAY_MIN_S,
                        ?EXPIRY_LEEWAY_MAX_S, _),

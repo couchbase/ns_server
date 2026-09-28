@@ -71,7 +71,7 @@ authenticate(Token) ->
                 #{}
         end,
     TokenBin = list_to_binary(Token),
-    Settings = maps:merge(jwt_issuer:settings(), Persisted),
+    Settings = maps:merge(Persisted, jwt_issuer:settings()),
     case extract_claims(TokenBin, Settings) of
         {ok, Claims, IssProps} ->
             validate_token(TokenBin, Claims, IssProps);
@@ -654,16 +654,17 @@ validate(nbf, Claims, IssProps) ->
         _ -> {error, <<"Token not yet valid">>}
     end;
 validate(aud, Claims, #{audience_handling := Handling,
-                        audiences := Expected}) ->
-    TokenAuds = maps:get(aud, Claims),
+                        audiences := Audiences}) ->
+    Expected = sets:from_list(Audiences),
+    TokenAuds = sets:from_list(maps:get(aud, Claims)),
     case Handling of
         all ->
-            case ordsets:subtract(Expected, TokenAuds) of
-                [] -> ok;
-                _ -> {error, <<"Invalid audience">>}
+            case sets:is_subset(Expected, TokenAuds) of
+                true -> ok;
+                false -> {error, <<"Invalid audience">>}
             end;
         any ->
-            case ordsets:is_disjoint(Expected, TokenAuds) of
+            case sets:is_disjoint(Expected, TokenAuds) of
                 true -> {error, <<"Invalid audience">>};
                 false -> ok
             end
@@ -755,9 +756,7 @@ validate_claims_test() ->
     Now = erlang:system_time(second),
     IssProps = #{
                  name => <<"test-issuer">>,
-                 expiry_leeway_s => 300,
-                 audience_handling => any,
-                 audiences => [<<"aud1">>, <<"aud2">>]
+                 expiry_leeway_s => 300
                 },
 
     %% Test exp validation
@@ -769,18 +768,20 @@ validate_claims_test() ->
     ?assertEqual(ok, validate(nbf, #{}, IssProps)),
     ?assertEqual(ok, validate(nbf, #{nbf => Now - 600}, IssProps)),
     ?assertEqual({error, <<"Token not yet valid">>},
-                 validate(nbf, #{nbf => Now + 600}, IssProps)),
+                 validate(nbf, #{nbf => Now + 600}, IssProps)).
 
-    %% Test aud validation
-    ?assertEqual(ok, validate(aud, #{aud => [<<"aud1">>, <<"other">>]},
-                              IssProps)),
-
-    IssPropsAll = IssProps#{audience_handling => all},
-    ?assertEqual(ok, validate(aud, #{aud => [<<"aud1">>, <<"aud2">>]},
-                              IssPropsAll)),
+validate_aud_test() ->
+    Any = #{audience_handling => any, audiences => [<<"b">>]},
+    ?assertEqual(ok, validate(aud, #{aud => [<<"c">>, <<"b">>]}, Any)),
     ?assertEqual({error, <<"Invalid audience">>},
-                 validate(aud, #{aud => [<<"aud1">>, <<"other">>]},
-                          IssPropsAll)).
+                 validate(aud, #{aud => [<<"c">>, <<"a">>]}, Any)),
+
+    All = #{audience_handling => all, audiences => [<<"b">>, <<"a">>]},
+    ?assertEqual(ok, validate(aud, #{aud => [<<"a">>, <<"b">>]}, All)),
+    ?assertEqual(ok, validate(aud, #{aud => [<<"c">>, <<"b">>, <<"a">>]},
+                              All)),
+    ?assertEqual({error, <<"Invalid audience">>},
+                 validate(aud, #{aud => [<<"c">>, <<"b">>]}, All)).
 
 get_nested_value_test() ->
     Map = #{
