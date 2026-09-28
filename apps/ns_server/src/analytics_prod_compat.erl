@@ -91,6 +91,12 @@ get_product_pretend_version() ->
     end.
 
 -ifdef(TEST).
+%% The synthetic profile these tests install mirrors the analytics profiles in
+%% cbas-core.  Only the tests need these, so they are defined here rather than
+%% in ns_common.hrl; keep them in sync with the analytics profiles.
+-define(ANALYTICS_PROFILE_STR, "analytics").
+-define(ANALYTICS_PROD_NAME, "Operational Insights").
+
 compare_prod_compat_version_test_() ->
     [?_assertEqual(equal,
                    compare_prod_compat_version("1.2.3", "1.2.3")),

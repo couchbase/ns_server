@@ -25,17 +25,57 @@ ELSE ("${PRODUCT_VERSION}" STREQUAL "")
   SET(_product_version "${PRODUCT_VERSION}")
 ENDIF ("${PRODUCT_VERSION}" STREQUAL "")
 
+# Read a product-identity value from the manifest.  -D on the cmake command
+# line wins; otherwise the annotation has to be declared.  There is no default:
+# a default would be one product's name living in a repository shared by all of
+# them, correct only until that product's name moved.
+MACRO (READ_PRODUCT_ANNOTATION _annot _var)
+  IF (NOT DEFINED ${_var})
+    SET (_annot_value)
+    IF (NOT PYTHON_EXECUTABLE)
+      SET (PYTHON_EXECUTABLE python3)
+    ENDIF ()
+    EXECUTE_PROCESS (
+      COMMAND ${PYTHON_EXECUTABLE} tlm/scripts/get_manifest_annot.py ${_annot}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      OUTPUT_VARIABLE _annot_value
+      ERROR_QUIET
+      OUTPUT_STRIP_TRAILING_WHITESPACE)
+    IF (NOT _annot_value)
+      MESSAGE (FATAL_ERROR
+               "${_annot} is not declared in the manifest.  A columnar build "
+               "takes its product identity from manifest annotations; declare "
+               "${_annot} on the manifest's build project, or pass "
+               "-D${_var} for a build without a manifest.")
+    ENDIF ()
+    SET (${_var} "${_annot_value}")
+  ENDIF ()
+ENDMACRO ()
+
 IF (BUILD_COLUMNAR)
-  SET (_ns_version "${COLUMNAR_PRODUCT_VERSION}-enterprise-analytics")
+  # Take the suffix from the manifest rather than naming a product here.
+  READ_PRODUCT_ANNOTATION (PRODUCT_VERSION_SUFFIX _version_suffix)
+  SET (_ns_version "${COLUMNAR_PRODUCT_VERSION}-${_version_suffix}")
+  SET (_ns_is_enterprise true)
 ELSEIF (BUILD_ENTERPRISE)
   SET (_ns_version "${_product_version}-enterprise")
+  SET (_ns_is_enterprise true)
 ELSE ()
   SET (_ns_version "${_product_version}-community")
+  SET (_ns_is_enterprise false)
 ENDIF ()
 
 SET (NS_SERVER_VERSION "${_ns_version}" CACHE STRING
      "Couchbase server version" FORCE)
 MARK_AS_ADVANCED (NS_SERVER_VERSION)
+
+# The edition is a property of the build, so it is declared here and baked into
+# the ns_server application env (see apps/ns_server/src/ns_server.app.src.in)
+# rather than derived from NS_SERVER_VERSION, which is free to change with the
+# product name.
+SET (NS_SERVER_IS_ENTERPRISE "${_ns_is_enterprise}" CACHE STRING
+     "Whether this is an enterprise edition build" FORCE)
+MARK_AS_ADVANCED (NS_SERVER_IS_ENTERPRISE)
 
 # Create rebar.config
 SET (COUCHDB_SRC_DIR "${PROJECT_SOURCE_DIR}/../couchdb" CACHE PATH "Path to couchdb source")
@@ -175,20 +215,34 @@ ADD_CUSTOM_TARGET (ns_dataclean
 
 IF (BUILD_COLUMNAR)
   SET (DEFAULT_PROFILE "analytics")
-  SET (PACKAGE_NAME "enterprise-analytics")
+  # The rest of the identity comes from the manifest too, the same way.
+  # LAUNCHER_NAME is its own annotation rather than derived from either of the
+  # others: a product's command need not match its package name or its product
+  # key.  voltron's systemd unit reads the same annotation, so the unit and the
+  # command it starts cannot disagree.
+  READ_PRODUCT_ANNOTATION (PRODUCT_PACKAGE_NAME PACKAGE_NAME)
+  READ_PRODUCT_ANNOTATION (PRODUCT_LAUNCHER_NAME LAUNCHER_NAME)
+  READ_PRODUCT_ANNOTATION (PRODUCT_DISPLAY_NAME PRODUCT_DISPLAY_NAME)
 ELSE (BUILD_COLUMNAR)
   SET (DEFAULT_PROFILE "default")
   SET (PACKAGE_NAME "couchbase-server")
+  SET (LAUNCHER_NAME "couchbase-server")
+  SET (PRODUCT_DISPLAY_NAME "Couchbase Server")
 ENDIF (BUILD_COLUMNAR)
 
 SET (ns_server_app_src "${PROJECT_SOURCE_DIR}/apps/ns_server/src/ns_server.app.src")
 
 ADD_CUSTOM_TARGET (ns_cfg DEPENDS "${ns_server_app_src}" "${rebar_config}")
 ADD_CUSTOM_COMMAND(OUTPUT "${ns_server_app_src}"
+  DEPENDS "${ns_server_app_src}.in"
   COMMAND "${CMAKE_COMMAND}" -D "INPUT_FILE=${ns_server_app_src}.in"
   -D "OUTPUT_FILE=${ns_server_app_src}"
   -D "SEARCH=NS_SERVER_VERSION"
   -D "REPLACE=${NS_SERVER_VERSION}"
+  # string-replace.cmake configures the file in a fresh cmake process, so every
+  # placeholder it must substitute has to be defined there; @ONLY silently
+  # blanks any it does not know, which yields an unparseable {is_enterprise, }.
+  -D "NS_SERVER_IS_ENTERPRISE=${NS_SERVER_IS_ENTERPRISE}"
   -P "${PROJECT_SOURCE_DIR}/cmake_modules/string-replace.cmake"
   VERBATIM)
 
@@ -416,8 +470,8 @@ INSTALL (PROGRAMS scripts/escript-wrapper DESTINATION bin)
 SET (PREFIX "${CMAKE_INSTALL_PREFIX}")
 SET (_instdir "${PROJECT_BINARY_DIR}/instfiles")
 FILE (REMOVE_RECURSE "${_instdir}")
-CONFIGURE_FILE (couchbase-server.sh.in "${_instdir}/couchbase-server" @ONLY)
-INSTALL (PROGRAMS "${_instdir}/couchbase-server" DESTINATION bin)
+CONFIGURE_FILE (couchbase-server.sh.in "${_instdir}/${LAUNCHER_NAME}" @ONLY)
+INSTALL (PROGRAMS "${_instdir}/${LAUNCHER_NAME}" DESTINATION bin)
 INSTALL (FILES "validate-cpu-microarchitecture.sh" DESTINATION bin)
 
 SET (_etcdir "${_instdir}/etc")
@@ -444,6 +498,20 @@ IF (BUILD_COLUMNAR)
   ENDIF ()
   FOREACH (_analytics_profile IN LISTS _analytics_profiles)
     GET_FILENAME_COMPONENT (_profile_name "${_analytics_profile}" NAME)
+    # CONFIGURE_FILE substitutes the empty string for an @VAR@ whose variable
+    # is unset, so a placeholder that nobody wired up ships as a blank setting
+    # instead of failing the build.  Insist on a value before configuring.
+    FILE (READ "${_analytics_profile}" _profile_contents)
+    STRING (REGEX MATCHALL "@[A-Za-z0-9_]+@" _placeholders "${_profile_contents}")
+    FOREACH (_placeholder IN LISTS _placeholders)
+      STRING (REGEX REPLACE "^@|@$" "" _placeholder_var "${_placeholder}")
+      IF (NOT DEFINED ${_placeholder_var} OR "${${_placeholder_var}}" STREQUAL "")
+        MESSAGE (FATAL_ERROR
+                 "${_profile_name} substitutes ${_placeholder}, which is unset "
+                 "or empty.  Version placeholders are read from the manifest "
+                 "by tlm/CMakeLists.txt; a new one has to be wired up there.")
+      ENDIF ()
+    ENDFOREACH ()
     CONFIGURE_FILE ("${_analytics_profile}"
                     "${_etcdir}/couchbase/${_profile_name}" @ONLY)
   ENDFOREACH ()

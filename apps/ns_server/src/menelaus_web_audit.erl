@@ -19,6 +19,10 @@
          handle_get_descriptors/1,
          handle_get_non_filterable_descriptors/1]).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 handle_get(Req) ->
     menelaus_util:assert_is_enterprise(),
 
@@ -59,10 +63,49 @@ handle_post(Req) ->
               menelaus_util:reply(Req, 200)
       end, Req, form, validators(Config)).
 
+%% Config profiles may relabel audit event descriptors, e.g. Enterprise
+%% Analytics names event 8267 after its own service:
+%%
+%%   {audit_descriptor_labels,
+%%    [{8267, [{name, <<"modify Operational Insights settings">>},
+%%             {description,
+%%              <<"Operational Insights settings were modified">>}]}]}.
+%%
+%% Only name and description are overridable, and only for ids the profile
+%% names; an id the profile does not name, or a key it omits, keeps what the
+%% descriptor file supplied.
+%%
+%% This is applied where descriptors are served rather than where they are
+%% read, for two reasons.  read_descriptors/0 feeds upgrade_descriptors/0,
+%% which writes audit_descriptors into ns_config, so overriding at read time
+%% would persist one product's labels into replicated cluster config.  And
+%% these labels track prod_name, which is node-local, so a node should serve
+%% the labels of the package it is running.
+%%
+%% The event id is unaffected.  It is what ns_audit:put/3 emits and what an
+%% audit consumer keys on; only the descriptor listing changes.
+-spec relabel_descriptor(term(), [{atom(), term()}]) -> [{atom(), term()}].
+relabel_descriptor(Id, Props) ->
+    case config_profile:search(audit_descriptor_labels, []) of
+        [] ->
+            Props;
+        Labels ->
+            case lists:keyfind(Id, 1, Labels) of
+                {_, Overrides} ->
+                    lists:foldl(
+                      fun ({Key, Value}, Acc) ->
+                              lists:keystore(Key, 1, Acc, {Key, Value})
+                      end, Props, Overrides);
+                false ->
+                    Props
+            end
+    end.
+
 reply_with_json_audit_descriptors(Req, Descriptors) ->
     Json =
         lists:map(
-          fun ({Id, Props}) ->
+          fun ({Id, Props0}) ->
+                  Props = relabel_descriptor(Id, Props0),
                   {[{id, Id},
                     {name, proplists:get_value(name, Props)},
                     {module, proplists:get_value(module, Props)},
@@ -266,3 +309,40 @@ validators(Config) ->
      validator:integer(pruneAge, 0, ?MAX_32BIT_SIGNED_INT div 60, _),
      validator:no_duplicates(_),
      validator:unsupported(_)].
+
+-ifdef(TEST).
+relabel_descriptor_test() ->
+    Props = [{name, <<"modify analytics settings">>},
+             {description, <<"Analytics service settings were modified">>},
+             {enabled, true},
+             {module, analytics}],
+    SetProfile =
+        fun (Extra) ->
+                meck:expect(config_profile, get,
+                            fun () ->
+                                    ?DEFAULT_EMPTY_PROFILE_FOR_TESTS ++ Extra
+                            end)
+        end,
+    try
+        meck:new(config_profile, [passthrough]),
+
+        %% Declaring no labels leaves every descriptor alone.
+        SetProfile([]),
+        ?assertEqual(Props, relabel_descriptor(8267, Props)),
+
+        Name = <<"modify Operational Insights settings">>,
+        SetProfile([{audit_descriptor_labels, [{8267, [{name, Name}]}]}]),
+
+        %% A named id takes the override, and only for the keys it supplies.
+        Relabelled = relabel_descriptor(8267, Props),
+        ?assertEqual(Name, proplists:get_value(name, Relabelled)),
+        ?assertEqual(proplists:get_value(description, Props),
+                     proplists:get_value(description, Relabelled)),
+        ?assertEqual(analytics, proplists:get_value(module, Relabelled)),
+
+        %% An id the profile does not name is untouched.
+        ?assertEqual(Props, relabel_descriptor(8266, Props))
+    after
+        meck:unload(config_profile)
+    end.
+-endif.
