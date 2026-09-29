@@ -241,9 +241,16 @@ get_cbauth_services({serviceBucketDek, _}) ->
 get_cbauth_services(unknown_kind) -> [unknown_service];
 get_cbauth_services(_) -> error(invalid_dek_kind).
 
+%% Note that this must not be extended to skip services that merely happen to
+%% be down right now (ns_ports_setup:should_run/2, say). That is also false
+%% while the node is failed over or awaiting delta recovery, and the deks of
+%% the data those services left on disk must survive both.
 get_cbauth_labels(Kind, Snapshot) ->
     Node = node(),
-    case ns_cluster_membership:is_newly_added_node(Node, Snapshot) of
+    %% An unprovisioned node belongs to no cluster, so nothing will connect
+    %% until it is set up or joins one, and both restart all the services.
+    case ns_cluster_membership:is_newly_added_node(Node, Snapshot) orelse
+         not ns_config_auth:is_system_provisioned() of
         true -> [];
         false ->
             Services = get_cbauth_services(Kind),
@@ -253,9 +260,15 @@ get_cbauth_labels(Kind, Snapshot) ->
                                   false -> NodeServices
                               end,
             TargetServices = [P || P <- Services,
-                                   lists:member(P, AllNodeServices)],
+                                   lists:member(P, AllNodeServices),
+                                   is_service_enabled(P)],
             [menelaus_cbauth:service_to_label(P) || P <- TargetServices]
     end.
+
+is_service_enabled(projector) ->
+    not config_profile:search({indexer, projector_disabled}, false);
+is_service_enabled(_) ->
+    true.
 
 cbauth_call(Func, Params, Kind, CbauthLabels) ->
     cbauth_call(Func, Params, Kind, CbauthLabels, #{}).
@@ -388,5 +401,85 @@ cbauth_key_type_to_dek_kind_test() ->
     ?assertEqual(
        {error, "invalid type: \"unknown\""},
        cbauth_key_type_to_dek_kind("unknown", "123")).
+
+set_provisioned(V) ->
+    meck:expect(ns_config_auth, is_system_provisioned, fun () -> V end).
+
+set_projector_disabled(V) ->
+    config_profile:set_data([{name, "default"},
+                             {{indexer, projector_disabled}, V}]).
+
+labels_snapshot(Props) ->
+    maps:from_list([{{node, node(), K}, {V, no_rev}} || {K, V} <- Props]).
+
+active_node(Services) ->
+    labels_snapshot([{membership, active}, {services, Services}]).
+
+get_cbauth_labels_test_() ->
+    {setup,
+     fun () ->
+         meck:new(ns_config_auth, [passthrough]),
+         set_provisioned(true),
+         set_projector_disabled(false)
+     end,
+     fun (_) ->
+         meck:unload(ns_config_auth),
+         config_profile:unload_profile_for_test()
+     end,
+     [{"kv+index node reports index and projector for logs",
+       fun () ->
+           set_provisioned(true),
+           set_projector_disabled(false),
+           ?assertEqual(["index-cbauth", "projector-cbauth"],
+                        get_cbauth_labels(logDek, active_node([kv, index])))
+       end},
+      {"kv-only node reports nothing for otherDek",
+       fun () ->
+           set_provisioned(true),
+           ?assertEqual([], get_cbauth_labels(otherDek, active_node([kv])))
+       end},
+      {"n1ql uses its own label",
+       fun () ->
+           set_provisioned(true),
+           ?assertEqual(["cbq-engine-cbauth", "fts-cbauth"],
+                        get_cbauth_labels(otherDek, active_node([n1ql, fts])))
+       end},
+      {"newly added node reports nothing",
+       fun () ->
+           set_provisioned(true),
+           Snapshot = labels_snapshot([{membership, inactiveAdded},
+                                       {services, [kv, index]}]),
+           ?assertEqual([], get_cbauth_labels(logDek, Snapshot))
+       end},
+      {"unprovisioned node reports nothing",
+       fun () ->
+           set_provisioned(false),
+           ?assertEqual([], get_cbauth_labels(logDek, active_node([kv, index])))
+       end},
+      {"failed over node still reports its services",
+       fun () ->
+           set_provisioned(true),
+           Snapshot = labels_snapshot([{membership, inactiveFailed},
+                                       {services, [kv, index]}]),
+           ?assertEqual(["index-cbauth", "projector-cbauth"],
+                        get_cbauth_labels(logDek, Snapshot))
+       end},
+      {"delta recovery node still reports its services",
+       fun () ->
+           set_provisioned(true),
+           Snapshot = labels_snapshot([{membership, inactiveAdded},
+                                       {recovery_type, delta},
+                                       {services, [kv, index]}]),
+           ?assertEqual(["index-cbauth", "projector-cbauth"],
+                        get_cbauth_labels(logDek, Snapshot))
+       end},
+      {"disabled projector is not reported",
+       fun () ->
+           set_provisioned(true),
+           set_projector_disabled(true),
+           ?assertEqual(["index-cbauth"],
+                        get_cbauth_labels(logDek, active_node([kv, index]))),
+           set_projector_disabled(false)
+       end}]}.
 
 -endif.
