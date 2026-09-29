@@ -1199,8 +1199,9 @@ def log_collection_complete(node, start_time):
         timestamp = task.get("ts")
         if (task.get("type") == "clusterLogsCollection" and
                 timestamp is not None):
-            #
+            # The task timestamp is in UTC
             if (datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+                        .replace(tzinfo=timezone.utc)
                         .timestamp() >= start_time):
                 per_node = task.get('perNode').get(node.otp_node())
                 if (per_node is not None and
