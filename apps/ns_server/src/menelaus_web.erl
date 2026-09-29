@@ -1767,7 +1767,7 @@ perform_action(Req, {Permission, Fun, Args}) ->
         password_expired ->
             menelaus_util:reply_password_expired(NewReq);
         temporary_failure ->
-            Msg = <<"Temporary error occurred. Please try again later.">>,
+            Msg = menelaus_auth:get_temporary_failure_msg(NewReq),
             menelaus_util:reply_json(NewReq, Msg, 503)
     end.
 

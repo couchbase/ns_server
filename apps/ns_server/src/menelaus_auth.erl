@@ -17,6 +17,10 @@
 -include("jwt.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(count_auth(Type, Res),
         ns_server_stats:notify_counter({<<"authentications">>,
                                         [{<<"type">>, <<Type>>},
@@ -54,7 +58,8 @@
          get_authn_res_audit_props/1,
          maybe_set_auth_audit_props/2,
          check_expiration/1,
-         get_auth_failure_reason/1]).
+         get_auth_failure_reason/1,
+         get_temporary_failure_msg/1]).
 
 %% rpc from ns_couchdb node
 -export([do_authenticate/1,
@@ -508,25 +513,38 @@ do_authenticate({Username, Password}) ->
     end.
 
 -spec authenticate_external(rbac_user_id(), rbac_password()) ->
-          {error, auth_failure, auth_audit_props()} |
+          {error, auth_failure | temporary_failure, auth_audit_props()} |
           {ok, #authn_res{}, [RespHeader], auth_audit_props()} when
       RespHeader :: {string(), string()}.
 authenticate_external(Username, Password) ->
     case ns_node_disco:couchdb_node() == node() of
         false ->
             case is_external_auth_allowed(Username) andalso
-                 (saslauthd_auth:authenticate(Username, Password) orelse
-                  ldap_auth_cache:authenticate(Username, Password)) of
+                authenticate_saslauthd_or_ldap(Username, Password) of
                 true ->
                     ?count_auth("external", "succ"),
                     {ok, init_auth({Username, external}), [], []};
                 false ->
                     ?count_auth("external", "failure"),
-                    {error, auth_failure, []}
+                    {error, auth_failure, []};
+                {error, unreachable} ->
+                    ?count_auth("external", "failure"),
+                    {error, temporary_failure,
+                     [{<<"reason">>,
+                       <<"External authentication service not reachable">>}]}
             end;
         true ->
             rpc:call(ns_node_disco:ns_server_node(), ?MODULE,
                      authenticate_external, [Username, Password])
+    end.
+
+authenticate_saslauthd_or_ldap(Username, Password) ->
+    case saslauthd_auth:authenticate(Username, Password) of
+        true ->
+            true;
+        SaslauthdRes ->
+            ldap_auth_cache:authenticate(Username, Password) orelse
+                SaslauthdRes
     end.
 
 is_external_auth_allowed("@" ++ _) -> false;
@@ -594,11 +612,12 @@ uilogin(Req, Params) ->
             ns_audit:login_failure(
               maybe_store_rejected_user(User, Req)),
             menelaus_util:reply(Req, 400);
-        {error, temporary_failure, _} ->
+        {error, temporary_failure, AuthAuditProps} ->
             ns_audit:login_failure(
-              maybe_store_rejected_user(User, Req)),
-            Msg = <<"Temporary error occurred. Please try again later.">>,
-            menelaus_util:reply_json(Req, Msg, 503)
+              maybe_set_auth_audit_props(
+                maybe_store_rejected_user(User, Req), AuthAuditProps)),
+            menelaus_util:reply_json(
+              Req, temporary_failure_msg(AuthAuditProps), 503)
     end.
 
 uilogin_phase2(Req, UISessionType, UISessionName,
@@ -688,7 +707,10 @@ verify_rest_auth(Req, Permission) ->
             {auth_failure, Req4};
         {error, temporary_failure, AuthAuditProps} ->
             Req2 = maybe_set_auth_audit_props(Req, AuthAuditProps),
-            {temporary_failure, Req2};
+            Req3 = mochiweb_request:set_meta(
+                     temporary_failure_msg,
+                     temporary_failure_msg(AuthAuditProps), Req2),
+            {temporary_failure, Req3};
         {unfinished, RespHeaders} ->
             %% When mochiweb decides if it needs to close the connection
             %% it checks if body is "received" (and many other things)
@@ -1079,6 +1101,20 @@ maybe_store_auth_failure_reason(Req, AuditProps) ->
             Req
     end.
 
+-spec temporary_failure_msg(auth_audit_props()) -> binary().
+temporary_failure_msg(AuditProps) ->
+    case proplists:get_value(<<"reason">>, AuditProps) of
+        Reason when is_binary(Reason) ->
+            Reason;
+        _ ->
+            <<"Temporary error occurred. Please try again later.">>
+    end.
+
+-spec get_temporary_failure_msg(mochiweb_request()) -> binary().
+get_temporary_failure_msg(Req) ->
+    mochiweb_request:get_meta(temporary_failure_msg,
+                              temporary_failure_msg([]), Req).
+
 -spec get_auth_failure_reason(mochiweb_request()) -> binary() | undefined.
 get_auth_failure_reason(Req) ->
     mochiweb_request:get_meta(auth_failure_reason, undefined, Req).
@@ -1109,7 +1145,7 @@ allow_fallback_auth() ->
 
 -spec maybe_log_fallback_auth_success(
         Username :: rbac_user_id(),
-        Res :: {error, auth_failure, auth_audit_props()} |
+        Res :: {error, auth_failure | temporary_failure, auth_audit_props()} |
                {ok, #authn_res{}, [RespHeader], auth_audit_props()}) -> ok when
       RespHeader :: {string(), string()}.
 maybe_log_fallback_auth_success(Username, Res) ->
@@ -1124,3 +1160,33 @@ maybe_log_fallback_auth_success(Username, Res) ->
         _ ->
             ok
     end.
+
+-ifdef(TEST).
+authenticate_external_test() ->
+    Mods = [ns_node_disco, ns_config_auth, ns_server_stats, saslauthd_auth,
+            ldap_auth_cache],
+    meck:new(Mods, [non_strict, no_link]),
+    try
+        meck:expect(ns_node_disco, couchdb_node, fun () -> undefined end),
+        meck:expect(ns_config_auth, get_user, fun (admin) -> "admin" end),
+        meck:expect(ns_server_stats, notify_counter, fun (_) -> ok end),
+
+        Check = fun (Saslauthd, Ldap) ->
+                        meck:expect(saslauthd_auth, authenticate,
+                                    fun (_, _) -> Saslauthd end),
+                        meck:expect(ldap_auth_cache, authenticate,
+                                    fun (_, _) -> Ldap end),
+                        authenticate_external("user", "pass")
+                end,
+
+        ?assertEqual(
+           {error, temporary_failure,
+            [{<<"reason">>,
+              <<"External authentication service not reachable">>}]},
+           Check({error, unreachable}, false)),
+        ?assertMatch({ok, _, [], []}, Check({error, unreachable}, true)),
+        ?assertEqual({error, auth_failure, []}, Check(false, false))
+    after
+        meck:unload(Mods)
+    end.
+-endif.

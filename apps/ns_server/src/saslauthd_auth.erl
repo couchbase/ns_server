@@ -17,14 +17,21 @@
         ]).
 
 verify_creds(Username, Password) ->
-    case json_rpc_connection:perform_call("saslauthd-saslauthd-port", "SASLDAuth.Check",
-                                          {[{user, list_to_binary(Username)},
-                                            {password, list_to_binary(Password)}]}) of
+    try json_rpc_connection:perform_call(
+          "saslauthd-saslauthd-port", "SASLDAuth.Check",
+          {[{user, list_to_binary(Username)},
+            {password, list_to_binary(Password)}]}) of
         {ok, Resp} ->
             Resp =:= true;
+        %% saslauthd-port only returns errors when it fails to talk to saslauthd
         {error, ErrorMsg} ->
             ?log_error("Revrpc to saslauthd returned error: ~p", [ErrorMsg]),
-            false
+            {error, unreachable}
+    catch
+        %% saslauthd-port is not connected or went away during the call
+        exit:Reason ->
+            ?log_error("Revrpc to saslauthd failed: ~p", [Reason]),
+            {error, unreachable}
     end.
 
 build_settings() ->
@@ -40,6 +47,7 @@ build_settings() ->
 set_settings(Settings) ->
     ns_config:set(saslauthd_auth_settings, Settings).
 
+-spec authenticate(string(), string()) -> boolean() | {error, unreachable}.
 authenticate(Username, Password) ->
     case os:getenv("BYPASS_SASLAUTHD") of
         "1" ->
