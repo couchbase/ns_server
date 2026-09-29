@@ -14,7 +14,7 @@
 -include("ns_common.hrl").
 
 %% API
--export([start_recovery/2, commit_vbucket/4, stop_recovery/3]).
+-export([start_recovery/1, commit_vbucket/4, stop_recovery/3]).
 -export([recovery_status/1, recovery_map/3, is_recovery_running/0,
          get_status_from_config/0]).
 
@@ -40,9 +40,9 @@
                   __R
           end)).
 
-start_recovery(Bucket, FromPid) ->
+start_recovery(Bucket) ->
     {ok, Pid} = start_link(Bucket),
-    ?expect_exit(Pid, {error, _}, call(Pid, {start_recovery, Bucket, FromPid})).
+    ?expect_exit(Pid, {error, _}, call(Pid, {start_recovery, Bucket})).
 
 commit_vbucket(Pid, Bucket, UUID, VBucket) ->
     ?expect_exit(Pid, recovery_completed,
@@ -69,8 +69,8 @@ is_recovery_running() ->
     end.
 
 %% gen_server2 callbacks
-handle_call({start_recovery, Bucket, FromPid}, _From, undefined) ->
-    handle_start_recovery(Bucket, FromPid);
+handle_call({start_recovery, Bucket}, _From, undefined) ->
+    handle_start_recovery(Bucket);
 handle_call(recovery_status, _From, #state{bucket = Bucket,
                                            uuid   = UUID} = State) ->
     Map = get_recovery_map(State),
@@ -144,7 +144,7 @@ handle_commit_vbucket_post_apply(Bucket, VBucket, RecoveryState, State) ->
             {reply, ok, NewState}
     end.
 
-handle_start_recovery(Bucket, FromPid) ->
+handle_start_recovery(Bucket) ->
     try
         check_bucket(Bucket),
 
@@ -156,7 +156,6 @@ handle_start_recovery(Bucket, FromPid) ->
         ok = chronicle_master:activate_nodes(KVServers),
         ok = leader_activities:activate_quorum_nodes(KVServers),
 
-        sync_config(KVServers, FromPid),
         cleanup_old_buckets(KVServers),
         BucketConfig = prepare_bucket(Bucket, KVServers),
         complete_start_recovery(Bucket, BucketConfig, KVServers)
@@ -187,20 +186,6 @@ check_bucket(Bucket) ->
 
 get_failed_over_nodes() ->
     ns_cluster_membership:get_nodes_with_status(inactiveFailed).
-
-sync_config(Servers, FromPid) ->
-    FromPidNode = erlang:node(FromPid),
-    SyncServers = lists:usort([FromPidNode | Servers]),
-
-    case chronicle_compat:push(SyncServers) of
-        ok ->
-            ok;
-        {error, BadReplies} ->
-            ?log_error("Failed to "
-                       "synchronize config to some nodes: ~p", [BadReplies]),
-            BadNodes = [N || {N, _} <- BadReplies],
-            throw({error, {failed_nodes, BadNodes}})
-    end.
 
 cleanup_old_buckets(Servers) ->
     case ns_rebalancer:maybe_cleanup_old_buckets(Servers) of

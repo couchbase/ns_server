@@ -1298,8 +1298,8 @@ idle(stop_rebalance, From, _State) ->
               none
       end),
     {keep_state_and_data, [{reply, From, not_rebalancing}]};
-idle({start_recovery, Bucket}, {FromPid, _} = From, _State) ->
-    case recovery_server:start_recovery(Bucket, FromPid) of
+idle({start_recovery, Bucket}, From, _State) ->
+    case recovery_server:start_recovery(Bucket) of
         {ok, Pid, UUID, Map} ->
             {next_state, recovery, #recovery_state{pid = Pid},
              [{reply, From, {ok, UUID, Map}}]};
