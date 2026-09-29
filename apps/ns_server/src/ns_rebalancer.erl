@@ -1506,8 +1506,6 @@ perform_safety_checks(Nodes, InterestingBuckets) ->
 run_graceful_failover(Nodes, Opts) ->
     perform_safety_checks(Nodes),
 
-    config_push(ns_node_disco:nodes_wanted()),
-
     proc_lib:init_ack({ok, self()}),
 
     ok = leader_activities:run_activity(
