@@ -29,6 +29,10 @@
 %% Revisions of the previously fetched keys might be passed into set and
 %% set_multiple API's which guarantees that the API won't succeed if the
 %% revisions of the keys have changed since the keys were fetched.
+%%
+%% A watch hands its callback the current leaves it covers and then every change
+%% to them. Only leaves are reported, as directory entries change whenever a
+%% child is added or removed
 
 -module(chronicle_metakv).
 
@@ -49,6 +53,7 @@
          delete/1,
          delete_dir/2,
          sync_quorum/1,
+         watch_dir/4,
          invert_type/1]).
 
 -type key() :: list().
@@ -79,6 +84,8 @@
                                 {top_level_leaf, key()} |
                                 {cas, key(), revision()} |
                                 duplicate_keys}.
+
+-type watch_event() :: {key(), revision(), value() | deleted}.
 
 upgrade_to_79(_, _, _) ->
     case chronicle_agent:get_info_for_rsm(metakv) of
@@ -435,6 +442,80 @@ sync_quorum(Timeout) ->
     catch
         exit:{error, timeout} ->
             {error, timeout}
+    end.
+
+%% reports the leaves that get_dir/3 would return, followed by every change to a
+%% leaf in that range. never returns, see watch_loop/2
+-spec watch_dir(key(), boolean(), integer() | undefined,
+                fun ((watch_event()) -> any())) -> no_return().
+watch_dir(Dir, Recursive, Depth, Callback) when
+      (Recursive =:= false andalso Depth =:= undefined) orelse
+      (Recursive =:= true andalso (Depth =:= undefined orelse Depth > 0)) ->
+    MaxDepth = case {Recursive, Depth} of
+                   {false, _} ->
+                       1;
+                   {true, undefined} ->
+                       infinity;
+                   {true, _} ->
+                       Depth
+               end,
+    do_watch(in_dir(_, Dir, MaxDepth),
+          fun (Txn) ->
+                  case fetch_dir(Txn, Dir, Recursive, Depth) of
+                      {error, not_found} ->
+                          [];
+                      Content ->
+                          dir_leaves(Content)
+                  end
+          end, Callback).
+
+in_dir(Key, Dir, MaxDepth) ->
+    Level = length(Key) - length(Dir),
+    Level >= 1 andalso Level =< MaxDepth andalso lists:suffix(Dir, Key).
+
+dir_leaves({_Dir, {dir, [], _Rev}}) ->
+    [];
+dir_leaves({_Dir, {Entries, _Rev}}) when is_list(Entries) ->
+    lists:flatmap(fun dir_leaves/1, Entries);
+dir_leaves({Key, {Value, Rev}}) ->
+    [{Key, Rev, Value}].
+
+%% Subscribe before taking the snapshot, so that a change committed in between
+%% is not missed
+do_watch(Filter, Fetch, Callback) ->
+    Self = self(),
+    ns_pubsub:subscribe_link(
+      chronicle_kv:event_manager(metakv),
+      fun ({{key, {leaf, Key}}, Rev, Change}) ->
+              case Filter(Key) of
+                  true ->
+                      Self ! {watch_event, Key, Rev, Change};
+                  false ->
+                      ok
+              end;
+          (_) ->
+              ok
+      end),
+    {ok, {Leaves, SnapshotRev}} = chronicle_kv:ro_txn(metakv, Fetch),
+    lists:foreach(Callback, Leaves),
+    watch_loop(SnapshotRev, Callback).
+
+%% Any message other than a change ends the watch, as the caller has its socket
+%% in active mode so that a closed connection arrives here
+watch_loop({HistoryId, SnapshotSeqno} = SnapshotRev, Callback) ->
+    receive
+        {watch_event, _Key, {HistoryId, Seqno}, _Change}
+          when Seqno =< SnapshotSeqno ->
+            %% already reported as part of the snapshot
+            watch_loop(SnapshotRev, Callback);
+        {watch_event, Key, Rev, {updated, Stored}} ->
+            Callback({Key, Rev, Stored}),
+            watch_loop(SnapshotRev, Callback);
+        {watch_event, Key, Rev, deleted} ->
+            Callback({Key, Rev, deleted}),
+            watch_loop(SnapshotRev, Callback);
+        _ ->
+            erlang:exit(normal)
     end.
 
 -ifdef(TEST).
@@ -810,6 +891,119 @@ basic_test_() ->
                             test_set([key1, subkey1, root], v0, new, true)),
                ?assertMatch({ok, _}, test_delete_dir([root], true)),
                ?assertEqual({error, not_found}, get_dir([root], false))
+       end}]}.
+
+start_watch(Watch) ->
+    Self = self(),
+    Pid = spawn_link(fun () ->
+                             Watch(fun (Event) ->
+                                           Self ! {watched, Event}
+                                   end)
+                     end),
+    true = misc:poll_for_condition(
+             fun () ->
+                     gen_event:which_handlers(
+                       chronicle_kv:event_manager(metakv)) =/= []
+             end, 5000, 10),
+    Pid.
+
+stop_watch(Pid) ->
+    erlang:unlink(Pid),
+    misc:terminate_and_wait(Pid, shutdown).
+
+next_watched() ->
+    receive
+        {watched, Event} ->
+            Event
+    after 5000 ->
+            timeout
+    end.
+
+watch_test_() ->
+    {foreach,
+     fun setup/0,
+     fun teardown/1,
+     [{"watch_dir reports the snapshot, then changes to its own leaves",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Deeper = [key2, subkey2, subkey1, root],
+               Other = [key3, other, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Deeper, v2, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Other, v3, new, true)),
+
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+
+               %% an event already covered by the snapshot, which only a race
+               %% produces, so it is sent by hand
+               gen_event:notify(chronicle_kv:event_manager(metakv),
+                                {{key, {leaf, Key}},
+                                 chronicle_kv:get_revision(metakv),
+                                 {updated, stale}}),
+
+               %% neither is under the watch, which the next event being for Key
+               %% shows
+               ?assertMatch({ok, _, update},
+                            test_set(Deeper, v4, undefined, false)),
+               ?assertMatch({ok, _, update},
+                            test_set(Other, v4, undefined, false)),
+
+               {ok, UpdateRev, update} = test_set(Key, v5, undefined, false),
+               ?assertEqual({Key, UpdateRev, v5}, next_watched()),
+               {ok, DeleteRev} = test_delete(Key),
+               ?assertEqual({Key, DeleteRev, deleted}, next_watched()),
+               stop_watch(Pid)
+       end},
+      {"a recursive watch_dir follows get_dir depth",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Deeper = [key2, subkey2, subkey1, root],
+               Deepest = [key3, subkey3, subkey2, subkey1, root],
+               ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Deeper, v2, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Deepest, v3, new, true)),
+
+               Pid = start_watch(watch_dir([subkey1, root], true, 2, _)),
+               ?assertEqual(
+                  lists:sort([Key, Deeper]),
+                  lists:sort([K || {K, _, _} <- [next_watched(),
+                                                 next_watched()]])),
+
+               ?assertMatch({ok, _, update},
+                            test_set(Deepest, v4, undefined, false)),
+               {ok, Rev, update} = test_set(Deeper, v5, undefined, false),
+               ?assertEqual({Deeper, Rev, v5}, next_watched()),
+               stop_watch(Pid),
+
+               Pid1 = start_watch(watch_dir([subkey1, root], true, undefined,
+                                            _)),
+               ?assertEqual(
+                  lists:sort([Key, Deeper, Deepest]),
+                  lists:sort([K || {K, _, _} <- [next_watched(),
+                                                 next_watched(),
+                                                 next_watched()]])),
+               stop_watch(Pid1)
+       end},
+      {"watch_dir on a missing directory reports leaves once created",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+               stop_watch(Pid)
+       end},
+      {"watch stops on unexpected message",
+       fun() ->
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               Pid ! unexpected,
+               true = misc:poll_for_condition(
+                        fun() -> not is_process_alive(Pid) end,
+                        5000, 100)
        end}]}.
 
 -endif.

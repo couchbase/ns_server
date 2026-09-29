@@ -25,6 +25,9 @@
 %% thus making sure that API's will error out if the fetched revision
 %% of the same key is incompatible.
 %%
+%% GET /_metakv2/path/?feed=continuous streams the leaves the same request would
+%% list, and then every change to them
+%%
 %% For more details see the following document:
 %% https://docs.google.com/document/d/1J43NENn5NZ2Mf7h72cnVcgitvpidSJ5WFZSb_DKFggk
 
@@ -185,27 +188,16 @@ validate_depth(State) ->
               end
       end, depth, State).
 
-with_recursive(Fun, WithDepth, Req) ->
+with_recursive(Fun, Req) ->
     validator:handle(
       fun (Params) ->
-              Recursive = proplists:get_value(recursive, Params, false),
-              case WithDepth of
-                  true ->
-                      Fun({Recursive,
-                           proplists:get_value(depth, Params)});
-                  false ->
-                      Fun(Recursive)
-              end
+              Fun(proplists:get_value(recursive, Params, false))
       end, Req, qs,
-      [validator:boolean(recursive, _)] ++
-          case WithDepth of
-              true ->
-                  [validate_depth(_),
-                   validator:integer(depth, 1, infinity, _)];
-              false ->
-                  []
-          end ++
-          [validator:unsupported(_)]).
+      [validator:boolean(recursive, _),
+       validator:unsupported(_)]).
+
+feed_validators() ->
+    [validator:one_of(feed, ["continuous"], _)].
 
 handle_get(Path, Req) ->
     with_key(Path, Req, fun (Key) -> handle_get(Path, Req, Key) end).
@@ -213,20 +205,25 @@ handle_get(Path, Req) ->
 handle_get(Path, Req, Key) ->
     case is_directory(Path) of
         true ->
-            with_recursive(
-              fun ({Recursive, Depth}) ->
-                      case chronicle_metakv:get_dir(Key, Recursive, Depth) of
-                          {ok, {Content, SnapshotRev}} ->
-                              menelaus_util:reply_json(
-                                Req,
-                                {[{revision, encode_revision(SnapshotRev)},
-                                  {value, {[massage_directory_content(
-                                              Content)]}}]});
-                          {error, not_found} ->
-                              menelaus_util:reply_json(
-                                Req, not_found_reply(Key, dir), 404)
+            validator:handle(
+              fun (Params) ->
+                      Recursive = proplists:get_value(recursive, Params, false),
+                      Depth = proplists:get_value(depth, Params),
+                      case proplists:get_value(feed, Params) of
+                          undefined ->
+                              handle_get_dir(Req, Key, Recursive, Depth);
+                          _ ->
+                              handle_watch(
+                                Req, Path,
+                                chronicle_metakv:watch_dir(Key, Recursive,
+                                                           Depth, _))
                       end
-              end, true, Req);
+              end, Req, qs,
+              [validator:boolean(recursive, _),
+               validate_depth(_),
+               validator:integer(depth, 1, infinity, _)] ++
+                  feed_validators() ++
+                  [validator:unsupported(_)]);
         false ->
             case chronicle_metakv:get(Key) of
                 {ok, {Value, Revision}} ->
@@ -238,6 +235,40 @@ handle_get(Path, Req, Key) ->
                       Req, not_found_reply(Key, leaf), 404)
             end
     end.
+
+handle_get_dir(Req, Key, Recursive, Depth) ->
+    case chronicle_metakv:get_dir(Key, Recursive, Depth) of
+        {ok, {Content, SnapshotRev}} ->
+            menelaus_util:reply_json(
+              Req,
+              {[{revision, encode_revision(SnapshotRev)},
+                {value, {[massage_directory_content(Content)]}}]});
+        {error, not_found} ->
+            menelaus_util:reply_json(Req, not_found_reply(Key, dir), 404)
+    end.
+
+%% Streams one json object per leaf, the current ones first and then each
+%% change. The socket is made active so that the watch sees it close
+handle_watch(Req, Path, Watch) ->
+    HTTPRes = menelaus_util:reply_ok(Req, "application/json; charset=utf-8",
+                                     chunked),
+    ?metakv_debug("Starting watch of ~s", [Path]),
+    ok = mochiweb_socket:setopts(mochiweb_request:get(socket, Req),
+                                 [{active, true}]),
+    Watch(write_watch_event(HTTPRes, _)).
+
+write_watch_event(HTTPRes, {Key, Rev, Change}) ->
+    Fields = case Change of
+                 Value when Value =/= deleted ->
+                     [{value, Value}];
+                 deleted ->
+                     [{value, null}]
+             end,
+    Path = encode_path(Key, leaf),
+    ?metakv_debug("Sent ~s rev: ~p", [Path, Rev]),
+    mochiweb_response:write_chunk(
+      ejson:encode({[{path, Path}, {revision, encode_revision(Rev)}] ++
+                        Fields}), HTTPRes).
 
 validate_and_decode_path(Name, State) ->
     validator:validate(
@@ -332,7 +363,7 @@ handle_put(Path, Req, Key) ->
           [validator:unsupported(_)]).
 
 handle_post_set_multiple(Req) ->
-    with_recursive(handle_post_set_multiple(Req, _), false, Req).
+    with_recursive(handle_post_set_multiple(Req, _), Req).
 
 handle_post_set_multiple(Req, Recursive) ->
     validator:handle(
@@ -386,7 +417,7 @@ handle_delete(Path, Req, Key) ->
             with_recursive(
               ?cut(reply_delete_result(
                      Req, chronicle_metakv:delete_dir(Key, _),
-                     Key, Start, dir)), false, Req);
+                     Key, Start, dir)), Req);
         false ->
             reply_delete_result(Req, chronicle_metakv:delete(Key),
                                 Key, Start, leaf)

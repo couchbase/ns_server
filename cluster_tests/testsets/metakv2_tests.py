@@ -9,6 +9,7 @@
 
 import testlib
 import json
+import requests
 
 METAKV2_ENDPOINT = "/_metakv2"
 CONTROLLER_ENDPOINT = METAKV2_ENDPOINT + "/_controller"
@@ -140,6 +141,34 @@ def assert_value(resp, expected):
     testlib.assert_eq(v, expected, "value", resp)
     return r
 
+class Feed:
+    """Reads the json objects of a continuous feed as they arrive"""
+    def __init__(self, resp):
+        self.resp = resp
+        self.chunks = resp.iter_content(chunk_size=None)
+        self.decoder = json.JSONDecoder()
+        self.buf = ""
+
+    def next(self):
+        while True:
+            self.buf = self.buf.lstrip()
+            if self.buf:
+                try:
+                    obj, end = self.decoder.raw_decode(self.buf)
+                    self.buf = self.buf[end:]
+                    return obj
+                except json.JSONDecodeError:
+                    pass
+            self.buf += next(self.chunks).decode("utf-8")
+
+    def close(self):
+        self.resp.close()
+
+def assert_event(event, path, value):
+    testlib.assert_eq(event.get("path"), path, "path")
+    testlib.assert_eq(event.get("value"), value, "value")
+    assert "revision" in event, f"no revision in {event}"
+
 class Metakv2Tests(testlib.BaseTestSet):
     def __init__(self, cluster):
         super().__init__(cluster)
@@ -206,6 +235,21 @@ class Metakv2Tests(testlib.BaseTestSet):
 
         return testlib.request('DELETE', self.cluster,
                                METAKV2_ENDPOINT + key, params=params)
+
+    def metakv2_watch(self, key, recursive=False, depth=None):
+        params = {'feed': 'continuous'}
+        if recursive:
+            params['recursive']='true'
+        if depth is not None:
+            params['depth']=depth
+
+        # Not verbose, as that reads the whole body, which never ends. The
+        # timeout bounds each read, so that a missing event fails the test
+        resp = testlib.request('GET', self.cluster, METAKV2_ENDPOINT + key,
+                               params=params, stream=True, verbose=False,
+                               session=requests.Session(), timeout=10)
+        testlib.assert_http_code(200, resp)
+        return Feed(resp)
 
     def assert_dir_content(self, dir, expected, recursive=True, depth=None):
         resp = self.metakv2_get(dir, recursive=recursive, depth=depth)
@@ -580,3 +624,79 @@ class Metakv2Tests(testlib.BaseTestSet):
         # the read as well, so the directory is the only witness: it exists
         # only if one of the calls above created it.
         assert_not_found(self.metakv2_get(dir))
+
+    def watch_dir_test(self):
+        key = "/root/subdir/key1"
+        deeper = "/root/subdir/subdir1/key2"
+        other = "/root/other/key3"
+        new = "/root/subdir/key4"
+
+        assert_created(self.metakv2_put(key, value="v1", create=True,
+                                        recursive=True))
+        assert_created(self.metakv2_put(deeper, value="v2", create=True,
+                                        recursive=True))
+        assert_created(self.metakv2_put(other, value="v3", create=True,
+                                        recursive=True))
+
+        feed = self.metakv2_watch("/root/subdir/")
+        try:
+            assert_event(feed.next(), key, "v1")
+
+            # Neither is under the watch, which the next event arriving being
+            # the one for key shows
+            assert_updated(self.metakv2_put(deeper, value="v20"))
+            assert_updated(self.metakv2_put(other, value="v30"))
+
+            assert_updated(self.metakv2_put(key, value="v10"))
+            assert_event(feed.next(), key, "v10")
+
+            assert_deleted(self.metakv2_delete(key))
+            assert_event(feed.next(), key, None)
+
+            assert_created(self.metakv2_put(new, value="v4", create=True))
+            assert_event(feed.next(), new, "v4")
+        finally:
+            feed.close()
+
+        feed = self.metakv2_watch("/root/", recursive=True, depth=2)
+        try:
+            testlib.assert_eq({feed.next()["path"], feed.next()["path"]},
+                              {new, other}, "paths")
+            assert_updated(self.metakv2_put(deeper, value="v200"))
+            assert_updated(self.metakv2_put(other, value="v300"))
+            assert_event(feed.next(), other, "v300")
+        finally:
+            feed.close()
+
+    def watch_subscribers(self):
+        resp = testlib.diag_eval(
+            self.cluster,
+            "length(gen_event:which_handlers("
+            "chronicle_kv:event_manager(metakv))).")
+        return int(resp.text.strip())
+
+    def watch_ends_with_connection_test(self):
+        before = self.watch_subscribers()
+        feed = self.metakv2_watch("/root/")
+        testlib.poll_for_condition(
+            lambda: self.watch_subscribers() == before + 1, sleep_time=0.1,
+            timeout=10, msg="watch to subscribe")
+        feed.close()
+        testlib.poll_for_condition(
+            lambda: self.watch_subscribers() == before, sleep_time=0.1,
+            timeout=10, msg="watch to unsubscribe once the client has gone")
+
+    def watch_missing_dir_test(self):
+        key = "/root/missing/key1"
+        feed = self.metakv2_watch("/root/missing/")
+        try:
+            assert_created(self.metakv2_put(key, value="v1", create=True,
+                                            recursive=True))
+            assert_event(feed.next(), key, "v1")
+        finally:
+            feed.close()
+
+    def watch_bad_feed_test(self):
+        resp = testlib.request('GET', self.cluster, METAKV2_ENDPOINT + "/root/",
+                               params={'feed': 'normal'})
+        testlib.assert_http_code(400, resp)
