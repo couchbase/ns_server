@@ -211,6 +211,16 @@ config_push(Nodes) ->
             exit({config_sync_failed, Error})
     end.
 
+%% Starting from Ponyo rebalance_agent on the delta nodes pulls the config
+%% itself.
+maybe_config_push_to_delta_nodes(DeltaNodes) ->
+    case cluster_compat_mode:is_cluster_ponyo() of
+        true ->
+            ok;
+        false ->
+            config_push(DeltaNodes)
+    end.
+
 check_rebalance_condition(Check, Error) ->
     check_test_condition(Error) =:= ok orelse throw({error, Error}),
     Check() orelse throw({error, Error}).
@@ -1361,7 +1371,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
     {ok, UpdatedRelevantBuckets} =
         ns_bucket:update_bucket_overrides_for_delta_recovery(RelevantBuckets,
                                                              DeltaNodes),
-    config_push(DeltaNodes),
+    maybe_config_push_to_delta_nodes(DeltaNodes),
 
     UpdatedCurrentBuckets = lists:foldl(
                               fun({BN, UBC}, Acc) ->
@@ -1376,7 +1386,7 @@ apply_delta_recovery_buckets(DeltaRecoveryBuckets, DeltaNodes, CurrentBuckets) -
     ok = ns_bucket:update_buckets_for_delta_recovery(TransitionalBuckets,
                                                      DeltaNodes),
 
-    config_push(DeltaNodes),
+    maybe_config_push_to_delta_nodes(DeltaNodes),
     complete_delta_recovery(DeltaNodes),
 
     ok = check_test_condition(apply_delta_recovery),

@@ -196,7 +196,8 @@ handle_unprepare_rebalance(Pid, State) ->
 
 handle_prepare_delta_recovery(Pid, Buckets, State) ->
     case functools:sequence_([?cut(check_rebalancer_pid(Pid, State)),
-                              ?cut(check_no_delta_recovery(State))]) of
+                              ?cut(check_no_delta_recovery(State)),
+                              fun sync_config/0]) of
         ok ->
             case ns_bucket_worker:start_transient_buckets(Buckets) of
                 {ok, Ref} ->
@@ -264,7 +265,8 @@ handle_prepare_delta_recovery_result(Bucket, From, Result, State) ->
 
 handle_complete_delta_recovery(Pid, State) ->
     case functools:sequence_([?cut(check_rebalancer_pid(Pid, State)),
-                              ?cut(check_delta_recovery_completed(State))]) of
+                              ?cut(check_delta_recovery_completed(State)),
+                              fun sync_config/0]) of
         ok ->
             Statuses    = stop_transient_buckets(State),
             BadStatuses = [{B, S} || {B, S} <- Statuses, S =/= running],
@@ -321,6 +323,19 @@ check_rebalancer_pid(Pid, State) ->
             ok;
         false ->
             {error, {bad_rebalancer_pid, RebalancerPid, Pid}}
+    end.
+
+%% Starting from Ponyo the rebalancer doesn't push the config to the delta
+%% nodes, so make sure we see its bucket updates before (re)starting the
+%% buckets.
+sync_config() ->
+    try chronicle_compat:pull() of
+        ok ->
+            ok
+    catch
+        T:E ->
+            ?log_error("Failed to sync chronicle config: ~p", [{T, E}]),
+            {error, {config_sync_failed, {T, E}}}
     end.
 
 check_no_delta_recovery(#state{delta_recovery = undefined}) ->
