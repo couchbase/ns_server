@@ -1,8 +1,32 @@
-case os:getenv("NS_SERVER_VERSION") of
-    false -> CONFIG;
-    [] -> CONFIG;
-    Version ->
-        [{application, ns_server, Props}] = CONFIG,
-        NewProps = lists:keystore(vsn, 1, Props, {vsn, Version}),
-        [{application, ns_server, NewProps}]
-end.
+%% NS_SERVER_VERSION and NS_SERVER_IS_ENTERPRISE are passed by CMake.  Both
+%% may be unset, so that rebar can still be run by hand (e.g. `rebar tree`).
+%%
+%% The edition is a property of the build rather than derived from {vsn, ...},
+%% which is free to change with the product name; see
+%% ns_config_default:is_enterprise_build/0.  Anything other than true or false
+%% fails the build rather than silently demoting the node to community.
+SetVsn =
+fun (Props) ->
+        case os:getenv("NS_SERVER_VERSION") of
+            false -> Props;
+            [] -> Props;
+            Version -> lists:keystore(vsn, 1, Props, {vsn, Version})
+        end
+end,
+SetEdition =
+fun (Props) ->
+        case os:getenv("NS_SERVER_IS_ENTERPRISE") of
+            false -> Props;
+            [] -> Props;
+            Value when Value =:= "true"; Value =:= "false" ->
+                Env = proplists:get_value(env, Props, []),
+                NewEnv = lists:keystore(is_enterprise, 1, Env,
+                                        {is_enterprise,
+                                         list_to_atom(Value)}),
+                lists:keystore(env, 1, Props, {env, NewEnv});
+            Other ->
+                erlang:error({bad_ns_server_is_enterprise, Other})
+        end
+end,
+[{application, ns_server, Props}] = CONFIG,
+[{application, ns_server, SetEdition(SetVsn(Props))}].
