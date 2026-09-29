@@ -41,5 +41,9 @@
   % processes and then itself.
 
   {env, [{max_r, 20},
-         {max_t, 10}]}
+         {max_t, 10},
+         % Whether this is an enterprise edition build. Declared by CMake
+         % rather than derived from {vsn, ...}, which is free to change with
+         % the product name; see ns_config_default:is_enterprise_build/0.
+         {is_enterprise, @NS_SERVER_IS_ENTERPRISE@}]}
  ]}.

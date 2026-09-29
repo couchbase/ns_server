@@ -14,6 +14,7 @@ import shlex
 import socket
 import fnmatch
 import platform
+import re
 import errno
 import shutil
 import requests
@@ -86,28 +87,32 @@ def setup_extra_ns_server_app_file(force_community, start_index):
             raise
 
     if force_community:
-        found_enterprise = False
         with open(f"{ns_server_dir}/_build/default/lib/ns_server/ebin/"
                   f"ns_server.app", "r") as src_f:
-            lines = src_f.readlines()
+            content = src_f.read()
 
-        lines_out = ""
-        for line in lines:
-            # The way to change Enterprise edition to Community edition is to
-            # simply change the "vsn" in the ns_server app.
-            if "vsn" in line and "enterprise" in line:
-                line = line.replace("enterprise", "community")
-                # Ensure only one line containing "vsn" and "enterprise".
-                assert found_enterprise is False
-                found_enterprise = True
-            lines_out = lines_out + line
+        # The way to change Enterprise edition to Community edition is to clear
+        # the "is_enterprise" application env, which is where the edition is
+        # declared; see ns_config_default:is_enterprise_build/0.
+        #
+        # Assert on the term's presence rather than on the rewrite: a community
+        # build carries {is_enterprise,false} and so has nothing to substitute,
+        # which is indistinguishable from the term having been renamed or
+        # reshaped -- and that would leave --force-community silently doing
+        # nothing.
+        assert len(re.findall(r"\{\s*is_enterprise\s*,", content)) == 1
+        content_out, substitutions = re.subn(
+            r"\{\s*is_enterprise\s*,\s*true\s*\}", "{is_enterprise,false}",
+            content)
+        # No substitution means the build is already community.
+        found_enterprise = substitutions == 1
 
         if found_enterprise:
             # Any errors here are "real" so we want exceptions thrown
             os.makedirs(extra_ebin_path)
 
             with open(f"{extra_ebin_path}/ns_server.app", "w") as dst_f:
-                dst_f.write(lines_out)
+                dst_f.write(content_out)
 
             returned_path = extra_ebin_path
 

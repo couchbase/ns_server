@@ -494,6 +494,14 @@ is_compatible_product_test() ->
     after
         meck:unload(config_profile)
     end.
+
+%% 'prod' is the identifier compared when a node joins a cluster, so it has to
+%% survive a rebrand that changes 'prod_name'.  Compared against literals
+%% rather than against the macros so that changing a macro's value fails here,
+%% where the reason is written down, rather than in a mixed-version cluster.
+prod_is_frozen_test() ->
+    ?assertEqual("server", ?DEFAULT_PROD),
+    ?assertEqual("analytics", ?ANALYTICS_PROD).
 -endif.
 
 preserve_durable_mutations() ->
