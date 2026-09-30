@@ -33,6 +33,7 @@ dcp_test_setup(#{nodes := Nodes,
                  connections := Conns} = _SetupCfg) ->
     fake_ns_config:setup(),
     fake_chronicle_kv:setup(),
+    fake_chronicle_kv:update_snapshot(nodes_wanted, [node()]),
 
     set_conn_count_for_buckets(Buckets, Conns),
 

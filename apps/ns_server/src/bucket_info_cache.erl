@@ -707,7 +707,8 @@ verify_compatibility_test() ->
     BC = [{servers, [node()]},
           {type, membase},
           {num_replicas, 1}],
-    Snap = #{{bucket, "testBucket",uuid} => 157},
+    Snap = #{{bucket, "testBucket",uuid} => 157,
+             nodes_wanted => {[node()], 1}},
     SnapRev = {hello, 77},
 
     try

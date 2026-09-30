@@ -377,6 +377,8 @@ create_report_test_() ->
      fun () ->
              fake_ns_config:setup(),
              fake_chronicle_kv:setup(),
+             %% keeps ns_doctor from polling the mocked ns_heart
+             fake_chronicle_kv:update_snapshot(nodes_wanted, []),
              PidMap1 = mock_helpers:setup_mocks([ns_heart]),
              {ok, NsDoctorPid} = ns_doctor:start_link(),
              PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},

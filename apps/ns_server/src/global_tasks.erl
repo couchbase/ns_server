@@ -461,9 +461,9 @@ cleanup_test__() ->
     meck:expect(chronicle_compat, get,
                 fun(direct, tasks, #{required := true}) -> ExistingTasks;
                    (#{tasks := {T, _}}, tasks, #{required := true}) -> T;
-                   (direct, nodes_wanted, #{default := _}) -> WantedNodes;
+                   (direct, nodes_wanted, #{required := true}) -> WantedNodes;
                    (#{nodes_wanted := {NW, _}}, nodes_wanted,
-                      #{default := _}) ->
+                      #{required := true}) ->
                         NW
                 end),
     %% Confirm that expired tasks are removed
@@ -479,7 +479,7 @@ cleanup_test__() ->
     %% Confirm that chronicle_compat:transaction isn't called for no change
     meck:expect(chronicle_compat, get,
                 fun(direct, tasks, #{required := true}) -> TasksToKeep;
-                   (direct, nodes_wanted, #{default := _}) -> WantedNodes
+                   (direct, nodes_wanted, #{required := true}) -> WantedNodes
                 end),
     meck:expect(chronicle_compat, transaction,
                 fun([tasks, nodes_wanted], _) -> error(unexpected_call) end),

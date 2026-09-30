@@ -2377,7 +2377,7 @@ set_map_and_uploaders(Bucket, Map, MapOpts, Uploaders) ->
     end.
 
 validate_map_with_node_names(Snapshot, Servers) ->
-    Nodes = chronicle_compat:get(Snapshot, nodes_wanted, #{default => []}),
+    Nodes = chronicle_compat:get(Snapshot, nodes_wanted, #{required => true}),
     ordsets:is_subset(ordsets:from_list(Servers), ordsets:from_list(Nodes)).
 
 validate_init_map_trans(BucketName, Snapshot, Servers) ->

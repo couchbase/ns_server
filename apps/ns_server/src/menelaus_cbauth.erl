@@ -857,6 +857,9 @@ setup_t() ->
 
     fake_ns_config:setup(),
     fake_chronicle_kv:setup(),
+    %% ns_node_disco reads nodes_wanted on start
+    fake_chronicle_kv:update_snapshot(#{nodes_wanted => [node()],
+                                        bucket_names => []}),
     %% Test setups return a map of pids for later shutdown in the teardown
     PidMap = mock_helpers:setup_mocks([json_rpc_events,
                                        ns_node_disco,
@@ -871,8 +874,6 @@ setup_t() ->
 
     %% Set config values for a few keys, since these are needed for greater
     %% coverage, and to avoid errors
-    fake_chronicle_kv:update_snapshot(#{nodes_wanted => [node()],
-                                        bucket_names => []}),
     fake_ns_config:update_snapshot([{rest, [{port, 8091}]},
                                     {rest_creds, placeholder},
                                     {memcached, [{admin_user, "user"},

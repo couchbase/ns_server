@@ -140,7 +140,8 @@ nodes_wanted() ->
     nodes_wanted(direct).
 
 nodes_wanted(Snapshot) ->
-    lists:usort(chronicle_compat:get(Snapshot, nodes_wanted, #{default => []})).
+    lists:usort(chronicle_compat:get(Snapshot, nodes_wanted,
+                                     #{required => true})).
 
 server_groups() ->
     server_groups(direct).
