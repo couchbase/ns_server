@@ -7,7 +7,7 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 
-%% @doc Internal REST API for configuring telemetry reporting
+%% @doc REST API for configuring and triggering telemetry reporting
 
 -module(menelaus_web_telemetry).
 
@@ -18,6 +18,7 @@
 %% API
 -export([handle_get_settings/2,
          handle_post_settings/2,
+         handle_post_test_report/1,
          handle_ingest/1]).
 
 %%%===================================================================
@@ -67,6 +68,31 @@ apply_props(Path, NewProps, Req) ->
     ns_config:set(telemetry_reporter:config_key(),
                   maps:from_list(MergedProps)),
     handle_get_settings(Path, Req).
+
+handle_post_test_report(Req) ->
+    menelaus_web_settings2:handle_post(
+      test_props(_, _), [], params_internal(), fun type_spec/1, Req).
+
+test_props(NewProps, Req) ->
+    OldProps = maps:to_list(telemetry_reporter:build_settings()),
+    MergedProps = menelaus_web_settings2:apply_changes(OldProps, NewProps),
+    case telemetry_reporter:push_report(maps:from_list(MergedProps)) of
+        success ->
+            menelaus_util:reply(Req, 200);
+        {failure, Reason} ->
+            menelaus_util:reply_global_error(
+                Req, [<<"Failed to send telemetry report: ">>, Reason]);
+        {error, report_in_progress} ->
+            menelaus_util:reply_global_error(
+                Req, <<"Report currently in progress">>);
+        {error, disabled} ->
+            menelaus_util:reply_global_error(
+                Req, <<"Not attempting to send telemetry as reporting is "
+                "disabled">>);
+        {error, unsupported} ->
+            menelaus_util:reply_global_error(
+                Req, <<"Not supported until all nodes are upgraded">>)
+    end.
 
 handle_ingest(Req) ->
     validator:handle(

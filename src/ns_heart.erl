@@ -498,7 +498,7 @@ status_slow_setup() ->
       #{node() => {active, [backup, cbas, eventing, fts, index, n1ql]}}),
     fake_ns_config:update_snapshot({node, node(), database_dir}, "/"),
     meck:expect(ns_disksup, get_disk_data, fun () -> [{"/", 1, 2}] end),
-    mock_helpers:setup_mocks([ns_heart]).
+    mock_helpers:setup_mocks([ns_heart_sup]).
 
 status_slow_teardown(PidMap) ->
     mock_helpers:teardown(PidMap),

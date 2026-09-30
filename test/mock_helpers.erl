@@ -134,7 +134,7 @@ ns_rebalance_report_manager(PidMap) ->
 
 ns_orchestrator(PidMap) ->
     PidMap0 = setup_mocks([ns_janitor_server,
-                           ns_doctor,
+                           ns_doctor_sup,
                            ns_rebalance_report_manager,
                            testconditions],
                           PidMap),
@@ -200,7 +200,7 @@ buckets_events(PidMap) ->
     {ok, BucketEventsPid} = gen_event:start_link({local, ?FUNCTION_NAME}),
     PidMap#{?FUNCTION_NAME => BucketEventsPid}.
 
-ns_heart(PidMap0) ->
+ns_heart_sup(PidMap0) ->
     fake_chronicle_kv:update_snapshot(#{bucket_names => []}),
     ns_config_auth:set_admin_credentials(foo, "bar"),
     PidMap1 = mock_helpers:setup_mocks([prometheus_cfg,
@@ -212,8 +212,13 @@ ns_heart(PidMap0) ->
                                         sigar,
                                         ns_disksup,
                                         buckets_events], PidMap0),
-    {ok, NsHeartPid} = ?FUNCTION_NAME:start_link(),
-    PidMap1#{?FUNCTION_NAME => NsHeartPid}.
+    {ok, NsHeartSupPid} = ?FUNCTION_NAME:start_link(),
+    PidMap1#{?FUNCTION_NAME => NsHeartSupPid}.
+
+ns_doctor_sup(PidMap0) ->
+    PidMap1 = mock_helpers:setup_mocks([ns_heart_sup], PidMap0),
+    {ok, NsDoctorSupPid} = ?FUNCTION_NAME:start_link(),
+    PidMap1#{?FUNCTION_NAME => NsDoctorSupPid}.
 
 ns_server_stats(PidMap0) ->
     os:putenv("NS_SERVER_BABYSITTER_PID", os:getpid()),
@@ -301,12 +306,7 @@ leader_activities(PidMap) ->
                         Body()
                 end),
     meck:expect(?FUNCTION_NAME, deactivate_quorum_nodes,
-            fun(_) -> ok end),
-    PidMap#{?FUNCTION_NAME => mocked}.
-
-ns_doctor(PidMap) ->
-    meck:new(?FUNCTION_NAME),
-    meck:expect(?FUNCTION_NAME, get_nodes, fun() -> [] end),
+                fun(_) -> ok end),
     PidMap#{?FUNCTION_NAME => mocked}.
 
 rebalance_quirks(PidMap) ->
