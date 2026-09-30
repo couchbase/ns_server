@@ -887,7 +887,7 @@ alert_keys_unique_test() ->
 config_upgrade_to_76_test() ->
     %% We need the config initialised, since this upgrade depends on the
     %% memory_alert_{email|popup} keys, not just email_alerts
-    ns_config:test_setup([{email_alerts, []}]),
+    ns_config:test_setup(#{email_alerts => []}),
 
     Config =
         [[{email_alerts,

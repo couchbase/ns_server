@@ -585,6 +585,7 @@ ssl_server_opts() ->
         ssl_auth_options(CertAuth) ++
         server_verify_fun_opt(CertAuth) ++
         server_reuse_session_opt(CertAuth) ++
+        tls12_session_resumption_opt() ++
             [{keyfile, pkey_file_path(node_cert)},
              {certfile, chain_file_path(node_cert)},
              {versions, Versions},
@@ -650,14 +651,28 @@ server_verify_fun_opt(_CertAuth) ->
 %% cert auth like verify_fun: with 'disable' no cached session can carry a
 %% client certificate.
 %%
-%% reuse_sessions stays at OTP's default (true): the fun re-reads the CRL policy
-%% per call, while a static option would be stuck with the policy in effect when
-%% the listener started (a CRL config change restarts nothing).
+%% Since ssl 11.6.0.5 (OTP 28.5.0.6) reuse_sessions defaults to false under
+%% verify_peer, pending Extended Master Secret support, so the fun only matters
+%% if resumption is turned back on, see tls12_session_resumption_opt/0.
 -spec server_reuse_session_opt(CertAuth :: atom()) -> list().
 server_reuse_session_opt(disable) ->
     [];
 server_reuse_session_opt(_CertAuth) ->
     [{reuse_session, cb_crl:reuse_tls12_session_fun(client_auth)}].
+
+%% Unset leaves reuse_sessions at the OTP default, which depends on verify.
+-spec tls12_session_resumption_opt() -> list().
+tls12_session_resumption_opt() ->
+    case tls12_session_resumption() of
+        undefined -> [];
+        Enabled -> [{reuse_sessions, Enabled}]
+    end.
+
+tls12_session_resumption() ->
+    case ns_config:read_key_fast(tls12_session_resumption, undefined) of
+        V when is_boolean(V) -> V;
+        _ -> undefined
+    end.
 
 tls_client_opts(Config, PresetOpts) ->
     RawTLSOptions =
@@ -953,6 +968,8 @@ handle_config_change(honor_cipher_order, Parent) ->
 handle_config_change(secure_headers, Parent) ->
     Parent ! secure_headers_changed;
 handle_config_change({security_settings, ns_server}, Parent) ->
+    Parent ! security_settings_changed;
+handle_config_change(tls12_session_resumption, Parent) ->
     Parent ! security_settings_changed;
 handle_config_change({node, _Node, address_family}, Parent) ->
     Parent ! afamily_requirement_changed;
@@ -1625,7 +1642,8 @@ do_notify_service(cb_dist_client_cert) ->
 security_settings_state() ->
     {ssl_minimum_protocol(ns_server),
      honor_cipher_order(ns_server),
-     ns_server_ciphers()}.
+     ns_server_ciphers(),
+     tls12_session_resumption()}.
 
 -ifdef(TEST).
 extract_user_name_test() ->
@@ -1844,7 +1862,8 @@ assert_client_generated(Version, #{server_config := SConf},
 %% must consult the reuse_session fun on every TLS 1.2 resumption attempt, and a
 %% false answer must turn into a full handshake on the same connection - the
 %% only place verify_fun runs.  Stand-ins for cb_crl's reuse_tls12_session_fun/1
-%% and verify_fun/1 keep CRL infrastructure out of it.
+%% and verify_fun/1 keep CRL infrastructure out of it.  reuse_sessions is set
+%% explicitly since OTP defaults it to false under verify_peer.
 reuse_session_forces_full_handshake_test_() ->
     {timeout, 60, fun reuse_session_forces_full_handshake/0}.
 
@@ -1880,7 +1899,7 @@ reuse_session_forces_full_handshake() ->
                end,
     Base = [{ip, {127, 0, 0, 1}}, {active, false}, {versions, ['tlsv1.2']}],
     ServerOpts = [{reuseaddr, true}, {verify, verify_peer},
-                  {fail_if_no_peer_cert, true},
+                  {fail_if_no_peer_cert, true}, {reuse_sessions, true},
                   {verify_fun, {VerifyFun, undefined}},
                   {reuse_session, ReuseFun} | SConf],
     {ok, LSock} = ssl:listen(0, Base ++ ServerOpts),

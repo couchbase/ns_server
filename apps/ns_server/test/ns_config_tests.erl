@@ -73,7 +73,9 @@ mk_config(DynamicKVList) ->
     mk_config(DynamicKVList, []).
 
 mk_config(DynamicKVList, Static) ->
-    ns_config:mk_config(DynamicKVList, #config{static = Static}).
+    ns_config:set_config_dynamic(
+      #config{static = Static},
+      maps:from_list(DynamicKVList)).
 
 %% load_config merges static and the defaults into dynamic, so a bare static
 %% {x,1} plus the generated node uuid is all that should be there.
@@ -173,22 +175,22 @@ test_search_node() ->
 merge_kv_pairs_dynamic_test() ->
     ?assertEqual({#{y => 1}, []},
                  ns_config:merge_kv_pairs(
-                   [],
-                   [{y,1}],
+                   #{},
+                   #{y => 1},
                    <<"uuid">>)),
     ?assertEqual({#{y => 1}, []},
                  ns_config:merge_kv_pairs(
-                   [{y,1}],
-                   [],
+                   #{y => 1},
+                   #{},
                    <<"uuid">>)),
 
     Strip = fun (L) -> #{K => ns_config:strip_metadata(V) || K := V <- L} end,
 
-    {NewKVList0, Touched0} = ns_config:merge_kv_pairs([{y,1}, {a,a}],
-                                                      [{y,2}, {b,b}],
-                                                      <<"uuid">>),
+    {NewKVMap0, Touched0} = ns_config:merge_kv_pairs(#{y => 1, a => a},
+                                                     #{y => 2, b => b},
+                                                     <<"uuid">>),
 
-    NewKVMap = Strip(NewKVList0),
+    NewKVMap = Strip(NewKVMap0),
     Touched = lists:sort(Touched0),
 
     ?assertEqual(#{y => 1, a => a, b => b}, NewKVMap),
@@ -203,30 +205,30 @@ merge_kv_pairs_vclock_test() ->
            y => [{?METADATA_VCLOCK,VClock}, yy]},
     ?assertEqual({X0, []},
                  ns_config:merge_kv_pairs(
-                   [],
-                   [{y,[{?METADATA_VCLOCK,VClock}, yy]}, {x,1}],
+                   #{},
+                   #{y => [{?METADATA_VCLOCK,VClock}, yy], x => 1},
                    <<"uuid">>)),
     X2 = #{x => 1,
            y => [{?METADATA_VCLOCK,VClocka1}, y2]},
     ?assertEqual({X2, []},
                  ns_config:merge_kv_pairs(
-                   [{y,[{?METADATA_VCLOCK,VClock}, y1]}, {x,1}],
-                   [{y,[{?METADATA_VCLOCK,VClocka1}, y2]}],
+                   #{y => [{?METADATA_VCLOCK,VClock}, y1], x => 1},
+                   #{y => [{?METADATA_VCLOCK,VClocka1}, y2]},
                    <<"uuid">>)),
     X3 = #{x => [{?METADATA_VCLOCK,VClockab1}, x1],
            y => [{?METADATA_VCLOCK,VClocka2}, y2]},
     ?assertEqual({X3, []},
                  ns_config:merge_kv_pairs(
-                   [{x,[{?METADATA_VCLOCK,VClockab1}, x1]},
-                    {y,[{?METADATA_VCLOCK,VClocka1}, y1]}],
-                   [{y,[{?METADATA_VCLOCK,VClocka2}, y2]},
-                    {x,[{?METADATA_VCLOCK,VClocka1}, x2]}],
+                   #{x => [{?METADATA_VCLOCK,VClockab1}, x1],
+                     y => [{?METADATA_VCLOCK,VClocka1}, y1]},
+                   #{y => [{?METADATA_VCLOCK,VClocka2}, y2],
+                     x => [{?METADATA_VCLOCK,VClocka1}, x2]},
                    <<"uuid">>)),
     ok.
 
 merge_kv_pairs_timestamps_test() ->
-    X0 = [{x, [{'_vclock', [{<<"uuid">>, {1, 10}}]}, {data, 1}]}],
-    X1 = [{x, [{'_vclock', [{<<"uuid">>, {1, 11}}]}, {data, 2}]}],
+    X0 = #{x => [{'_vclock', [{<<"uuid">>, {1, 10}}]}, {data, 1}]},
+    X1 = #{x => [{'_vclock', [{<<"uuid">>, {1, 11}}]}, {data, 2}]},
     {MergedLeft, TouchedLeft} = ns_config:merge_kv_pairs(X0, X1, <<"uuid">>),
     ?assertEqual({value, [{data, 2}]}, ns_config:search([MergedLeft], x)),
     ?assertEqual([x], TouchedLeft),
@@ -240,10 +242,10 @@ merge_kv_pairs_timestamps_test() ->
 
 merge_kv_pairs_same_value_test() ->
     V0 = [{<<"a">>, {1, 10}}],
-    X0 = [{x, [{'_vclock', V0}, {data, 1}]}],
+    X0 = #{x => [{'_vclock', V0}, {data, 1}]},
 
     V1 = [{<<"b">>, {1, 11}}],
-    X1 = [{x, [{'_vclock', V1}, {data, 1}]}],
+    X1 = #{x => [{'_vclock', V1}, {data, 1}]},
 
     {R1, [x]} = ns_config:merge_kv_pairs(X0, X1, <<"a">>),
     {R2, [x]} = ns_config:merge_kv_pairs(X1, X0, <<"b">>),
@@ -305,8 +307,9 @@ test_save_config() ->
     assert_loaded_config(R),
     {ok, E} = R,
     Dynamic = ns_config:get_kv_list_with_config(E),
-    X = ns_config:mk_config(misc:update_proplist(Dynamic, [{x,2},{y,3}]),
-                            E#config{policy_mod = ?MODULE}),
+    X = ns_config:set_config_dynamic(
+          E#config{policy_mod = ?MODULE},
+          maps:from_list(misc:update_proplist(Dynamic, [{x,2},{y,3}]))),
     ?assertEqual(ok, ns_config:save_config_sync(X, test_dir(), undefined)),
     R2 = ns_config:load_config(CP, test_dir(), ?MODULE, undefined),
     ?assertMatch({ok, X}, R2),
@@ -423,8 +426,8 @@ data_file(Name) -> filename:join([test_dir(), Name]).
 decrypt(Config) ->
     Config.
 
-%% Every case must agree with New -- Old, which diff_kvlists replaces.
-diff_kvlists_cases() ->
+%% Every case must agree with New -- Old, which diff_dynamic_config replaces.
+diff_dynamic_config_cases() ->
     [{[], []},
      {[], [{a, 1}]},
      {[{a, 1}], []},
@@ -435,8 +438,12 @@ diff_kvlists_cases() ->
      {[{a, 1}], [{a, 1.0}]},
      {[{a, [{'_vclock', v1}, x]}], [{a, [{'_vclock', v0}, x]}]}].
 
-diff_kvlists_test() ->
+diff_dynamic_config_test() ->
     lists:foreach(
       fun ({New, Old}) ->
-              ?assertEqual(New -- Old, ns_config:diff_kvlists(New, Old))
-      end, diff_kvlists_cases()).
+              ?assertEqual(New -- Old,
+                           maps:to_list(
+                             ns_config:diff_dynamic_config(
+                               maps:from_list(New),
+                               maps:from_list(Old))))
+      end, diff_dynamic_config_cases()).

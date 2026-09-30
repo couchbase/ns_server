@@ -274,7 +274,7 @@ default(Vsn) ->
        {fusion_sync_rate_limit, 1024 * 1024 * 75},
        {fusion_num_uploader_threads, 4},
        {fusion_num_migrator_threads, 4},
-       {fusion_max_pending_upload_bytes, 250 * 1024 * 1024},
+       {fusion_max_pending_upload_bytes, 0},
        {fusion_max_pending_upload_bytes_lwm_percentage, 60},
        {dcp_consumer_max_marker_version, <<"2.2">>},
        {dcp_snapshot_marker_hps_enabled, true},
@@ -667,7 +667,8 @@ test_all_upgrades() ->
     Default = default(?LATEST_VERSION_NUM),
     KVs = misc:update_proplist(Default, [{{node, node(), config_version},
                                           get_min_supported_version()}]),
-    Cfg = ns_config:mk_config(KVs, #config{uuid = <<"uuid">>}),
+    Cfg = ns_config:set_config_dynamic(#config{uuid = <<"uuid">>},
+                                       maps:from_list(KVs)),
     UpgradedCfg = ns_config:upgrade_config(Cfg, fun upgrade_config/1),
 
     UpgradedKVs = [{K, ns_config:strip_metadata(V)} ||

@@ -64,6 +64,17 @@
 -define(_assertBinStringsEqual(Expect, Expr),
         ?_test(?assertBinStringsEqual(Expect, Expr))).
 
+%% Compare ns_config key/value collections ignoring vclocks and any other
+%% metadata attached to the values
+-define(assertConfigEqualsMap(A, B),
+        ?assertEqual(#{K => ns_config:strip_metadata(V) || K := V <- A},
+                     #{K => ns_config:strip_metadata(V) || K := V <- B})).
+
+-define(assertConfigEqualsList(A, B),
+        ?assertEqual(
+           lists:sort([{K, ns_config:strip_metadata(V)} || {K, V} <- A]),
+           lists:sort([{K, ns_config:strip_metadata(V)} || {K, V} <- B]))).
+
 -define(MECK_WAIT_TIMEOUT, 100).
 
 

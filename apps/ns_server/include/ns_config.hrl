@@ -41,7 +41,7 @@
 
 -type ns_config() :: #config{} | [kvlist()] | ?NS_CONFIG_LATEST_MARKER.
 
--type run_txn_return() :: {commit, [kvlist()]}
-                        | {commit, [kvlist()], any()}
+-type run_txn_return() :: {commit, map()}
+                        | {commit, map(), any()}
                         | {abort, any()}
                         | retry_needed.

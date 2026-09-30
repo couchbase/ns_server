@@ -518,8 +518,9 @@ merge_remote_configs(Fun, Payloads) ->
                 true ->
                     do_push_local(
                       misc:compress(
-                        ns_config:diff_kvlists(maps:to_list(NewKVMap),
-                                               maps:to_list(LocalKVMap)))),
+                        maps:to_list(
+                          ns_config:diff_dynamic_config(NewKVMap,
+                                                        LocalKVMap)))),
                     ok;
                 _ ->
                     ?log_warning("config cas failed. Retrying", []),
@@ -527,11 +528,11 @@ merge_remote_configs(Fun, Payloads) ->
             end
     end.
 
-do_merge_one_remote_config(UUID, RemoteKVMap, AccKVList, AccTouched) ->
+do_merge_one_remote_config(UUID, RemoteKVMap, AccKVMap, AccTouched) ->
     %% Make sure that tombstones that we might have already purged don't get
     %% replicated to us again.
     PurgedKVMap = tombstone_agent:purge_kvmap(RemoteKVMap),
-    {Merged, Touched} = ns_config:merge_kv_pairs(PurgedKVMap, AccKVList, UUID),
+    {Merged, Touched} = ns_config:merge_kv_pairs(PurgedKVMap, AccKVMap, UUID),
     {Merged, ordsets:union(AccTouched, Touched)}.
 
 

@@ -610,7 +610,7 @@ setup_t() ->
     meck:expect(cluster_compat_mode, is_cluster_76, fun () -> true end),
     meck:expect(cluster_compat_mode, is_cluster_79, fun () -> true end),
 
-    ns_config:test_setup([]),
+    ns_config:test_setup(#{}),
     {ok, Pid} = start_link(),
 
     User = "testuser",
@@ -618,7 +618,7 @@ setup_t() ->
     Nonce = gen_nonce(),
 
     Auth = menelaus_users:build_regular_auth(Passwords, false),
-    ns_config:test_setup([{rest_creds, {User, {auth, Auth}}}]),
+    ns_config:test_setup(#{rest_creds => {User, {auth, Auth}}}),
     {User, Passwords, Nonce, Pid}.
 
 cleanup_t({_, _, _, Pid}) ->

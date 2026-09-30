@@ -9,6 +9,7 @@
 -module(ns_config_mock_tests).
 -include_lib("eunit/include/eunit.hrl").
 -include("ns_config.hrl").
+-include("ns_test.hrl").
 -compile(nowarn_export_all).
 -compile(export_all).
 
@@ -75,11 +76,11 @@ test_basic() ->
 
 test_multiple_saves() ->
     Self = self(),
-    Cfg0 = ns_config:mk_config(
-             [{a,1},{b,1}],
+    Cfg0 = ns_config:set_config_dynamic(
              #config{saver_mfa = {ns_config, send_config, [Self]},
                      saver_pid = undefined,
-                     pending_more_save = false}),
+                     pending_more_save = false},
+             #{a => 1, b => 1}),
 
     AssertNoCallResponses = fun () ->
                                 receive
@@ -134,10 +135,6 @@ test_multiple_saves() ->
         100 -> ok
     end.
 
--define(assertConfigEquals(A, B),
-        ?assertEqual(lists:sort([{K, ns_config:strip_metadata(V)} || {K,V} <- A]),
-                     lists:sort([{K, ns_config:strip_metadata(V)} || {K,V} <- B]))).
-
 test_set() ->
     Self = self(),
     meck:expect(ns_config, handle_call,
@@ -148,28 +145,31 @@ test_set() ->
     ns_config:set(test, 1),
     Updater0 = (fun () -> receive {update_with_changes, F} -> F end end)(),
 
-    ?assertConfigEquals([{test, 1}], element(2, Updater0([], <<"uuid">>))),
-    {[{test, [{'_vclock', _} | 1]}], Val2} = Updater0([{foo, 2}], <<"uuid">>),
-    ?assertConfigEquals([{test, 1}, {foo, 2}], Val2),
+    ?assertConfigEqualsMap(#{test => 1}, element(2, Updater0(#{}, <<"uuid">>))),
+    {#{test := TestVal2}, Val2} = Updater0(#{foo => 2}, <<"uuid">>),
+    ?assertMatch([{'_vclock', _} | 1], TestVal2),
+    ?assertConfigEqualsMap(#{test => 1, foo => 2}, Val2),
 
     %% and here we're changing value, so expecting vclock
-    {[{test, [{'_vclock', [_]} | 1]}], Val3} =
-        Updater0([{foo, [{k, 1}, {v, 2}]},
-                  {xar, true},
-                  {test, [{a, b}, {c, d}]}], <<"uuid">>),
+    {#{test := TestVal3}, Val3} =
+        Updater0(#{foo => [{k, 1}, {v, 2}],
+                   xar => true,
+                   test => [{a, b}, {c, d}]}, <<"uuid">>),
+    ?assertMatch([{'_vclock', [_]} | 1], TestVal3),
 
-    ?assertConfigEquals([{foo, [{k, 1}, {v, 2}]},
-                         {xar, true},
-                         {test, 1}], Val3),
+    ?assertConfigEqualsMap(#{foo => [{k, 1}, {v, 2}],
+                             xar => true,
+                             test => 1}, Val3),
 
     SetVal1 = [{suba, true}, {subb, false}],
     ns_config:set(test, SetVal1),
     Updater1 = (fun () -> receive {update_with_changes, F} -> F end end)(),
 
-    {[{test, SetVal1Actual1}], Val4} = Updater1([{test, [{suba, false}, {subb, true}]}], <<"uuid2">>),
+    {#{test := SetVal1Actual1}, Val4} =
+        Updater1(#{test => [{suba, false}, {subb, true}]}, <<"uuid2">>),
     ?assertMatch([{'_vclock', [{<<"uuid2">>, _}]} | SetVal1], SetVal1Actual1),
     ?assertEqual(SetVal1, ns_config:strip_metadata(SetVal1Actual1)),
-    ?assertMatch([{test, SetVal1Actual1}], Val4).
+    ?assertEqual(#{test => SetVal1Actual1}, Val4).
 
 test_cas_config() ->
     Self = self(),
@@ -201,27 +201,29 @@ do_test_cas_config(Self) ->
             exit(missing_cas_config_msg)
     end,
 
-    Config = ns_config:mk_config(
-               [{a,1},{b,1}],
+    Config = ns_config:set_config_dynamic(
                #config{saver_mfa = {?MODULE, send_config, [Self]},
                        saver_pid = {Self, fun (_) -> ok end},
-                       pending_more_save = {true, fun (_) -> ok end}}),
-    DynamicConfig = ns_config:get_kv_list_with_config(Config),
+                       pending_more_save = {true, fun (_) -> ok end}},
+               #{a => 1, b => 1}),
+    DynamicConfig = ns_config:get_kv_map(Config),
 
-    ?assertEqual([{a,1},{b,1}], lists:sort(DynamicConfig)),
+    ?assertEqual(#{a => 1, b => 1}, DynamicConfig),
 
     meck:delete(ns_config, handle_call, 3),
-    {reply, true, NewConfig} = ns_config:handle_call({cas_config, [{a,2}], [],
-                                                      DynamicConfig, remote}, [], Config),
-    NewDynamicConfig = ns_config:get_kv_list_with_config(NewConfig),
+    {reply, true, NewConfig} =
+        ns_config:handle_call({cas_config, #{a => 2}, [], DynamicConfig,
+                               remote}, [], Config),
+    NewDynamicConfig = ns_config:get_kv_map(NewConfig),
     NewPendingSave = NewConfig#config.pending_more_save,
     ?assertEqual(NewConfig,
-                 ns_config:mk_config(
-                   NewDynamicConfig,
-                   Config#config{pending_more_save = NewPendingSave})),
-    ?assertEqual([{a,2}], NewDynamicConfig),
-    {reply, false, NewConfig} = ns_config:handle_call({cas_config, [{a,3}], [],
-                                                       DynamicConfig, remote}, [], NewConfig).
+                 ns_config:set_config_dynamic(
+                   Config#config{pending_more_save = NewPendingSave},
+                   NewDynamicConfig)),
+    ?assertEqual(#{a => 2}, NewDynamicConfig),
+    {reply, false, NewConfig} =
+        ns_config:handle_call({cas_config, #{a => 3}, [], DynamicConfig,
+                               remote}, [], NewConfig).
 
 test_update() ->
     Self = self(),
@@ -236,13 +238,13 @@ test_update() ->
                           end
                   end,
 
-    OldConfig = [{dont_change, 1},
-                 {erase, 2},
-                 {list_value, [{'_vclock', [{'n@never-really-possible-hostname', {1, 12345}}]},
-                               {a, b}, {c, d}]},
-                 {a, 3},
-                 {b, 4},
-                 {delete, 5}],
+    OldConfig = #{dont_change => 1,
+                  erase => 2,
+                  list_value => [{'_vclock', [{'n@never-really-possible-hostname', {1, 12345}}]},
+                                 {a, b}, {c, d}],
+                  a => 3,
+                  b => 4,
+                  delete => 5},
     ns_config:update(fun ({dont_change, _}) ->
                              skip;
                          ({erase, _}) ->
@@ -258,13 +260,12 @@ test_update() ->
     {Changes, Erased, NewConfig, _} = Updater(OldConfig, <<"uuid">>),
 
     ?assertEqual(Erased, [erase]),
-    ?assertConfigEquals(Changes ++ [{dont_change, 1}],
-                        NewConfig),
-    ?assertEqual(lists:keyfind(dont_change, 1, Changes), false),
+    ?assertConfigEqualsMap(Changes#{dont_change => 1}, NewConfig),
+    ?assertNot(maps:is_key(dont_change, Changes)),
 
-    ?assertEqual(lists:sort([dont_change, list_value, a, b, delete]), lists:sort(proplists:get_keys(NewConfig))),
+    ?assertEqual(lists:sort([dont_change, list_value, a, b, delete]), lists:sort(maps:keys(NewConfig))),
 
-    {list_value, [{'_vclock', Clocks} | ListValues]} = lists:keyfind(list_value, 1, NewConfig),
+    [{'_vclock', Clocks} | ListValues] = maps:get(list_value, NewConfig),
 
     ?assertEqual({'n@never-really-possible-hostname', {1, 12345}},
                  lists:keyfind('n@never-really-possible-hostname', 1, Clocks)),
@@ -272,22 +273,22 @@ test_update() ->
 
     ?assertEqual([[{a, b}, {c, d}], {a, b}, {c, d}], ListValues),
 
-    ?assertEqual(-3, ns_config:strip_metadata(proplists:get_value(a, NewConfig))),
-    ?assertEqual(-4, ns_config:strip_metadata(proplists:get_value(b, NewConfig))),
+    ?assertEqual(-3, ns_config:strip_metadata(maps:get(a, NewConfig))),
+    ?assertEqual(-4, ns_config:strip_metadata(maps:get(b, NewConfig))),
 
     ?assertMatch({0, [{<<"uuid">>, _}]},
-                 ns_config:extract_vclock(proplists:get_value(a, NewConfig))),
+                 ns_config:extract_vclock(maps:get(a, NewConfig))),
     ?assertMatch({0, [{<<"uuid">>, _}]},
-                 ns_config:extract_vclock(proplists:get_value(b, NewConfig))),
+                 ns_config:extract_vclock(maps:get(b, NewConfig))),
     ?assertMatch({0, [{<<"uuid">>, _}]},
-                 ns_config:extract_vclock(proplists:get_value(delete,
-                                                              NewConfig))),
+                 ns_config:extract_vclock(maps:get(delete, NewConfig))),
 
     ?assertEqual(false, ns_config:search([NewConfig], delete)),
 
     ns_config:update_key(a, fun (3) -> 10 end),
     Updater2 = RecvUpdater(),
-    {[{a, [{'_vclock', [_]} | 10]}], NewConfig2} = Updater2(OldConfig, <<"uuid">>),
+    {#{a := AVal}, NewConfig2} = Updater2(OldConfig, <<"uuid">>),
+    ?assertMatch([{'_vclock', [_]} | 10], AVal),
 
-    ?assertConfigEquals([{a, 10} | lists:keydelete(a, 1, OldConfig)], NewConfig2),
+    ?assertConfigEqualsMap(OldConfig#{a => 10}, NewConfig2),
     ok.
