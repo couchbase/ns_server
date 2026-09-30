@@ -1342,15 +1342,16 @@ def get_testsets_by_names(test_names, discovered_list):
             test_list = sorted(test_list + upgrade_names)
             msg = f"Testset '{class_name}' is not found."
             similar = find_similar_tests(class_name, test_list,
+                                         max_suggestions=3,
                                          context='testset')
             if similar:
                 if len(similar) == 1:
                     msg += f"\n\nDid you mean {similar[0]}?"
                 else:
                     msg += f"\n\nDid you mean one of: {', '.join(similar)}?"
-            msg += "\n\nAvailable testsets:\n"
-            for t in test_list:
-                msg += f"  - {t}\n"
+            # Not the whole list: it runs to hundreds of lines and scrolls
+            # the message itself off the screen.
+            msg += "\n\nRun with --list to see all testsets."
             raise ValueError(msg)
 
         testset, tests, configurations = discovered_dict[class_name]
@@ -1362,6 +1363,7 @@ def get_testsets_by_names(test_names, discovered_list):
                 msg = f"Test '{test_name}' is not found " \
                       f"in testset '{class_name}'."
                 similar = find_similar_tests(test_name, tests,
+                                             max_suggestions=3,
                                              context='test')
                 if similar:
                     if len(similar) == 1:
@@ -1369,9 +1371,9 @@ def get_testsets_by_names(test_names, discovered_list):
                     else:
                         msg += (f"\n\nDid you mean one of: "
                                 f"{', '.join(similar)}?")
-                msg += f"\n\nAvailable tests in {class_name}:\n"
-                for t in tests:
-                    msg += f"  - {t}\n"
+                # Not every test: a testset that generates its tests can have
+                # enough to scroll the message off the screen.
+                msg += "\n\nRun with --list to see all tests."
                 raise ValueError(msg)
 
             if class_name in results:
