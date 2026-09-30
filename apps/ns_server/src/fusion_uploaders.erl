@@ -7,10 +7,19 @@
 %% will be governed by the Apache License, Version 2.0, included in the file
 %% licenses/APL2.txt.
 %%
-%% Monitor and maintain the vbucket layout of each bucket.
-%% There is one of these per bucket.
+%% @doc Fusion uploaders placement and cluster-wide fusion state management.
 %%
-%% @doc code for calculating fusion uploaders during the rebalance
+%% Each vbucket of a fusion enabled bucket has one uploader: the node that
+%% streams its data to the log store, tagged with a term that is bumped on
+%% every change so the log store can reject rogue uploaders. Uploaders are
+%% kept on active vbuckets and moved along with them during rebalance and
+%% failover.
+%%
+%% The module also drives the fusion state machine (both cluster-wide and
+%% per bucket) through enable, disable and stop commands, and advances the
+%% transitional states (enabling, disabling, stopping) once uploader stats
+%% from the nodes show that they are complete. It also manages fusion
+%% storage snapshots used by fusion rebalance.
 %%
 
 -module(fusion_uploaders).
@@ -23,8 +32,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--export([place_uploaders_on_actives/0,
-         build_fast_forward_info/5,
+-export([build_fast_forward_info/3,
          build_initial/1,
          get_moves/1,
          get_current/1,
@@ -77,9 +85,6 @@
             ale:info(?USER_LOGGER, "Fusion state changed to ~p", [State])
         end).
 
--define(PLACE_UPLOADERS_ON_ACTIVES,
-        ?get_param(place_uploaders_on_actives, true)).
-
 %% incremented starting from 1 with each uploader change
 %% The purpose of Term is to help
 %% s3 to recognize rogue uploaders and ignore them.
@@ -106,35 +111,20 @@
 -export_type([fast_forward_info/0, uploaders/0, enable_error/0,
               disable_or_stop_error/0, bucket_state/0, state/0]).
 
--spec place_uploaders_on_actives() -> boolean().
-place_uploaders_on_actives() ->
-    ?PLACE_UPLOADERS_ON_ACTIVES.
-
 -spec build_fast_forward_info(ns_bucket:name(), ns_bucket:config(),
-                              vbucket_map(), vbucket_map(), integer()) ->
+                              vbucket_map()) ->
           undefined | fast_forward_info().
-build_fast_forward_info(Bucket, BucketConfig, Map, FastForwardMap, NServers) ->
+build_fast_forward_info(Bucket, BucketConfig, FastForwardMap) ->
     case ns_bucket:get_fusion_state(BucketConfig) of
         enabled ->
             Current = ns_bucket:get_fusion_uploaders(Bucket),
-            Moves =
-                case place_uploaders_on_actives() of
-                    true ->
-                        build_on_actives(FastForwardMap, Current, moves);
-                    false ->
-                        calculate_moves(
-                          Bucket, Map, FastForwardMap, Current,
-                          allowance(Map, NServers))
-                end,
+            Moves = build_on_actives(FastForwardMap, Current, moves),
             ?rebalance_info("Calculated fusion uploader moves. Moves:~n~p",
                             [Moves]),
             {Moves, Current};
         _ ->
             undefined
     end.
-
-allowance(Map, NServers) ->
-    length(Map) div NServers + 1.
 
 -spec build_initial(vbucket_map()) -> uploaders().
 build_initial(VBucketMap) ->
@@ -182,213 +172,6 @@ get_discontinuous_uploaders(Map, Uploaders, CurrentMap) ->
                       end
               end
       end, Zipped).
-
-%% uploader becomes discontinuous if it is moved to a node that was not
-%% filled from s3, so basically to any node that is not a current uploader
-%% and is present in old chain
-%%
-%% we calculate uploader moves doing the best effort to minimize
-%% the number of discontinuous uploaders and distribute uploaders evenly
-%% between nodes
-%%
-%% parameter Allowance restricts how many uploaders can be
-%% started from each node thus defining how much unbalance
-%% we are ready to tolerate for the sake of avoiding discontinuous uploaders
-%%
-%% The algorithm works as such:
-%% 1. Sort the candidates so the candidates with less choice are
-%%    processed earlier
-%% 2. Move through the sorted list of vbuckets and out of the array
-%%    of candidates for vbucket choose the one with lesser usage.
-%%    After the choice is made, increment the usage for the chosen node.
-%% 3. If the node with less usage still had reached the allowance, traverse
-%%    the list of vbuckets from the beginning, reconsidering earlier made
-%%    choices with the node of interest being excluded.
-%% 4. If some choice had changed, adjust the nodes usage accordingly
-%%    and return at the position in the list where uploader is
-%%    still not chosen. (back to #2)
-%% 5. If it is not possible to free the usage for a node with least
-%%    usage, allow the node still to be chosen as an uploader
-%%    exceeding the allowance, thus resulting in unbalanced map.
-calculate_moves(Bucket, Map, FastForwardMap, CurrentUploaders, Allowance) ->
-    ?log_debug("Calculate moves for bucket ~p~nmap:~n~p~nffmap:~n~p~nuploaders"
-               "~n~p~nallowance:~p",
-               [Bucket, Map, FastForwardMap, CurrentUploaders, Allowance]),
-    Zipped = lists:zip3(Map, FastForwardMap, [N || {N, _} <- CurrentUploaders]),
-    build_uploaders(Bucket, Zipped, CurrentUploaders, Allowance, moves).
-
-candidates({OldChain, NewChain, UploaderNode}) ->
-    NewChainNoUndefineds = mb_map:only_defined(NewChain),
-    Continuous = NewChainNoUndefineds -- lists:delete(UploaderNode, OldChain),
-    Discontinuous = NewChainNoUndefineds -- Continuous,
-    Choices = case Continuous of
-                  [] ->
-                      Discontinuous;
-                  _ ->
-                      Continuous
-              end,
-    {[Choices], length(Choices)};
-candidates({NodesWithUploadedData, Chain}) ->
-    Discontinuous = Chain -- [N || {N, _, _} <- NodesWithUploadedData],
-    %% each node with data is a list of one here, because we want
-    %% the term and seqno to prevail over usage during the uploader
-    %% selection
-    Continuous =
-        [[N] || {N, _, _} <- lists:sort(
-                               fun ({_, TermA, SeqnoA}, {_, TermB, SeqnoB}) ->
-                                       {TermA, SeqnoA} > {TermB, SeqnoB}
-                               end, NodesWithUploadedData)],
-    Choices = case Continuous of
-                  [] ->
-                      length(Discontinuous);
-                  _ ->
-                      length(Continuous)
-              end,
-    {Continuous ++ [Discontinuous], Choices}.
-
-select_uploader(Bucket, VBucket, Candidates, {CurrentUploader, Term} = CU,
-                Usage, Allowance) ->
-    case do_select_uploader(Candidates, Usage, Allowance) of
-        {ok, Uploader} ->
-            NewUsage = maps:update_with(Uploader, _ + 1, 1, Usage),
-            ?log_debug("Selected uploader ~p for bucket ~p, vbucket ~p "
-                       "from ~p, current uploader: ~p, usage ~p",
-                       [Uploader, Bucket, VBucket, Candidates, CU,
-                        maps:get(Uploader, NewUsage)]),
-            NewUploaderTerm =
-                case Uploader of
-                    CurrentUploader ->
-                        CU;
-                    _ ->
-                        {Uploader, Term + 1}
-                end,
-            {ok, NewUploaderTerm, NewUsage};
-        undefined ->
-            undefined
-    end.
-
-do_select_uploader([], _Usage, _Allowance) ->
-    undefined;
-do_select_uploader([Candidates | Rest], Usage, Allowance) ->
-    Allowed =
-        case Allowance of
-            undefined ->
-                Candidates;
-            _ ->
-                lists:filter(?cut(maps:get(_, Usage, 0) < Allowance),
-                             Candidates)
-        end,
-    case Allowed of
-        [] ->
-            do_select_uploader(Rest, Usage, Allowance);
-        _ ->
-            {_, Winner} =
-                lists:min([{maps:get(N, Usage, 0), N} || N <- Allowed]),
-            {ok, Winner}
-    end.
-
-build_uploaders(Bucket, Infos, CurrentUploaders, Allowance, OutputFormat) ->
-    ?log_debug("Building uploaders for bucket ~p~ninfos:~n~p~n"
-               "uploaders:~n~p~nallowance:~p,format:~p",
-               [Bucket, Infos, CurrentUploaders, Allowance, OutputFormat]),
-    CandidatesList = lists:map(fun candidates/1, Infos),
-
-    %% zip together vbucket numbers, candidates and current uploaders
-    %% so the info can be processed for each vbucket
-    Zipped = misc:enumerate(lists:zip(CandidatesList, CurrentUploaders), 0),
-
-    %% the algorithm processes the vbuckets with the least number
-    %% of uploader candidates first in order to have more choice
-    %% at the end when Usage approaches Allowance
-    Sorted = lists:sort(
-               fun ({_, {{_, ChoicesA}, _}}, {_, {{_, ChoicesB}, _}}) ->
-                       ChoicesA < ChoicesB
-               end, Zipped),
-    ?log_debug("Process following candidates for bucket ~p:~n~p",
-               [Bucket, Sorted]),
-
-    {WithUploaders, FinalUsage} =
-        process_candidates(Bucket, Allowance, #{}, Sorted, []),
-
-    ?log_debug("Selected following uploaders for bucket ~p:~n~p~nUsage:~n~p",
-               [Bucket, [{I, U} || {I, _, U} <- WithUploaders], FinalUsage]),
-
-    %% return calculated moves or uploaders in vbucket number order
-    lists:map(
-      fun ({_, {_, UploaderTerm}, UploaderTerm}) ->
-                  case OutputFormat of
-                      moves ->
-                          same;
-                      uploaders ->
-                          UploaderTerm
-                  end;
-          ({_, {_, _}, UploaderTerm}) ->
-              UploaderTerm
-      end, lists:sort(WithUploaders)).
-
-process_candidates(_, _, Usage, [], Acc) ->
-    {Acc, Usage};
-process_candidates(
-  Bucket, Allowance, Usage,
-  [{VBucket,
-    {{Candidates, _Choices}, CurrentUploaderTerm} = VBInfo} | Rest] =
-      CurrentAndRest,
-  Acc) ->
-    case select_uploader(Bucket, VBucket, Candidates, CurrentUploaderTerm,
-                         Usage, Allowance) of
-        {ok, NewUploaderTerm, NewUsage} ->
-            process_candidates(Bucket, Allowance, NewUsage, Rest,
-                               [{VBucket, VBInfo, NewUploaderTerm} | Acc]);
-        undefined ->
-            [Nodes | _] = Candidates,
-            ?log_debug("Need to free usage for the following nodes ~p for "
-                       "bucket ~p, vbucket ~p", [Nodes, Bucket, VBucket]),
-            case free_nodes(Nodes, Bucket, Allowance, Usage, Acc, []) of
-                {ok, NewAcc, NewUsage} ->
-                    process_candidates(
-                      Bucket, Allowance, NewUsage, CurrentAndRest, NewAcc);
-                fail ->
-                    ?log_debug(
-                       "Unable to pick a winner for bucket ~p among ~p with "
-                       "allowance = ~p, usage = ~p~nIgnore allowance.",
-                       [Bucket, Candidates, Allowance, Usage]),
-                    {ok, NewUploaderTerm, NewUsage} =
-                        select_uploader(Bucket, VBucket, Candidates,
-                                        CurrentUploaderTerm, Usage, undefined),
-                    process_candidates(
-                      Bucket, Allowance, NewUsage, Rest,
-                      [{VBucket, VBInfo, NewUploaderTerm} | Acc])
-            end
-    end.
-
-free_nodes(_, _, _, _, [], _) ->
-    fail;
-free_nodes(Nodes, Bucket, Allowance, Usage, [VBInfo | Rest], Acc) ->
-    case free_node(Nodes, Bucket, Allowance, Usage, VBInfo) of
-        {ok, NewUsage, NewVBInfo} ->
-            {ok, [NewVBInfo | Acc] ++ Rest, NewUsage};
-        skip ->
-            free_nodes(Nodes, Bucket, Allowance, Usage, Rest, [VBInfo | Acc])
-    end.
-
-free_node([], _Bucket, _Allowance, _Usage, _VBInfo) ->
-    skip;
-free_node([Node | Rest], Bucket, Allowance, Usage,
-          {VBucket, {{Candidates, Choices}, CurrentUploaderTerm},
-           {Node, _}} = VBInfo) ->
-    TrimmedCandidates = [C -- [Node] || C <- Candidates],
-    case select_uploader(Bucket, VBucket, TrimmedCandidates,
-                         CurrentUploaderTerm, Usage, Allowance) of
-        {ok, NewUploaderTerm, NewUsage} ->
-            NewUsage1 = maps:update_with(Node, _ - 1, NewUsage),
-            {ok, NewUsage1,
-             {VBucket, {{Candidates, Choices}, CurrentUploaderTerm},
-              NewUploaderTerm}};
-        undefined ->
-            free_node(Rest, Bucket, Allowance, Usage, VBInfo)
-    end;
-free_node([_Node | Rest], Bucket, Allowance, Usage, VBInfo) ->
-    free_node(Rest, Bucket, Allowance, Usage, VBInfo).
 
 -spec fail_nodes(uploaders(), [node()]) -> uploaders().
 fail_nodes(Uploaders, FailedNodes) ->
@@ -468,82 +251,20 @@ txn_update_state_set(Txn, State) ->
 update_state_set(Config, State) ->
     {set, config_key(), lists:keystore(state, 1, Config, {state, State})}.
 
-re_enable_uploaders(Bucket, NServers, Map, Uploaders) ->
-    case janitor_agent:get_fusion_sync_info(Bucket, Map) of
-        {error, Error} ->
-            {error, Error};
-        {ok, NodesInfo} ->
-            VBInfosArray =
-                lists:foldl(
-                  fun ({Node, VBSyncInfo}, Acc) ->
-                          lists:foldl(
-                            fun ({VB, Term, Seqno}, Acc1) ->
-                                    array:set(VB, [{Node, Term, Seqno} |
-                                                   array:get(VB, Acc1)], Acc1)
-                            end, Acc, VBSyncInfo)
-                  end, array:new(length(Map), {default, []}), NodesInfo),
-            VBInfos = array:to_list(VBInfosArray),
-            Allowance = allowance(Map, NServers),
-            ?log_debug("The following information was retrieved from bucket "
-                       "~p~n~p~nCurrent uploaders: ~p~nAllowance: ~p",
-                       [Bucket, VBInfos, Uploaders, Allowance]),
-            {ok, build_uploaders(Bucket, lists:zip(VBInfos, Map), Uploaders,
-                                 Allowance, uploaders)}
-    end.
-
 calculate_bucket_uploaders(Bucket, BucketConfig) ->
     case proplists:get_value(map, BucketConfig, []) of
         [] ->
             %% bucket map not yet properly initialized
             %% this case will be handled by janitor
-            {ok, undefined};
+            undefined;
         Map ->
             case ns_bucket:get_fusion_uploaders(Bucket) of
                 not_found ->
                     %% this bucket was never enabled for fusion
-                    {ok, build_initial(Map)};
+                    build_initial(Map);
                 Uploaders ->
-                    case place_uploaders_on_actives() of
-                        true ->
-                            {ok, build_on_actives(Map, Uploaders, uploaders)};
-                        false ->
-                            place_uploaders_on_actives_or_replicas(
-                              Bucket, BucketConfig, Map, Uploaders)
-                    end
+                    build_on_actives(Map, Uploaders, uploaders)
             end
-    end.
-
-place_uploaders_on_actives_or_replicas(Bucket, BucketConfig, Map, Uploaders) ->
-    case ns_bucket:is_fusion(BucketConfig) of
-        false ->
-            %% fusion was disabled on this bucket which means
-            %% that data is erased. therefore start from
-            %% scratch, but do not go lower or equal to
-            %% existing terms
-            Zipped = lists:zip(build_initial(Map), Uploaders),
-            {ok, lists:map(
-                   fun ({{Node, _}, {Node, Term}}) ->
-                           {Node, Term};
-                       ({{Node, _}, {_, Term}}) ->
-                           {Node, Term + 1}
-                   end, Zipped)};
-        true ->
-            %% fusion was stopped for this bucket
-            %% rebuild uploaders according to existing data
-            %% trying to minimize the initial upload
-            re_enable_uploaders(
-              Bucket, length(ns_bucket:get_servers(BucketConfig)),
-              Map, Uploaders)
-    end.
-
-calculate_uploaders([], Acc) ->
-    {ok, lists:reverse(Acc)};
-calculate_uploaders([{Bucket, BucketConfig} | Rest], Acc) ->
-    case calculate_bucket_uploaders(Bucket, BucketConfig) of
-        {error, _} = E ->
-            E;
-        {ok, Uploaders} ->
-            calculate_uploaders(Rest, [{Bucket, Uploaders} | Acc])
     end.
 
 -spec advance_terms(uploaders()) -> uploaders().
@@ -608,7 +329,9 @@ command({enable, BucketNames}) ->
         ?log_debug("Enabling fusion for buckets ~p",
                    [ns_bucket:get_bucket_names(BucketsToEnable)]),
 
-        {ok, BucketUploaders} ?= calculate_uploaders(BucketsToEnable, []),
+        BucketUploaders =
+            [{Bucket, calculate_bucket_uploaders(Bucket, BucketConfig)} ||
+                {Bucket, BucketConfig} <- BucketsToEnable],
         [?log_debug("Setting uploaders for bucket ~p:~n~p",
                     [BucketName, Uploaders]) ||
             {BucketName, Uploaders} <- BucketUploaders],
@@ -1420,97 +1143,5 @@ validate_buckets_test() ->
     ?assertMatch({ok, [{"magma", _}], _}, RV3),
     {ok, _, MagmaBuckets} = RV3,
     ?assertListsEqual(["magma", "PiTR"], MagmaBuckets).
-
-generate_initial_map(NVBuckets, NReplicas, Nodes) ->
-    mb_map:generate_map(mb_map:no_nodes_map(NVBuckets, NReplicas),
-                        NReplicas, Nodes, []).
-
-uploaders_assignment_test_() ->
-    {timeout, 60,
-     fun () ->
-         erlang:erase(),
-         AllNodes = [a, b, c, d, e, f],
-         [do_moves(AllNodes, NNodes, NVBuckets, NReplicas, 5) ||
-             NNodes <- [1, 2, 3, 4, 5, 6],
-             NVBuckets <- [128],
-             NReplicas <- [1, 2]],
-         ?log_debug("Test reports:~n~p", [erlang:get()])
-     end}.
-
-do_moves(AllNodes, NumInitialNodes, NVBuckets, NReplicas, Iterations) ->
-    TestKey = lists:flatten(io_lib:format(
-                              "~p:~p:~p",
-                              [NumInitialNodes, NVBuckets, NReplicas])),
-    InitialNodes = lists:sort(
-                     lists:sublist(misc:shuffle(AllNodes), NumInitialNodes)),
-    InitialMap = generate_initial_map(NVBuckets, NReplicas, InitialNodes),
-    InitialUploaders = build_initial(InitialMap),
-
-    do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
-             InitialUploaders, TestKey).
-
-do_moves(0, _, _, _, _, _, _) ->
-    ok;
-do_moves(Iterations, NReplicas, AllNodes, InitialNodes, InitialMap,
-         InitialUploaders, TestKey) ->
-    NumNodes = rand:uniform(length(AllNodes)),
-    case lists:sort(lists:sublist(misc:shuffle(AllNodes), NumNodes)) of
-        InitialNodes ->
-            do_moves(Iterations, NReplicas, AllNodes, InitialNodes,
-                     InitialMap, InitialUploaders, TestKey);
-        Nodes ->
-            FastForwardMap = mb_map:generate_map(
-                               InitialMap, NReplicas, Nodes, []),
-            Allowance = allowance(FastForwardMap, length(Nodes)),
-            Moves = calculate_moves("test", InitialMap, FastForwardMap,
-                                    InitialUploaders, Allowance),
-            {UsageMap, Discontinuous} =
-                get_report(InitialMap, InitialUploaders, Moves),
-
-            ?log_debug("Rebalance from ~p to ~p, allowance = ~p",
-                       [InitialNodes, Nodes, Allowance]),
-            NumNodes =< NReplicas orelse ?assertEqual([], Discontinuous),
-            Balanced = lists:all(_ =< Allowance, maps:values(UsageMap)),
-
-            ReportList = case erlang:get(TestKey) of
-                             undefined -> [];
-                             L -> L
-                         end,
-            NewReportList =
-                [{Balanced, Discontinuous =:= [], InitialNodes, Nodes,
-                  Allowance, UsageMap} | ReportList],
-            erlang:put(TestKey, NewReportList),
-
-            NewUploaders =
-                lists:map(
-                  fun ({same, Uploader}) ->
-                          Uploader;
-                      ({NewUploader, _}) ->
-                          NewUploader
-                  end, lists:zip(Moves, InitialUploaders)),
-            do_moves(Iterations - 1, NReplicas, AllNodes, Nodes, FastForwardMap,
-                     NewUploaders, TestKey)
-    end.
-
-get_report(InitialMap, InitialUploaders, Moves) ->
-    lists:foldl(
-      fun ([_, _, same, {Uploader, _}], {NodesMap, Discontinuous}) ->
-              {maps:update_with(Uploader, _ + 1, 1, NodesMap), Discontinuous};
-          ([N, Chain, {NewUploader, _}, {Uploader, _}],
-           {NodesMap, Discontinuous}) ->
-              NewDiscontinuous =
-                  case lists:member(NewUploader, Chain) of
-                      true ->
-                          [{N, Chain, Uploader, NewUploader} | Discontinuous];
-                      false ->
-                          Discontinuous
-                  end,
-              {maps:update_with(NewUploader, _ + 1, 1, NodesMap),
-               NewDiscontinuous}
-      end, {#{}, []},
-      misc:zipwithN(
-        fun functools:id/1,
-        [lists:seq(0, length(InitialMap) - 1), InitialMap, Moves,
-         InitialUploaders])).
 
 -endif.

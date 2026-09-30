@@ -908,7 +908,7 @@ do_rebalance_membase_bucket(Bucket, Config,
                      [MapOptions, erlang:phash2(MapOptions)]),
 
     FusionUploaders = fusion_uploaders:build_fast_forward_info(
-                        Bucket, Config, Map, FastForwardMap, length(Servers)),
+                        Bucket, Config, FastForwardMap),
     maybe_report_discontinuous_uploaders(Bucket, Map, FastForwardMap,
                                          FusionUploaders),
 
@@ -2189,14 +2189,8 @@ deactivate_bucket_data_on_unknown_nodes(BucketName, Nodes) ->
 prepare_fusion_rebalance(PlanUUID, KeepNodes, SnapshotLifetime) ->
     KeepKVNodes = ns_cluster_membership:service_nodes(KeepNodes, kv),
     Validity = os:system_time(second) + SnapshotLifetime,
-    GenerateFun = case fusion_uploaders:place_uploaders_on_actives() of
-                      true ->
-                          fun generate_fast_forward_map_with_uploaders/4;
-                      false ->
-                          fun generate_fast_forward_map/4
-                  end,
     prepare_fusion_rebalance(PlanUUID, KeepKVNodes, direct,
-                             GenerateFun,
+                             fun generate_fast_forward_map_with_uploaders/4,
                              fun run_janitor_and_fetch_snapshot/1,
                              Validity).
 

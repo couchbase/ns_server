@@ -171,7 +171,6 @@
          get_active_guest_volumes/1,
          sync_fusion_log_store/4,
          bucket_metadata_file/1,
-         get_fusion_sync_info/2,
          get_fusion_uploaders_state/1,
          get_fusion_namespaces/1,
          delete_fusion_namespace/3,
@@ -2900,27 +2899,6 @@ sync_fusion_log_store(Bucket, VBuckets, Timeout, Reset) ->
                               {errors, Errors}
                       end}
       end, Bucket, [json]).
-
-fetch_fusion_sync_info(Sock, Bucket, VBucket) ->
-    case fetch_fusion_stats(Sock, Bucket, "sync_info", VBucket) of
-        {ok, {List}} ->
-            {ok, {VBucket, proplists:get_value(<<"logTerm">>, List),
-                  proplists:get_value(<<"logSeqno">>, List)}};
-        Other ->
-            Other
-    end.
-
--spec get_fusion_sync_info(ns_bucket:name(), [vbucket_id()]) ->
-          {ok, [{vbucket_id(), non_neg_integer(), non_neg_integer()}]} |
-          mc_error().
-get_fusion_sync_info(Bucket, VBuckets) ->
-    perform_very_long_call(
-      fun (Sock) ->
-              {reply,
-               functools:sequence(
-                 [?cut(fetch_fusion_sync_info(Sock, Bucket, VBucket)) ||
-                     VBucket <- VBuckets])}
-      end, Bucket).
 
 bucket_metadata_file(BucketDir) ->
     filename:join([BucketDir, "cm", "bucket.metadata"]).

@@ -81,7 +81,6 @@
          maybe_start_fusion_uploaders/2,
          maybe_stop_fusion_uploaders/2,
          get_active_guest_volumes/2,
-         get_fusion_sync_info/2,
          sync_fusion_log_store/3,
          get_fusion_uploaders_state/2,
          init_fusion_namespace/2,
@@ -458,18 +457,6 @@ maybe_stop_fusion_uploaders(Bucket, NodesVBuckets) ->
 get_active_guest_volumes(Bucket, BucketConfig) ->
     Servers = ns_bucket:get_servers(BucketConfig),
     NodesCalls = [{Node, get_active_guest_volumes} || Node <- Servers],
-    call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
-
--spec get_fusion_sync_info(ns_bucket:name(), vbucket_map()) ->
-          {error, {failed_nodes, [node()]}} | {ok, [{node(),
-                                                     [{non_neg_integer(),
-                                                       non_neg_integer(),
-                                                       non_neg_integer()}]}]}.
-get_fusion_sync_info(Bucket, VBucketMap) ->
-    NodesCalls =
-        [{N, {get_fusion_sync_info, VBs}} ||
-            {N, VBs} <- dict:to_list(
-                          mb_map:map_to_vbuckets_dict(VBucketMap))],
     call_on_nodes_with_returns(Bucket, NodesCalls, fun servant_call/3).
 
 -spec sync_fusion_log_store([{ns_bucket:name(), all | [vbucket_id()]}],
@@ -863,12 +850,6 @@ handle_call(get_active_guest_volumes, From, State) ->
       From, State, undefined,
       fun (undefined, #state{bucket_name = Bucket}) ->
               ns_memcached:get_active_guest_volumes(Bucket)
-      end);
-handle_call({get_fusion_sync_info, VBuckets}, From, State) ->
-    handle_call_via_servant(
-      From, State, undefined,
-      fun (undefined, #state{bucket_name = Bucket}) ->
-              ns_memcached:get_fusion_sync_info(Bucket, VBuckets)
       end);
 handle_call(get_fusion_uploaders_state, From, State) ->
     handle_call_via_servant(
