@@ -455,11 +455,13 @@ class CRLTests(testlib.BaseTestSet):
         the certificate was revoked would be authenticated as its user with no
         CRL check anywhere in the path.
 
-        The listener is left at its default settings, so whether the reconnect
-        is really resumed depends on the version: TLS 1.2 resumes on a session
-        id and the reconnect is abbreviated (asserted, so the check below cannot
-        pass vacuously), while TLS 1.3 needs a session ticket and ns_server
-        issues none, so it silently falls back to a full handshake.  Either way
+        TLS 1.2 resumption is off by default under client cert auth (OTP only
+        enables it with verify_none), so it is enabled via
+        tls12_session_resumption.  Whether the reconnect is really resumed then
+        depends on the version: TLS 1.2 resumes on a session id and the
+        reconnect is abbreviated (asserted, so the check below cannot pass
+        vacuously), while TLS 1.3 needs a session ticket and ns_server issues
+        none, so it silently falls back to a full handshake.  Either way
         the reconnect must succeed while the cert is good and fail once it is
         revoked - which also makes the 1.3 case a tripwire for anyone enabling
         session tickets.
@@ -471,6 +473,10 @@ class CRLTests(testlib.BaseTestSet):
         password = testlib.random_str(8)
         ca_ids = []
         try:
+            # Before client cert auth is enabled: that restarts the listener
+            # anyway, and _wait_client_cert_session waits for it.
+            _set_tls12_session_resumption(self.cluster, True)
+
             root_ca_pem, root_ca_key_pem = generate_root_ca()
             inter_ca_pem, inter_ca_key_pem = generate_intermediate_ca(
                 root_ca_pem, root_ca_key_pem, cn='CRL Resumption Test CA')
@@ -569,6 +575,7 @@ class CRLTests(testlib.BaseTestSet):
                              check_intermediate_certs=False)
             for f in get_crl_files(node):
                 delete_crl_file(node, f['filename'])
+            _set_tls12_session_resumption(self.cluster, None)
 
     def client_cert_upload_crl_test(self):
         """Test CRL revocation using the REST file upload API."""
@@ -2391,6 +2398,17 @@ def set_allow_expired_crls(cluster, value):
             f'{erlang_bool}).')
     for node in cluster.connected_nodes:
         testlib.diag_eval(node, expr)
+
+
+def _set_tls12_session_resumption(cluster, value):
+    """Set ns_server's tls12_session_resumption; None deletes the key, which
+    leaves reuse_sessions at the OTP default."""
+    if value is None:
+        expr = 'ns_config:delete(tls12_session_resumption).'
+    else:
+        expr = ('ns_config:set(tls12_session_resumption, '
+                f'{"true" if value else "false"}).')
+    testlib.diag_eval(cluster, expr)
 
 
 def get_crl_settings(cluster):
