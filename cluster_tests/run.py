@@ -137,9 +137,9 @@ Usage: {{program_name}}
         built from that suite alone.
     [--list | -l]
         List all available tests and exit
-    [--with-tags <tag>[, <tag> ...]
+    [--with-tags <tag>[, <tag> ...]]
         Run only tests with at least one of the specified tags
-    [--without-tags <tag>[, <tag> ...]
+    [--without-tags <tag>[, <tag> ...]]
         Run only tests with none of the specified tags
     [--ignore-unknown-tags]
         Don't give an error if tags are specified that aren't recognised.
@@ -252,9 +252,33 @@ def usage():
     print(USAGE_STRING.format(program_name=sys.argv[0]))
 
 
+def short_usage(width=80):
+    """USAGE_STRING's option lines alone, packed like a synopsis.
+
+    Derived rather than written out, so that it cannot fall behind the full
+    text.
+    """
+    options = [line.strip() for line in USAGE_STRING.splitlines()
+               if line.startswith('    [')]
+    head = f"Usage: {sys.argv[0]} "
+    lines = []
+    line = head
+    for option in options:
+        if line != head and len(line) + len(option) > width:
+            lines.append(line.rstrip())
+            line = ' ' * len(head)
+        line += option + ' '
+    lines.append(line.rstrip())
+    return '\n'.join(lines)
+
+
 def bad_args_exit(msg):
+    # The full usage is over a hundred lines and would scroll the message
+    # itself off the screen, so the message comes last and the full text
+    # only on --help.
+    print(short_usage())
+    print("Run with --help for what each option does.")
     print(testlib.red(msg))
-    usage()
     sys.exit(2)
 
 
@@ -884,7 +908,8 @@ def main():
                 verbose=testlib.config['verbose'], suite_names=named_suites)
         except ValueError as e:
             if not list_tests:
-                bad_args_exit(str(e))
+                # A broken suite, not a bad option: no synopsis.
+                error_exit(str(e))
             upgrade_error = str(e)
             upgrade_testset_names = []
         if not upgrade_testset_names and upgrade_error is None:
