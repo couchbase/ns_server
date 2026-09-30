@@ -103,7 +103,7 @@ couchbase              hard    $4                  <value>
 
 Where <value> is greater than $2. The procedure may be totally
 different if you're running so called "non-root/non-sudo install" or
-if you've built Couchbase Server from source.
+if you've built @PRODUCT_DISPLAY_NAME@ from source.
 
 EOF
         fi
@@ -203,7 +203,7 @@ _start() {
     shift
 
     _prepare_datadir
-    _check_datadir_writeable "start Couchbase Server"
+    _check_datadir_writeable "start @PRODUCT_DISPLAY_NAME@"
 
     # Warn if user limits are restrictive.
     _check_ulimit -u 10000 "maximum number of processes" "nproc"
@@ -258,7 +258,7 @@ _stop() {
     fi
 
     if ! _status &> /dev/null; then
-        echo "Couchbase Server is not running"
+        echo "@PRODUCT_DISPLAY_NAME@ is not running"
         return 0
     fi
 
@@ -277,7 +277,7 @@ _stop() {
 # This function assumes that _start created a pidfile
 _status() {
     if [ ! -f "$PIDFILE" ]; then
-        echo "Couchbase Server is not running"
+        echo "@PRODUCT_DISPLAY_NAME@ is not running"
         return 3
     fi
 
@@ -288,31 +288,31 @@ _status() {
     progname=`ps -p "$pid" -c -o comm=`
 
     if [ "$progname" == "beam.smp" ]; then
-        echo "Couchbase Server is running"
+        echo "@PRODUCT_DISPLAY_NAME@ is running"
         return 0
     else
-        echo "Couchbase Server is not running"
+        echo "@PRODUCT_DISPLAY_NAME@ is not running"
         return 1
     fi
 }
 
 usage() {
 cat <<EOF
-couchbase-server is a script to start/stop Couchbase Server.
+@LAUNCHER_NAME@ is a script to start/stop @PRODUCT_DISPLAY_NAME@.
 
 Usage: $0 [--start|--status|--stop|--help|--version|-s|-k|-h|-v] [options]
 
   Recognized options:
-     --start        Start Couchbase Server in background mode
-     --status, -s   Determine if Couchbase Server is running
-     --stop, -k     Stop Couchbase Server
+     --start        Start @PRODUCT_DISPLAY_NAME@ in background mode
+     --status, -s   Determine if @PRODUCT_DISPLAY_NAME@ is running
+     --stop, -k     Stop @PRODUCT_DISPLAY_NAME@
      --help, -h     Print this help text
      --version, -v  Print software Version
 
 If none of the recognized options are specifed, the server is started in
 foreground mode.  In this case, any trailing options and arguments will be
-passed to Couchbase Server; they should NOT be used unless you know what you're
-doing.
+passed to @PRODUCT_DISPLAY_NAME@; they should NOT be used unless you know what
+you're doing.
 
 EOF
 }
@@ -321,7 +321,7 @@ _parse_options () {
     # the getopt lack support for longopts..
     if [ "$1" == "--version" ]
     then
-      echo "Couchbase Server ${SOFTWARE_VERSION}"
+      echo "@PRODUCT_DISPLAY_NAME@ ${SOFTWARE_VERSION}"
       exit 0
     fi
 
@@ -367,7 +367,7 @@ _parse_options () {
          exit $?
          ;;
        v)
-         echo "Couchbase Server ${SOFTWARE_VERSION}"
+         echo "@PRODUCT_DISPLAY_NAME@ ${SOFTWARE_VERSION}"
          exit 0
          ;;
        h)

@@ -66,11 +66,17 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% How often we check that our logger handlers are still there; see
+%% handle_info/2.
+-define(HANDLER_PERIODIC_CHECK_INTERVAL, 10000).
+
 -record(state, {compile_frozen = false :: boolean(),
                 sinks                  :: dict:dict(),
                 loggers                :: dict:dict(),
                 historical_deks        :: dict:dict(),
-                drop_deks_ref          :: undefined | {pid(), reference()}}).
+                drop_deks_ref          :: undefined | {pid(), reference()},
+                periodic_handler_check_timer = undefined
+                    :: undefined | reference()}).
 
 -record(logger, {name      :: atom(),
                  loglevel  :: loglevel(),
@@ -511,9 +517,25 @@ removing_handler(#{id:=Logger}) ->
     gen_server:cast(?MODULE, {removing_handler, Logger}),
     ok.
 
+%% Never raises. logger removes a handler whose log/2 raises, from whichever
+%% process happened to be logging. When a sink we log to is down (say, while
+%% ale_sup restarts) that is lots of processes at once, for both of our
+%% handlers, and logger's removals of different handlers aren't safe against
+%% each other (see ensure_logger_handlers/0): they can leave one of our
+%% handlers installed but never called. We'd only put the handler back anyway,
+%% so just drop the event.
 -spec log(logger:log_event(), logger:handler_config()) -> ok.
 log(#{level:=Level, msg:=Msg, meta:=Meta}, #{id:=Logger}) ->
-    ale_error_logger_handler:log(Logger, Level, Msg, Meta).
+    try
+        ale_error_logger_handler:log(Logger, Level, Msg, Meta)
+    catch
+        C:R ->
+            %% straight to our sinks, not through logger, so this can't
+            %% recurse; it may well fail too, for the same reason
+            catch ale:error(?ALE_LOGGER, "Failed to log a ~p event via ~p: ~p",
+                            [Level, Logger, {C, R}], [{chars_limit, 1000}]),
+            ok
+    end.
 %%%-----------------------------------------------------------------
 %%% End: Callbacks for logger
 %%%-----------------------------------------------------------------
@@ -535,9 +557,7 @@ init([]) ->
                                    ?DEFAULT_LOGLEVEL,
                                    ?DEFAULT_FORMATTER, State2),
 
-    lists:foreach(fun (Logger) ->
-                          _ = logger:remove_handler(Logger)
-                  end, [?ERROR_LOGGER, ?TRACE_LOGGER]),
+    lists:foreach(fun remove_handler_in_init/1, [?ERROR_LOGGER, ?TRACE_LOGGER]),
 
     %% Erlang starts this for us when we disable default handler.
     _ = logger:remove_handler(simple),
@@ -553,7 +573,8 @@ init([]) ->
 
     ok = set_error_logger_handler(),
     ok = set_noisy_progress_reports_handler(),
-    {ok, State3}.
+    {ok, State3#state{periodic_handler_check_timer =
+                          schedule_periodic_handler_check()}}.
 
 default_encr_disabled_cbs() ->
     #{create_no_deks_snapshot =>
@@ -667,15 +688,16 @@ handle_call(thaw_compilations, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
+%% Sent by our removing_handler/1, when somebody other than init/1 removes one
+%% of our handlers (init/1 drops the casts its own removals provoke: see
+%% remove_handler_in_init/1). That only happens when somebody removes it
+%% explicitly with logger:remove_handler/1: logger itself only removes a
+%% handler whose log/2 raises, which ours never does. So just log it; the
+%% periodic check in handle_info/2 puts the handler back.
 handle_cast({removing_handler, Logger}, State) ->
-    ale:error(?ALE_LOGGER, "~p has been removed. Setting it up again.",
-              [Logger]),
-    case Logger of
-        ?ERROR_LOGGER ->
-            ok = set_error_logger_handler();
-        ?TRACE_LOGGER ->
-            ok = set_noisy_progress_reports_handler()
-    end,
+    ale:error(?ALE_LOGGER, "Logger handler ~p is being removed. It will be "
+              "set up again within ~bs.",
+              [Logger, ?HANDLER_PERIODIC_CHECK_INTERVAL div 1000]),
     {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -683,6 +705,20 @@ handle_cast(_Msg, State) ->
 handle_info({'DOWN', Ref, process, Pid, _Reason},
             #state{drop_deks_ref = {Pid, Ref}} = State) ->
     {noreply, State#state{drop_deks_ref = undefined}};
+%% Puts back our logger handlers if they have been removed, and catches
+%% removals we were never told about, for instance ones made while this
+%% process was restarting.
+%%
+%% Anybody can send us this message, not just our timer. So cancel the timer
+%% we have and drop any more of the message that is queued before we set a
+%% new timer, or else every extra message would start another chain of
+%% checks.
+handle_info(periodic_check_logger_handlers,
+    #state{periodic_handler_check_timer = TRef} = State) ->
+    cancel_timer(TRef, periodic_check_logger_handlers),
+    ok = ensure_logger_handlers(),
+    {noreply, State#state{periodic_handler_check_timer =
+    schedule_periodic_handler_check()}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -971,6 +1007,76 @@ set_noisy_progress_reports_handler() ->
         filter_default => stop,
         filters => [{log_noisy_progress_reports,
                      {fun noisy_progress_reports/2, log}}]}).
+
+%% Removes logger handler Id, as left behind by a previous incarnation of this
+%% process, for init/1 to add back. If the handler is ours, logger calls our
+%% removing_handler/1 for it, which casts {removing_handler, Id} to us; drop
+%% that cast here, since init/1 puts the handler back anyway. logger commits
+%% the removal, and replies to us, only after removing_handler/1 has returned,
+%% so the cast is in our mailbox by now. (Strictly, Erlang only orders the
+%% messages of each sender, and these are from two different processes;
+%% should the cast ever turn up later, all it costs is a log message.)
+%% Any other {removing_handler, Id} cast here is about a removal that has
+%% already been committed too, so init/1 undoes that one as well.
+remove_handler_in_init(Id) ->
+    _ = logger:remove_handler(Id),
+    flush({'$gen_cast', {removing_handler, Id}}).
+
+set_logger_handler(?ERROR_LOGGER) ->
+    set_error_logger_handler();
+set_logger_handler(?TRACE_LOGGER) ->
+    set_noisy_progress_reports_handler().
+
+schedule_periodic_handler_check() ->
+    erlang:send_after(?HANDLER_PERIODIC_CHECK_INTERVAL, self(),
+                      periodic_check_logger_handlers).
+
+%% Cancels TRef, the timer that sends us Msg, if there is one, and drops any
+%% Msg that is already in our mailbox: sent by that timer before we could
+%% cancel it, or by somebody else.
+cancel_timer(undefined, Msg) ->
+    flush(Msg);
+cancel_timer(TRef, Msg) ->
+    erlang:cancel_timer(TRef),
+    flush(Msg).
+
+flush(Msg) ->
+    receive
+        Msg ->
+            flush(Msg)
+    after
+        0 ->
+            ok
+    end.
+
+%% Adds back those of our logger handlers that are gone. Only looks at whether
+%% the handler's config is there, which is also all logger:add_handler/3
+%% looks at.
+%%
+%% Never removes a handler: logger's removals of different handlers aren't
+%% safe against each other (each one writes back the handler list as it was
+%% when the removal was requested), so removing one of ours while somebody
+%% else removes the other could leave logger's handler list corrupted.
+ensure_logger_handlers() ->
+    lists:foreach(fun ensure_logger_handler/1, [?ERROR_LOGGER, ?TRACE_LOGGER]).
+
+ensure_logger_handler(Logger) ->
+    case logger:get_handler_config(Logger) of
+        {ok, _} ->
+            ok;
+        {error, {not_found, Logger}} ->
+            ale:error(?ALE_LOGGER, "~p has been removed. Setting it up again.",
+                      [Logger]),
+            case set_logger_handler(Logger) of
+                ok ->
+                    ok;
+                Error ->
+                    %% say, somebody else added it in the meantime; we'll
+                    %% look again on the next check
+                    ale:error(?ALE_LOGGER, "Failed to set up ~p again: ~p",
+                              [Logger, Error])
+            end
+    end.
 
 compile(#state{compile_frozen = Frozen,
                loggers=Loggers} = State,
