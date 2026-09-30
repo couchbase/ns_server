@@ -805,7 +805,12 @@ conf(internal) ->
                  ?HIGHEST_ALLOWED_MAX_DOCS_SKIP)},
      {max_docs_limit, maxDocsLimit, ?DEFAULT_MAX_DOCS_LIMIT,
       get_number(?LOWEST_ALLOWED_MAX_DOCS_LIMIT,
-                 ?HIGHEST_ALLOWED_MAX_DOCS_LIMIT)}] ++
+                 ?HIGHEST_ALLOWED_MAX_DOCS_LIMIT)},
+     {internal_identity_password_check_under_mtls,
+      internalIdentityPasswordCheckUnderMtls,
+      ns_ssl_services_setup:
+          internal_identity_password_check_under_mtls_default(),
+      fun get_bool/1}] ++
         [{include_username_in_ui_cookie, includeUsernameInUICookie, false,
           fun get_bool/1}] ++
         %% This key is available in mixed-compat-mode. We don't need to worry

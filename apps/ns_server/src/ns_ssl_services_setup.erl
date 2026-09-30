@@ -36,6 +36,8 @@
          client_cert_auth/0,
          client_cert_auth_state/0,
          client_cert_auth_state/1,
+         internal_identity_password_check_under_mtls/0,
+         internal_identity_password_check_under_mtls_default/0,
          get_user_name_from_client_cert/1,
          set_certificate_chain/6,
          tls_client_opts/2,
@@ -1485,7 +1487,16 @@ get_user_name_from_client_cert(Val) ->
 get_user_name_from_client_cert(Cert, ClientAuth) ->
     Triples = proplists:get_value(prefixes, ClientAuth),
     case ns_server_cert:extract_internal_client_cert_user(Cert) of
-        {ok, User} -> User;
+        {ok, User} ->
+            case internal_identity_password_check_under_mtls() of
+                false ->
+                    User;
+                %% The certificate is not proof of identity on its own: the
+                %% caller authenticates the request from its own credentials
+                %% instead, exactly as if no certificate had been presented.
+                true ->
+                    undefined
+            end;
         {error, not_found} ->
             case get_user_name_from_client_cert_inner(Cert, Triples) of
                 {error, _} ->
@@ -1494,6 +1505,20 @@ get_user_name_from_client_cert(Cert, ClientAuth) ->
                     Username
             end
     end.
+
+%% An internal client certificate authenticates as an admin on its own. When
+%% this is set the certificate is no longer accepted as proof of identity: the
+%% request is authenticated from its credentials instead, exactly as if it
+%% carried no certificate.
+internal_identity_password_check_under_mtls() ->
+    ns_config:read_key_fast(
+      internal_identity_password_check_under_mtls,
+      internal_identity_password_check_under_mtls_default()).
+
+%% Every reader must use this same expression, because menelaus_web_settings
+%% falls back to the conf/1 default only while the key is unset.
+internal_identity_password_check_under_mtls_default() ->
+    false.
 
 get_user_name_from_client_cert_inner(_Cert, []) ->
     {error, not_found};
