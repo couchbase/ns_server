@@ -283,20 +283,23 @@ extract_non_jwt_auth(Req, AuthHeader) ->
     Sock = mochiweb_request:get(socket, Req),
     case ns_ssl_services_setup:get_user_name_from_client_cert(Sock) of
         undefined ->
-            case AuthHeader of
-                "Basic " ++ Value ->
-                    parse_basic_auth_header(Value);
-                "SCRAM-" ++ Value ->
-                    {scram_sha, Value};
-                undefined ->
-                    undefined;
-                _ ->
-                    error
-            end;
+            extract_auth_from_header(AuthHeader);
         failed ->
             error;
         UName ->
             {client_cert_auth, UName}
+    end.
+
+extract_auth_from_header(AuthHeader) ->
+    case AuthHeader of
+        "Basic " ++ Value ->
+            parse_basic_auth_header(Value);
+        "SCRAM-" ++ Value ->
+            {scram_sha, Value};
+        undefined ->
+            undefined;
+        _ ->
+            error
     end.
 
 get_rejected_user(Auth) ->
@@ -906,12 +909,17 @@ parse_on_behalf_extras_header(Req) ->
         _ -> error
     end.
 
+%% A certificate handed to us on its own, with no request to fall back on. The
+%% lookup only answers 'undefined' for a DER certificate when it is an internal
+%% one that the internal password setting says is not proof of identity, so the
+%% caller is told there is no identity here rather than that it failed: it is
+%% expected to authenticate from the request's own credentials instead.
 -spec extract_identity_from_cert(binary()) ->
-          tuple() | auth_failure | temporary_failure.
+          rbac_identity() | no_identity | auth_failure | temporary_failure.
 extract_identity_from_cert(CertDer) ->
     case ns_ssl_services_setup:get_user_name_from_client_cert(CertDer) of
         undefined ->
-            auth_failure;
+            no_identity;
         failed ->
             auth_failure;
         UName ->

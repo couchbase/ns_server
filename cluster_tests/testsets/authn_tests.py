@@ -14,7 +14,8 @@ import time
 from scramp import ScramClient
 import requests
 from testsets.cert_load_tests import read_cert_file, load_ca, \
-                                     generate_client_cert
+                                     generate_client_cert, \
+                                     generate_internal_client_cert
 import tempfile
 import contextlib
 
@@ -226,6 +227,82 @@ class AuthnTests(testlib.BaseTestSet):
                                         mandatory=True)
 
 
+    # An internal client certificate authenticates as an admin on its own.
+    # internal_identity_password_check_under_mtls stops it being accepted as
+    # proof of identity: the request is then authenticated from its
+    # credentials, exactly as if it carried no certificate.
+    def internal_client_cert_password_check_test(self):
+        node = self.cluster.connected_nodes[0]
+        password = get_internal_password(node)
+        with client_cert_auth(node, 'internal', True, False,
+                              internal=True) as cert:
+            def whoami(auth):
+                # /whoami needs no permission, so it reports whatever identity
+                # the request established, including none at all
+                return testlib.get_succ(node, '/whoami', https=True,
+                                        auth=auth, cert=cert).json()
+
+            def assert_identity(auth, expected_id, expected_domain):
+                r = whoami(auth)
+                testlib.assert_eq(r['id'], expected_id, name='id')
+                testlib.assert_eq(r['domain'], expected_domain, name='domain')
+
+            # Off: the certificate names the identity
+            assert_identity(None, '@internal', 'admin')
+
+            with internal_cert_password_check(node, True):
+                # The certificate names nobody now, so a request carrying no
+                # credentials establishes no identity and is refused anything
+                # that needs one
+                assert_identity(None, '', 'anonymous')
+                testlib.get(node, self.testEndpoint, https=True, auth=None,
+                            cert=cert, expected_code=401)
+                testlib.get(node, '/whoami', https=True, cert=cert,
+                            auth=('@', password + 'wrong'), expected_code=401)
+
+                # The identity comes from the credentials instead: note it is
+                # the user that authenticated, not the one named by the
+                # certificate
+                assert_identity(('@', password), '@', 'admin')
+                assert_identity(self.cluster.auth, self.cluster.auth[0],
+                                'admin')
+
+            assert_identity(None, '@internal', 'admin')
+
+
+    # Services ask /_cbauth/extractUserFromCert who a peer certificate is.
+    # When the certificate is not accepted as proof of identity the reply names
+    # no user at all, which is how cbauth knows to fall back to the request's
+    # own credentials instead of treating it as a failure.
+    def extract_user_from_cert_test(self):
+        node = self.cluster.connected_nodes[0]
+        with client_cert_auth(node, 'internal', True, False,
+                              internal=True) as cert:
+            r = post_cert_to_extract_endpoint(node, cert)
+            testlib.assert_eq(r['user'], '@internal', name='user')
+
+            with internal_cert_password_check(node, True):
+                r = post_cert_to_extract_endpoint(node, cert)
+                assert 'user' not in r, f'expected no user, got {r}'
+
+        # A certificate mapped to a user through the prefixes still resolves
+        with client_cert_auth(node, self.cert_user, True, False) as cert:
+            with internal_cert_password_check(node, True):
+                r = post_cert_to_extract_endpoint(node, cert)
+                testlib.assert_eq(r['user'], self.cert_user, name='user')
+
+
+    # Certificates mapped to a user through the configured prefixes are
+    # unaffected by the setting
+    def non_internal_client_cert_password_check_test(self):
+        node = self.cluster.connected_nodes[0]
+        with client_cert_auth(node, self.cert_user, True, False) as cert:
+            for enabled in [True, False]:
+                with internal_cert_password_check(node, enabled):
+                    testlib.get_succ(node, self.testEndpoint, https=True,
+                                     auth=None, cert=cert)
+
+
     def mandatory_client_cert_ui_login_test(self):
         self.client_cert_ui_login_base(mandatory=True)
 
@@ -317,13 +394,18 @@ def assert_client_cert_UI_login_availability(node, expected=None, **kwargs):
 
 
 @contextlib.contextmanager
-def client_cert_auth(node, user, auth_enabled, auth_mandatory):
+def client_cert_auth(node, user, auth_enabled, auth_mandatory,
+                     internal=False):
     # It is important to send all requests to the same node, because
     # client auth settings modification is not synchronous across cluster
     ca = read_cert_file('test_CA.pem')
     ca_key = read_cert_file('test_CA.pkey')
-    client_cert, client_key = \
-        generate_client_cert(ca, ca_key, email=f'{user}@example.com')
+    if internal:
+        client_cert, client_key = \
+            generate_internal_client_cert(ca, ca_key, user)
+    else:
+        client_cert, client_key = \
+            generate_client_cert(ca, ca_key, email=f'{user}@example.com')
     client_cert_file = None
     ca_id = None
     try:
@@ -411,3 +493,33 @@ def assert_tls_cert_required_alert(fun):
 
     testlib.poll_for_condition(do, 0.1, attempts=10,
                                msg="getting CERT REQUIRED ALERT")
+
+
+def get_internal_password(node):
+    r = testlib.diag_eval(node, 'ns_config_auth:get_password(special).')
+    return r.text.strip().strip('"')
+
+
+@contextlib.contextmanager
+def internal_cert_password_check(node, enabled):
+    def set_to(value):
+        testlib.post_succ(
+            node, '/internalSettings',
+            data={'internalIdentityPasswordCheckUnderMtls': value})
+    set_to('true' if enabled else 'false')
+    try:
+        yield
+    finally:
+        set_to('false')
+
+
+def post_cert_to_extract_endpoint(node, cert_file):
+    # The endpoint takes the raw DER of the leaf certificate
+    with open(cert_file, 'r') as f:
+        pem = f.read()
+    body = pem.split('-----BEGIN CERTIFICATE-----')[1] \
+              .split('-----END CERTIFICATE-----')[0]
+    der = base64.b64decode(''.join(body.split()))
+    return testlib.post_succ(node, '/_cbauth/extractUserFromCert', data=der,
+                             headers={'Content-Type':
+                                      'application/octet-stream'}).json()

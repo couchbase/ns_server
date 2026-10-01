@@ -555,14 +555,17 @@ class Cluster:
         if services is None:
             services = cluster_node.get_services()
 
+        # Credentials may travel alongside the certificate: the node being
+        # added may be configured not to accept the certificate as proof of
+        # identity on its own.
+        data = {}
         if use_client_cert_auth:
-            data = {"clientCertAuth": "true"}
-        elif auth == None:
-            data = {"user": self.admin_user(),
-                    "password": self.admin_password()}
-        else:
-            data = {"user": auth[0],
-                    "password": auth[1]}
+            data["clientCertAuth"] = "true"
+        if auth is not None:
+            data["user"], data["password"] = auth
+        elif not use_client_cert_auth:
+            data["user"] = self.admin_user()
+            data["password"] = self.admin_password()
 
         # Can only add nodes with the https address, which requires the 1900X
         # port
@@ -596,14 +599,14 @@ class Cluster:
                             cluster_node.url,
                 "services": get_services_string(services)}
 
+        # See add_node: credentials may travel alongside the certificate.
         if use_client_cert_auth:
             data['clientCertAuth'] = 'true'
-        elif auth == None:
+        if auth is not None:
+            data['user'], data['password'] = auth
+        elif not use_client_cert_auth:
             data['user'] = self.admin_user()
             data['password'] = self.admin_password()
-        else:
-            data['user'] = auth[0]
-            data['password'] = auth[1]
 
         if verbose:
             print(f"doJoinCluster with {data}")

@@ -230,6 +230,9 @@ class NodeAdditionWithCertsBase:
                 testlib.delete(n, f'/pools/default/trustedCAs/{ca["id"]}')
 
             testlib.toggle_client_cert_auth(n, enabled=False)
+            testlib.post_succ(
+                n, '/internalSettings',
+                data={'internalIdentityPasswordCheckUnderMtls': 'false'})
 
     # Node addition is initiated by the-cluster-node:
 
@@ -555,6 +558,62 @@ class NodeAdditionWithCertsBase:
                                         enabled=True, mandatory=True)
         self.cluster.do_join_cluster(self.new_node(),
                                      use_client_cert_auth=True)
+
+    # Same as above, but with internal_identity_password_check_under_mtls on
+    # everywhere, so the internal client certificate is no longer accepted as
+    # proof of identity and the credentials have to travel with it.
+    # Same as below, but node addition is initiated by the cluster, so it is
+    # the node being added that checks the credentials. That node has to have
+    # been initialised for the check to mean anything: a fresh one accepts an
+    # unauthenticated caller as an administrator, so the certificate alone
+    # would still get it added.
+    def client_cert_auth_add_with_password_check_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        testlib.post_succ(self.new_node(), '/clusterInit',
+                          data={'hostname': self.new_node().host,
+                                'services': 'kv',
+                                'username': self.cluster.auth[0],
+                                'password': self.cluster.auth[1],
+                                'port': 'SAME'})
+        for node in [self.cluster_node(), self.new_node()]:
+            testlib.post_succ(
+                node, '/internalSettings',
+                data={'internalIdentityPasswordCheckUnderMtls': 'true'})
+        testlib.toggle_client_cert_auth(self.new_node(),
+                                        enabled=True, mandatory=True)
+
+        # The certificate on its own no longer authenticates at that node
+        r = self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
+                                  expected_code=400).json()
+        self.assert_node_must_use_client_cert(r)
+
+        # ... but it does with that node's credentials alongside it
+        self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
+                              auth=self.cluster.auth)
+
+
+    def client_cert_auth_with_password_check_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        testlib.toggle_client_cert_auth(self.new_node(),
+                                        enabled=True, mandatory=True)
+        for node in [self.cluster_node(), self.new_node()]:
+            testlib.post_succ(
+                node, '/internalSettings',
+                data={'internalIdentityPasswordCheckUnderMtls': 'true'})
+        self.cluster.do_join_cluster(self.new_node(),
+                                     use_client_cert_auth=True,
+                                     auth=self.cluster.auth)
+
 
     # Cluster has client cert auth set to mandatory. Cluster node has custom
     # client certs uploaded.

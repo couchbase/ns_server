@@ -91,8 +91,14 @@ rest_add_auth(Headers, HiddenAuth) when is_function(HiddenAuth) ->
     case ?UNHIDE(HiddenAuth) of
         {basic_auth, User, Password} ->
             [basic_auth_header(User, Password) | Headers];
-        client_cert_auth ->
-            Headers
+        {client_cert_auth, User, Password} when User =:= undefined;
+                                                Password =:= undefined ->
+            Headers;
+        %% The certificate identifies this node, but the node being talked to
+        %% may be configured not to accept it as proof of identity, so pass the
+        %% credentials along with it.
+        {client_cert_auth, User, Password} ->
+            [basic_auth_header(User, Password) | Headers]
     end.
 
 rest_add_mime_type(Headers, undefined) ->
@@ -122,7 +128,8 @@ add_tls_options("https://" ++ _, Options, HiddenAuth, VerifyServer) ->
                 ns_ssl_services_setup:tls_no_peer_verification_client_opts()
         end ++
         case ?UNHIDE(HiddenAuth) of
-            client_cert_auth -> ns_ssl_services_setup:tls_client_certs_opts();
+            {client_cert_auth, _, _} ->
+                ns_ssl_services_setup:tls_client_certs_opts();
             {basic_auth, _, _} -> []
         end,
     NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
@@ -177,7 +184,8 @@ decode_json_response_ext(Response, Method, Request) ->
       Path :: string(),
       MimeType :: string(),
       Payload :: iolist(),
-      HiddenAuth :: ?HIDDEN_DATA(client_cert_auth |
+      HiddenAuth :: ?HIDDEN_DATA({client_cert_auth, string() | undefined,
+                                  string() | undefined} |
                                  {basic_auth, string(), string()}),
       HttpOptions :: [any()],
       Result ::
