@@ -576,10 +576,19 @@ simple_term_to_list(X) when is_atom(X) ->
     atom_to_list(X);
 simple_term_to_list(X) when is_integer(X) ->
     integer_to_list(X);
+simple_term_to_list(X) when is_float(X) ->
+    float_to_list(X, [short]);
 simple_term_to_list(X) when is_binary(X) ->
     binary_to_list(X);
 simple_term_to_list(X) when is_list(X) ->
-    X.
+    %% A decoded json array is also a list. Only a flat list of chars is a
+    %% string; an array of small integers is indistinguishable from one.
+    case io_lib:char_list(X) of
+        true -> X;
+        false -> erlang:error({not_a_simple_term, X})
+    end;
+simple_term_to_list(X) ->
+    erlang:error({not_a_simple_term, X}).
 
 simple_term_to_atom(X) when is_binary(X) ->
     binary_to_atom(X);
@@ -891,7 +900,11 @@ string(Name, Regex, Options, ErrorStr, State) ->
                             true -> Value;
                             false -> (catch simple_term_to_list(Value))
                         end,
-              case re:run(Subject, Regex, Options) of
+              Match = case Subject of
+                          {'EXIT', _} -> nomatch;
+                          _ -> re:run(Subject, Regex, Options)
+                      end,
+              case Match of
                   {match, _} ->
                       ok;
                   nomatch ->
@@ -1838,6 +1851,20 @@ no_whitespace_test() ->
     %% A byte list keeps the ASCII only behavior its callers have.
     ?assertEqual(ok, no_whitespace("openid")),
     ?assertMatch({error, _}, no_whitespace("open id")).
+
+simple_term_to_list_test() ->
+    ?assertEqual("abc", simple_term_to_list(abc)),
+    ?assertEqual("42", simple_term_to_list(42)),
+    ?assertEqual("1.5", simple_term_to_list(1.5)),
+    ?assertEqual("1.0e10", simple_term_to_list(1.0e10)),
+    ?assertEqual("abc", simple_term_to_list(<<"abc">>)),
+    ?assertEqual("abc", simple_term_to_list("abc")),
+    ?assertEqual("", simple_term_to_list([])),
+    ?assertError({not_a_simple_term, _},
+                 simple_term_to_list([<<"a">>, <<"b">>])),
+    ?assertError({not_a_simple_term, _}, simple_term_to_list(["a"])),
+    ?assertError({not_a_simple_term, _},
+                 simple_term_to_list({[{<<"a">>, 1}]})).
 
 int_array_test() ->
     %% Test with valid input and default fun

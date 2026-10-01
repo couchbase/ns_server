@@ -513,10 +513,7 @@ handle_prepare_snapshot_restore(Req) ->
                   lists:map(
                     fun ({BucketInfo}) ->
                             Config =
-                                [{validator:simple_term_to_list(K),
-                                  validator:simple_term_to_list(V)} ||
-                                    {K, V} <- proplists:get_value(
-                                                config, BucketInfo)],
+                                proplists:get_value(to_validate, BucketInfo),
                             {proplists:get_value("name", Config), Config}
                     end, Buckets),
               Validated = menelaus_web_buckets:parse_new_buckets(ToValidate),
@@ -559,6 +556,7 @@ handle_prepare_snapshot_restore(Req) ->
                              validate_manifest(manifest, _),
                              validator:required(config, _),
                              validate_bucket_config(config, _),
+                             stringify_bucket_config(config, to_validate, _),
                              validator:unsupported(_)],
                             _),
        validator:unsupported(_)], #{strings => raw_byte_list}).
@@ -598,6 +596,31 @@ validate_bucket_config(Name, State) ->
       [validator:required(name, _),
        validator:string(name, _)],
       State).
+
+%% parse_new_buckets expects the config as string params, the way a form
+%% delivers them.
+stringify_bucket_config(Name, NewName, State) ->
+    validator:validate(
+      fun (Config, St) ->
+              try [stringify_config_param(P) || P <- Config] of
+                  Params ->
+                      {ok, validator:return_value(NewName, Params, St)}
+              catch
+                  throw:{not_a_simple_value, Key} ->
+                      {error,
+                       io_lib:format("Value of \"~s\" must be a string, "
+                                     "number or boolean", [Key]), St}
+              end
+      end, Name, State).
+
+stringify_config_param({K, V}) ->
+    Key = validator:simple_term_to_list(K),
+    try
+        {Key, validator:simple_term_to_list(V)}
+    catch
+        error:{not_a_simple_term, _} ->
+            throw({not_a_simple_value, Key})
+    end.
 
 handle_restore_snapshot(Req) ->
     menelaus_util:assert_is_enterprise(),
