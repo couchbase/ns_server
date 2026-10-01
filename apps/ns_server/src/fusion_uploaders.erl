@@ -932,18 +932,21 @@ maybe_advance_state(enabling) ->
                     analyze_fusion_stats(
                       EnabledBuckets, FusionStats,
                       fun (_BucketName, BucketInfo, Acc) ->
-                              case {maps:find(checkpoint_pending_bytes,
-                                              BucketInfo),
-                                    maps:find(uploaders_state_mismatch,
-                                              BucketInfo)} of
-                                  {{ok, Bytes}, error} ->
+                              %% checkpoint_pending_bytes is absent on nodes
+                              %% that host no uploaders (e.g. servers left
+                              %% by a stopped rebalance)
+                              case maps:is_key(uploaders_state_mismatch,
+                                               BucketInfo) of
+                                  false ->
+                                      Bytes = maps:get(checkpoint_pending_bytes,
+                                                       BucketInfo, 0),
                                       case Acc + Bytes of
                                           NewAcc when NewAcc > Threshold ->
                                               false;
                                           NewAcc ->
                                               NewAcc
                                       end;
-                                  _ ->
+                                  true ->
                                       false
                               end
                       end, 0, Snapshot),
