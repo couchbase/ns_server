@@ -26,7 +26,8 @@
 %% of the same key is incompatible.
 %%
 %% GET /_metakv2/path/?feed=continuous streams the leaves the same request would
-%% list, and then every change to them
+%% list, and then every change to them. GET /_metakv2/path/key with
+%% feed=continuous does the same for the one leaf
 %%
 %% For more details see the following document:
 %% https://docs.google.com/document/d/1J43NENn5NZ2Mf7h72cnVcgitvpidSJ5WFZSb_DKFggk
@@ -225,15 +226,26 @@ handle_get(Path, Req, Key) ->
                   feed_validators() ++
                   [validator:unsupported(_)]);
         false ->
-            case chronicle_metakv:get(Key) of
-                {ok, {Value, Revision}} ->
-                    menelaus_util:reply_json(
-                      Req, {[{value, Value},
-                             {revision, encode_revision(Revision)}]});
-                {error, not_found} ->
-                    menelaus_util:reply_json(
-                      Req, not_found_reply(Key, leaf), 404)
-            end
+            validator:handle(
+              fun (Params) ->
+                      case proplists:get_value(feed, Params) of
+                          undefined ->
+                              handle_get_leaf(Req, Key);
+                          _ ->
+                              handle_watch(Req, Path,
+                                           chronicle_metakv:watch(Key, _))
+                      end
+              end, Req, qs, feed_validators() ++ [validator:unsupported(_)])
+    end.
+
+handle_get_leaf(Req, Key) ->
+    case chronicle_metakv:get(Key) of
+        {ok, {Value, Revision}} ->
+            menelaus_util:reply_json(
+              Req, {[{value, Value},
+                     {revision, encode_revision(Revision)}]});
+        {error, not_found} ->
+            menelaus_util:reply_json(Req, not_found_reply(Key, leaf), 404)
     end.
 
 handle_get_dir(Req, Key, Recursive, Depth) ->

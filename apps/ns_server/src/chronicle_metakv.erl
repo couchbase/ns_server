@@ -53,6 +53,7 @@
          delete/1,
          delete_dir/2,
          sync_quorum/1,
+         watch/2,
          watch_dir/4,
          invert_type/1]).
 
@@ -443,6 +444,16 @@ sync_quorum(Timeout) ->
         exit:{error, timeout} ->
             {error, timeout}
     end.
+
+%% reports the leaf, if it exists, followed by every change to it. never
+%% returns, see watch_loop/2
+-spec watch(key(), fun ((watch_event()) -> any())) -> no_return().
+watch(Key, Callback) ->
+    do_watch(_ =:= Key,
+             fun (Txn) ->
+                     [{Key, Rev, Value} ||
+                         {_, {Value, Rev}} <- fetch_leaves(Txn, [Key])]
+             end, Callback).
 
 %% reports the leaves that get_dir/3 would return, followed by every change to a
 %% leaf in that range. never returns, see watch_loop/2
@@ -985,6 +996,37 @@ watch_test_() ->
                   lists:sort([K || {K, _, _} <- [next_watched(),
                                                  next_watched(),
                                                  next_watched()]])),
+               stop_watch(Pid1)
+       end},
+      {"watch reports only its own leaf",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Sibling = [key2, subkey1, root],
+               SameName = [key1, other, root],
+               ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Sibling, v2, new, true)),
+               ?assertMatch({ok, _, create},
+                            test_set(SameName, v3, new, true)),
+
+               Pid = start_watch(watch(Key, _)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+
+               %% neither is the watched leaf, which the next event being the
+               %% delete of Key shows
+               ?assertMatch({ok, _, update},
+                            test_set(Sibling, v4, undefined, false)),
+               ?assertMatch({ok, _, update},
+                            test_set(SameName, v4, undefined, false)),
+               {ok, DeleteRev} = test_delete(Key),
+               ?assertEqual({Key, DeleteRev, deleted}, next_watched()),
+               stop_watch(Pid),
+
+               %% a leaf that does not exist yet is reported once created
+               Missing = [key3, subkey1, root],
+               Pid1 = start_watch(watch(Missing, _)),
+               ?assertMatch({ok, _, create},
+                            test_set(Missing, v5, new, false)),
+               ?assertMatch({Missing, _, v5}, next_watched()),
                stop_watch(Pid1)
        end},
       {"watch_dir on a missing directory reports leaves once created",

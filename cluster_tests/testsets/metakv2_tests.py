@@ -697,6 +697,50 @@ class Metakv2Tests(testlib.BaseTestSet):
             feed.close()
 
     def watch_bad_feed_test(self):
-        resp = testlib.request('GET', self.cluster, METAKV2_ENDPOINT + "/root/",
-                               params={'feed': 'normal'})
-        testlib.assert_http_code(400, resp)
+        for key in ["/root/", "/root/key"]:
+            resp = testlib.request('GET', self.cluster, METAKV2_ENDPOINT + key,
+                                   params={'feed': 'normal'})
+            testlib.assert_http_code(400, resp)
+
+    def watch_leaf_test(self):
+        key = "/root/subdir/key1"
+        sibling = "/root/subdir/key2"
+        deeper = "/root/subdir/key1/key3"
+
+        assert_created(self.metakv2_put(key, value="v1", create=True,
+                                        recursive=True))
+        assert_created(self.metakv2_put(sibling, value="v2", create=True))
+
+        feed = self.metakv2_watch(key)
+        try:
+            assert_event(feed.next(), key, "v1")
+
+            # Not the watched leaf, which the next event arriving being the one
+            # for key shows
+            assert_updated(self.metakv2_put(sibling, value="v20"))
+
+            assert_updated(self.metakv2_put(key, value="v10"))
+            assert_event(feed.next(), key, "v10")
+
+            assert_deleted(self.metakv2_delete(key))
+            assert_event(feed.next(), key, None)
+
+            # a directory in its place is not the leaf either
+            assert_created(self.metakv2_put(deeper, value="v3", create=True,
+                                            recursive=True))
+            assert_deleted(self.metakv2_delete(key + "/", recursive=True))
+
+            assert_created(self.metakv2_put(key, value="v4", create=True))
+            assert_event(feed.next(), key, "v4")
+        finally:
+            feed.close()
+
+    def watch_missing_leaf_test(self):
+        key = "/root/missing/key1"
+        feed = self.metakv2_watch(key)
+        try:
+            assert_created(self.metakv2_put(key, value="v1", create=True,
+                                            recursive=True))
+            assert_event(feed.next(), key, "v1")
+        finally:
+            feed.close()
