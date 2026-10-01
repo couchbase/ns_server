@@ -275,25 +275,39 @@ compare_and_swap(OldSnapshot, NewSnapshot) ->
            end),
     case ets:select_replace(?TABLE_NAME, MS) of
         1 ->
-            Mgr = chronicle_kv:event_manager(kv),
-            maps:foreach(
-              fun (seqno, _) ->
-                      ok;
-                  (Key, NewValue) ->
-                      case maps:find(Key, OldSnapshot) of
-                          {ok, NewValue} ->
-                              ok;
-                          _ ->
-                              {Value, Rev} = NewValue,
-                              gen_event:notify(Mgr,
-                                               {{key, Key}, Rev,
-                                                {updated, Value}})
-                      end
-              end, NewSnapshot),
+            notify_changes(OldSnapshot, NewSnapshot),
             ok;
         0 ->
             retry
     end.
+
+notify_changes(OldSnapshot, NewSnapshot) ->
+    Mgr = chronicle_kv:event_manager(kv),
+    maps:foreach(
+      fun (seqno, _) ->
+              ok;
+          (Key, NewValue) ->
+              case maps:find(Key, OldSnapshot) of
+                  {ok, NewValue} ->
+                      ok;
+                  _ ->
+                      {Value, Rev} = NewValue,
+                      gen_event:notify(Mgr,
+                                       {{key, Key}, Rev, {updated, Value}})
+              end
+      end, NewSnapshot),
+    DeleteRev = make_rev(get_snapshot_seqno(NewSnapshot)),
+    maps:foreach(
+      fun (seqno, _) ->
+              ok;
+          (Key, _) ->
+              case maps:is_key(Key, NewSnapshot) of
+                  true ->
+                      ok;
+                  false ->
+                      gen_event:notify(Mgr, {{key, Key}, DeleteRev, deleted})
+              end
+      end, OldSnapshot).
 
 add_rev_to_value(Value, Seqno) ->
     {Value, make_rev(Seqno)}.
