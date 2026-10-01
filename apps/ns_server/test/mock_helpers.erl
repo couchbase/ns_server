@@ -74,9 +74,12 @@ setup_mocks(Modules, PidMap) ->
 %% module, and calls any unload functions.
 -spec teardown(map()) -> ok.
 teardown(PidMap) ->
+    %% Unlink everything up front: a process that crashes because another one
+    %% was already stopped (e.g. ns_orchestrator calling compat_mode_manager)
+    %% would otherwise kill the caller and leave the mocks loaded.
+    [erlang:unlink(Pid) || Pid <- maps:values(PidMap), is_pid(Pid)],
     maps:foreach(
       fun(_Process, Pid) when is_pid(Pid) ->
-              erlang:unlink(Pid),
               misc:terminate_and_wait(Pid, shutdown);
          (_, Fun) when is_function(Fun, 0) ->
               Fun();
