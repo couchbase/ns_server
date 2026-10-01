@@ -204,6 +204,11 @@ meck_setup_chronicle_kv_getters() ->
                          {SnapshotWithoutSeqno, make_rev(Seqno)}}
                 end),
 
+    meck:expect(chronicle_kv, get_revision,
+                fun(Name) ->
+                        make_rev(get_snapshot_seqno(get_ets_snapshot(Name)))
+                end),
+
     meck:expect(chronicle_kv, event_manager,
                 fun(Name) ->
                         list_to_atom(atom_to_list(Name) ++ "-events")
