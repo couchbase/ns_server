@@ -338,17 +338,23 @@ handle_upload_mounted_volumes(Req) ->
 handle_get_active_guest_volumes(Req) ->
     menelaus_util:assert_is_enterprise(),
     menelaus_util:assert_is_79(),
-    {ok, List} =
-        functools:sequence(
-          [?cut(janitor_agent:get_active_guest_volumes(Bucket, BucketConfig))
-           || {Bucket, BucketConfig} <- ns_bucket:get_fusion_buckets()]),
-    ByNodes = lists:foldl(
-                fun({N, Res}, Map) ->
-                        maps:update_with(N, [Res | _], [Res], Map)
-                end, #{}, lists:flatten(List)),
-    ToReturn =
-        [{N, lists:usort(lists:flatten(L))} || {N, L} <- maps:to_list(ByNodes)],
-    menelaus_util:reply_json(Req, {ToReturn}, 200).
+    case functools:sequence(
+           [?cut(janitor_agent:get_active_guest_volumes(Bucket, BucketConfig))
+            || {Bucket, BucketConfig} <- ns_bucket:get_fusion_buckets()]) of
+        {ok, List} ->
+            ByNodes = lists:foldl(
+                        fun({N, Res}, Map) ->
+                                maps:update_with(N, [Res | _], [Res], Map)
+                        end, #{}, lists:flatten(List)),
+            ToReturn =
+                [{N, lists:usort(lists:flatten(L))} ||
+                    {N, L} <- maps:to_list(ByNodes)],
+            menelaus_util:reply_json(Req, {ToReturn}, 200);
+        {error, {failed_nodes, Nodes}} ->
+            menelaus_util:reply_text(
+              Req, io_lib:format("Failed to get active guest volumes from "
+                                 "nodes: ~p", [Nodes]), 500)
+    end.
 
 handle_diag_active_guest_volumes(Req) ->
     menelaus_util:assert_is_enterprise(),
