@@ -950,12 +950,29 @@ maybe_advance_state(enabling) ->
                 end
         end,
 
-    %% This will advance all disabling buckets to disabled state, check the
-    %% enabled buckets for uploaders being started and enough data being
-    %% uploaded and finally advance the fusion state to enabled if all
-    %% conditions are met
-    maybe_advance_state(enabling, enabled, disabling, disabled,
-                        EnabledBucketsReady);
+    NoEnablingBuckets =
+        fun (Snapshot) ->
+                case [B || {B, BC} <- ns_bucket:get_buckets(Snapshot),
+                           ns_bucket:get_fusion_state(BC) =:= enabling] of
+                    [] ->
+                        true;
+                    EnablingBuckets ->
+                        ?log_debug("Buckets ~p are still enabling",
+                                   [EnablingBuckets]),
+                        false
+                end
+        end,
+
+    %% This will advance all disabling buckets to disabled state, check that
+    %% no buckets are still enabling, check the enabled buckets for uploaders
+    %% being started and enough data being uploaded and finally advance the
+    %% fusion state to enabled if all conditions are met
+    maybe_advance_state(
+      enabling, enabled, disabling, disabled,
+      fun (FusionBuckets, FusionStats, Snapshot) ->
+              NoEnablingBuckets(Snapshot) andalso
+                  EnabledBucketsReady(FusionBuckets, FusionStats, Snapshot)
+      end);
 maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
     NextState = case State of
                     disabling ->
