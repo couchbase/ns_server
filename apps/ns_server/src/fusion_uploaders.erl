@@ -398,6 +398,14 @@ get_config() ->
 get_config_with_default(Source) ->
     chronicle_compat:get(Source, config_key(), #{default => default_config()}).
 
+txn_get_config_with_default(Txn) ->
+    case chronicle_compat:txn_get(config_key(), Txn) of
+        {ok, {Config, _}} ->
+            Config;
+        {error, not_found} ->
+            default_config()
+    end.
+
 -spec get_state() -> state().
 get_state() ->
     get_state(direct).
@@ -754,7 +762,7 @@ enable(BucketUploaders, MagmaBucketNames) ->
 
 disable_or_stop_txn(Txn, StateToSet, AllowedStates) ->
     Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
-    {ok, {Config, _}} = chronicle_compat:txn_get(config_key(), Txn),
+    Config = txn_get_config_with_default(Txn),
     State = proplists:get_value(state, Config),
     case lists:member(State, AllowedStates) of
         false ->
