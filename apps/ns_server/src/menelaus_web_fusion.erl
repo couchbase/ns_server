@@ -470,7 +470,7 @@ do_sync_log_store(Req, Timeout, Reset, BucketsSpec) ->
             menelaus_util:reply_text(
               Req, io_lib:format("Fusion log store sync failed on "
                                  "following nodes: ~p", [Nodes]),
-              400);
+              500);
         stopped ->
             menelaus_util:reply_text(
               Req, <<"Operation was stopped.">>, 409);
