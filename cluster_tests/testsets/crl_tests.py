@@ -704,13 +704,14 @@ class CRLTests(testlib.BaseTestSet):
             # Read the OOTB internal client cert from disk and connect.
             with ootb_internal_client_cert_file(node) as cert_path:
                 checks0, _ = _crl_cache_counters(node)
-                r = try_client_auth(node, cert_path)
+                r = try_client_auth(node, cert_path,
+                                    auth=self.cluster.auth)
                 # Should succeed - validated as 'good' against the OOTB CRL.
                 testlib.assert_eq(r.status_code, 200,
                                   name='OOTB cert auth status')
                 user_id = r.json().get('id')
-                assert user_id == '@internal', \
-                    f'Expected @internal user, got {user_id}'
+                assert user_id == self.cluster.auth[0], \
+                    f'Expected {self.cluster.auth[0]}, got {user_id}'
                 print(f"OOTB internal cert auth succeeded: user={user_id}")
 
                 # The handshake must have run a CRL check under the nodeToNode
@@ -1174,12 +1175,13 @@ class CRLTests(testlib.BaseTestSet):
             with client_cert_file(custom_cert_pem, inter_ca_pem,
                                   custom_key_pem) as cert_path:
                 checks0, _ = _crl_cache_counters(node)
-                r = try_client_auth(node, cert_path)
+                r = try_client_auth(node, cert_path,
+                                    auth=self.cluster.auth)
                 testlib.assert_eq(r.status_code, 200,
                                   name='custom internal cert before revocation')
                 user_id = r.json().get('id')
-                assert user_id == '@internal', \
-                    f'Expected @internal user, got {user_id}'
+                assert user_id == self.cluster.auth[0], \
+                    f'Expected {self.cluster.auth[0]}, got {user_id}'
                 print(f"Custom internal cert auth succeeded: user={user_id}")
 
                 # The chain really was checked, under the nodeToNode policy:
@@ -2345,15 +2347,19 @@ def _wait_client_cert_session(node, ctx, version, expected_user, timeout_s=60):
         msg=f'{version.name} client cert session for {expected_user}')
 
 
-def try_client_auth(node, cert_path):
+def try_client_auth(node, cert_path, auth=None):
     """Attempt client cert auth with a fresh TLS session.
 
     Always creates a new requests.Session() to ensure a fresh TLS handshake,
     which is necessary for CRL checks to be evaluated (TLS session resumption
     would skip the verify_fun callback).
+
+    An internal client certificate does not name an identity on its own once
+    internal_identity_password_check_under_mtls is on, so a caller that needs
+    one passes credentials alongside the certificate.
     """
     session = requests.Session()
-    return testlib.get(node, '/whoami', https=True, auth=None,
+    return testlib.get(node, '/whoami', https=True, auth=auth,
                        cert=cert_path, session=session)
 
 

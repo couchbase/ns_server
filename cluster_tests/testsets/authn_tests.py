@@ -19,6 +19,8 @@ from testsets.cert_load_tests import read_cert_file, load_ca, \
 import tempfile
 import contextlib
 
+INT_CERT_PWD_CHECK = 'internalIdentityPasswordCheckUnderMtls'
+
 CERT_REQUIRED_ALERT = 'ALERT_CERTIFICATE_REQUIRED'
 HANDSHAKE_FAILURE_ALERT = 'SSLV3_ALERT_HANDSHAKE_FAILURE'
 
@@ -247,27 +249,30 @@ class AuthnTests(testlib.BaseTestSet):
                 testlib.assert_eq(r['id'], expected_id, name='id')
                 testlib.assert_eq(r['domain'], expected_domain, name='domain')
 
+            # On by default from 8.5
+            settings = testlib.get_succ(node, '/internalSettings').json()
+            assert settings[INT_CERT_PWD_CHECK], \
+                f'{INT_CERT_PWD_CHECK} is expected to be on by default'
+
+            # The certificate names nobody now, so a request carrying no
+            # credentials establishes no identity and is refused anything
+            # that needs one
+            assert_identity(None, '', 'anonymous')
+            testlib.get(node, self.testEndpoint, https=True, auth=None,
+                        cert=cert, expected_code=401)
+            testlib.get(node, '/whoami', https=True, cert=cert,
+                        auth=('@', password + 'wrong'), expected_code=401)
+
+            # The identity comes from the credentials instead: note it is
+            # the user that authenticated, not the one named by the
+            # certificate
+            assert_identity(('@', password), '@', 'admin')
+            assert_identity(self.cluster.auth, self.cluster.auth[0],
+                            'admin')
+
             # Off: the certificate names the identity
-            assert_identity(None, '@internal', 'admin')
-
-            with internal_cert_password_check(node, True):
-                # The certificate names nobody now, so a request carrying no
-                # credentials establishes no identity and is refused anything
-                # that needs one
-                assert_identity(None, '', 'anonymous')
-                testlib.get(node, self.testEndpoint, https=True, auth=None,
-                            cert=cert, expected_code=401)
-                testlib.get(node, '/whoami', https=True, cert=cert,
-                            auth=('@', password + 'wrong'), expected_code=401)
-
-                # The identity comes from the credentials instead: note it is
-                # the user that authenticated, not the one named by the
-                # certificate
-                assert_identity(('@', password), '@', 'admin')
-                assert_identity(self.cluster.auth, self.cluster.auth[0],
-                                'admin')
-
-            assert_identity(None, '@internal', 'admin')
+            with internal_cert_password_check(node, False):
+                assert_identity(None, '@internal', 'admin')
 
 
     # Services ask /_cbauth/extractUserFromCert who a peer certificate is.
@@ -279,11 +284,12 @@ class AuthnTests(testlib.BaseTestSet):
         with client_cert_auth(node, 'internal', True, False,
                               internal=True) as cert:
             r = post_cert_to_extract_endpoint(node, cert)
-            testlib.assert_eq(r['user'], '@internal', name='user')
+            assert 'user' not in r, f'expected no user, got {r}'
 
-            with internal_cert_password_check(node, True):
+            # Set explicitly because the default differs by release
+            with internal_cert_password_check(node, False):
                 r = post_cert_to_extract_endpoint(node, cert)
-                assert 'user' not in r, f'expected no user, got {r}'
+                testlib.assert_eq(r['user'], '@internal', name='user')
 
         # A certificate mapped to a user through the prefixes still resolves
         with client_cert_auth(node, self.cert_user, True, False) as cert:
@@ -503,14 +509,19 @@ def get_internal_password(node):
 @contextlib.contextmanager
 def internal_cert_password_check(node, enabled):
     def set_to(value):
-        testlib.post_succ(
-            node, '/internalSettings',
-            data={'internalIdentityPasswordCheckUnderMtls': value})
-    set_to('true' if enabled else 'false')
+        testlib.post_succ(node, '/internalSettings',
+                          data={INT_CERT_PWD_CHECK:
+                                'true' if value else 'false'})
+
+    # The default follows the cluster version, so put back whatever was
+    # there instead of assuming it was off
+    before = testlib.get_succ(
+        node, '/internalSettings').json()[INT_CERT_PWD_CHECK]
+    set_to(enabled)
     try:
         yield
     finally:
-        set_to('false')
+        set_to(before)
 
 
 def post_cert_to_extract_endpoint(node, cert_file):

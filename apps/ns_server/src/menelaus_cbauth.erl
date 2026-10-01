@@ -162,6 +162,12 @@ handle_config_event(client_cert_auth) ->
     ?MODULE ! client_cert_auth_event;
 handle_config_event(internal_identity_password_check_under_mtls) ->
     ?MODULE ! client_cert_auth_event;
+%% The setting defaults to the cluster version, so its effective value changes
+%% when the version does, without the key itself being written. Services cache
+%% identities per certificate until clientCertAuthVersion changes, and only
+%% this event recomputes it.
+handle_config_event(cluster_compat_version) ->
+    ?MODULE ! client_cert_auth_event;
 handle_config_event({node, Node, membership}) when Node =:= node() ->
     ?MODULE ! node_status_changed;
 handle_config_event(_) ->

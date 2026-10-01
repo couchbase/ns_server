@@ -23,6 +23,7 @@ from testsets.sample_buckets import SampleBucketTasksBase
 from testsets.cert_load_tests import read_cert_file, generate_node_certs, \
      load_ca, load_node_cert, load_client_cert, generate_internal_client_cert, \
      to_pkcs8
+from testsets.authn_tests import internal_cert_password_check
 
 class NodeAdditionCommunityTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
@@ -230,9 +231,6 @@ class NodeAdditionWithCertsBase:
                 testlib.delete(n, f'/pools/default/trustedCAs/{ca["id"]}')
 
             testlib.toggle_client_cert_auth(n, enabled=False)
-            testlib.post_succ(
-                n, '/internalSettings',
-                data={'internalIdentityPasswordCheckUnderMtls': 'false'})
 
     # Node addition is initiated by the-cluster-node:
 
@@ -547,7 +545,7 @@ class NodeAdditionWithCertsBase:
     # Also both use custom client certificates.
     # Note: using join for succ case also covers the add_node scenario
     @tag(Tag.LowUrgency)
-    def client_cert_auth_everywhere_test(self):
+    def client_cert_auth_everywhere_join_test(self):
         self.provision_cluster_node(should_load_client_cert=True)
         self.provision_new_node(should_load_client_cert=True)
         load_ca(self.cluster_node(), self.new_node_ca)
@@ -556,18 +554,33 @@ class NodeAdditionWithCertsBase:
                                         enabled=True, mandatory=True)
         testlib.toggle_client_cert_auth(self.new_node(),
                                         enabled=True, mandatory=True)
+        r = self.cluster.do_join_cluster(self.new_node(),
+                                         use_client_cert_auth=True,
+                                         auth=None,
+                                         expected_code=400).json()
+        self.assert_must_supply_credentials(r)
         self.cluster.do_join_cluster(self.new_node(),
-                                     use_client_cert_auth=True)
+                                     use_client_cert_auth=True,
+                                     auth=self.cluster.auth)
 
-    # Same as above, but with internal_identity_password_check_under_mtls on
-    # everywhere, so the internal client certificate is no longer accepted as
-    # proof of identity and the credentials have to travel with it.
-    # Same as below, but node addition is initiated by the cluster, so it is
-    # the node being added that checks the credentials. That node has to have
-    # been initialised for the check to mean anything: a fresh one accepts an
-    # unauthenticated caller as an administrator, so the certificate alone
-    # would still get it added.
-    def client_cert_auth_add_with_password_check_test(self):
+
+    @tag(Tag.LowUrgency)
+    def client_cert_auth_everywhere_add_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        testlib.toggle_client_cert_auth(self.new_node(),
+                                        enabled=True, mandatory=True)
+        # Uninitialized node accepts any creds
+        self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
+                              auth=self.cluster.auth)
+
+
+    @tag(Tag.LowUrgency)
+    def client_cert_auth_everywhere_add_initialized_test(self):
         self.provision_cluster_node(should_load_client_cert=True)
         self.provision_new_node(should_load_client_cert=True)
         load_ca(self.cluster_node(), self.new_node_ca)
@@ -580,24 +593,18 @@ class NodeAdditionWithCertsBase:
                                 'username': self.cluster.auth[0],
                                 'password': self.cluster.auth[1],
                                 'port': 'SAME'})
-        for node in [self.cluster_node(), self.new_node()]:
-            testlib.post_succ(
-                node, '/internalSettings',
-                data={'internalIdentityPasswordCheckUnderMtls': 'true'})
         testlib.toggle_client_cert_auth(self.new_node(),
                                         enabled=True, mandatory=True)
-
-        # The certificate on its own no longer authenticates at that node
-        r = self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
-                                  expected_code=400).json()
-        self.assert_node_must_use_client_cert(r)
-
-        # ... but it does with that node's credentials alongside it
+        r = self.cluster.add_node(self.new_node(),
+                                  use_client_cert_auth=True,
+                                  auth=None, expected_code=400).json()
+        self.assert_must_supply_credentials(r)
         self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
                               auth=self.cluster.auth)
 
 
-    def client_cert_auth_with_password_check_test(self):
+    @tag(Tag.LowUrgency)
+    def client_cert_auth_everywhere_join_without_pass_test(self):
         self.provision_cluster_node(should_load_client_cert=True)
         self.provision_new_node(should_load_client_cert=True)
         load_ca(self.cluster_node(), self.new_node_ca)
@@ -606,13 +613,49 @@ class NodeAdditionWithCertsBase:
                                         enabled=True, mandatory=True)
         testlib.toggle_client_cert_auth(self.new_node(),
                                         enabled=True, mandatory=True)
-        for node in [self.cluster_node(), self.new_node()]:
-            testlib.post_succ(
-                node, '/internalSettings',
-                data={'internalIdentityPasswordCheckUnderMtls': 'true'})
-        self.cluster.do_join_cluster(self.new_node(),
-                                     use_client_cert_auth=True,
-                                     auth=self.cluster.auth)
+        with internal_cert_password_check(self.cluster_node(), False), \
+             internal_cert_password_check(self.new_node(), False):
+            self.cluster.do_join_cluster(self.new_node(),
+                                         use_client_cert_auth=True,
+                                         auth=None)
+
+
+    @tag(Tag.LowUrgency)
+    def client_cert_auth_everywhere_add_without_pass_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        testlib.toggle_client_cert_auth(self.new_node(),
+                                        enabled=True, mandatory=True)
+        with internal_cert_password_check(self.cluster_node(), False), \
+             internal_cert_password_check(self.new_node(), False):
+            self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
+                                  auth=None)
+
+
+    @tag(Tag.LowUrgency)
+    def client_cert_auth_everywhere_add_initialized_without_pass_test(self):
+        self.provision_cluster_node(should_load_client_cert=True)
+        self.provision_new_node(should_load_client_cert=True)
+        load_ca(self.cluster_node(), self.new_node_ca)
+        load_ca(self.new_node(), self.cluster_ca)
+        testlib.toggle_client_cert_auth(self.cluster_node(),
+                                        enabled=True, mandatory=True)
+        testlib.post_succ(self.new_node(), '/clusterInit',
+                          data={'hostname': self.new_node().host,
+                                'services': 'kv',
+                                'username': self.cluster.auth[0],
+                                'password': self.cluster.auth[1],
+                                'port': 'SAME'})
+        testlib.toggle_client_cert_auth(self.new_node(),
+                                        enabled=True, mandatory=True)
+        with internal_cert_password_check(self.cluster_node(), False), \
+             internal_cert_password_check(self.new_node(), False):
+            self.cluster.add_node(self.new_node(), use_client_cert_auth=True,
+                                  auth=None)
 
 
     # Cluster has client cert auth set to mandatory. Cluster node has custom
@@ -630,7 +673,8 @@ class NodeAdditionWithCertsBase:
         testlib.toggle_client_cert_auth(self.cluster_node(),
                                         enabled=True, mandatory=True)
         self.cluster.do_join_cluster(self.new_node(),
-                                     use_client_cert_auth=True)
+                                     use_client_cert_auth=True,
+                                     auth=self.cluster.auth)
 
     # Cluster has client cert auth set to mandatory, but doesn't have client
     # cert uploaded (uses ootb client certs).
@@ -665,7 +709,8 @@ class NodeAdditionWithCertsBase:
         testlib.toggle_client_cert_auth(self.cluster_node(),
                                         enabled=True, mandatory=True)
         self.cluster.do_join_cluster(self.new_node(),
-                                     use_client_cert_auth=True)
+                                     use_client_cert_auth=True,
+                                     auth=self.cluster.auth)
         testlib.delete(self.cluster, f'/pools/default/trustedCAs/{ca_id}')
 
     # Cluster has client cert auth set to disabled. The node-to-be-added
@@ -806,6 +851,11 @@ class NodeAdditionWithCertsBase:
                             'certificate when client certificate '
                             'authentication is set to mandatory.',
                             response[0])
+
+    def assert_must_supply_credentials(self, response):
+        assert_msg_in_error('supply a username and password as well.',
+                            response[0])
+
 
     def assert_added_node_must_use_client_cert(self, response):
         assert_msg_in_error('Node being added requires per-node client '

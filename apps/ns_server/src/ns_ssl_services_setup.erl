@@ -1517,8 +1517,15 @@ internal_identity_password_check_under_mtls() ->
 
 %% Every reader must use this same expression, because menelaus_web_settings
 %% falls back to the conf/1 default only while the key is unset.
+%%
+%% On by default from 8.5. The check is on the cluster version rather than
+%% unconditional because nodes older than 8.0 do not send credentials with the
+%% internal client certificate, and they may still be present while an upgrade
+%% is in progress. A cluster that has finished upgrading, and a freshly
+%% provisioned one, both report 8.5 and so get the new behaviour. An operator
+%% who turned the setting off keeps it off, because the key is then set.
 internal_identity_password_check_under_mtls_default() ->
-    false.
+    cluster_compat_mode:is_cluster_85().
 
 get_user_name_from_client_cert_inner(_Cert, []) ->
     {error, not_found};
