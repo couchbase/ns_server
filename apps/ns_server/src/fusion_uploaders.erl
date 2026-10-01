@@ -216,7 +216,9 @@ get_state_from_config(Config) ->
 
 -spec get_log_store_uri() -> string().
 get_log_store_uri() ->
-    proplists:get_value(log_store_uri, get_config()).
+    {log_store_uri, URI} =
+        lists:keyfind(log_store_uri, 1, get_config_with_default(direct)),
+    URI.
 
 -spec get_metadata_store_uri() -> string().
 get_metadata_store_uri() ->
