@@ -574,7 +574,7 @@ class UsersBackupTests(testlib.BaseTestSet):
         assert (res["errors"]["backup"]["compat_version"] ==
                 "Cannot restore a backup with cluster version '12.4' "
                 "as it is greater than what is supported (cluster compat "
-                "version is '8.5').")
+                "version is '9.0').")
 
         # Set compat version to something earlier than is supported. This
         # would only occur if someone manually edited the backup results.

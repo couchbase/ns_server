@@ -105,4 +105,7 @@ upgrade(?VERSION_80, Config) ->
          menelaus_alert:config_upgrade_to_85(Config) ++
          menelaus_web_activity:config_upgrade_to_85(Config) ++
          index_settings_manager:config_upgrade_to_85(Config) ++
-         menelaus_web_app_telemetry:config_upgrade_to_85(Config)}.
+         menelaus_web_app_telemetry:config_upgrade_to_85(Config)};
+
+upgrade(?VERSION_85, _Config) ->
+    {?VERSION_PONYO, []}.

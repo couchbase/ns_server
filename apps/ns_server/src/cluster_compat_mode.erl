@@ -34,6 +34,8 @@
          is_version_80/1,
          is_cluster_85/0,
          is_version_85/1,
+         is_cluster_ponyo/0,
+         is_version_ponyo/1,
          is_enterprise/0,
          is_enterprise/1,
          is_enterprise/2,
@@ -217,6 +219,12 @@ is_version_85(ClusterVersion) ->
 
 is_cluster_85() ->
     is_enabled(?VERSION_85).
+
+is_version_ponyo(ClusterVersion) ->
+    is_enabled_at(ClusterVersion, ?VERSION_PONYO).
+
+is_cluster_ponyo() ->
+    is_enabled(?VERSION_PONYO).
 
 is_index_aware_rebalance_on() ->
     not ns_config:read_key_fast(index_aware_rebalance_disabled, false).

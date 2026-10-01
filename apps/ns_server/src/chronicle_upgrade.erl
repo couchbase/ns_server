@@ -141,4 +141,7 @@ upgrade_to(?VERSION_80, UpgradeTxn) ->
        [ns_bucket:chronicle_upgrade_to_85(_),
         menelaus_roles:chronicle_upgrade_to_85(_),
         menelaus_web_jwt:chronicle_upgrade_to_85(_),
-        ns_server_cert:chronicle_upgrade_to_85(_)])}.
+        ns_server_cert:chronicle_upgrade_to_85(_)])};
+
+upgrade_to(?VERSION_85, UpgradeTxn) ->
+    {?VERSION_PONYO, UpgradeTxn}.

@@ -546,6 +546,8 @@ upgrade_config(Config) ->
                 %% not actually be allowed.
                 [{set, {node, node(), config_version}, {8,5}} |
                  upgrade_config_from_80_to_85()];
+        {8, 5} ->
+            [{set, {node, node(), config_version}, {9, 0}}];
         OldVersion ->
             ?log_error("Detected an attempt to offline upgrade from "
                        "unsupported version ~p. Terminating.", [OldVersion]),

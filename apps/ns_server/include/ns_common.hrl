@@ -271,6 +271,7 @@
 -define(VERSION_79, [7, 9]).
 -define(VERSION_80, [8, 0]).
 -define(VERSION_85, [8, 5]).
+-define(VERSION_PONYO, [9, 0]).
 
 -define(MIN_SUPPORTED_VERSION, ?VERSION_72).
 
@@ -281,7 +282,7 @@
 %% This require coordination with the UI to update the version.
 -define(LATEST_UI_COMPAT_VERSION, ?VERSION_70).
 
--define(LATEST_VERSION_NUM, ?VERSION_85).
+-define(LATEST_VERSION_NUM, ?VERSION_PONYO).
 %% The master advertised version is derived at runtime from the ns_server
 %% application 'vsn' (i.e. NS_SERVER_VERSION) - see
 %% cluster_compat_mode:mb_master_advertised_version/0. This constant is only the
