@@ -481,10 +481,7 @@ do_sync_log_store(Req, Timeout, Reset, BucketsSpec) ->
             menelaus_util:reply_text(
               Req, <<"Failed to run janitor.">>, 500);
         Other ->
-            {ErrCode, Msg} =
-                menelaus_web_cluster:busy_reply(
-                  "synchronize fusion log store", Other),
-            menelaus_util:reply_text(Req, Msg, ErrCode)
+            reply_other(Req, "synchronize fusion log store", Other)
     end.
 
 handle_prepare_snapshot_restore(Req) ->
