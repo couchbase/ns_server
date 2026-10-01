@@ -229,9 +229,11 @@ meck_setup_chronicle_kv_setters() ->
                 end),
 
     meck:expect(chronicle_kv, set,
-                fun(_Name, Key, Value) ->
-                        update_snapshot(Key, Value),
-                        {ok, 1}
+                fun(Name, Key, Value) ->
+                        transaction(Name, [Key],
+                                    fun (_) ->
+                                            {commit, [{set, Key, Value}]}
+                                    end, #{})
                 end).
 
 %% ----------------------------------
@@ -319,17 +321,25 @@ fetch_from_snapshot(Snapshot, Key, _Opts) ->
 get_keys_for_txn(Keys, Snapshot) ->
     maps:with(Keys, Snapshot).
 
-do_commits(TxnSnapshot, Commits) ->
-    {NewMap, NewSeqno} = lists:foldl(
-        fun({set, Key, Value}, {Snapshot, Seqno}) ->
-                NewSeqno = Seqno + 1,
-                {Snapshot#{Key => add_rev_to_value(Value, NewSeqno)}, NewSeqno};
-           ({delete, Key}, {Snapshot, Seqno}) ->
-               NewSeqno = Seqno + 1,
-               {maps:remove(Key, Snapshot), NewSeqno}
-        end, {TxnSnapshot, get_snapshot_seqno(TxnSnapshot)}, Commits),
+apply_commit({set, Key, Value}, Seqno, Snapshot) ->
+    Snapshot#{Key => add_rev_to_value(Value, Seqno)};
+apply_commit({delete, Key}, _Seqno, Snapshot) ->
+    maps:remove(Key, Snapshot).
 
-    store_ets_snapshot(TxnSnapshot, NewMap, NewSeqno).
+do_commits(TxnSnapshot, Commits) ->
+    %% Chronicle gives every key in a transaction the same rev
+    NewSeqno = get_snapshot_seqno(TxnSnapshot) + 1,
+    NewMap = lists:foldl(
+               fun (Commit, Snapshot) ->
+                       apply_commit(Commit, NewSeqno, Snapshot)
+               end, TxnSnapshot, Commits),
+
+    case store_ets_snapshot(TxnSnapshot, NewMap, NewSeqno) of
+        ok ->
+            {ok, make_rev(NewSeqno)};
+        retry ->
+            retry
+    end.
 
 transaction(Name, Keys, Fun, Opts) ->
     TxnSnapshot = get_ets_snapshot(),
@@ -340,12 +350,12 @@ transaction(Name, Keys, Fun, Opts) ->
     case Fun(Snapshot) of
         {commit, Commits} ->
             case do_commits(TxnSnapshot, Commits) of
-                ok -> {ok, {?FAKE_HISTORY_REV, get_snapshot_seqno()}};
+                {ok, Rev} -> {ok, Rev};
                 retry -> transaction(Name, Keys, Fun, Opts)
             end;
         {commit, Commits, Results} ->
             case do_commits(TxnSnapshot, Commits) of
-                ok ->  {ok, {?FAKE_HISTORY_REV, get_snapshot_seqno()}, Results};
+                {ok, Rev} -> {ok, Rev, Results};
                 retry -> transaction(Name, Keys, Fun, Opts)
             end;
         {abort, Error} ->
