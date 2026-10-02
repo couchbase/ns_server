@@ -1592,7 +1592,7 @@ parse_validate_services_list_test() ->
 hostname_parsing_test() ->
     Urls = [" \t\r\nhttp://host:1025\n\r\t ",
             "http://host:100",
-            "http://host:100000",
+            "http://host:70000",
             "hTTp://host:8000",
             "ftp://host:600",
             "http://host",
