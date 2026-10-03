@@ -202,6 +202,14 @@ get_config() ->
 get_config_with_default(Source) ->
     chronicle_compat:get(Source, config_key(), #{default => default_config()}).
 
+txn_get_config_with_default(Txn) ->
+    case chronicle_compat:txn_get(config_key(), Txn) of
+        {ok, {Config, _}} ->
+            Config;
+        {error, not_found} ->
+            default_config()
+    end.
+
 -spec get_state() -> state().
 get_state() ->
     get_state(direct).
@@ -500,7 +508,7 @@ enable(BucketUploaders, MagmaBucketNames) ->
 
 disable_or_stop_txn(Txn, StateToSet, AllowedStates) ->
     Snapshot = ns_bucket:fetch_snapshot(all, Txn, [props]),
-    {ok, {Config, _}} = chronicle_compat:txn_get(config_key(), Txn),
+    Config = txn_get_config_with_default(Txn),
     State = proplists:get_value(state, Config),
     case lists:member(State, AllowedStates) of
         false ->
@@ -670,18 +678,21 @@ maybe_advance_state(enabling) ->
                     analyze_fusion_stats(
                       EnabledBuckets, FusionStats,
                       fun (_BucketName, BucketInfo, Acc) ->
-                              case {maps:find(checkpoint_pending_bytes,
-                                              BucketInfo),
-                                    maps:find(uploaders_state_mismatch,
-                                              BucketInfo)} of
-                                  {{ok, Bytes}, error} ->
+                              %% checkpoint_pending_bytes is absent on nodes
+                              %% that host no uploaders (e.g. servers left
+                              %% by a stopped rebalance)
+                              case maps:is_key(uploaders_state_mismatch,
+                                               BucketInfo) of
+                                  false ->
+                                      Bytes = maps:get(checkpoint_pending_bytes,
+                                                       BucketInfo, 0),
                                       case Acc + Bytes of
                                           NewAcc when NewAcc > Threshold ->
                                               false;
                                           NewAcc ->
                                               NewAcc
                                       end;
-                                  _ ->
+                                  true ->
                                       false
                               end
                       end, 0, Snapshot),
@@ -696,12 +707,29 @@ maybe_advance_state(enabling) ->
                 end
         end,
 
-    %% This will advance all disabling buckets to disabled state, check the
-    %% enabled buckets for uploaders being started and enough data being
-    %% uploaded and finally advance the fusion state to enabled if all
-    %% conditions are met
-    maybe_advance_state(enabling, enabled, disabling, disabled,
-                        EnabledBucketsReady);
+    NoEnablingBuckets =
+        fun (Snapshot) ->
+                case [B || {B, BC} <- ns_bucket:get_buckets(Snapshot),
+                           ns_bucket:get_fusion_state(BC) =:= enabling] of
+                    [] ->
+                        true;
+                    EnablingBuckets ->
+                        ?log_debug("Buckets ~p are still enabling",
+                                   [EnablingBuckets]),
+                        false
+                end
+        end,
+
+    %% This will advance all disabling buckets to disabled state, check that
+    %% no buckets are still enabling, check the enabled buckets for uploaders
+    %% being started and enough data being uploaded and finally advance the
+    %% fusion state to enabled if all conditions are met
+    maybe_advance_state(
+      enabling, enabled, disabling, disabled,
+      fun (FusionBuckets, FusionStats, Snapshot) ->
+              NoEnablingBuckets(Snapshot) andalso
+                  EnabledBucketsReady(FusionBuckets, FusionStats, Snapshot)
+      end);
 maybe_advance_state(State) when State =:= disabling orelse State =:= stopping ->
     NextState = case State of
                     disabling ->
