@@ -163,6 +163,7 @@
          drop_deks/4,
          get_fusion_storage_snapshot/4,
          release_fusion_storage_snapshot/3,
+         get_storage_format_versions/0,
          mount_fusion_vbucket/3,
          unmount_fusion_vbuckets/2,
          get_vbuckets_mounted_for_fusion/2,
@@ -2733,6 +2734,21 @@ release_fusion_storage_snapshot(BucketUUID, VBuckets, SnapshotUUID) ->
                         Sock, BucketUUID, VBuckets, SnapshotUUID,
                         fusion_uploaders:get_metadata_store_uri(), JWT)}
       end, undefined, [json]).
+
+%% node level stat: reports the format versions this node supports, for
+%% example {"couchstore":14,"magma":1,"fusion":1}
+-spec get_storage_format_versions() -> {ok, {[{binary(), integer()}]}} |
+          mc_error().
+get_storage_format_versions() ->
+    perform_very_long_call(
+      fun (Sock) ->
+              case fetch_stats(Sock, <<"storage-format-versions">>) of
+                  {ok, [{_, Json}]} ->
+                      {reply, {ok, ejson:decode(Json)}};
+                  Error ->
+                      {reply, Error}
+              end
+      end).
 
 -spec mount_fusion_vbucket(ns_bucket:name(), vbucket_id(), [list()]) ->
           {ok, binary()} | mc_error().

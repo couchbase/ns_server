@@ -249,6 +249,19 @@ handle_prepare_rebalance(Req) ->
                         io_lib:format(
                           "Failed to obtain fusion storage snapshot from ~p",
                           [Node]), 500);
+                  {error, {failed_to_get_storage_format_versions, Nodes}} ->
+                      menelaus_util:reply_text(
+                        Req,
+                        io_lib:format(
+                          "Failed to obtain storage format versions from ~p",
+                          [Nodes]), 500);
+                  {error, {storage_format_version_mismatch, Bucket, Nodes}} ->
+                      menelaus_util:reply_text(
+                        Req,
+                        io_lib:format(
+                          "Storage format versions of fusion snapshots for "
+                          "bucket ~s don't match nodes ~p", [Bucket, Nodes]),
+                        400);
                   not_enabled ->
                       menelaus_util:reply_text(
                         Req, "Fusion is not enabled", 412);
