@@ -106,15 +106,17 @@ get_dek_snapshot(DekKind) ->
 read_ns_config_from_file(Path, DekSnapshot) ->
     case cb_crypto:read_file(Path, DekSnapshot) of
         {ResType, Data} when ResType == decrypted; ResType == raw ->
-            [Config | _] = erlang:binary_to_term(Data),
-            Config;
+            case erlang:binary_to_term(Data) of
+              [Config | _] -> [Config];
+              Map -> Map
+            end;
         {error, Reason} ->
             erlang:exit("Failed to read ~s. Got error ~p", [Path, Reason])
     end.
 
 write_ns_config(Path, NewCfg, DekSnapshot) ->
     ok = filelib:ensure_dir(Path),
-    Data = term_to_binary([NewCfg]),
+    Data = term_to_binary(NewCfg),
     ok = cb_crypto:atomic_write_file(Path, Data, DekSnapshot).
 
 modify_ns_config_tuples(Config, Args) ->
@@ -145,13 +147,15 @@ maybe_disable_auto_failover(Cfg, Args) ->
 
 disable_auto_failover(Cfg) ->
     ?log_info("Disabling auto-failover"),
-    lists:map(
-        fun({auto_failover_cfg, [VClock | Value]}) ->
-            ?log_debug("Original AFO settings ~p", [Value]),
-            NewAFOSettings = misc:update_proplist(Value, [{enabled, false}]),
-            ?log_debug("New AFO settings ~p", [NewAFOSettings]),
-            {auto_failover_cfg, [VClock | NewAFOSettings]};
-            (Existing) -> Existing
+    ns_config_map(
+        fun(auto_failover_cfg, [VClock | Value]) ->
+                ?log_debug("Original AFO settings ~p", [Value]),
+                NewAFOSettings =
+                    misc:update_proplist(Value, [{enabled, false}]),
+                ?log_debug("New AFO settings ~p", [NewAFOSettings]),
+                [VClock | NewAFOSettings];
+            (_, Existing) ->
+                Existing
         end, Cfg).
 
 maybe_remove_alternate_addresses(Cfg, Args) ->
@@ -162,9 +166,9 @@ maybe_remove_alternate_addresses(Cfg, Args) ->
 
 remove_alternate_addresses(Cfg) ->
     ?log_info("Removing configured alternate addresses"),
-    lists:filter(
-        fun({{_, _, alternate_addresses}, _}) -> false;
-            (_) -> true
+    ns_config_filter(
+        fun({_, _, alternate_addresses}, _) -> false;
+            (_, _) -> true
         end, Cfg).
 
 maybe_rewrite_cluster_uuid(Cfg, Args) ->
@@ -189,13 +193,13 @@ generate_uuid(OldUUID, #{node_map := NodeMap}) ->
 
 rewrite_cluster_uuid(Cfg, Args) ->
     ?log_info("Rewriting ns_config uuid"),
-    lists:map(
-      fun({uuid, [VClock | OldUUID]}) ->
+    ns_config_map(
+      fun(uuid, [VClock | OldUUID]) ->
               NewUUID = generate_uuid(OldUUID, Args),
 
               ?log_debug("Replacing old uuid ~p with ~p", [OldUUID, NewUUID]),
-              {uuid, [VClock | NewUUID]};
-         (V) -> V
+              [VClock | NewUUID];
+         (_, Existing) -> Existing
       end, Cfg).
 
 maybe_rewrite_cookie(Cfg, Args) ->
@@ -206,15 +210,27 @@ maybe_rewrite_cookie(Cfg, Args) ->
 
 rewrite_cookie(Cfg, #{node_map := NodeMap}) ->
     ?log_info("Rewriting ns_config cookie"),
-    lists:map(
-      fun({otp, [VClock, {cookie, OldCookie}]}) ->
+    ns_config_map(
+      fun(otp, [VClock, {cookie, OldCookie}]) ->
               NewCookie = generate_cookie(OldCookie, NodeMap),
               ?log_debug("Replacing encrypted cookie ~p with ~p",
                          [ns_cookie_manager:sanitize_cookie(OldCookie),
                           ns_cookie_manager:sanitize_cookie(NewCookie)]),
-              {otp, [VClock, {cookie, NewCookie}]};
-         (V) -> V
+              [VClock, {cookie, NewCookie}];
+         (_, Existing) -> Existing
       end, Cfg).
+
+%% ns_config may be stored as a map in newer versions. First boot from a
+%% pre-8.5 node may still have a list so we need to support both
+ns_config_map(Fun, Cfg) when is_map(Cfg) ->
+    maps:map(Fun, Cfg);
+ns_config_map(Fun, [Cfg]) when is_list(Cfg) ->
+    lists:map(fun({Key, Value}) -> {Key, Fun(Key, Value)} end, Cfg).
+
+ns_config_filter(Fun, Cfg) when is_map(Cfg) ->
+    maps:filter(Fun, Cfg);
+ns_config_filter(Fun, [Cfg]) when is_list(Cfg) ->
+    lists:filter(fun({Key, Value}) -> Fun(Key, Value) end, Cfg).
 
 rewrite_chronicle(#{?INITARGS_DATA_DIR := InputDir,
                     output_path := OutputDir} = Args) ->

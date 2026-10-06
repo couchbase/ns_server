@@ -352,11 +352,16 @@ read_config(DataDir) ->
                      end,
     case cb_crypto:read_file(DynamicCfgPath, GetDekSnapshot) of
         {ResType, Data} when ResType == decrypted; ResType == raw ->
-            [Config|_] = erlang:binary_to_term(Data),
-            {ok, Config};
+            {ok, config_to_kvlist(erlang:binary_to_term(Data))};
         {error, _} = Err ->
             Err
     end.
+
+%% Newer config.dat holds a map, older ones a list of kv lists
+config_to_kvlist(Config) when is_map(Config) ->
+    maps:to_list(maps:iterator(Config, ordered));
+config_to_kvlist([Config | _]) ->
+    Config.
 
 trim_from_left(String) ->
     lists:dropwhile(fun (C) ->

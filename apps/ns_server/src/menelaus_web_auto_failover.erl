@@ -502,20 +502,20 @@ config_upgrade_to_79_test() ->
 
         meck:new(ns_config, [passthrough]),
         meck:expect(ns_config, search_node_with_default,
-            fun(_, Default) ->
-                Default
-            end),
+                    fun(_, Default) ->
+                            Default
+                    end),
         meck:expect(ns_config, read_key_fast,
-            fun(_, Default) ->
-                Default
-            end),
+                    fun(_, Default) ->
+                            Default
+                    end),
 
         %% Test using the "default" profile.
         config_profile:load_default_profile_for_test(),
 
         BaseConfig = default_config(true),
         [{set, auto_failover_cfg, DefaultUpgradedCfg}] =
-            config_upgrade_to_79([BaseConfig]),
+            config_upgrade_to_79([maps:from_list(BaseConfig)]),
         ?assertEqual([{enabled, false}, {timePeriod, 120}],
                      proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
                                          DefaultUpgradedCfg)),
@@ -525,7 +525,7 @@ config_upgrade_to_79_test() ->
                                  [{?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
                                    [{enabled, true}, {timePeriod, 5}]}]),
         [{set, auto_failover_cfg, IgnoreExistingDiskNonRespCfg}] =
-            config_upgrade_to_79([[{?ROOT_CONFIG_KEY, ExistingCfg}]]),
+            config_upgrade_to_79([#{?ROOT_CONFIG_KEY => ExistingCfg}]),
         ?assertEqual([{enabled, true}, {timePeriod, 5}],
                      proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
                                          IgnoreExistingDiskNonRespCfg)),
@@ -537,7 +537,7 @@ config_upgrade_to_79_test() ->
         config_profile:load_profile_for_test(?PROVISIONED_PROFILE_STR),
 
         [{set, auto_failover_cfg, UpgradedWithProfile}] =
-            config_upgrade_to_79([BaseConfig]),
+            config_upgrade_to_79([maps:from_list(BaseConfig)]),
 
         %% Profile values differ from base but must not change base values
         %% as a result of upgrade
@@ -550,10 +550,10 @@ config_upgrade_to_79_test() ->
         %% Values not in base config but introduced in profile as new key/values
         ?assertEqual(undefined,
                      proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
-                     BaseConfig)),
+                                         BaseConfig)),
         ?assertEqual([{enabled, true}, {timePeriod, 120}],
                      proplists:get_value(?DATA_DISK_NON_RESPONSIVENESS_CONFIG_KEY,
-                     UpgradedWithProfile)),
+                                         UpgradedWithProfile)),
         ?assertEqual(undefined,
                      proplists:get_value(
                        ?ALLOW_FAILOVER_EPHEMERAL_NO_REPLICAS_CONFIG_KEY,

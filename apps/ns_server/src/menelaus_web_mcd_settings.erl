@@ -786,7 +786,7 @@ upgrade_config_from_76_to_79_t() ->
     TestCfg1 = lists:keyreplace(NodeMcdCfgKey, 1, TestCfg0,
                                 {NodeMcdCfgKey, NewNodeMcdCfg}),
 
-    Txns = config_upgrade_to_79([TestCfg1]),
+    Txns = config_upgrade_to_79([maps:from_list(TestCfg1)]),
 
     {set, GlobalMcdCfgKey, UpgradedGlobalMcdCfg} =
         lists:keyfind(GlobalMcdCfgKey, 2, Txns),
@@ -802,14 +802,14 @@ upgrade_config_from_76_to_79_t() ->
 upgrade_config_to_80_t() ->
     Default = ns_config_default:default(?VERSION_80),
 
-    Txns0 = config_upgrade_to_80([Default]),
+    Txns0 = config_upgrade_to_80([maps:from_list(Default)]),
     ?assertEqual(
        [{set, memcached,
          [{magma_blind_write_optimisation_enabled, true}]}],
        Txns0),
 
     DefaultWithoutMcd = proplists:delete(memcached, Default),
-    Txns1 = config_upgrade_to_80([DefaultWithoutMcd]),
+    Txns1 = config_upgrade_to_80([maps:from_list(DefaultWithoutMcd)]),
     ?assertEqual(
        [{set, memcached,
          [{magma_blind_write_optimisation_enabled, true}]}], Txns1),
@@ -819,7 +819,7 @@ upgrade_config_to_80_t() ->
                         false
                 end),
 
-    Txns2 = config_upgrade_to_80([DefaultWithoutMcd]),
+    Txns2 = config_upgrade_to_80([maps:from_list(DefaultWithoutMcd)]),
     ?assertEqual(
        [{set, memcached,
          [{magma_blind_write_optimisation_enabled, false}]}], Txns2).
