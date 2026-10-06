@@ -103,10 +103,12 @@ handle_info(_, State) ->
 
 reset_consumer(#state{consumer_mref = undefined} = State) ->
     State;
-reset_consumer(#state{consumer_mref = MRef,
-                      consumer_from = From} = State) ->
-    erlang:demonitor(MRef, [flush]),
+reset_consumer(#state{consumer_from = From} = State) ->
     gen_server:reply(From, superseded),
+    clear_consumer(State).
+
+clear_consumer(#state{consumer_mref = MRef} = State) ->
+    erlang:demonitor(MRef, [flush]),
     State#state{consumer_mref = undefined,
                 consumer_from = undefined}.
 
@@ -119,7 +121,7 @@ do_maybe_consume(#state{consumer_from = From,
                         logs_len = Len} = State) ->
     gen_server:reply(From, queue:get(Q)),
     Q1 = queue:drop(Q),
-    reset_consumer(State#state{logs = Q1,
+    clear_consumer(State#state{logs = Q1,
                                logs_len = Len - 1}).
 
 maybe_consume(State) ->
