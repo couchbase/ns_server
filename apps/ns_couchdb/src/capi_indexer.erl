@@ -179,9 +179,13 @@ build_remote_set_specs(Mod, Node, BucketName, DDocId, ViewName, VBuckets) ->
     [{cookie, Cookie}] = ns_config:read_key_fast(otp, undefined),
     {Node1, SSLOptions} = case misc:should_cluster_data_be_encrypted() of
                               true ->
+                                  %% The options end up in records and
+                                  %% processes of couch_index_merger and
+                                  %% lhttpc, which may get printed, so they
+                                  %% must not have the private key in them
                                   {{ssl, Node},
                                    ns_ssl_services_setup:tls_client_opts(
-                                     ns_config:latest(), [])};
+                                     ns_config:latest(), [], keyfile)};
                               false ->
                                   {Node, []}
                           end,

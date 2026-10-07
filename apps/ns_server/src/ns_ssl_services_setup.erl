@@ -10,6 +10,7 @@
 -module(ns_ssl_services_setup).
 
 -include("ns_common.hrl").
+-include("menelaus_web.hrl").
 -include_lib("public_key/include/public_key.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
@@ -38,9 +39,9 @@
          internal_identity_password_check_under_mtls_default/0,
          get_user_name_from_client_cert/1,
          set_certificate_chain/6,
-         tls_client_opts/2,
+         tls_client_opts/3,
          merge_ns_config_tls_options/3,
-         tls_client_certs_opts/0,
+         tls_client_certs_opts/1,
          tls_peer_verification_client_opts/0,
          tls_no_peer_verification_client_opts/0,
          configured_ciphers_names/2,
@@ -106,9 +107,17 @@ start_link_capi_service() ->
 do_start_link_capi_service(SSLPort) ->
     ok = ssl:clear_pem_cache(),
 
+    %% If the node cert and key couldn't be loaded, fail to start, as when
+    %% mochiweb couldn't listen because ssl couldn't decrypt the key file
+    SSLOpts = try
+                  ssl_server_opts()
+              catch
+                  error:{cert_and_pkey_not_available, _, _} = Error ->
+                      throw({error, Error})
+              end,
     Options = [{port, SSLPort},
                {ssl, true},
-               {ssl_opts, ssl_server_opts()},
+               {ssl_opts, SSLOpts},
                {ip, misc:inaddr_any()}],
 
     %% the following is copied almost verbatim from couch_httpd.  The
@@ -511,14 +520,6 @@ cleanup_options(Opts) ->
     lists:filter(fun ({K, _}) -> CheckVsn(tls_option_versions(K)) end, Opts).
 
 ssl_server_opts() ->
-    PassphraseFun =
-        case ns_node_disco:couchdb_node() == node() of
-            true ->
-                rpc:call(ns_node_disco:ns_server_node(), ns_secrets,
-                         get_pkey_pass, [node_cert]);
-            false ->
-                ns_secrets:get_pkey_pass(node_cert)
-        end,
     CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
     ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
@@ -530,16 +531,14 @@ ssl_server_opts() ->
     Versions = supported_versions(ssl_minimum_protocol(ns_server)),
     RawTLSOptions =
         ssl_auth_options() ++
-            [{keyfile, pkey_file_path(node_cert)},
-             {certfile, chain_file_path(node_cert)},
+            [certs_keys_opt(node_cert),
              {versions, Versions},
              {cacerts, read_ca_certs(ca_file_path())},
              {dh, dh_params_der()},
              {ciphers, CipherSuites},
              {honor_cipher_order, Order},
              {secure_renegotiate, true},
-             {client_renegotiation, ClientReneg},
-             {password, PassphraseFun}],
+             {client_renegotiation, ClientReneg}],
     merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions).
 
 tls_option_versions(anti_replay) -> ['tlsv1.3'];
@@ -578,12 +577,18 @@ read_ca_certs(File) ->
             []
     end.
 
-tls_client_opts(Config, PresetOpts) ->
+%% KeyIn is how the private key of the client certificate is given to ssl:
+%% key - decrypted, so that ssl doesn't decrypt it for every connection, which
+%% means that the options have the key in them;
+%% keyfile - as the key file and its passphrase, so that the options don't
+%% have the key in them, but ssl decrypts it for every connection.
+%% There is no default: each caller has to choose.
+tls_client_opts(Config, PresetOpts, KeyIn) ->
     RawTLSOptions =
         tls_peer_verification_client_opts() ++
         case client_cert_auth_state(Config) of
-            "mandatory" -> tls_client_certs_opts();
-            "hybrid" -> tls_client_certs_opts();
+            "mandatory" -> tls_client_certs_opts(KeyIn);
+            "hybrid" -> tls_client_certs_opts(KeyIn);
             _ -> []
         end,
     IntVsn = internal_ssl_minimum_protocol(),
@@ -592,7 +597,9 @@ tls_client_opts(Config, PresetOpts) ->
     RawTLSOptions3 = misc:update_proplist(RawTLSOptions2, PresetOpts),
     merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions3).
 
-tls_client_certs_opts() ->
+tls_client_certs_opts(key) ->
+    [certs_keys_opt(client_cert)];
+tls_client_certs_opts(keyfile) ->
     PassphraseFun =
         case ns_node_disco:couchdb_node() == node() of
             true ->
@@ -601,9 +608,39 @@ tls_client_certs_opts() ->
             false ->
                 ns_secrets:get_pkey_pass(client_cert)
         end,
-    [{certfile, chain_file_path(client_cert)},
-     {keyfile, pkey_file_path(client_cert)},
-     {password, PassphraseFun}].
+    [{certs_keys, [#{certfile => chain_file_path(client_cert),
+                     keyfile => pkey_file_path(client_cert),
+                     password => PassphraseFun}]}].
+
+%% Given {keyfile, File} and {password, Fun}, ssl decrypts the key again for
+%% every connection it sets up, which is slow, as its PBKDF2 is implemented in
+%% Erlang. So we give it the key ns_secrets has decrypted once. And we give it
+%% the certificate chain ns_secrets has loaded along with the key, rather than
+%% the chain file, which can be updated before the key is reloaded, so that
+%% the certificate and the key always match.
+certs_keys_opt(Type) ->
+    CertAndKeyFun =
+        case ns_node_disco:couchdb_node() == node() of
+            true ->
+                rpc:call(ns_node_disco:ns_server_node(), ns_secrets,
+                         get_cert_and_pkey, [Type]);
+            false ->
+                ns_secrets:get_cert_and_pkey(Type)
+        end,
+    {Chain, Key} =
+        case CertAndKeyFun of
+            F when is_function(F, 0) ->
+                case F() of
+                    {ok, CK} ->
+                        CK;
+                    {error, Reason} ->
+                        erlang:error({cert_and_pkey_not_available, Type,
+                                      Reason})
+                end;
+            RPCError ->
+                erlang:error({cert_and_pkey_not_available, Type, RPCError})
+        end,
+    {certs_keys, [#{cert => Chain, key => Key}]}.
 
 tls_peer_verification_client_opts() ->
     [{cacertfile, ca_file_path()},
@@ -619,13 +656,28 @@ start_link_rest_service() ->
         undefined ->
             ignore;
         SSLPort ->
-            Config3 = [{ssl, true},
-                       {name, menelaus_web_ssl},
-                       %% Make it a fun to avoid printing of sensitive stuff
-                       %% like pkey password in progress reports
-                       {ssl_opts_fun, fun () -> ssl_server_opts() end},
-                       {port, SSLPort}],
-            menelaus_web:start_link(Config3)
+            %% The options are got once, when the service starts (it is
+            %% restarted when they change)
+            try ssl_server_opts() of
+                SSLOpts ->
+                    Config3 = [{ssl, true},
+                               {name, menelaus_web_ssl},
+                               %% Make it a fun to avoid printing of sensitive
+                               %% stuff like pkey password in progress reports
+                               {ssl_opts_fun, fun () -> SSLOpts end},
+                               {port, SSLPort}],
+                    menelaus_web:start_link(Config3)
+            catch
+                %% The node cert and key couldn't be loaded: fail to start,
+                %% the way menelaus_web does when ssl:listen/2 can't decrypt
+                %% the key file
+                error:{cert_and_pkey_not_available, _, _} = Reason ->
+                    ?MENELAUS_WEB_LOG(
+                       ?START_FAIL,
+                       "Failed to start web service with ~p, Reason : ~p",
+                       [[{ssl, true}, {port, SSLPort}], {error, Reason}]),
+                    {error, Reason}
+            end
     end.
 
 marker_path() ->
@@ -714,8 +766,8 @@ init([]) ->
     maybe_store_ca_certs(),
     maybe_generate_node_certs(),
     maybe_generate_client_certs(),
-    reload_pkey_passphrase(node_cert),
-    reload_pkey_passphrase(client_cert),
+    reload_pkey(node_cert),
+    reload_pkey(client_cert),
     self() ! {validate_pkey, node_cert},
     self() ! {validate_pkey, client_cert},
     %% Note that it should do nothing if "auto-generated"
@@ -884,7 +936,7 @@ handle_info({validate_pkey, Type}, State) ->
 
 handle_info({revalidate_pkey, Type}, State) ->
     ?log_info("Revalidation of ~p private key is triggered", [Type]),
-    reload_pkey_passphrase(Type),
+    reload_pkey(Type),
     {ShouldNotify, NewState} = validate_pkey(Type, State),
     case ShouldNotify of
         true ->
@@ -1170,7 +1222,7 @@ save_certs_phase2(Type) ->
             save_cert_info(Type, CertsInfo),
             ?log_info("~p cert and pkey files updated", [Type]),
             ns_config:set({node, node(), Type}, Props),
-            reload_pkey_passphrase(Type),
+            reload_pkey(Type),
             self() ! {validate_pkey, Type},
             ok = ssl:clear_pem_cache(),
             %% No need to reload all the services when client cert is updated
@@ -1209,35 +1261,30 @@ resave_cert_info(Type) ->
         {error, enoent} -> ok
     end.
 
-reload_pkey_passphrase(Type) ->
+reload_pkey(Type) ->
     CertProps = ns_config:read_key_fast({node, node(), Type}, []),
     PassSettings = proplists:get_value(pkey_passphrase_settings, CertProps, []),
-    ns_secrets:load_passphrase(Type, PassSettings).
+    ns_secrets:load_pkey(Type, PassSettings).
 
 validate_pkey(Type, #state{pkey_validation_timers = Timers} = State) ->
     catch erlang:cancel_timer(maps:get(Type, Timers, undefined)),
-    KeyFile = pkey_file_path(Type),
-    Res =
-        case file:read_file(KeyFile) of
-            {ok, Key} ->
-                PassFun = ns_secrets:get_pkey_pass(Type),
-                case ns_server_cert:validate_pkey(Key, PassFun) of
-                    {ok, _} -> ok;
-                    {error, Error} -> {error, Error}
-                end;
-            {error, Error} ->
-                {error, {cannot_read_keyfile, KeyFile, Error}}
-        end,
+    %% ns_secrets has validated and decrypted the key, and read the cert
+    %% chain, when it loaded them
+    CertAndKeyFun = ns_secrets:get_cert_and_pkey(Type),
+    Res = case CertAndKeyFun() of
+              {ok, _} -> ok;
+              {error, _} = Error -> Error
+          end,
 
     case Res of
         ok ->
-            ?log_info("Private key (~p) passphrase validation suceeded",
-                      [Type]),
+            ?log_info("Certificate and private key (~p) validation "
+                      "succeeded", [Type]),
             {true, State#state{pkey_validation_timers =
                                    maps:remove(Type, Timers)}};
         {error, Reason} ->
-            ?log_error("Private key (~p) passphrase validation failed: ~p",
-                       [Type, Reason]),
+            ?log_error("Certificate and private key (~p) validation "
+                       "failed: ~p", [Type, Reason]),
             NewTimerRef = erlang:send_after(?PKEY_REVALIDATION_INTERVAL,
                                             self(), {revalidate_pkey, Type}),
             {false, State#state{pkey_validation_timers =
