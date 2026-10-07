@@ -109,8 +109,15 @@ rest_request(Method, URL, Headers, MimeType, Body, HiddenAuth, HTTPOptions) ->
     VerifyServer = proplists:get_value(server_verification, HTTPOptions1, true),
     HTTPOptions2 = lists:keydelete(server_verification, 1, HTTPOptions1),
 
-    HTTPOptions3 = add_tls_options(URL, HTTPOptions2, HiddenAuth, VerifyServer),
-    lhttpc:request(URL, Method, NewHeaders, Body, Timeout, HTTPOptions3).
+    try add_tls_options(URL, HTTPOptions2, HiddenAuth, VerifyServer) of
+        HTTPOptions3 ->
+            lhttpc:request(URL, Method, NewHeaders, Body, Timeout, HTTPOptions3)
+    catch
+        %% The client cert and key couldn't be loaded: fail the way a
+        %% connection that can't be set up does
+        error:{cert_and_pkey_not_available, _, _} = Reason ->
+            {error, Reason}
+    end.
 
 add_tls_options("https://" ++ _, Options, HiddenAuth, VerifyServer) ->
     ConnectOptions = proplists:get_value(connect_options, Options, []),
@@ -122,7 +129,8 @@ add_tls_options("https://" ++ _, Options, HiddenAuth, VerifyServer) ->
                 ns_ssl_services_setup:tls_no_peer_verification_client_opts()
         end ++
         case ?UNHIDE(HiddenAuth) of
-            client_cert_auth -> ns_ssl_services_setup:tls_client_certs_opts();
+            client_cert_auth ->
+                ns_ssl_services_setup:tls_client_certs_opts(key);
             {basic_auth, _, _} -> []
         end,
     NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),

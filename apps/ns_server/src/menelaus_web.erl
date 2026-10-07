@@ -121,6 +121,10 @@ maybe_start_http_server(Type, Options) ->
                             {true, lists:map(fun ({K, _}) when K =:= password;
                                                                K =:= key ->
                                                      {K, "********"};
+                                                 ({certs_keys, CKs}) ->
+                                                     {certs_keys,
+                                                      [hide_key(CK) ||
+                                                          CK <- CKs]};
                                                  (KV) -> KV
                                              end, L)};
                        (_) -> false
@@ -142,6 +146,13 @@ maybe_start_http_server(Type, Options) ->
                     Other
             end
     end.
+
+hide_key(CertKey) when is_map(CertKey) ->
+    maps:map(fun (K, _) when K =:= key; K =:= password -> "********";
+                 (_, V) -> V
+             end, CertKey);
+hide_key(CertKey) ->
+    CertKey.
 
 get_approot() ->
     case application:get_env(ns_server, approot) of

@@ -13,7 +13,8 @@
 %% API
 -export([start_link/0,
          get_pkey_pass/1,
-         load_passphrase/2,
+         get_cert_and_pkey/1,
+         load_pkey/2,
          extract_pkey_pass/1,
          is_pkey_pass_set/1,
          call_external_script/4]).
@@ -24,6 +25,10 @@
 
 -include("ns_common.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -31,13 +36,33 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-load_passphrase(Type, PassSettings) when is_list(PassSettings) ->
+%% Loads the passphrase of the private key of Type, and the key itself, which
+%% is decrypted here, so that it isn't decrypted for every TLS connection
+%% that uses it, along with the certificate chain of Type, so that the chain
+%% and the key that are used together always match. Is to be called whenever
+%% the certificate, the key or its passphrase change.
+%%
+%% Caution: must be called by the ns_ssl_services_setup process only. That is
+%% the process that writes the cert and key files, so they can't be written
+%% while they are read here. Called by another process, it could read the
+%% chain and the key of different certs.
+load_pkey(Type, PassSettings) when is_list(PassSettings) ->
     gen_server:call(?MODULE,
-                    {load_passphrase, Type, fun () -> PassSettings end},
+                    {load_pkey, Type, fun () -> PassSettings end},
                     30000).
 
 get_pkey_pass(Type) when Type == node_cert; Type == client_cert ->
     gen_server:call(?MODULE, {get_pkey_pass, Type}, 30000).
+
+%% Returns a fun that returns {ok, {Chain, Key}}, Chain being the certificate
+%% chain of Type, as a list of der encoded certificates, the way ssl's cert
+%% option takes it, and Key being the decrypted private key of Type, loaded
+%% along with Chain, as {KeyType, Der}, the way ssl's key option takes it. Or
+%% {error, Reason} if they couldn't be loaded. They are hidden in a fun so
+%% that the key doesn't get printed when the state of a process holding it
+%% does.
+get_cert_and_pkey(Type) when Type == node_cert; Type == client_cert ->
+    gen_server:call(?MODULE, {get_cert_and_pkey, Type}, 30000).
 
 is_pkey_pass_set(PassSettings) ->
     undefined /= proplists:get_value(type, PassSettings).
@@ -48,14 +73,28 @@ is_pkey_pass_set(PassSettings) ->
 
 init([]) -> {ok, #{}}.
 
-handle_call({load_passphrase, Type, PassSettingsFun}, _From, State) ->
+handle_call({load_pkey, Type, PassSettingsFun}, _From, State) ->
     Fun = case extract_pkey_pass(PassSettingsFun()) of
               {ok, F} -> F;
               {error, _} -> fun () -> undefined end
           end,
-    {reply, ok, State#{{pkey_passphrase_fun, Type} => Fun}};
+    %% The chain and the key read here match, as long as this is called by
+    %% ns_ssl_services_setup only (see load_pkey/2)
+    Key = read_pkey(ns_ssl_services_setup:pkey_file_path(Type), Fun),
+    Chain = read_cert_chain(ns_ssl_services_setup:chain_file_path(Type)),
+    CertAndKey = case {Chain, Key} of
+                     {{ok, C}, {ok, K}} -> {ok, {C, K}};
+                     {_, {error, _} = Error} -> Error;
+                     {{error, _} = Error, _} -> Error
+                 end,
+    {reply, ok, State#{{pkey_passphrase_fun, Type} => Fun,
+                       {cert_and_pkey_fun, Type} => ?HIDE(CertAndKey)}};
 handle_call({get_pkey_pass, Type}, _From, State) ->
     Res = maps:get({pkey_passphrase_fun, Type}, State, fun () -> undefined end),
+    {reply, Res, State};
+handle_call({get_cert_and_pkey, Type}, _From, State) ->
+    Res = maps:get({cert_and_pkey_fun, Type}, State,
+                   ?HIDE({error, not_loaded})),
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     {reply, unhandled, State}.
@@ -72,6 +111,33 @@ terminate(_Reason, _State) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+%% Returns {ok, Key}, Key being the private key in File, validated and
+%% decrypted with the passphrase PassFun returns, or {error, Reason}.
+read_pkey(File, PassFun) ->
+    case file:read_file(File) of
+        {ok, Pem} ->
+            ns_server_cert:decrypt_pkey(Pem, PassFun);
+        {error, Reason} ->
+            {error, {cannot_read_keyfile, File, Reason}}
+    end.
+
+%% Returns {ok, Chain}, Chain being the certificates in File, der encoded, or
+%% {error, Reason}.
+read_cert_chain(File) ->
+    case file:read_file(File) of
+        {ok, Pem} ->
+            case ns_server_cert:decode_cert_chain(Pem) of
+                {ok, []} ->
+                    {error, {invalid_certfile, File, no_certificates}};
+                {ok, Chain} ->
+                    {ok, Chain};
+                {error, Reason} ->
+                    {error, {invalid_certfile, File, Reason}}
+            end;
+        {error, Reason} ->
+            {error, {cannot_read_certfile, File, Reason}}
+    end.
 
 extract_pkey_pass(PassSettings) ->
     case proplists:get_value(type, PassSettings) of
@@ -194,3 +260,81 @@ wait_for_exit(Port, Output, Deadline) ->
         port_close(Port),
         error(timeout)
     end.
+
+-ifdef(TEST).
+read_pkey_test_() ->
+    {foreach,
+     fun () -> path_config:tempfile("read_pkey_test", ".pem") end,
+     fun (File) -> file:delete(File) end,
+     [fun (File) -> ?_test(read_pkey_encrypted(File)) end,
+      fun (File) -> ?_test(read_pkey_not_encrypted(File)) end,
+      fun (File) -> ?_test(read_pkey_wrong_passphrase(File)) end,
+      fun (File) -> ?_test(read_pkey_no_file(File)) end]}.
+
+read_pkey_test_key() ->
+    public_key:generate_key({rsa, 2048, 65537}).
+
+read_pkey_test_pem(Key) ->
+    public_key:pem_encode(
+      [public_key:pem_entry_encode('PrivateKeyInfo', Key)]).
+
+read_pkey_test_assert_key(Key, {ok, {KeyType, KeyDer}}) ->
+    ?assertEqual(Key, public_key:pem_entry_decode({KeyType, KeyDer,
+                                                   not_encrypted})).
+
+read_pkey_encrypted(File) ->
+    Key = read_pkey_test_key(),
+    ok = file:write_file(File,
+                         ns_server_cert:encrypt_pkey(read_pkey_test_pem(Key),
+                                                     ?HIDE("secret"))),
+    read_pkey_test_assert_key(Key, read_pkey(File, ?HIDE("secret"))).
+
+read_pkey_not_encrypted(File) ->
+    Key = read_pkey_test_key(),
+    ok = file:write_file(File, read_pkey_test_pem(Key)),
+    read_pkey_test_assert_key(Key, read_pkey(File, ?HIDE(undefined))).
+
+read_pkey_wrong_passphrase(File) ->
+    ok = file:write_file(File,
+                         ns_server_cert:encrypt_pkey(
+                           read_pkey_test_pem(read_pkey_test_key()),
+                           ?HIDE("secret"))),
+    ?assertEqual({error, could_not_decrypt},
+                 read_pkey(File, ?HIDE("wrong"))).
+
+read_pkey_no_file(File) ->
+    ?assertEqual({error, {cannot_read_keyfile, File, enoent}},
+                 read_pkey(File, ?HIDE("secret"))).
+
+read_cert_chain_test_() ->
+    {foreach,
+     fun () -> path_config:tempfile("read_cert_chain_test", ".pem") end,
+     fun (File) -> file:delete(File) end,
+     [fun (File) -> ?_test(read_cert_chain_ok(File)) end,
+      fun (File) -> ?_test(read_cert_chain_invalid(File)) end,
+      fun (File) -> ?_test(read_cert_chain_no_file(File)) end]}.
+
+read_cert_chain_ok(File) ->
+    CertOpts = [{key, {rsa, 2048, 65537}}, {digest, sha256}],
+    #{server_config := Config} =
+        public_key:pkix_test_data(
+          #{server_chain => #{root => CertOpts, intermediates => [CertOpts],
+                              peer => CertOpts},
+            client_chain => #{root => CertOpts, intermediates => [],
+                              peer => CertOpts}}),
+    Cert = proplists:get_value(cert, Config),
+    [Intermediate | _] = proplists:get_value(cacerts, Config),
+    ok = file:write_file(File,
+                         public_key:pem_encode(
+                           [{'Certificate', Cert, not_encrypted},
+                            {'Certificate', Intermediate, not_encrypted}])),
+    ?assertEqual({ok, [Cert, Intermediate]}, read_cert_chain(File)).
+
+read_cert_chain_invalid(File) ->
+    ok = file:write_file(File, <<"not a certificate">>),
+    ?assertMatch({error, {invalid_certfile, File, _}}, read_cert_chain(File)).
+
+read_cert_chain_no_file(File) ->
+    ?assertEqual({error, {cannot_read_certfile, File, enoent}},
+                 read_cert_chain(File)).
+-endif.
