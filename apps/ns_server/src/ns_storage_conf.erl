@@ -41,8 +41,15 @@
 
 -export([extract_disk_stats_for_path/2]).
 
+-export([get_storage_format_versions/1]).
+
+%% used via erpc:multicall
+-export([do_get_storage_format_versions/0]).
+
 -define(ENSURE_DELETE_COMMAND_TIMEOUT,
         ?get_timeout(ensure_delete_command, 60000)).
+-define(GET_STORAGE_FORMAT_VERSIONS_TIMEOUT,
+        ?get_timeout(get_storage_format_versions, 30000)).
 
 get_ini_files() ->
     case init:get_argument(couch_ini) of
@@ -916,6 +923,32 @@ delete_old_2i_indexes() ->
     Dir = filename:join(IxDir, "@2i"),
     ?log_debug("Delete directory ~p", [Dir]),
     misc:rm_rf(Dir).
+
+-spec get_storage_format_versions([node()]) ->
+          {ok, #{node() => {[{binary(), integer()}]}}} |
+          {error, {failed_to_get_storage_format_versions, [node()]}}.
+get_storage_format_versions(Nodes) ->
+    Res = erpc:multicall(Nodes, ?MODULE, do_get_storage_format_versions, [],
+                         ?GET_STORAGE_FORMAT_VERSIONS_TIMEOUT),
+    case lists:foldl(fun ({N, {ok, {ok, V}}}, {Good, Bad}) ->
+                             {Good#{N => V}, Bad};
+                         (BadReply, {Good, Bad}) ->
+                             {Good, [BadReply | Bad]}
+                     end, {#{}, []}, lists:zip(Nodes, Res)) of
+        {Good, []} ->
+            {ok, Good};
+        {_, ReversedBadReplies} ->
+            BadReplies = lists:reverse(ReversedBadReplies),
+            ?log_error("Failed to get storage format versions:~n~p",
+                       [BadReplies]),
+            {error, {failed_to_get_storage_format_versions,
+                     [N || {N, _} <- BadReplies]}}
+    end.
+
+-spec do_get_storage_format_versions() ->
+          {ok, {[{binary(), integer()}]}} | mc_error().
+do_get_storage_format_versions() ->
+    ns_memcached:get_storage_format_versions().
 
 
 -ifdef(TEST).

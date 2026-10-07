@@ -397,6 +397,8 @@ stop_fusion() ->
           {ok, term()} | busy() |
           {unknown_nodes, [node()]} |
           {failed_to_get_snapshot, node()} |
+          {failed_to_get_storage_format_versions, [node()]} |
+          {storage_format_version_mismatch, bucket_name(), [node()]} |
           not_enabled.
 prepare_fusion_rebalance(KeepNodes, SnapshotLifetime) ->
     call({prepare_fusion_rebalance, KeepNodes, SnapshotLifetime}, infinity).

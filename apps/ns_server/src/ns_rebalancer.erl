@@ -2209,13 +2209,14 @@ prepare_fusion_rebalance(PlanUUID, KeepKVNodes, Source, GenerateMapFun,
                          RunJanitorFun, Validity) ->
     BucketNames = ns_bucket:get_bucket_names(Source),
     try
-        RV =
-            prepare_fusion_rebalance_massage_result(
-              PlanUUID, lists:filtermap(
-                          prepare_bucket_fusion_rebalance(
-                            PlanUUID, _, KeepKVNodes, GenerateMapFun,
-                            RunJanitorFun, Validity),
-                          BucketNames)),
+        %% node versions are cached across buckets
+        {Results, _} =
+            lists:mapfoldl(
+              prepare_bucket_fusion_rebalance(
+                PlanUUID, _, KeepKVNodes, _, GenerateMapFun, RunJanitorFun,
+                Validity), #{}, BucketNames),
+        RV = prepare_fusion_rebalance_massage_result(
+               PlanUUID, [R || {true, R} <- Results]),
         ale:info(?USER_LOGGER, "Prepared fusion rebalance for nodes ~p. "
                  "plan uuid: ~p", [KeepKVNodes, PlanUUID]),
         {ok, RV}
@@ -2271,26 +2272,28 @@ run_janitor_and_fetch_snapshot(Bucket) ->
             ns_bucket:get_snapshot(Bucket, [uuid, props])
     end.
 
-prepare_bucket_fusion_rebalance(PlanUUID, Bucket, KeepKVNodes,
+prepare_bucket_fusion_rebalance(PlanUUID, Bucket, KeepKVNodes, NodesVersions,
                                 GenerateMapFun, RunJanitorFun, Validity) ->
     case RunJanitorFun(Bucket) of
         undefined ->
-            false;
+            {false, NodesVersions};
         Source ->
             {ok, {BucketConfig, Rev}} =
                 ns_bucket:get_bucket_with_revision(Bucket, Source),
             case do_prepare_bucket_fusion_rebalance(
                    PlanUUID, Bucket, ns_bucket:uuid(Bucket, Source),
-                   BucketConfig, KeepKVNodes, GenerateMapFun, Validity) of
+                   BucketConfig, KeepKVNodes, NodesVersions, GenerateMapFun,
+                   Validity) of
                 {error, Error} ->
                     throw(Error);
-                {ok, Res} ->
-                    {true, {Bucket, Rev, Res}}
+                {ok, Res, NewNodesVersions} ->
+                    {{true, {Bucket, Rev, Res}}, NewNodesVersions}
             end
     end.
 
 do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
-                                   KeepKVNodes, GenerateMapFun, Validity) ->
+                                   KeepKVNodes, NodesVersions, GenerateMapFun,
+                                   Validity) ->
     CurrentMap = proplists:get_value(map, BucketConfig),
 
     %% what to do with bucket_placer?
@@ -2320,21 +2323,96 @@ do_prepare_bucket_fusion_rebalance(PlanUUID, Bucket, BucketUUID, BucketConfig,
     fusion_uploaders:store_snapshots_uuid(
       PlanUUID, BucketUUID, ns_bucket:get_num_vbuckets(BucketConfig)),
 
-    case fusion_uploaders:get_snapshots(
-           BucketUUID, VBucketsToQuery, SnapshotUUID, Validity, KeepKVNodes) of
-        {error, Error} ->
-            {error, Error};
-        {ok, Volumes} ->
-            VolumesMap = maps:from_list(Volumes),
-            NodesVolumesMap =
-                maps:map(
-                  fun (_Node, VBuckets) ->
-                          lists:map(maps:get(_, VolumesMap),
-                                    %% reversing back to accending order after
-                                    %% foldl
-                                    lists:reverse(VBuckets))
-                  end, DestinationNodes),
-            {ok, {TargetMap, MapOptions, NodesVolumesMap, DestinationNodes}}
+    maybe
+        {ok, Volumes} ?=
+            fusion_uploaders:get_snapshots(
+              BucketUUID, VBucketsToQuery, SnapshotUUID, Validity,
+              KeepKVNodes),
+        VolumesMap = maps:from_list(Volumes),
+        NodesVolumesMap =
+            maps:map(
+              fun (_Node, VBuckets) ->
+                      lists:map(maps:get(_, VolumesMap),
+                                %% reversing back to accending order after
+                                %% foldl
+                                lists:reverse(VBuckets))
+              end, DestinationNodes),
+        {ok, NewNodesVersions} ?=
+            check_storage_format_versions(Bucket, NodesVolumesMap,
+                                          NodesVersions),
+        {ok, {TargetMap, MapOptions, NodesVolumesMap, DestinationNodes},
+         NewNodesVersions}
+    end.
+
+%% A volume with no log checkpoint has no format versions and is compatible
+%% with any node.
+snapshot_format_versions(Bucket, Node, {Props}) ->
+    case proplists:get_value(<<"storageFormatVersion">>, Props) of
+        Empty when Empty =:= undefined; Empty =:= {[]} ->
+            ?log_warning("Skipping storage format version check for volume "
+                         "~p of bucket ~p on node ~p. storageFormatVersion: "
+                         "~p", [proplists:get_value(<<"volumeID">>, Props),
+                                Bucket, Node, Empty]),
+            undefined;
+        Versions ->
+            format_versions(Versions)
+    end.
+
+format_versions({Props}) ->
+    [{K, proplists:get_value(K, Props)} || K <- [<<"magma">>, <<"fusion">>]].
+
+check_storage_format_versions(Bucket, NodesVolumesMap, NodesVersions) ->
+    NodesSnapshotVersions =
+        maps:filtermap(
+          fun (Node, Volumes) ->
+                  case lists:usort(
+                         lists:map(snapshot_format_versions(Bucket, Node, _),
+                                   Volumes)) -- [undefined] of
+                      [] ->
+                          false;
+                      Versions ->
+                          {true, Versions}
+                  end
+          end, NodesVolumesMap),
+    maybe
+        {ok, NewNodesVersions} ?=
+            fetch_storage_format_versions(maps:keys(NodesSnapshotVersions),
+                                          NodesVersions),
+        Mismatches =
+            maps:fold(
+              fun (Node, SnapshotVersions, Acc) ->
+                      NodeVersions =
+                          format_versions(maps:get(Node, NewNodesVersions)),
+                      case SnapshotVersions -- [NodeVersions] of
+                          [] ->
+                              Acc;
+                          Bad ->
+                              [{Node, NodeVersions, Bad} | Acc]
+                      end
+              end, [], NodesSnapshotVersions),
+        case Mismatches of
+            [] ->
+                {ok, NewNodesVersions};
+            _ ->
+                ?log_error("Storage format versions of fusion snapshots for "
+                           "bucket ~p don't match nodes:~n~p",
+                           [Bucket, Mismatches]),
+                {error, {storage_format_version_mismatch, Bucket,
+                         lists:sort([N || {N, _, _} <- Mismatches])}}
+        end
+    end.
+
+fetch_storage_format_versions(Nodes, NodesVersions) ->
+    case Nodes -- maps:keys(NodesVersions) of
+        [] ->
+            {ok, NodesVersions};
+        Missing ->
+            case ns_storage_conf:get_storage_format_versions(Missing) of
+                {ok, Fetched} ->
+                    {ok, maps:merge(NodesVersions, Fetched)};
+                {error, _} = Error ->
+                    Error
+            end
     end.
 
 -ifdef(TEST).
@@ -2356,20 +2434,57 @@ prepare_rebalance_test_() ->
           {bucket, fusion1, uuid} => {<<"fusion1">>, rev},
           {bucket, fusion2, uuid} => {<<"fusion2">>, rev},
           {bucket, other, props} => {[], rev}},
+    Versions = {[{<<"magma">>, 1}, {<<"fusion">>, 1}]},
+    NodeVersions = {[{<<"couchstore">>, 14}, {<<"magma">>, 1},
+                     {<<"fusion">>, 1}]},
+    ExpectSnapshots =
+        fun (VersionsFun) ->
+                ok = meck:expect(
+                       fusion_uploaders, get_snapshots,
+                       fun (BucketUUID, VBuckets, SnapshotUUID, _, _) ->
+                               {ok,
+                                [{VBucket,
+                                  {[{id, {BucketUUID, VBucket, SnapshotUUID}},
+                                    {<<"storageFormatVersion">>,
+                                     VersionsFun(VBucket)}]}} ||
+                                    VBucket <- VBuckets]}
+                       end)
+        end,
+    ExpectNodesVersions =
+        fun (NodesVersions) ->
+                ok = meck:expect(ns_storage_conf, get_storage_format_versions,
+                                 fun (Nodes) ->
+                                         {ok, maps:with(Nodes, NodesVersions)}
+                                 end)
+        end,
+    Prepare =
+        fun () ->
+                GenerateMapFun =
+                    fun (_, _, fusion1, _) -> {TargetMap1, options1};
+                        (_, _, fusion2, _) -> {TargetMap2, options2}
+                    end,
+                prepare_fusion_rebalance(
+                  <<"PlanUUD">>, Servers, Snapshot, GenerateMapFun,
+                  fun (Bucket) ->
+                          {ok, BucketConfig} =
+                              ns_bucket:get_bucket(Bucket, Snapshot),
+                          case ns_bucket:is_fusion(BucketConfig) of
+                              false ->
+                                  undefined;
+                              true ->
+                                  Snapshot
+                          end
+                  end, os:system_time(second) + 1000)
+        end,
     {foreach,
      fun () ->
              ok = meck:new(menelaus_web_node, [passthrough]),
              ok = meck:new(ns_config, [passthrough]),
              ok = meck:new(fusion_uploaders, [passthrough]),
              ok = meck:new(ns_janitor, [passthrough]),
-             ok = meck:expect(
-                    fusion_uploaders, get_snapshots,
-                    fun (BucketUUID, VBuckets, SnapshotUUID, _, _) ->
-                            {ok,
-                             [{VBucket,
-                               {[{id, {BucketUUID, VBucket, SnapshotUUID}}]}} ||
-                                 VBucket <- VBuckets]}
-                    end),
+             ok = meck:new(ns_storage_conf, [passthrough]),
+             ExpectSnapshots(fun (_) -> Versions end),
+             ExpectNodesVersions(#{N => NodeVersions || N <- Servers}),
              ok = meck:expect(menelaus_web_node, build_node_hostname,
                               fun (_, Node, _) -> Node end),
              ok = meck:expect(ns_config, get_timeout,
@@ -2382,26 +2497,12 @@ prepare_rebalance_test_() ->
              ok = meck:unload(menelaus_web_node),
              ok = meck:unload(ns_config),
              ok = meck:unload(fusion_uploaders),
-             ok = meck:unload(ns_janitor)
+             ok = meck:unload(ns_janitor),
+             ok = meck:unload(ns_storage_conf)
      end,
      [{"basic happy path",
        fun () ->
-               GenerateMapFun =
-                   fun (_, _, fusion1, _) -> {TargetMap1, options1};
-                       (_, _, fusion2, _) -> {TargetMap2, options2}
-                   end,
-               RV = prepare_fusion_rebalance(
-                      <<"PlanUUD">>, Servers, Snapshot, GenerateMapFun,
-                      fun (Bucket) ->
-                              {ok, BucketConfig} =
-                                  ns_bucket:get_bucket(Bucket, Snapshot),
-                              case ns_bucket:is_fusion(BucketConfig) of
-                                  false ->
-                                      undefined;
-                                  true ->
-                                      Snapshot
-                              end
-                      end, os:system_time(second) + 1000),
+               RV = Prepare(),
                ?assertMatch({ok, {_, {_}}}, RV),
                {ok, {RebalancePlan, {AccelerationPlan}}} = RV,
                UUID = proplists:get_value(planUUID, RebalancePlan),
@@ -2448,7 +2549,8 @@ prepare_rebalance_test_() ->
                            ?assertEqual(
                               lists:sort(Expected),
                               lists:sort([{B, VB} ||
-                                             {[{id, {B, VB, _}}]} <- Volumes]))
+                                             {[{id, {B, VB, _}} | _]} <-
+                                                 Volumes]))
                    end,
                ValidateNode(n1, [3]),
                ValidateNode(n2, [2, 3]),
@@ -2469,6 +2571,29 @@ prepare_rebalance_test_() ->
                     fun (fusion1) -> Snapshot;
                         (_) -> undefined
                     end, os:system_time(second) + 1000))
+       end},
+      {"storage format version mismatch",
+       fun () ->
+               ExpectNodesVersions(
+                 #{n1 => NodeVersions,
+                   n2 => {[{<<"magma">>, 2}, {<<"fusion">>, 1}]},
+                   n3 => {[{<<"magma">>, 1}]}}),
+               ?assertEqual(
+                  {error, {storage_format_version_mismatch, fusion1, [n2, n3]}},
+                  Prepare())
+       end},
+      {"only nodes the snapshot is applied to are queried, once",
+       fun () ->
+               %% only n3 receives vbucket 1
+               ExpectSnapshots(fun (1) -> Versions;
+                                   (_) -> {[]}
+                               end),
+               ExpectNodesVersions(#{n3 => NodeVersions}),
+               ?assertMatch({ok, _}, Prepare()),
+               ?assertEqual(
+                  [[n3]],
+                  [Nodes || {_, {_, get_storage_format_versions, [Nodes]}, _}
+                                <- meck:history(ns_storage_conf)])
        end}]}.
 
 -endif.
