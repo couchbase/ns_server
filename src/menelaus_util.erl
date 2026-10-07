@@ -470,7 +470,8 @@ parse_validate_number(String, Min, Max, Fun) ->
     end.
 
 parse_validate_port_number(StringPort) ->
-    case parse_validate_number(StringPort, 1024, 65535) of
+    case parse_validate_number(StringPort, ?MIN_PORT_NUMBER,
+                               ?MAX_PORT_NUMBER) of
         {ok, Port} ->
             Port;
         invalid ->

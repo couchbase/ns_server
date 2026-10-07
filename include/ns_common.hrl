@@ -463,4 +463,7 @@
                          ?FUNCTION_NAME, Args)
         end).
 
+-define(MIN_PORT_NUMBER, 1024).  %% Below 1024 are system ports
+-define(MAX_PORT_NUMBER, 65535).
+
 -endif.

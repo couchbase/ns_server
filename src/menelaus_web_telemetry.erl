@@ -12,6 +12,7 @@
 -module(menelaus_web_telemetry).
 
 -include("cut.hrl").
+-include("ns_common.hrl").
 
 
 %% API
@@ -28,6 +29,8 @@ params_internal() ->
       #{cfg_key => reporting_enabled, type => bool}},
      {"endpoint",
       #{cfg_key => reporting_endpoint, type => endpoint}},
+     {"port",
+      #{cfg_key => reporting_port, type => {int, 0, ?MAX_PORT_NUMBER}}},
      {"reportIntervalHours",
       #{cfg_key => reporting_interval_hours, type => pos_int}},
      {"reportTimeoutSeconds",
