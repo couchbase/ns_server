@@ -2260,7 +2260,7 @@ prepare_bucket_fusion_rebalance(PlanUUID, Bucket, KeepKVNodes, NodesVersions,
                    PlanUUID, Bucket, ns_bucket:uuid(Bucket, Source),
                    BucketConfig, KeepKVNodes, NodesVersions, GenerateMapFun,
                    Validity) of
-                {error, _} = Error ->
+                {error, Error} ->
                     throw(Error);
                 {ok, Res, NewNodesVersions} ->
                     {{true, {Bucket, Rev, Res}}, NewNodesVersions}
@@ -2532,6 +2532,22 @@ prepare_rebalance_test_() ->
                ValidateNode(n2, [2, 3]),
                ValidateNode(n3, [1, 2, 3])
        end},
+      {"failed to get snapshots",
+       fun () ->
+               ok = meck:expect(
+                      fusion_uploaders, get_snapshots,
+                      fun (_, _, _, _, _) ->
+                              {error, {failed_to_get_snapshot, n2}}
+                      end),
+               ?assertEqual(
+                  {error, {failed_to_get_snapshot, n2}},
+                  prepare_fusion_rebalance(
+                    <<"PlanUUD">>, Servers, Snapshot,
+                    fun (_, _, _, _) -> {TargetMap1, options1} end,
+                    fun (fusion1) -> Snapshot;
+                        (_) -> undefined
+                    end, os:system_time(second) + 1000))
+       end},
       {"storage format version mismatch",
        fun () ->
                ExpectNodesVersions(
@@ -2539,8 +2555,8 @@ prepare_rebalance_test_() ->
                    n2 => {[{<<"magma">>, 2}, {<<"fusion">>, 1}]},
                    n3 => {[{<<"magma">>, 1}]}}),
                ?assertEqual(
-                  {error, {error, {storage_format_version_mismatch, fusion1,
-                                   [n2, n3]}}}, Prepare())
+                  {error, {storage_format_version_mismatch, fusion1, [n2, n3]}},
+                  Prepare())
        end},
       {"only nodes the snapshot is applied to are queried, once",
        fun () ->
