@@ -14,6 +14,7 @@
 -export([start_link/0,
          get_pkey_pass/1,
          get_cert_and_pkey/1,
+         format_error/1,
          load_pkey/2,
          extract_pkey_pass/1,
          is_pkey_pass_set/1,
@@ -63,6 +64,34 @@ get_pkey_pass(Type) when Type == node_cert; Type == client_cert ->
 %% does.
 get_cert_and_pkey(Type) when Type == node_cert; Type == client_cert ->
     gen_server:call(?MODULE, {get_cert_and_pkey, Type}, 30000).
+
+%% Describes Reason, an error that get_cert_and_pkey/1 can give, for error
+%% messages
+format_error(not_loaded) ->
+    "The certificate and private key have not been loaded yet";
+format_error({cannot_read_keyfile, File, Reason}) ->
+    io_lib:format("Unable to read private key file ~s: ~s",
+                  [File, file:format_error(Reason)]);
+format_error({cannot_read_certfile, File, Reason}) ->
+    io_lib:format("Unable to read certificate chain file ~s: ~s",
+                  [File, file:format_error(Reason)]);
+format_error({invalid_certfile, File, no_certificates}) ->
+    io_lib:format("Certificate chain file ~s contains no certificates",
+                  [File]);
+format_error({invalid_certfile, File, Reason}) ->
+    io_lib:format("Invalid certificate chain file ~s: ~p", [File, Reason]);
+format_error(could_not_decrypt) ->
+    "Failed to decrypt the private key. Check its passphrase settings";
+format_error(malformed_pkey) ->
+    "Malformed or unsupported private key format";
+format_error(too_many_pkey_entries) ->
+    "The private key file contains an incorrect number of entries";
+format_error({invalid_pkey, Type}) ->
+    io_lib:format("Invalid private key type: ~p", [Type]);
+format_error({invalid_pkey_cipher, _}) ->
+    "Invalid private key cipher. Only PKCS#5 v2.0 algorithms are supported";
+format_error(Reason) ->
+    io_lib:format("~p", [Reason]).
 
 is_pkey_pass_set(PassSettings) ->
     undefined /= proplists:get_value(type, PassSettings).
@@ -337,4 +366,16 @@ read_cert_chain_invalid(File) ->
 read_cert_chain_no_file(File) ->
     ?assertEqual({error, {cannot_read_certfile, File, enoent}},
                  read_cert_chain(File)).
+format_error_test() ->
+    F = fun (R) -> lists:flatten(format_error(R)) end,
+    ?assertEqual("Failed to decrypt the private key. Check its passphrase "
+                 "settings", F(could_not_decrypt)),
+    ?assertEqual("Unable to read private key file /a/pkey.pem: no such file "
+                 "or directory",
+                 F({cannot_read_keyfile, "/a/pkey.pem", enoent})),
+    ?assertEqual("Certificate chain file /a/chain.pem contains no "
+                 "certificates",
+                 F({invalid_certfile, "/a/chain.pem", no_certificates})),
+    ?assertEqual("Invalid private key type: dsa", F({invalid_pkey, dsa})),
+    ?assertEqual("{unknown,error}", F({unknown, error})).
 -endif.
