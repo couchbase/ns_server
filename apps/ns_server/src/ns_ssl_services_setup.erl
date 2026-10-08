@@ -42,6 +42,7 @@
          tls_client_opts/3,
          merge_ns_config_tls_options/3,
          tls_client_certs_opts/1,
+         remove_cert_key_opts/1,
          tls_peer_verification_client_opts/0,
          tls_no_peer_verification_client_opts/0,
          configured_ciphers_names/2,
@@ -677,6 +678,17 @@ certs_keys_opt(Type) ->
                 erlang:error({cert_and_pkey_not_available, Type, RPCError})
         end,
     {certs_keys, [#{cert => Chain, key => Key}]}.
+
+%% Removes the ssl options that give the cert and key, whichever form they
+%% are given in, so that they can be replaced with a certs_keys option
+%% without ssl ignoring one of them.
+remove_cert_key_opts(Opts) ->
+    lists:filter(fun ({K, _}) ->
+                         not lists:member(K, [cert, certfile, key, keyfile,
+                                              password, certs_keys]);
+                     (_) ->
+                         true
+                 end, Opts).
 
 tls_peer_verification_client_opts() ->
     [{cacertfile, ca_file_path()},
@@ -2066,5 +2078,14 @@ cleanup_options_test() ->
     ?assertEqual([{ciphers, []}],
                  cleanup_options(tl(Opts), ['tlsv1.3'])),
     ?assertEqual(tl(Opts), cleanup_options(tl(Opts), ['tlsv1.3', 'tlsv1.2'])).
+
+remove_cert_key_opts_test() ->
+    ?assertEqual([binary, {verify, verify_peer}, {depth, 10}],
+                 remove_cert_key_opts(
+                   [binary, {certfile, "chain.pem"}, {verify, verify_peer},
+                    {keyfile, "pkey.pem"}, {password, fun () -> "p" end},
+                    {cert, <<"der">>}, {key, {'PrivateKeyInfo', <<"der">>}},
+                    {certs_keys, [#{certfile => "chain.pem"}]},
+                    {depth, 10}])).
 
 -endif.

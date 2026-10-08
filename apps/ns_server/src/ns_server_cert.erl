@@ -1053,7 +1053,8 @@ validate_otp_certs(client_cert, ChainPem, PKeyPem, PassphraseFun) ->
             PrivateKey = public_key:pem_entry_decode(PKeyEntry,
                                                      PassphraseFun),
             {_, KeyDer, _} = public_key:pem_entry_encode(KeyType, PrivateKey),
-            Opts = [{cert, ChainDer}, {key, {KeyType, KeyDer}}],
+            Opts = [{certs_keys, [#{cert => ChainDer,
+                                    key => {KeyType, KeyDer}}]}],
             case ns_cluster:verify_otp_connectivity(Node, Opts) of
                 {ok, _} -> ok;
                 {error, _, {_, Msg}} ->
@@ -1103,11 +1104,12 @@ with_test_otp_server(Fun, ChainPem, PKeyPem, PassphraseFun) ->
     PrivateKey = public_key:pem_entry_decode(PKeyEntry, PassphraseFun),
     {_, KeyDer, _} = public_key:pem_entry_encode(KeyType, PrivateKey),
 
-    ServerOpts = lists:map(
-                   fun ({certfile, _}) -> {cert, ChainDer};
-                       ({keyfile, _}) -> {key, {KeyType, KeyDer}};
-                       (O) -> O
-                   end, CurrentServerOptsWithAF),
+    %% Whichever way the current options give the cert and key, they are
+    %% replaced with the ones being tested
+    ServerOpts = [{certs_keys, [#{cert => ChainDer,
+                                  key => {KeyType, KeyDer}}]} |
+                  ns_ssl_services_setup:remove_cert_key_opts(
+                    CurrentServerOptsWithAF)],
     case ssl:listen(0, ServerOpts) of
         {ok, LSocket} ->
             Accepter = spawn(fun () ->
