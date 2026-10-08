@@ -189,10 +189,13 @@ def maybe_mk_node_couch_config(i, ini_file_name, root_dir):
 def couch_configs(i, root_dir):
     ini_file_name = os.path.join(root_dir, "couch", f"n_{i}_conf.ini")
     maybe_mk_node_couch_config(i, ini_file_name, root_dir)
+    # geocouch.ini is installed only by a build which includes geocouch, and
+    # couch_config refuses to start on a missing file
+    geocouch_ini = "{0}/etc/couchdb/default.d/geocouch.ini".format(PREFIX)
     return ["{0}/etc/couchdb/default.ini".format(PREFIX),
-            "{0}/etc/couchdb/default.d/capi.ini".format(PREFIX),
-            "{0}/etc/couchdb/default.d/geocouch.ini".format(PREFIX),
-            ini_file_name]
+            "{0}/etc/couchdb/default.d/capi.ini".format(PREFIX)] + \
+        ([geocouch_ini] if os.path.exists(geocouch_ini) else []) + \
+        [ini_file_name]
 
 
 def os_specific(args, params):
