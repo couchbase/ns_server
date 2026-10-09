@@ -40,7 +40,11 @@
 %%
 %%   - On-demand refresh (JWKS URI only):
 %%     * If a JWKS URI key lookup fails or is expired, a refresh is attempted
-%%     * A cooldown period of 1 minute prevents excessive network requests
+%%     * A kid not seen before is fetched immediately, so a rotated signing key
+%%       is accepted right away without waiting for a cooldown
+%%     * The kid comes from an unverified token header. So after a fetch that
+%%       fails or does not find the kid, the issuer is not fetched on demand
+%%       for 5 seconds.
 %%
 %%   - Periodic refresh (JWKS URI only):
 %%     * Background timer refreshes all JWKS URIs periodically
@@ -81,22 +85,27 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% any asks for a fresh JWKS without needing a particular kid.
+-type refresh_kid() :: binary() | undefined | any.
+
 -record(cache_state, {
                       refresh_timer_ref :: undefined | reference(),
-                      refresh_interval_ms :: undefined | pos_integer()
+                      refresh_interval_ms :: undefined | pos_integer(),
+                      %% Issuer => time of its last on-demand fetch that
+                      %% failed or did not find the wanted kid
+                      last_miss = #{} :: #{binary() => integer()}
                      }).
 
 %% Cache entry for a single JWKS URI issuer
 -record(jwks_cache_entry, {
                            kid_to_jwk :: jwt_kid_to_jwk(),
-                           fetch_time :: integer(),
                            expiry :: undefined | integer()
                           }).
 
 -define(JWKS_DEFAULT_EXPIRY_S, 6 * 60 * 60). %% 6 hours
 -define(JWKS_SYNC_TIMEOUT_MS, 10000). %% 10 seconds
--define(JWKS_COOLDOWN_INTERVAL_MS,
-        ?get_param(jwks_cooldown_interval_ms, 60000)). %% 1 minute
+-define(JWKS_MIN_FETCH_INTERVAL_MS,
+        ?get_param(jwks_min_fetch_interval_ms, 5000)). %% 5 seconds
 -define(JWKS_FETCH_RETRY_COUNT, 1).
 -define(JWKS_REFRESH_JITTER_MS, 30000). %% 30 seconds of maximum jitter
 -define(JWKS_REFRESH_TIMEOUT_MS, 90000).
@@ -181,7 +190,7 @@ lookup_and_build_jwks(Issuer) ->
 -spec refresh_and_build_jwks(map()) ->
           {ok, jose_jwk:key()} | {error, binary()}.
 refresh_and_build_jwks(#{name := Issuer} = Props) ->
-    case gen_server:call(?MODULE, {refresh_issuer, Props},
+    case gen_server:call(?MODULE, {refresh_issuer, Props, any},
                          ?JWKS_REFRESH_TIMEOUT_MS) of
         ok ->
             lookup_and_build_jwks(Issuer);
@@ -221,27 +230,45 @@ direct_get_jwk(#{public_key_source := jwks_uri} = Props, Kid) ->
           {ok, jose_jwk:key()} | {error, binary()}.
 get_jwk_with_retry(#{public_key_source := jwks_uri} = Props, Kid, RetryCount) ->
     Issuer = maps:get(name, Props),
-    Map = case ets:lookup(?MODULE, Issuer) of
-              [{Issuer, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
-                                          expiry = Expiry}}] ->
-                  case erlang:monotonic_time(millisecond) > Expiry of
-                      true ->
-                          ?log_debug("JWT issuer ~p entries have expired",
-                                     [Issuer]),
-                          #{};
-                      false -> KidToJWKMap
-                  end;
-              [] -> #{}
-          end,
-    case maps:find(Kid, Map) of
+    case cached_jwk(Issuer, Kid) of
         {ok, JWK} -> {ok, JWK};
         error when RetryCount > 0 ->
-            gen_server:call(?MODULE, {refresh_issuer, Props},
+            gen_server:call(?MODULE, {refresh_issuer, Props, Kid},
                             ?JWKS_REFRESH_TIMEOUT_MS),
             get_jwk_with_retry(Props, Kid, RetryCount - 1);
         error ->
             format_kid_not_found_error(Kid)
     end.
+
+-spec cached_jwk(Issuer :: binary(), Kid :: binary() | undefined) ->
+          {ok, jose_jwk:key()} | error.
+cached_jwk(Issuer, Kid) ->
+    case cached_kid_map(Issuer) of
+        {ok, KidToJWKMap} -> maps:find(Kid, KidToJWKMap);
+        error -> error
+    end.
+
+-spec cached_kid_map(Issuer :: binary()) -> {ok, jwt_kid_to_jwk()} | error.
+cached_kid_map(Issuer) ->
+    case ets:lookup(?MODULE, Issuer) of
+        [{Issuer, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
+                                    expiry = Expiry}}] ->
+            case erlang:monotonic_time(millisecond) > Expiry of
+                true ->
+                    ?log_debug("JWT issuer ~p entries have expired",
+                               [Issuer]),
+                    error;
+                false ->
+                    {ok, KidToJWKMap}
+            end;
+        [] -> error
+    end.
+
+-spec is_cached(Issuer :: binary(), Kid :: refresh_kid()) -> boolean().
+is_cached(Issuer, any) ->
+    cached_kid_map(Issuer) =/= error;
+is_cached(Issuer, Kid) ->
+    cached_jwk(Issuer, Kid) =/= error.
 
 -spec format_kid_not_found_error(Kid :: binary() | undefined) ->
           {error, binary()}.
@@ -413,28 +440,43 @@ fetch_and_cache_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
                              undefined -> ?JWKS_DEFAULT_EXPIRY_S;
                              Age -> Age
                          end) * 1000,
-                    cache_jwks_entry(IssuerProps, KidToJWKMap, FetchTime,
-                                     Expiry);
+                    cache_jwks_entry(IssuerProps, KidToJWKMap, Expiry);
                 {error, _} ->
                     {error, <<"Invalid JWKS">>}
             end
     end.
 
--spec check_cooldown(Issuer :: binary()) -> ok | {error, cooldown}.
-check_cooldown(Issuer) ->
+-spec check_cooldown(Issuer :: binary(), #cache_state{}) ->
+          ok | {error, cooldown}.
+check_cooldown(Issuer, #cache_state{last_miss = LastMiss}) ->
     Now = erlang:monotonic_time(millisecond),
-    case ets:lookup(?MODULE, Issuer) of
-        [{_, #jwks_cache_entry{fetch_time = LastTime}}] ->
-            case Now - LastTime < ?JWKS_COOLDOWN_INTERVAL_MS of
-                true ->
-                    ?log_debug("JWT issuer ~p cooldown period not yet met",
-                               [Issuer]),
-                    {error, cooldown};
-                false ->
-                    ok
-            end;
-        _ ->
+    MissedRecently =
+        case maps:find(Issuer, LastMiss) of
+            {ok, MissedAt} -> Now - MissedAt < ?JWKS_MIN_FETCH_INTERVAL_MS;
+            error -> false
+        end,
+    case MissedRecently of
+        true ->
+            ?log_debug("JWT issuer ~p cooldown period not yet met", [Issuer]),
+            {error, cooldown};
+        false ->
             ok
+    end.
+
+-spec record_fetch(Issuer :: binary(), Kid :: refresh_kid(),
+                   Result :: ok | {error, binary()}, #cache_state{}) ->
+          #cache_state{}.
+record_fetch(Issuer, Kid, Result, #cache_state{last_miss = LastMiss} = State) ->
+    case Result =:= ok andalso is_cached(Issuer, Kid) of
+        true ->
+            %% A fetch that finds the key doesn't throttle. A rotated kid right
+            %% after it is still fetched at once.
+            State;
+        false ->
+            %% Timed after the fetch, so a slow or timed out fetch still
+            %% throttles.
+            Now = erlang:monotonic_time(millisecond),
+            State#cache_state{last_miss = LastMiss#{Issuer => Now}}
     end.
 
 -spec validate_jwks(JwksJson :: binary(), IssuerProps :: map()) ->
@@ -468,10 +510,9 @@ cancel_timer(Ref) -> erlang:cancel_timer(Ref).
                          public_key_source := jwks | jwks_uri,
                          _ => _},
                        jwt_kid_to_jwk(),
-                       integer(),
                        undefined | integer()) -> ok.
 cache_jwks_entry(#{name := Issuer, public_key_source := Source} = _IssuerProps,
-                 KidToJWKMap, FetchTime, Expiry) ->
+                 KidToJWKMap, Expiry) ->
     try
         JWKMap = maps:map(
                    fun(_Kid, JWKMap) ->
@@ -479,7 +520,6 @@ cache_jwks_entry(#{name := Issuer, public_key_source := Source} = _IssuerProps,
                    end, KidToJWKMap),
         CacheEntry = #jwks_cache_entry{
                         kid_to_jwk = JWKMap,
-                        fetch_time = FetchTime,
                         expiry = Expiry
                        },
         ets:insert(?MODULE, {Issuer, CacheEntry}),
@@ -498,10 +538,8 @@ cache_issuer_settings(Issuer, #{public_key_source := pem,
                                 public_key := PEM} = _Props) ->
     try
         JWK = jose_jwk:from_pem(PEM),
-        FetchTime = erlang:monotonic_time(millisecond),
         CacheEntry = #jwks_cache_entry{
                         kid_to_jwk = #{undefined => JWK},
-                        fetch_time = FetchTime,
                         expiry = undefined
                        },
         ets:insert(?MODULE, {Issuer, CacheEntry}),
@@ -512,8 +550,7 @@ cache_issuer_settings(Issuer, #{public_key_source := pem,
     end;
 cache_issuer_settings(Issuer, #{public_key_source := jwks,
                                 jwks := {_, KidToJWKMap}} = Props) ->
-    FetchTime = erlang:monotonic_time(millisecond),
-    cache_jwks_entry(Props#{name => Issuer}, KidToJWKMap, FetchTime, undefined);
+    cache_jwks_entry(Props#{name => Issuer}, KidToJWKMap, undefined);
 cache_issuer_settings(_Issuer, #{public_key_source := jwks_uri}) ->
     %% For JWKS URI, we'll fetch in the refresh handler immediately
     ok.
@@ -535,16 +572,18 @@ init([]) ->
     {ok, #cache_state{}}.
 
 %% On demand node refresh. When a lookup fails, the node will refresh the JWKS.
-handle_call({refresh_issuer, #{name := Issuer} = Props}, _From, State) ->
-    case check_cooldown(Issuer) of
-        {error, cooldown} ->
-            {reply, {error, cooldown}, State};
-        ok ->
-            case fetch_and_cache_jwks(Props) of
+handle_call({refresh_issuer, #{name := Issuer} = Props, Kid}, _From, State) ->
+    %% Callers that queued behind a fetch don't need to refetch.
+    case is_cached(Issuer, Kid) of
+        true ->
+            {reply, ok, State};
+        false ->
+            case check_cooldown(Issuer, State) of
+                {error, cooldown} ->
+                    {reply, {error, cooldown}, State};
                 ok ->
-                    {reply, ok, State};
-                {error, Reason} ->
-                    {reply, {error, Reason}, State}
+                    Result = fetch_and_cache_jwks(Props),
+                    {reply, Result, record_fetch(Issuer, Kid, Result, State)}
             end
     end;
 handle_call(sync, _From, State) ->
@@ -562,13 +601,14 @@ handle_info(internal_key_update, State) ->
     update_internal_keys(),
     {noreply, State};
 handle_info(settings_update,
-            #cache_state{refresh_timer_ref = TimerRef} = State) ->
+            #cache_state{refresh_timer_ref = TimerRef} = State0) ->
     ?log_debug("JWT settings init/change, invalidating cache.", []),
     ets:delete_all_objects(?MODULE),
     misc:flush(settings_update),
     misc:flush(internal_key_update),
     misc:flush(periodic_refresh),
     cancel_timer(TimerRef),
+    State = State0#cache_state{last_miss = #{}},
 
     update_internal_keys(),
     case menelaus_web_jwt:get_settings() of
@@ -654,11 +694,7 @@ cache_lookup_test() ->
     mock_compat_mode(),
 
     meck:expect(ns_config, search_node_with_default,
-                fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
-                        60000;
-                   (_Key, Default) ->
-                        Default
-                end),
+                fun(_Key, Default) -> Default end),
 
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
     meck:expect(chronicle_kv, get,
@@ -723,12 +759,11 @@ cache_lookup_test() ->
         ?assert(is_tuple(JWK)),
         ?assertEqual(jose_jwk, element(1, JWK)),
         [{_, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
-                               fetch_time = FetchTime,
                                expiry = Expiry}}] = ets:lookup(?MODULE,
                                                                <<"test1">>),
         ?assert(is_map(KidToJWKMap)),
         ?assertEqual(2, maps:size(KidToJWKMap)),
-        ?assert(Expiry > FetchTime),
+        ?assert(Expiry > StartTime),
 
         %% First lookup should fetch
         {ok, JWK1} = get_jwk(IssuerProps, <<"key1">>),
@@ -737,14 +772,13 @@ cache_lookup_test() ->
 
         %% Set the cache entry to expired
         ExpiredEntry = {<<"test1">>, #jwks_cache_entry{kid_to_jwk = KidToJWKMap,
-                                                       fetch_time = FetchTime,
                                                    expiry = StartTime - 1}},
         ets:insert(?MODULE, ExpiredEntry),
 
-        %% Cooldown period is not met, should not fetch
-        {error, _} = get_jwk(IssuerProps, <<"key2">>),
+        %% Expired, and no earlier miss throttles the refetch
+        {ok, _} = get_jwk(IssuerProps, <<"key2">>),
         ?assertEqual(meck:num_calls(rest_utils, request, ['_', '_', '_', '_',
-                                                          '_', '_', '_']), 1),
+                                                          '_', '_', '_']), 2),
 
         %% Invalidate the cache and wait until it is handled
         jwt_cache ! settings_update,
@@ -754,13 +788,13 @@ cache_lookup_test() ->
         %% Should trigger fetch
         {ok, JWK2} = get_jwk(IssuerProps, <<"key2">>),
         ?assertEqual(meck:num_calls(rest_utils, request, ['_', '_', '_', '_',
-                                                          '_', '_', '_']), 2),
+                                                          '_', '_', '_']), 3),
 
         %% Cache hits, should not fetch
         {ok, JWK2} = get_jwk(IssuerProps, <<"key2">>),
         {ok, JWK1} = get_jwk(IssuerProps, <<"key1">>),
         ?assertEqual(meck:num_calls(rest_utils, request, ['_', '_', '_', '_',
-                                                          '_', '_', '_']), 2)
+                                                          '_', '_', '_']), 3)
     after
         meck:unload(jwt_issuer),
         meck:unload(chronicle_kv),
@@ -781,11 +815,7 @@ cache_refresh_failure_test() ->
     mock_compat_mode(),
 
     meck:expect(ns_config, search_node_with_default,
-                fun({jwt_cache, jwks_cooldown_interval_ms}, _Default) ->
-                        60000;
-                   (_Key, Default) ->
-                        Default
-                end),
+                fun(_Key, Default) -> Default end),
     meck:expect(jwt_issuer, settings, fun() -> #{} end),
 
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
@@ -914,6 +944,143 @@ cache_refresh_failure_test() ->
         meck:unload(cluster_compat_mode),
         meck:unload(menelaus_web_jwt_key),
         catch gen_server:stop(jwt_cache)
+    end.
+
+test_jwks_json(Kids) ->
+    Keys = [begin
+                Key = jose_jwk:to_public(
+                        jose_jwk:generate_key({ec, <<"P-256">>})),
+                {_, Map} = jose_jwk:to_map(Key),
+                Map#{<<"kid">> => Kid, <<"alg">> => <<"ES256">>,
+                     <<"use">> => <<"sig">>}
+            end || Kid <- Kids],
+    jose:encode(#{<<"keys">> => Keys}).
+
+unknown_kid_refetch_test() ->
+    meck:new(chronicle_compat_events, [passthrough]),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:new(jwt_issuer, [passthrough]),
+    meck:new(rest_utils, [passthrough]),
+    meck:new(ns_config, [passthrough]),
+    mock_compat_mode(),
+
+    %% Shipped default for the minimum fetch interval
+    meck:expect(ns_config, search_node_with_default,
+                fun(_Key, Default) -> Default end),
+    meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{enabled => true, issuers => #{}}, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
+                end),
+    meck:expect(jwt_issuer, settings, fun() -> #{} end),
+
+    Serve = fun(Reply) ->
+                    meck:expect(rest_utils, request,
+                                fun(<<"jwks">>, _, "GET", [], <<>>, _, _) ->
+                                        Reply
+                                end)
+            end,
+    ServeKids = fun(Kids) ->
+                        Serve({ok, {{200, []}, [], test_jwks_json(Kids)}})
+                end,
+    Fetches = fun() -> meck:num_calls(rest_utils, request, '_') end,
+    Props = #{name => <<"rotating">>,
+              public_key_source => jwks_uri,
+              jwks_uri => <<"https://idp.example/jwks">>,
+              signing_algorithm => 'ES256',
+              jwks_uri_http_timeout_ms => 5000,
+              jwks_uri_tls_verify_peer => false},
+
+    try
+        {ok, _Pid} = jwt_cache:start_link(),
+
+        ServeKids([<<"old">>]),
+        {ok, _} = get_jwk(Props, <<"old">>),
+        ?assertEqual(1, Fetches()),
+
+        %% The IdP rotates; the new kid is fetched on its first use
+        ServeKids([<<"old">>, <<"new">>]),
+        {ok, _} = get_jwk(Props, <<"new">>),
+        ?assertEqual(2, Fetches()),
+
+        %% A caller queued behind that fetch finds the key without another
+        ?assertEqual(ok, gen_server:call(?MODULE,
+                                         {refresh_issuer, Props, <<"new">>})),
+        ?assertEqual(2, Fetches()),
+
+        %% An unknown kid is fetched once, then held back
+        {error, _} = get_jwk(Props, <<"bogus1">>),
+        ?assertEqual(3, Fetches()),
+        {error, _} = get_jwk(Props, <<"bogus1">>),
+        ?assertEqual(3, Fetches()),
+
+        %% Another unknown kid right after a miss is throttled by the issuer
+        {error, _} = get_jwk(Props, <<"bogus2">>),
+        ?assertEqual(3, Fetches()),
+
+        %% Settings changes reset throttling; a failed fetch throttles too
+        jwt_cache ! settings_update,
+        gen_server:call(?MODULE, sync, 1000),
+        Serve({error, econnrefused}),
+        {error, _} = get_jwk(Props, <<"old">>),
+        ?assertEqual(4, Fetches()),
+        ServeKids([<<"old">>]),
+        {error, _} = get_jwk(Props, <<"old">>),
+        ?assertEqual(4, Fetches())
+    after
+        catch gen_server:stop(jwt_cache),
+        meck:unload()
+    end.
+
+slow_fetch_miss_test() ->
+    meck:new(chronicle_compat_events, [passthrough]),
+    meck:new(chronicle_kv, [passthrough]),
+    meck:new(jwt_issuer, [passthrough]),
+    meck:new(rest_utils, [passthrough]),
+    meck:new(ns_config, [passthrough]),
+    mock_compat_mode(),
+
+    meck:expect(ns_config, search_node_with_default,
+                fun({jwt_cache, jwks_min_fetch_interval_ms}, _Default) ->
+                        200;
+                   (_Key, Default) ->
+                        Default
+                end),
+    meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
+    meck:expect(chronicle_kv, get,
+                fun(kv, jwt_settings) ->
+                        {ok, {#{enabled => true, issuers => #{}}, '_'}};
+                   (_, _) ->
+                        meck:passthrough()
+                end),
+    meck:expect(jwt_issuer, settings, fun() -> #{} end),
+    %% The fetch outlasts the minimum fetch interval
+    meck:expect(rest_utils, request,
+                fun(<<"jwks">>, _, "GET", [], <<>>, _, _) ->
+                        timer:sleep(300),
+                        {error, timeout}
+                end),
+    Fetches = fun() -> meck:num_calls(rest_utils, request, '_') end,
+    Props = #{name => <<"slow">>,
+              public_key_source => jwks_uri,
+              jwks_uri => <<"https://idp.example/jwks">>,
+              signing_algorithm => 'ES256',
+              jwks_uri_http_timeout_ms => 5000,
+              jwks_uri_tls_verify_peer => false},
+
+    try
+        {ok, _Pid} = jwt_cache:start_link(),
+
+        {error, _} = get_jwk(Props, <<"kid">>),
+        ?assertEqual(1, Fetches()),
+        %% The miss is timed from the end of the fetch, so this is held back
+        {error, _} = get_jwk(Props, <<"kid">>),
+        ?assertEqual(1, Fetches())
+    after
+        catch gen_server:stop(jwt_cache),
+        meck:unload()
     end.
 
 pem_cache_test() ->

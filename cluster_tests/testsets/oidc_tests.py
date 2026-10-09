@@ -476,7 +476,7 @@ class OIDCTests(testlib.BaseTestSet):
             self.cluster, "{menelaus_web_jwt, jwks_uri_refresh_min_s}", 1
         )
         testlib.set_config_key(
-            self.cluster, "{jwt_cache, jwks_cooldown_interval_ms}", 1000
+            self.cluster, "{jwt_cache, jwks_min_fetch_interval_ms}", 1000
         )
 
     def teardown(self):
@@ -484,7 +484,7 @@ class OIDCTests(testlib.BaseTestSet):
             self.cluster, "{menelaus_web_jwt, jwks_uri_refresh_min_s}"
         )
         testlib.delete_config_key(
-            self.cluster, "{jwt_cache, jwks_cooldown_interval_ms}"
+            self.cluster, "{jwt_cache, jwks_min_fetch_interval_ms}"
         )
         testlib.ensure_deleted(self.cluster, "/settings/jwt")
         testlib.ensure_deleted(
