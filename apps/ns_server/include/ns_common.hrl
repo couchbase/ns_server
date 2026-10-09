@@ -574,4 +574,7 @@
 -record(cgroup_system_info,
         {v2 = false :: boolean(), controllers = false :: boolean()}).
 
+-define(MIN_PORT_NUMBER, 1024).  %% Below 1024 are system ports
+-define(MAX_PORT_NUMBER, 65535).
+
 -endif.

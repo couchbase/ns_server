@@ -91,3 +91,213 @@ test_ale_codegen() ->
 
 test_ale_codegen_test() ->
     ?assertEqual(ok, test_ale_codegen()).
+
+%% ale_sup is one_for_all, so a crash of any of its children restarts ale.
+%% ale used to be unable to survive that: init/1 removes the
+%% ?ERROR_LOGGER/?TRACE_LOGGER handlers left behind by the previous
+%% incarnation, which makes logger cast {removing_handler, _} back to ale, and
+%% handling that cast after init/1 had already reinstalled the handlers killed
+%% it with {error, {already_exist, _}}. ale_sup then exceeded its restart
+%% intensity within milliseconds and took the whole ale application down.
+%%
+%% Runs on a peer node. It can't use the ale of the node running the tests:
+%% under the ns_server suite that is the one t.erl:fake_loggers/0 sets up, and
+%% restarting ale_sup takes its sinks down with it, leaving every logger
+%% compiled against them failing with noproc for the rest of the run.
+restart_test_() ->
+    {setup, fun start_ale_peer/0, fun stop_ale_peer/1,
+     fun (Peer) ->
+             {"ale survives a restart",
+              fun () ->
+                      %% under eunit's default 5s per-test timeout, so that a
+                      %% hung peer is reported as a failure
+                      on_peer(Peer, assert_survives_restart, [], 4000)
+              end}
+     end}.
+
+assert_survives_restart() ->
+    OldPid = whereis(ale),
+    exit(OldPid, kill),
+    ?assert(wait_until(fun () -> is_pid(whereis(ale)) andalso
+                                     whereis(ale) =/= OldPid end, 20)),
+
+    %% The crash this guards against hits the new ale only once it gets round
+    %% to the {removing_handler, _} casts, so give it time before checking
+    %% that it is still the same process.
+    NewPid = whereis(ale),
+    timer:sleep(500),
+    ?assertEqual(NewPid, whereis(ale)),
+    assert_handlers_intact().
+
+%% logger removes a handler whenever that handler's log/2 raises, from
+%% whatever process happened to be logging, and anybody can call
+%% logger:remove_handler/1. ale has to put the handler back, and do it only
+%% by adding it: removing one of ours itself could race with logger removing
+%% the other one, and logger's removals of different handlers aren't safe
+%% against each other.
+removed_handler_test_() ->
+    {foreach, fun start_ale/0, fun stop_ale/1,
+     [{"a removed " ++ atom_to_list(Logger) ++ " is put back",
+       fun () -> assert_reinstalled(Logger) end}
+      || Logger <- [?ERROR_LOGGER, ?TRACE_LOGGER]]}.
+
+assert_reinstalled(Logger) ->
+    Ale = whereis(ale),
+    Watch = watch_handler_changes(),
+    ok = logger:remove_handler(Logger),
+    %% rather than wait for ale's next periodic check
+    Ale ! periodic_check_logger_handlers,
+    Reinstalled = wait_until(fun () -> handler_is_ale(Logger) end, 20),
+    %% give ale time to do anything more it might do about it
+    timer:sleep(300),
+    Changes = handler_changes(Watch),
+
+    ?assert(Reinstalled),
+    ?assertEqual(Ale, whereis(ale)),
+    ?assertEqual([{remove_handler, Logger}, {add_handler, Logger}], Changes),
+    assert_handlers_intact().
+
+%% ale's log/2 must not raise: logger would remove the handler, and when a
+%% sink is down (say, while ale_sup restarts) that is lots of processes
+%% removing both of our handlers at once, which can leave one of them
+%% installed but never called.
+%%
+%% The sink is taken down by unregistering the name the loggers call it by,
+%% which fails those calls with noproc just like a sink that is gone. Runs on
+%% a peer node, since other tests log through the sinks of the node running
+%% the tests.
+sink_outage_test_() ->
+    {setup, fun start_ale_peer/0, fun stop_ale_peer/1,
+     fun (Peer) ->
+             {"a handler that fails to log is not removed",
+              fun () ->
+                      on_peer(Peer, assert_log_failure_kept, [], 4000)
+              end}
+     end}.
+
+assert_log_failure_kept() ->
+    %% keep the events logged here off the console of the peer, which is the
+    %% output of the tests
+    ok = logger:remove_handler(default),
+    ok = ale:start_sink(test_sink, ale_stderr_sink, []),
+    ok = ale:add_sink(?ERROR_LOGGER, test_sink),
+    ok = ale:add_sink(?TRACE_LOGGER, test_sink),
+    ok = ale:set_loglevel(?TRACE_LOGGER, debug),
+    SinkId = ale_utils:sink_id(test_sink),
+    Sink = whereis(SinkId),
+
+    Watch = watch_handler_changes(),
+    true = unregister(SinkId),
+    try
+        logger:error("logged while the sink is down"),
+        %% the kind of event ?TRACE_LOGGER is there for
+        logger:notice(#{label => {supervisor, progress},
+                        report => [{supervisor,
+                                    {self(), tls_dyn_connection_sup}},
+                                   {started, [{pid, self()}]}]})
+    after
+        true = register(SinkId, Sink)
+    end,
+    ?assertEqual([], handler_changes(Watch)),
+    assert_handlers_intact().
+
+%% Runs ?MODULE:Fun(Args...) on Peer, failing the test unless it returns ok.
+on_peer(Peer, Fun, Args, Timeout) ->
+    ?assertEqual(ok, peer:call(Peer, ?MODULE, Fun, Args, Timeout)).
+
+start_ale_peer() ->
+    %% standard_io rather than distribution: works whether or not the node
+    %% running the tests is distributed, and needs no node name
+    {ok, Peer, _Node} = peer:start_link(#{connection => standard_io,
+                                          wait_boot => 30000}),
+    true = peer:call(Peer, code, set_path, [code:get_path()]),
+    {ok, _} = peer:call(Peer, application, ensure_all_started, [ale]),
+    Peer.
+
+stop_ale_peer(Peer) ->
+    peer:stop(Peer).
+
+start_ale() ->
+    {ok, Started} = application:ensure_all_started(ale),
+    Started.
+
+stop_ale([]) ->
+    %% ale was already running when we got here -- the test harness
+    %% (t.erl:fake_loggers/0) starts it, with sinks the rest of the suite logs
+    %% through. Not ours to tear down.
+    ok;
+stop_ale(Started) ->
+    lists:foreach(fun application:stop/1, lists:reverse(Started)),
+    _ = logger:remove_handler(?ERROR_LOGGER),
+    _ = logger:remove_handler(?TRACE_LOGGER),
+    ok.
+
+%% Both of our handlers are installed, and each is listed once: logger calls a
+%% handler once for every time it is listed.
+assert_handlers_intact() ->
+    lists:foreach(
+      fun (Logger) ->
+              ?assert(handler_is_ale(Logger)),
+              ?assertEqual({Logger, 1}, {Logger, times_listed(Logger)})
+      end, [?ERROR_LOGGER, ?TRACE_LOGGER]),
+    ok.
+
+times_listed(Logger) ->
+    length([Id || Id <- logger:get_handler_ids(), Id =:= Logger]).
+
+handler_is_ale(Logger) ->
+    lists:member(Logger, logger:get_handler_ids()) andalso
+        case logger:get_handler_config(Logger) of
+            {ok, #{module := ale}} ->
+                true;
+            _ ->
+                false
+        end.
+
+%% Starts collecting the requests logger_server gets to add or remove one of
+%% our handlers, whoever they come from. handler_changes/1 stops it and
+%% returns them.
+watch_handler_changes() ->
+    Self = self(),
+    Ref = make_ref(),
+    Watch = fun (FuncState, {in, {'$gen_call', _, Request}}, _)
+                  when element(1, Request) =:= add_handler;
+                       element(1, Request) =:= remove_handler ->
+                    case lists:member(element(2, Request),
+                                      [?ERROR_LOGGER, ?TRACE_LOGGER]) of
+                        true ->
+                            Self ! {Ref, {element(1, Request),
+                                          element(2, Request)}};
+                        false ->
+                            ok
+                    end,
+                    FuncState;
+                (FuncState, _Event, _) ->
+                    FuncState
+            end,
+    ok = sys:install(logger, {Watch, ok}),
+    {Ref, Watch}.
+
+handler_changes({Ref, Watch}) ->
+    ok = sys:remove(logger, Watch),
+    collect_handler_changes(Ref, []).
+
+collect_handler_changes(Ref, Acc) ->
+    receive
+        {Ref, Change} ->
+            collect_handler_changes(Ref, [Change | Acc])
+    after
+        0 ->
+            lists:reverse(Acc)
+    end.
+
+wait_until(_Pred, 0) ->
+    false;
+wait_until(Pred, TriesLeft) ->
+    case Pred() of
+        true ->
+            true;
+        false ->
+            timer:sleep(100),
+            wait_until(Pred, TriesLeft - 1)
+    end.
