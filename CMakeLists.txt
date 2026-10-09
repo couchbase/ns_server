@@ -244,13 +244,19 @@ ADD_CUSTOM_TARGET (ns_distclean)
 ADD_DEPENDENCIES (ns_distclean ns_realclean ns_dataclean)
 
 ADD_SUBDIRECTORY (deps)
+
+# vbmap computes bucket vbucket maps, so a product without buckets may leave
+# it out of its manifest. tlm adds it after ns_server, so test for the
+# checkout rather than the target
+SET (_ns_server_deps couchdb kv_mappings ns_goport ns_gosecrets)
+SET (_ns_test_binary_deps gosecrets goport sigar)
+IF (EXISTS "${PROJECT_SOURCE_DIR}/../vbmap")
+  LIST (APPEND _ns_server_deps vbmap)
+  LIST (APPEND _ns_test_binary_deps vbmap)
+ENDIF ()
+
 REBAR(TARGET ns_server
-      DEPENDS
-        couchdb
-        kv_mappings
-        ns_goport
-        ns_gosecrets
-        vbmap
+      DEPENDS ${_ns_server_deps}
       EUNIT
       EXTRA_ENV "COUCHDB_SRC_DIR=${COUCHDB_SRC_DIR}"
                 "DEFAULT_PROFILE=${DEFAULT_PROFILE}"
@@ -275,7 +281,7 @@ ADD_TEST(ns_server_tests_build_for_idiotic_cmake
 SET_TESTS_PROPERTIES(ns_server_tests_build_for_idiotic_cmake PROPERTIES
         FIXTURES_SETUP NS_TEST_SETUP)
 
-LIST(APPEND NS_TEST_BINARY_DEPS vbmap gosecrets goport sigar)
+LIST(APPEND NS_TEST_BINARY_DEPS ${_ns_test_binary_deps})
 SET(NS_TEST_BINARY_DEPS ${NS_TEST_BINARY_DEPS} CACHE STRING "")
 # Cache OpenSSL library path for test scripts
 IF(OPENSSL_CRYPTO_LIBRARY)
