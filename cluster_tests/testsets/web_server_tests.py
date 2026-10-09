@@ -7,6 +7,7 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 import testlib
+from testlib.util import Service
 import http.client
 import contextlib
 import base64
@@ -94,6 +95,40 @@ class WebServerTests(testlib.BaseTestSet):
         testlib.assert_eq(response.headers["expires"],
                           "Thu, 01 Jan 1970 00:00:00 GMT")
         testlib.assert_eq(response.headers["pragma"], "no-cache")
+
+
+class PluggableUIProxyTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        # No service other than kv, so a registered prefix never reaches a
+        # service that might itself reply with a bare "Not found"
+        return testlib.ClusterRequirements(edition="Enterprise", num_nodes=1,
+                                           exact_services=[Service.KV])
+
+    def setup(self):
+        pass
+
+    def teardown(self):
+        pass
+
+    # The /_p/<prefix> table is built from etc/couchbase/pluggable-ui-*.json,
+    # which are installed by the service repos, so a packaging change
+    # elsewhere can silently drop a prefix (MB-71756, MB-72129, CBD-6803)
+    def all_prefixes_registered_test(self):
+        prefixes = ['query', 'backup', 'fts', 'event', 'cbas']
+
+        # An unregistered prefix gets a 404 with the bare "Not found"; a
+        # registered one with no service running says so explicitly
+        def is_registered(prefix):
+            r = testlib.get(self.cluster, f'/_p/{prefix}/')
+            return not (r.status_code == 404 and r.text == 'Not found')
+
+        # Guards against the check passing vacuously if the reply changes
+        assert not is_registered('bogus')
+
+        missing = [p for p in prefixes if not is_registered(p)]
+        testlib.assert_eq(missing, [], name='unregistered /_p/ prefixes')
 
 
 @contextlib.contextmanager
