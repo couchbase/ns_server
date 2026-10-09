@@ -830,10 +830,11 @@ do_handle_call({download_snapshot, MasterNode, VBucket}, _From, State) ->
     CAFilePath =
         ns_ssl_services_setup:ca_file_path(),
 
-    [{certfile, CertFile},
-     {keyfile, KeyFile},
-     {password, PassphraseFun}] =
-        ns_ssl_services_setup:tls_client_certs_opts(),
+    %% memcached reads the key file itself, so it needs the paths and the
+    %% passphrase, not the decrypted key tls_client_certs_opts() gives ssl
+    CertFile = ns_ssl_services_setup:chain_file_path(client_cert),
+    KeyFile = ns_ssl_services_setup:pkey_file_path(client_cert),
+    PassphraseFun = ns_secrets:get_pkey_pass(client_cert),
 
     SnapshotCfg =
         {[{host, iolist_to_binary(Host)},
