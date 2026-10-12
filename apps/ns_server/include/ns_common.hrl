@@ -631,4 +631,7 @@
 %% before memcached starts purging the oldest ones.
 -define(MCD_LOG_MAX_AGGREGATED_SIZE, 200 * 1024 * 1024).
 
+-define(MIN_PORT_NUMBER, 1024).  %% Below 1024 are system ports
+-define(MAX_PORT_NUMBER, 65535).
+
 -endif.
