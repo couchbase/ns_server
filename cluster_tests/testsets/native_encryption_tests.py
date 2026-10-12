@@ -2004,13 +2004,17 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             testlib.assert_eq(len(warnings), num)
 
             if mp:
-                w = 'master password for node(s) ' \
-                    f'{", ".join(n.hostname() for n in expected_nodes)} ' \
-                    'is not configured'
                 mp_warnings = [warn for warn in warnings
                                if 'master password for node' in warn]
                 testlib.assert_eq(len(mp_warnings), 1)
-                testlib.assert_in(w, mp_warnings[0])
+                # Node order in the warning is chosen by the server and
+                # doesn't have to match the order of connected_nodes
+                m = re.search(r'master password for node\(s\) (.*) '
+                              r'is not configured', mp_warnings[0])
+                assert m is not None, \
+                       f'unexpected warning: {mp_warnings[0]}'
+                testlib.assert_eq(sorted(m.group(1).split(', ')),
+                                  sorted(n.hostname() for n in expected_nodes))
 
             if n2n:
                 w = 'Master-password-encrypted keys risk being sent ' \
