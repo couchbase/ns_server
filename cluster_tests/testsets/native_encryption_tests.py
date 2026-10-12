@@ -1655,6 +1655,44 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
         # Rebalance to complete node addition
         self.cluster.rebalance(wait=True, verbose=True)
 
+    def log_dek_gc_on_removed_node_test(self):
+        node_to_remove = kv_nodes(self.cluster)[0]
+        original_services = node_to_remove.get_services()
+
+        set_log_encryption(self.cluster, 'nodeSecretManager', -1)
+        poll_verify_cluster_dek_info(self.cluster, 'logs', issues=[])
+
+        self.cluster.rebalance(ejected_nodes=[node_to_remove], wait=True,
+                               verbose=True)
+        self.cluster.wait_nodes_up(verbose=True)
+
+        # When node is removed, it's config gets wiped out
+        set_min_timer_interval(node_to_remove, min_timer_interval)
+        set_min_dek_gc_interval(node_to_remove, min_dek_gc_interval)
+
+        # Projector can't run on a node that is not part of a cluster, so
+        # nothing should be waiting for it to report its keys
+        poll_verify_node_dek_info(node_to_remove, 'logs', issues=[])
+
+        # Nothing holds gc back now, so the deks can actually be collected.
+        # Dropping them makes ale rewrite its own logs in plain text, which
+        # removes the last reference to the dek. Files that projector wrote
+        # are not tracked by ns_server, so they outlive the key, and the
+        # projector that starts when the node is added back has to cope
+        # with that.
+        drop_deks(node_to_remove, 'log')
+        poll_verify_dek_files([node_to_remove], Path('config') / 'logs_deks',
+                              verify_key_count=0)
+        poll_verify_node_dek_info(node_to_remove, 'logs', issues=[])
+
+        self.cluster.add_node(node_to_remove, services=original_services,
+                              verbose=True)
+        self.cluster.rebalance(wait=True, verbose=True)
+        # If projector can't cope with the stats log it left behind, it
+        # crashes on every start, never connects, and gc gets stuck again.
+        # That shows up here as gc still pending, not as a projector error
+        poll_verify_cluster_dek_info(self.cluster, 'logs', issues=[])
+
     @tag(Tag.LowUrgency)
     def node_readd_node_after_failover_test(self):
         node_to_failover, secret_id = \
@@ -3851,7 +3889,7 @@ def verify_node_dek_info(node, data_type, **kwargs):
 
 def verify_dek_info(info, data_statuses=None, dek_number=None,
                     min_dek_number=None, max_dek_number=None,
-                    oldest_dek_time=None):
+                    oldest_dek_time=None, issues=None):
     if data_statuses is not None:
         assert 'dataStatus' in info, 'data status is not present in ' \
                                      'encryptionAtRestInfo'
@@ -3879,6 +3917,13 @@ def verify_dek_info(info, data_statuses=None, dek_number=None,
         t = parse_iso8601(info['oldestDekCreationDatetime'])
         assert t >= oldest_dek_time, \
                f'dek time is unexpected: {t} (expected: {oldest_dek_time})'
+    if issues is not None:
+        assert 'issues' in info, 'issues are not present in ' \
+                                 'encryptionAtRestInfo'
+        # Issues are collected by folding over a map, so the order is
+        # arbitrary
+        assert sorted(info['issues']) == sorted(issues), \
+               f'dek issues are unexpected: {info["issues"]}'
 
 
 def poll_verify_cluster_dek_info(cluster, *args, **kwargs):
