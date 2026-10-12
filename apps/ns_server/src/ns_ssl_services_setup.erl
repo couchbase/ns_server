@@ -109,15 +109,17 @@ do_start_link_capi_service(SSLPort) ->
 
     %% If the node cert and key couldn't be loaded, fail to start, as when
     %% mochiweb couldn't listen because ssl couldn't decrypt the key file
-    SSLOpts = try
-                  ssl_server_opts()
-              catch
-                  error:{cert_and_pkey_not_available, _, _} = Error ->
-                      throw({error, Error})
-              end,
+    {ListenOpts, HandshakeOpts} =
+        try
+            {ssl_server_opts(listen), ssl_server_opts(handshake)}
+        catch
+            error:{cert_and_pkey_not_available, _, _} = Error ->
+                throw({error, Error})
+        end,
     Options = [{port, SSLPort},
                {ssl, true},
-               {ssl_opts, SSLOpts},
+               {ssl_opts, ListenOpts},
+               {ssl_handshake_opts_fun, fun () -> HandshakeOpts end},
                {ip, misc:inaddr_any()}],
 
     %% the following is copied almost verbatim from couch_httpd.  The
@@ -508,9 +510,12 @@ cleanup_options(Opts) ->
     %% This is not a comprehensive cleaning, for a full list of dependencies see
     %% assert_option_dependency in ssl.erl.
     SupportedVersions = proplists:get_value(supported, ssl:versions()),
-    VersionsSet = sets:from_list(
-                    proplists:get_value(versions, Opts, SupportedVersions),
-                    [{version, 2}]),
+    cleanup_options(Opts,
+                    proplists:get_value(versions, Opts, SupportedVersions)).
+
+%% Same as cleanup_options/1, but for options to be used with Versions
+cleanup_options(Opts, Versions) ->
+    VersionsSet = sets:from_list(Versions, [{version, 2}]),
     CheckVsn = fun (all) -> true;
                    (NeededVersions) ->
                        not sets:is_disjoint(sets:from_list(NeededVersions,
@@ -519,27 +524,58 @@ cleanup_options(Opts) ->
                end,
     lists:filter(fun ({K, _}) -> CheckVsn(tls_option_versions(K)) end, Opts).
 
-ssl_server_opts() ->
+%% Returns the ssl options of a TLS server, split in two:
+%% ssl_server_opts(listen), the ones to pass to ssl:listen/2, and
+%% ssl_server_opts(handshake), the ones to pass to ssl:handshake/3 for every
+%% accepted connection (in mochiweb, via ssl_handshake_opts_fun). Neither of
+%% them is complete by itself.
+%%
+%% They are split because ssl keeps the options passed to ssl:listen/2 in the
+%% listen socket, and the listen socket gets printed with the state of the
+%% processes that hold it (like the mochiweb server and its acceptors). So
+%% secrets, like the private key, are in the handshake options. The listen
+%% options are the ones that ssl already uses before the handshake, so they
+%% must be passed to ssl:listen/2: ssl:listen/2 sets up session handling for
+%% the versions it's given (there is no session id tracker for TLS 1.2 and
+%% older if versions is TLS 1.3 only), and client_renegotiation is read when
+%% the process of a connection is started, on accept, and is ignored if passed
+%% to ssl:handshake/3.
+%%
+%% The options from ns_config ({tls_options, server, ?MODULE}) are merged into
+%% both.
+%%
+%% ssl_server_opts(handshake) gets the node cert and key from ns_secrets, and
+%% raises {cert_and_pkey_not_available, _, _} if they couldn't be loaded.
+%%
+%% A server that passes no options to ssl:handshake/3 must listen with
+%% ssl_server_opts(listen) ++ ssl_server_opts(handshake). ssl then passes all
+%% of them to the handshake of every connection itself.
+ssl_server_opts(listen) ->
+    Versions = supported_versions(ssl_minimum_protocol(ns_server)),
+    ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
+    merge_ns_config_tls_options(server, ?MODULE,
+                                [{versions, Versions},
+                                 {client_renegotiation, ClientReneg}]);
+ssl_server_opts(handshake) ->
     CipherSuites = ns_server_ciphers(),
     Order = honor_cipher_order(ns_server),
-    ClientReneg = ns_config:read_key_fast(client_renegotiation_allowed, false),
     %% Pass CA as cacerts opt (instead of cacertfile) in order to
     %% work around unknown bug in erlang ssl application that leads to
     %% the following behavior:
     %% web server doesn't load new CA (after cert rotation) until
     %% all connections to the server are closed
-    Versions = supported_versions(ssl_minimum_protocol(ns_server)),
     RawTLSOptions =
         ssl_auth_options() ++
             [certs_keys_opt(node_cert),
-             {versions, Versions},
              {cacerts, read_ca_certs(ca_file_path())},
              {dh, dh_params_der()},
              {ciphers, CipherSuites},
              {honor_cipher_order, Order},
-             {secure_renegotiate, true},
-             {client_renegotiation, ClientReneg}],
-    merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions).
+             {secure_renegotiate, true}],
+    %% The options depend on the versions, which are among the listen options
+    Versions = proplists:get_value(versions, ssl_server_opts(listen)),
+    cleanup_options(merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions),
+                    Versions).
 
 tls_option_versions(anti_replay) -> ['tlsv1.3'];
 tls_option_versions(beast_mitigation) -> ['tlsv1'];
@@ -658,13 +694,16 @@ start_link_rest_service() ->
         SSLPort ->
             %% The options are got once, when the service starts (it is
             %% restarted when they change)
-            try ssl_server_opts() of
-                SSLOpts ->
+            try {ssl_server_opts(listen), ssl_server_opts(handshake)} of
+                {ListenOpts, HandshakeOpts} ->
                     Config3 = [{ssl, true},
                                {name, menelaus_web_ssl},
-                               %% Make it a fun to avoid printing of sensitive
-                               %% stuff like pkey password in progress reports
-                               {ssl_opts_fun, fun () -> SSLOpts end},
+                               %% Make them funs to avoid printing of
+                               %% sensitive stuff like pkey password in
+                               %% progress reports
+                               {ssl_opts_fun, fun () -> ListenOpts end},
+                               {ssl_handshake_opts_fun,
+                                fun () -> HandshakeOpts end},
                                {port, SSLPort}],
                     menelaus_web:start_link(Config3)
             catch
@@ -2018,5 +2057,14 @@ resave_encrypted_files_test_() ->
             end)
          ]
      end}.
+
+cleanup_options_test() ->
+    Opts = [{versions, ['tlsv1.3']}, {dh, <<"dh">>},
+            {secure_renegotiate, true}, {ciphers, []}],
+    ?assertEqual([{versions, ['tlsv1.3']}, {ciphers, []}],
+                 cleanup_options(Opts)),
+    ?assertEqual([{ciphers, []}],
+                 cleanup_options(tl(Opts), ['tlsv1.3'])),
+    ?assertEqual(tl(Opts), cleanup_options(tl(Opts), ['tlsv1.3', 'tlsv1.2'])).
 
 -endif.
