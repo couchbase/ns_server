@@ -810,6 +810,9 @@ get_action(Req, {AppRoot, IsSSL, Plugins}, Path, PathTokens) ->
                     {{[admin, settings, telemetry], write},
                      fun menelaus_web_telemetry:handle_post_settings/2,
                      [PathRest]};
+                ["settings", "telemetry", "testReport"] ->
+                    {{[admin, settings, telemetry], write},
+                     fun menelaus_web_telemetry:handle_post_test_report/1};
                 ["settings", "telemetry" | PathRest] ->
                     {{[admin, settings, telemetry], write},
                      fun menelaus_web_telemetry:handle_post_settings/2,

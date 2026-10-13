@@ -521,7 +521,7 @@ system_stats_keys() ->
 status_slow_setup() ->
     fake_ns_config:setup(),
     fake_chronicle_kv:setup(),
-    PidMap = mock_helpers:setup_mocks([ns_heart]),
+    PidMap = mock_helpers:setup_mocks([ns_heart_sup]),
     fake_config_helpers:setup_cluster_config(
       #{node() => {active, [backup, cbas, eventing, fts, index, n1ql]}}),
     fake_ns_config:update_snapshot({node, node(), database_dir}, "/"),
