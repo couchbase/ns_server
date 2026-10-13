@@ -30,6 +30,11 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+%% The loaded certs and keys are kept in this table, so that they can be read
+%% without calling ns_secrets, which would make every TLS connection wait for
+%% the others, and for a key being loaded.
+-define(CERT_AND_PKEY_TABLE, ns_secrets_cert_and_pkey).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -63,7 +68,13 @@ get_pkey_pass(Type) when Type == node_cert; Type == client_cert ->
 %% that the key doesn't get printed when the state of a process holding it
 %% does.
 get_cert_and_pkey(Type) when Type == node_cert; Type == client_cert ->
-    gen_server:call(?MODULE, {get_cert_and_pkey, Type}, 30000).
+    try ets:lookup(?CERT_AND_PKEY_TABLE, Type) of
+        [{Type, CertAndKeyFun}] -> CertAndKeyFun;
+        [] -> ?HIDE({error, not_loaded})
+    catch
+        %% ns_secrets is not running
+        error:badarg -> ?HIDE({error, not_loaded})
+    end.
 
 %% Describes Reason, an error that get_cert_and_pkey/1 can give, for error
 %% messages
@@ -100,7 +111,11 @@ is_pkey_pass_set(PassSettings) ->
 %%% callbacks
 %%%===================================================================
 
-init([]) -> {ok, #{}}.
+init([]) ->
+    ?CERT_AND_PKEY_TABLE = ets:new(?CERT_AND_PKEY_TABLE,
+                                   [named_table, protected, set,
+                                    {read_concurrency, true}]),
+    {ok, #{}}.
 
 handle_call({load_pkey, Type, PassSettingsFun}, _From, State) ->
     Fun = case extract_pkey_pass(PassSettingsFun()) of
@@ -116,14 +131,10 @@ handle_call({load_pkey, Type, PassSettingsFun}, _From, State) ->
                      {_, {error, _} = Error} -> Error;
                      {{error, _} = Error, _} -> Error
                  end,
-    {reply, ok, State#{{pkey_passphrase_fun, Type} => Fun,
-                       {cert_and_pkey_fun, Type} => ?HIDE(CertAndKey)}};
+    true = ets:insert(?CERT_AND_PKEY_TABLE, {Type, ?HIDE(CertAndKey)}),
+    {reply, ok, State#{{pkey_passphrase_fun, Type} => Fun}};
 handle_call({get_pkey_pass, Type}, _From, State) ->
     Res = maps:get({pkey_passphrase_fun, Type}, State, fun () -> undefined end),
-    {reply, Res, State};
-handle_call({get_cert_and_pkey, Type}, _From, State) ->
-    Res = maps:get({cert_and_pkey_fun, Type}, State,
-                   ?HIDE({error, not_loaded})),
     {reply, Res, State};
 handle_call(_Request, _From, State) ->
     {reply, unhandled, State}.
@@ -334,6 +345,53 @@ read_pkey_wrong_passphrase(File) ->
 read_pkey_no_file(File) ->
     ?assertEqual({error, {cannot_read_keyfile, File, enoent}},
                  read_pkey(File, ?HIDE("secret"))).
+
+cert_and_pkey_table_test() ->
+    ChainFile = path_config:tempfile("cert_and_pkey_table_test", ".pem"),
+    KeyFile = path_config:tempfile("cert_and_pkey_table_test", ".pem"),
+    CertOpts = [{key, {rsa, 2048, 65537}}, {digest, sha256}],
+    Chain = #{root => CertOpts, intermediates => [], peer => CertOpts},
+    #{server_config := Config} =
+        public_key:pkix_test_data(#{server_chain => Chain,
+                                    client_chain => Chain}),
+    Cert = proplists:get_value(cert, Config),
+    {KeyType, KeyDer} = Key = proplists:get_value(key, Config),
+    ok = file:write_file(ChainFile,
+                         public_key:pem_encode(
+                           [{'Certificate', Cert, not_encrypted}])),
+    ok = file:write_file(KeyFile,
+                         public_key:pem_encode(
+                           [{KeyType, KeyDer, not_encrypted}])),
+    meck:new(ns_ssl_services_setup, [passthrough]),
+    try
+        meck:expect(ns_ssl_services_setup, chain_file_path,
+                    fun (node_cert) -> ChainFile end),
+        meck:expect(ns_ssl_services_setup, pkey_file_path,
+                    fun (node_cert) -> KeyFile end),
+        %% ns_secrets is not running
+        ?assertEqual({error, not_loaded}, (get_cert_and_pkey(node_cert))()),
+        {ok, Pid} = gen_server:start({local, ?MODULE}, ?MODULE, [], []),
+        try
+            ?assertEqual({error, not_loaded},
+                         (get_cert_and_pkey(node_cert))()),
+            ok = load_pkey(node_cert, []),
+            ?assertEqual({ok, {[Cert], Key}},
+                         (get_cert_and_pkey(node_cert))()),
+            ?assertEqual({error, not_loaded},
+                         (get_cert_and_pkey(client_cert))()),
+            %% Reading them doesn't involve ns_secrets
+            ok = sys:suspend(Pid),
+            ?assertEqual({ok, {[Cert], Key}},
+                         (get_cert_and_pkey(node_cert))()),
+            ok = sys:resume(Pid)
+        after
+            gen_server:stop(Pid)
+        end
+    after
+        meck:unload(ns_ssl_services_setup),
+        file:delete(ChainFile),
+        file:delete(KeyFile)
+    end.
 
 read_cert_chain_test_() ->
     {foreach,
