@@ -8,13 +8,13 @@
 # will be governed by the Apache License, Version 2.0, included in the file
 # licenses/APL2.txt.
 
-SOFTWARE_VERSION="@PRODUCT_VERSION@"
+SOFTWARE_VERSION="@LAUNCHER_VERSION@"
 if [ x"${SOFTWARE_VERSION}" = "x" ]
 then
    SOFTWARE_VERSION="unsupported developer build"
 fi
 
-ENTERPRISE=`echo @BUILD_ENTERPRISE@ | tr '[:upper:]' '[:lower:]'`
+ENTERPRISE="@NS_SERVER_IS_ENTERPRISE@"
 
 if [ x"${ENTERPRISE}" = "xtrue" ]
 then
