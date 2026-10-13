@@ -741,6 +741,7 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr,
          ] ++ [{addressFamily, AFamily} || AFamily =/= undefined]
         ++ [{externalListeners, Listeners} || Listeners =/= undefined]
         ++ build_node_prod_info(WantENode, InfoNode)
+        ++ build_node_os_info(InfoNode)
         ++ [{prodCompatVersion, ProdCompatVersion} ||
                ProdCompatVersion =/= undefined]
         ++ alternate_addresses_json(WantENode, Config, Snapshot,
@@ -752,6 +753,12 @@ build_node_info(Config, Snapshot, WantENode, InfoNode, LocalAddr,
             [{thisNode, true} | RV];
         _ -> RV
     end.
+
+%% Nodes on older versions don't report these.
+build_node_os_info(InfoNode) ->
+    [{JKey, unicode:characters_to_binary(V)} ||
+        {Key, JKey} <- [{os_name, osName}, {os_kernel, osKernel}],
+        V <- [proplists:get_value(Key, InfoNode)], V =/= undefined].
 
 %% The product a node runs comes from its own config profile. For this node
 %% that is read directly, which the join checks rely on; any other node

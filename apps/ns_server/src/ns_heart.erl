@@ -506,9 +506,10 @@ status_slow_keys() ->
      {service_status, n1ql}, local_tasks, memory, cpu_count,
      system_memory_data, node_storage_conf, statistics, system_stats,
      interesting_stats, per_bucket_interesting_stats, processes_stats, version,
-     supported_compat_version, advertised_version, system_arch, wall_clock,
-     memory_data, disk_data, encryption_at_rest_info, encryption_keys_tests,
-     data_disk_bytes_available, data_disk_bytes_used, prod, prod_name].
+     supported_compat_version, advertised_version, system_arch, os_name,
+     os_kernel, wall_clock, memory_data, disk_data, encryption_at_rest_info,
+     encryption_keys_tests, data_disk_bytes_available, data_disk_bytes_used,
+     prod, prod_name].
 
 status_slow_keys_linux() ->
     [cpu_pressure,io_pressure,loadavg,meminfo, memory_pressure].

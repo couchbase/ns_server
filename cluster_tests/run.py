@@ -97,7 +97,8 @@ from testsets import \
     crl_tests, \
     rogue_node_ejection_tests, \
     oidc_tests, \
-    leave_marker_startup_tests
+    leave_marker_startup_tests, \
+    node_info_tests
 
 tmp_cluster_dir = os.path.join(testlib.get_cluster_test_dir(),
                                "test_cluster_data")

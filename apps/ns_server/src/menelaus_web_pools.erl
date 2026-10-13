@@ -735,7 +735,7 @@ glean_node_details(NodeInfo) ->
                     {indexPath, index_path},
                     {dbPath, path}]),
 
-    KeysOfInterest = [hostname, version, os, uptime, cpuCount,
+    KeysOfInterest = [hostname, version, os, osName, osKernel, uptime, cpuCount,
                       memoryTotal, memoryFree, clusterMembership,
                       status, services, nodeUUID],
 
