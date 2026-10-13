@@ -24,7 +24,7 @@
 
 %% API
 -export([start_link/0, config_key/0, build_settings/0, ingest/2,
-         max_external_payload_size/0]).
+         max_external_payload_size/0, push_report/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -40,6 +40,7 @@
                 enabled = true :: boolean(),
                 report_timer_ref :: undefined | timer:tref(),
                 report_pid :: undefined | pid(),
+                push_waiter :: undefined | gen_server:from(),
                 max_external_nodes = 0 :: integer()
                }).
 
@@ -63,6 +64,29 @@ ingest(Opts, Payload) ->
 max_external_payload_size() ->
     get_setting(external_nodes_max_payload_bytes, build_settings()).
 
+%% Send a report and return its result
+-spec push_report(#{}) -> success | {failure, binary()} |
+          {error, disabled | unsupported | report_in_progress}.
+push_report(TestSettings) ->
+    case maps:get(reporting_enabled, TestSettings, false) of
+        true ->
+            case misc:wait_for_global_name(?MODULE) of
+                failed ->
+                    %% An older orchestrator without even an older version of
+                    %% telemetry won't have the expected process
+                    {error, unsupported};
+                ok ->
+                    Call = {push_report, TestSettings},
+                    case gen_server:call(?SERVER, Call) of
+                        %% An older node replies ok without handling the call
+                        ok -> {error, unsupported};
+                        Result -> Result
+                    end
+            end;
+        false ->
+            {error, disabled}
+    end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -77,6 +101,13 @@ init([]) ->
 handle_call({ingest, Opts, Payload}, _From,
             #state{max_external_nodes = MaxExternalNodes} = State) ->
     {reply, ingest_external_payload(Opts, Payload, MaxExternalNodes), State};
+handle_call({push_report, HiddenSettings}, From,
+            #state{report_pid = undefined, push_waiter = undefined} = State) ->
+    NewReportPid = send_report(HiddenSettings),
+    {noreply, State#state{report_pid = NewReportPid,
+                          push_waiter = From}};
+handle_call({push_report, _}, _From, #state{} = State) ->
+    {reply, {error, report_in_progress}, State};
 handle_call(_Call, _From, State) ->
     {reply, ok, State}.
 
@@ -91,11 +122,15 @@ handle_info(report, State) ->
     %% Ignore unnecessary report message, when either reporting is disabled, or
     %% a report is already in progress
     {noreply, State};
-handle_info(report_done, State) ->
+handle_info({report_done, Result}, #state{push_waiter = Waiter} = State) ->
     %% Clear the external payloads now they've been sent to the portal which
     %% should retain the information
     ets:delete_all_objects(?TABLE),
-    {noreply, State#state{report_pid = undefined}};
+    case Waiter of
+        undefined -> ok;
+        _ -> gen_server:reply(Waiter, Result)
+    end,
+    {noreply, State#state{report_pid = undefined, push_waiter = undefined}};
 handle_info(config_change, State) ->
     {noreply, update_config(State)};
 handle_info(_Info, State) ->
@@ -195,8 +230,12 @@ send_report(Config) ->
               Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
                                                   Config)),
               Result = post(URL, Port, Report, Timeout),
-              update_metric(Result),
-              Parent ! report_done
+              MetricResult = case Result of
+                                 success -> success;
+                                 {failure, _} -> failure
+                             end,
+              update_metric(MetricResult),
+              Parent ! {report_done, Result}
       end).
 
 post(URL, Port, Body, Timeout) ->
@@ -215,11 +254,12 @@ post(URL, Port, Body, Timeout) ->
             %% nxdomain error, so we don't need to log it at error level
             ?log_debug("Sending telemetry report failed. Error: ~s",
                        [Reason]),
-            failure;
+            {failure, Reason};
         {client_error, JsonResponse} ->
             %% Error from portal itself
+            Encoded = ejson:encode(JsonResponse),
             ?log_debug("Telemetry report rejected by portal. Error: ~s",
-                       [ejson:encode(JsonResponse)]),
+                       [Encoded]),
             failure;
         {ok, _JsonResponse} ->
             %% Ignore unexpected success payload
@@ -231,7 +271,7 @@ post(URL, Port, Body, Timeout) ->
             ?log_error("Sending telemetry report crashed with error: ~p"
                        "~nStacktrace: ~p",
                        [Error, Stack]),
-            failure
+            {failure, <<"Internal error, see logs for details">>}
     end.
 
 build_product() ->
@@ -330,6 +370,9 @@ create_report() ->
     json:encode(Payload1).
 
 -ifdef(TEST).
+%% Timeout for things that should eventually happen, but not necessarily
+%% immediately
+-define(LONG_TIMEOUT, timer:seconds(60)).
 
 report_keys() ->
     [<<"clusterUuid">>,
@@ -359,19 +402,13 @@ create_report_test_() ->
      fun () ->
              fake_ns_config:setup(),
              fake_chronicle_kv:setup(),
-             PidMap1 = mock_helpers:setup_mocks([ns_heart]),
-             {ok, NsDoctorPid} = ns_doctor:start_link(),
-             PidMap2 = PidMap1#{ns_doctor => NsDoctorPid},
+             PidMap = mock_helpers:setup_mocks([ns_doctor_sup]),
              meck:expect(ns_node_disco, nodes_wanted, 0, [node()]),
              ets:new(?TABLE, [named_table, set]),
-             PidMap2
+             PidMap
      end,
      fun (PidMap) ->
              ets:delete(?TABLE),
-             %% Shut down ns_heart first, as it depends on other processes
-             mock_helpers:teardown(
-               maps:filter(fun (Key, _) -> Key =:= ns_heart end, PidMap)),
-             %% It's now safe to shut down the rest without crashing ns_heart
              mock_helpers:teardown(PidMap),
              fake_chronicle_kv:teardown(),
              fake_ns_config:teardown(),
@@ -385,5 +422,64 @@ create_report_test_() ->
              [NodeMap] = maps:get(<<"nodes">>, ReportMap),
              ?assertListsEqual(node_keys(), maps:keys(NodeMap))
      end}.
+
+push_report_test_() ->
+    {foreach,
+     %% Public, as each test runs in a different process to setup
+     fun () ->
+             fake_ns_config:setup(),
+             %% Disable automatic reporting
+             fake_ns_config:update_snapshot(
+               [{?CONFIG_KEY, #{reporting_enabled => false}}]),
+             fake_chronicle_kv:setup(),
+             PidMap1 = mock_helpers:setup_mocks([ns_doctor_sup,
+                                                 leader_registry]),
+             meck:expect(ns_node_disco, nodes_wanted, 0, [node()]),
+             {ok, Pid} = start_link(),
+             PidMap1#{?MODULE => Pid}
+     end,
+     fun (PidMap) ->
+             mock_helpers:teardown(PidMap),
+             fake_chronicle_kv:teardown(),
+             fake_ns_config:teardown(),
+             meck:unload()
+     end,
+     [{"Disabled", fun push_report_disabled_t/0},
+      {"Enabled", fun push_report_enabled_t/0}]}.
+
+push_report_disabled_t() ->
+    ?assertEqual({error, disabled}, push_report(#{})),
+    ?assertEqual({error, disabled}, push_report(#{reporting_enabled => false})).
+
+push_report_enabled_t() ->
+    Parent = self(),
+    meck:expect(menelaus_rest, json_request_hilevel,
+                fun (post, _, _, _) ->
+                        Parent ! {post_report, self()},
+
+                        receive {respond, Result} -> Result
+                        after ?LONG_TIMEOUT -> error(timeout) end
+                end),
+    Settings = (build_settings())#{reporting_enabled => true},
+
+    %% Attempt a push async so that we can attempt another one at the same time
+    spawn_link(
+      fun() ->
+              Result = push_report(Settings),
+              Parent ! {result, Result}
+      end),
+    %% Wait for gen_server to be in the handler
+    meck:wait(ns_node_disco, nodes_wanted, 0, ?MECK_WAIT_TIMEOUT),
+
+    %% Attempting to push while another push is in progress fails
+    ?assertEqual({error, report_in_progress}, push_report(Settings)),
+
+    %% Send ok to the pid mecking the json request
+    receive {post_report, Pid} -> Pid ! {respond, ok}
+    after ?MECK_WAIT_TIMEOUT -> error(timeout) end,
+
+    %% Receive the response back from the original call
+    receive {result, Result} -> Result
+    after ?LONG_TIMEOUT -> error(timeout) end.
 
 -endif.
