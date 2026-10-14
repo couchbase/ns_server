@@ -9,6 +9,7 @@
 import testlib
 import os
 import ipaddress
+import signal
 import subprocess
 import sys
 import time
@@ -419,6 +420,32 @@ class CertLoadTests(testlib.BaseTestSet):
         testlib.post_fail(self.cluster, '/controller/regenerateCertificate',
                           expected_code=400,
                           params={'dropGeneratedCertificates': 'false'})
+
+    def regen_local_certs_without_quorum_test(self):
+        # Earlier tests may leave uploaded certs
+        regenerate_certs_and_remove_unused_generated_cas(self.cluster)
+        node = self.cluster.connected_nodes[0]
+        node_cert_before = get_node_cert(node)
+        other_pids = [n.get_ns_server_pid()
+                      for n in self.cluster.connected_nodes[1:]]
+        try:
+            # Pause the other nodes, so there is no quorum
+            for pid in other_pids:
+                os.kill(pid, signal.SIGSTOP)
+            r = testlib.post_fail(
+                node, '/controller/regenerateCertificate', expected_code=503,
+                params={'forceResetCACertificate': 'false',
+                        'dropUploadedCertificates': 'false',
+                        'dropGeneratedCertificates': 'true'})
+            assert r.json()['localOnly'] is True, r.text
+            # The CA can't be reset without quorum
+            testlib.post_fail(node, '/controller/regenerateCertificate',
+                              expected_code=400)
+        finally:
+            for pid in other_pids:
+                os.kill(pid, signal.SIGCONT)
+        self.cluster.wait_nodes_up()
+        assert_cert_regenerated(node, node_cert_before)
 
     def regen_certs_with_untrusted_ca_test(self):
         node_certs_before = self.load_custom_certs()

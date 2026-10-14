@@ -573,7 +573,9 @@
               "sessionid" : "",
               "dropUploadedCertificates" : true,
               "forceResetCACertificate" : true,
-              "dropGeneratedCertificates" : true
+              "dropGeneratedCertificates" : true,
+              "localOnly" : true,
+              "regeneratedCertificates" : []
           }
       },
       {

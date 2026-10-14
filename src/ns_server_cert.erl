@@ -26,6 +26,7 @@
          this_node_uses_self_generated_client_certs/0,
          this_node_uses_self_generated_client_certs/1,
          self_generated_ca/0,
+         self_generated_ca_is_trusted/0,
          load_certs_from_inbox/2,
          load_certs_from_inbox/3,
          is_cert_loaded_from_file/1,
@@ -92,6 +93,12 @@ self_generated_ca() ->
         {error, not_found} ->
             {CA, _} = ensure_cluster_CA(),
             CA
+    end.
+
+self_generated_ca_is_trusted() ->
+    case chronicle_kv:get(kv, root_cert_and_pkey) of
+        {ok, {{CA, _}, _}} -> is_trusted(CA, trusted_CAs(pem));
+        {error, not_found} -> false
     end.
 
 self_generated_ca_and_pkey() ->

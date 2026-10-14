@@ -258,6 +258,64 @@ handle_cluster_certificate_extended(Req) ->
     Warnings = [{translate_warning(W)} || W <- ns_server_cert:get_warnings()],
     menelaus_util:reply_json(Req, {[{cert, CertJson}, {warnings, Warnings}]}).
 
+regenerate_certs(ForceResetCA, DropUploadedCerts, DropGeneratedCerts) ->
+    try
+        ns_server_cert:generate_cluster_CA(ForceResetCA, DropUploadedCerts,
+                                           DropGeneratedCerts),
+        cluster
+    catch
+        exit:timeout ->
+            ?log_warning("Timed out regenerating cluster certificates"),
+            Kinds = [generated || DropGeneratedCerts] ++
+                    [uploaded || DropUploadedCerts],
+            regenerate_local_certs(ForceResetCA, Kinds)
+    end.
+
+%% Regenerating locally would silently keep the old CA
+regenerate_local_certs(true, _Kinds) ->
+    regenerate_error(<<"The CA certificate may not have been reset. Retry "
+                       "with forceResetCACertificate=false to regenerate "
+                       "this node's certificates only">>);
+regenerate_local_certs(false, []) ->
+    regenerate_error(<<"Retry with dropGeneratedCertificates=true or "
+                       "dropUploadedCertificates=true to regenerate this "
+                       "node's certificates only">>);
+%% Without quorum only this node's certificates can be regenerated, using the
+%% CA it already has, so other nodes must still trust that CA
+regenerate_local_certs(false, Kinds) ->
+    ns_server_cert:self_generated_ca_is_trusted() orelse
+        regenerate_error(<<"The self-generated CA certificate is not "
+                           "trusted, so this node's certificates cannot be "
+                           "regenerated">>),
+    Regenerated =
+        lists:filter(
+          fun (Type) ->
+                  case ns_ssl_services_setup:regenerate_cert(Type, Kinds) of
+                      ok ->
+                          ?log_warning("Regenerated ~p locally", [Type]),
+                          true;
+                      {skipped, Kind} ->
+                          ?log_info("Skipped regeneration of ~p ~p",
+                                    [Kind, Type]),
+                          false;
+                      {error, no_private_key} ->
+                          regenerate_error(
+                            <<"The CA private key is not available, so this "
+                              "node's certificates cannot be regenerated">>)
+                  end
+          end, [node_cert, client_cert]),
+    Regenerated =/= [] orelse
+        regenerate_error(<<"None of this node's certificates are of the "
+                           "requested types">>),
+    {local, Regenerated}.
+
+regenerate_error(Reason) ->
+    Msg = <<"Timed out regenerating cluster certificates. ", Reason/binary>>,
+    menelaus_util:web_json_exception(400, {[{errors, {[{<<"_">>, Msg}]}}]}).
+
+cert_type_name(node_cert) -> nodeCertificate;
+cert_type_name(client_cert) -> clientCertificate.
+
 handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
     validator:handle(
@@ -272,13 +330,28 @@ handle_regenerate_certificate(Req) ->
                                       ForceResetCA),
               menelaus_util:survive_web_server_restart(
                 fun () ->
-                        ns_server_cert:generate_cluster_CA(
-                          ForceResetCA, DropUploadedCerts, DropGeneratedCerts),
+                        Result = regenerate_certs(ForceResetCA,
+                                                  DropUploadedCerts,
+                                                  DropGeneratedCerts),
                         ns_ssl_services_setup:sync(),
                         ?log_info("Completed handling of regenerate_certificate call "
-                                  "(~p)", [Params]),
-                        ns_audit:regenerate_certificate(Req, Params),
-                        handle_cluster_certificate_simple(Req)
+                                  "(~p, ~p)", [Params, Result]),
+                        case Result of
+                            cluster ->
+                                ns_audit:regenerate_certificate(Req, Params),
+                                handle_cluster_certificate_simple(Req);
+                            {local, Types} ->
+                                Names = [cert_type_name(T) || T <- Types],
+                                ns_audit:regenerate_certificate(
+                                  Req, [{localOnly, true},
+                                        {regeneratedCertificates,
+                                         {list, Names}} | Params]),
+                                %% Fail, so callers can't mistake this for a
+                                %% cluster-wide regeneration
+                                menelaus_util:reply_json(
+                                  Req, {[{localOnly, true},
+                                         {regeneratedCertificates, Names}]}, 503)
+                        end
                 end)
       end, Req, qs, [validator:boolean(dropUploadedCertificates, _),
                      validator:boolean(dropGeneratedCertificates, _),
