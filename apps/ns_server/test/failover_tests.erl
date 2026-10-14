@@ -401,9 +401,13 @@ auto_failover_test_setup(SetupConfig) ->
     %% see that this has happened).
     meck:new(menelaus_web_alerts_srv, [passthrough]),
 
+    meck:new(ns_doctor),
+    meck:expect(ns_doctor, get_nodes, fun() -> [] end),
+    Pids1 = Pids#{ns_doctor_sup => mocked},
+
     mock_helpers:setup_mocks([compat_mode_manager,
                               ns_orchestrator,
-                              auto_failover], Pids).
+                              auto_failover], Pids1).
 
 get_auto_failover_reported_errors(AutoFailoverPid) ->
     sets:to_list(

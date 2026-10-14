@@ -120,6 +120,16 @@ rebalance_test_setup(SetupConfig) ->
                         {ok, []}
                 end),
 
+    meck:new(ns_doctor),
+    meck:expect(ns_doctor, get_nodes, fun() -> [] end),
+    Pids = #{ns_doctor_sup => mocked},
+
+    meck:expect(
+      ns_doctor, get_memory_data,
+      fun(Nodes) ->
+              {ok, [{Node, memsup:get_system_memory_data()} || Node <- Nodes]}
+      end),
+
     mock_helpers:setup_mocks([leader_activities,
                               rebalance_agent,
                               compat_mode_manager,
@@ -131,7 +141,7 @@ rebalance_test_setup(SetupConfig) ->
                               ns_node_disco_events,
                               rebalance_quirks,
                               ns_orchestrator,
-                              ns_cluster], #{}).
+                              ns_cluster], Pids).
 
 rebalance_test_teardown(_, PidMap) ->
     mock_helpers:teardown(PidMap),
