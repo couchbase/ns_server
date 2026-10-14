@@ -262,23 +262,44 @@ handle_regenerate_certificate(Req) ->
     menelaus_util:assert_is_enterprise(),
     validator:handle(
       fun (Params) ->
-          ForceResetCA = proplists:get_value(forceResetCACertificate,
-                                             Params, true),
-          DropUploadedCerts = proplists:get_value(dropUploadedCertificates,
-                                                  Params, true),
-          menelaus_util:survive_web_server_restart(
-            fun () ->
-                ns_server_cert:generate_cluster_CA(ForceResetCA,
-                                                   DropUploadedCerts),
-                ns_ssl_services_setup:sync(),
-                ?log_info("Completed handling of regenerate_certificate call "
-                          "(~p)", [Params]),
-                ns_audit:regenerate_certificate(Req, Params),
-                handle_cluster_certificate_simple(Req)
-            end)
+              ForceResetCA = proplists:get_value(forceResetCACertificate,
+                                                 Params, true),
+              DropUploadedCerts = proplists:get_value(dropUploadedCertificates,
+                                                      Params, true),
+              %% Resetting the CA always regenerates the generated certs
+              DropGeneratedCerts =
+                  proplists:get_value(dropGeneratedCertificates, Params,
+                                      ForceResetCA),
+              menelaus_util:survive_web_server_restart(
+                fun () ->
+                        ns_server_cert:generate_cluster_CA(
+                          ForceResetCA, DropUploadedCerts, DropGeneratedCerts),
+                        ns_ssl_services_setup:sync(),
+                        ?log_info("Completed handling of regenerate_certificate call "
+                                  "(~p)", [Params]),
+                        ns_audit:regenerate_certificate(Req, Params),
+                        handle_cluster_certificate_simple(Req)
+                end)
       end, Req, qs, [validator:boolean(dropUploadedCertificates, _),
+                     validator:boolean(dropGeneratedCertificates, _),
                      validator:boolean(forceResetCACertificate, _ ),
+                     validate_drop_generated_certs(_),
                      validator:unsupported(_)]).
+
+validate_drop_generated_certs(State) ->
+    validator:validate(
+      fun (false, St) ->
+              case validator:get_value(forceResetCACertificate, St) of
+                  false ->
+                      {ok, St};
+                  _ ->
+                      {error, "must be true when forceResetCACertificate is "
+                       "true, as resetting the CA regenerates the generated "
+                       "certificates", St}
+              end;
+          (true, St) ->
+              {ok, St}
+      end, dropGeneratedCertificates, State).
 
 %% deprecated, use menelaus_util:reply_global_error/2 instead
 reply_error(Req, Error) ->

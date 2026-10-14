@@ -722,6 +722,8 @@ handle_config_change(cluster_compat_version, Parent) ->
     Parent ! ca_certificates_updated;
 handle_config_change(cluster_certs_epoch, Parent) ->
     Parent ! cert_and_pkey_changed;
+handle_config_change(generated_certs_epoch, Parent) ->
+    Parent ! cert_and_pkey_changed;
 handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
@@ -928,8 +930,14 @@ maybe_store_ca_certs() ->
 
     ShouldUpdate.
 
+%% The epoch is not added until it first gets set, so that upgraded nodes don't
+%% immediately generate new certs
 generated_cert_version(ClusterCA, Hostname) ->
-    base64:encode(erlang:md5(term_to_binary({ClusterCA, Hostname}))).
+    Term = case chronicle_kv:get(kv, generated_certs_epoch) of
+               {ok, {Epoch, _}} -> {ClusterCA, Hostname, Epoch};
+               {error, not_found} -> {ClusterCA, Hostname}
+           end,
+    base64:encode(erlang:md5(term_to_binary(Term))).
 
 maybe_generate_client_certs() ->
     maybe_generate_certs(client_cert, ?INTERNAL_CERT_USER).

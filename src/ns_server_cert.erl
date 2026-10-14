@@ -20,7 +20,7 @@
 
 -export([decode_cert_chain/1,
          decode_single_certificate/1,
-         generate_cluster_CA/2,
+         generate_cluster_CA/3,
          this_node_uses_self_generated_certs/0,
          this_node_uses_self_generated_certs/1,
          this_node_uses_self_generated_client_certs/0,
@@ -101,17 +101,18 @@ self_generated_ca_and_pkey() ->
     end.
 
 ensure_cluster_CA() ->
-    generate_cluster_CA(false, false).
+    generate_cluster_CA(false, false, false).
 
-generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
+generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts, DropGeneratedCerts) ->
     NewPair = generate_cert_and_pkey(),
     {ok, AddCA} = add_CAs_txn_fun(generated, element(1, NewPair), []),
-    ReadEpoch =
-        fun (Txn) ->
-                case chronicle_kv:txn_get(cluster_certs_epoch, Txn) of
-                    {ok, {N, _}} -> N;
-                    {error, not_found} -> 0
-                end
+    BumpEpoch =
+        fun (Key, Txn) ->
+                Epoch = case chronicle_kv:txn_get(Key, Txn) of
+                            {ok, {N, _}} -> N;
+                            {error, not_found} -> 0
+                        end,
+                {set, Key, Epoch + 1}
         end,
     {ok, _, Pair} =
         chronicle_kv:txn(
@@ -121,6 +122,7 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
                       {ok, {{_, OldKey} = OldPair, _}}
                         when not ForceRegenerateCA,
                              not DropUploadedCerts,
+                             not DropGeneratedCerts,
                              OldKey /= undefined ->
                           {abort, {ok, undefined, OldPair}};
                       {ok, {{OldCert, OldKey} = OldPair, _}}
@@ -129,22 +131,29 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
                           %% In case the CA cert is not trusted, we attempt to
                           %% add it here. Note that add_CAs_txn_fun will check
                           %% for the cert already being trusted, so there's no
-                          %% need for such a check here
-                          {ok, AddOldCA} =
-                              add_CAs_txn_fun(generated, OldCert, []),
-                          {commit, Changes0, _} = AddOldCA(Txn),
-                          Epoch = ReadEpoch(Txn) + 1,
-                          Changes1 = [{set, cluster_certs_epoch, Epoch}],
-                          {commit, Changes0 ++ Changes1, OldPair};
-                      _ ->
+                          %% need for such a check here.
+                          %% Only needed when dropping uploaded certs, as the
+                          %% CA can't be removed while generated certs use it
                           Changes0 =
                               case DropUploadedCerts of
                                   true ->
-                                      Epoch = ReadEpoch(Txn) + 1,
-                                      [{set, cluster_certs_epoch, Epoch}];
+                                      {ok, AddOldCA} =
+                                          add_CAs_txn_fun(generated, OldCert,
+                                                          []),
+                                      {commit, AddChanges, _} = AddOldCA(Txn),
+                                      AddChanges;
                                   false ->
                                       []
                               end,
+                          Changes1 =
+                              [BumpEpoch(cluster_certs_epoch, Txn)
+                               || DropUploadedCerts] ++
+                              [BumpEpoch(generated_certs_epoch, Txn)
+                               || DropGeneratedCerts],
+                          {commit, Changes0 ++ Changes1, OldPair};
+                      _ ->
+                          Changes0 = [BumpEpoch(cluster_certs_epoch, Txn)
+                                      || DropUploadedCerts],
                           Changes1 = [{set, root_cert_and_pkey, NewPair}],
                           {commit, Changes2, _} = AddCA(Txn),
                           Changes = Changes0 ++ Changes1 ++ Changes2,
