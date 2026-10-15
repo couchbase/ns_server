@@ -473,10 +473,15 @@ remove_nodes(RemoteNodes, Transaction) ->
                     update_ns_config_for_node_removal_pre_85(RemoteNodes);
                 true ->
                     %% chronicle_compat:push_and_sync_events/1 was added for
-                    %% 8.5, this doesn't work before
-                    NodesWanted = nodes_wanted(),
-                    ok = chronicle_compat:push_and_sync_events(NodesWanted),
-                    ok = ns_config_rep:pull_remotes(NodesWanted),
+                    %% 8.5, this doesn't work before.
+                    %% We only push and sync active nodes as we shun nodes one
+                    %% at a time. If we were to use nodes_wanted then we would
+                    %% attempt to push to any inactiveFailed nodes being ejected
+                    %% if we had more than one. That would fail if the node were
+                    %% down.
+                    ActiveNodes = active_nodes(),
+                    ok = chronicle_compat:push_and_sync_events(ActiveNodes),
+                    ok = ns_config_rep:pull_remotes(ActiveNodes),
 
                     update_ns_config_for_node_removal(RemoteNodes)
             end;

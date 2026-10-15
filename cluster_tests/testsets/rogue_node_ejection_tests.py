@@ -226,6 +226,53 @@ class RogueNodeEjectionTests(testlib.BaseTestSet):
             self.pretend_node = None
 
 
+# We shun nodes one-by-one so we need to test that the code added to handle
+# rogue nodes can cope with the shun of multiple down nodes individually.
+class DownNodeEjectionTests(testlib.BaseTestSet):
+
+    @staticmethod
+    def requirements():
+        # Five nodes so that two being down leaves a chronicle quorum
+        return testlib.ClusterRequirements(
+            edition="Enterprise",
+            num_nodes=5,
+            num_connected=5,
+            include_services=[Service.KV],
+            balanced=True)
+
+    def setup(self):
+        self.down_nodes = []
+
+    def teardown(self):
+        pass
+
+    def test_teardown(self):
+        # Bring the ejected nodes back into the cluster for the next test
+        for node in self.down_nodes:
+            self.cluster.restart_node(node)
+        self.cluster.wait_nodes_up()
+        for node in self.down_nodes:
+            testlib.wait_for_ejected_node(node)
+            self.cluster.add_node(node, services=[Service.KV])
+        self.cluster.rebalance(wait=True)
+        self.down_nodes = []
+
+    @tag(Tag.LowUrgency)
+    def eject_down_failed_over_nodes_test(self):
+        # Keep the orchestrator up so failover and rebalance need not wait for
+        # a new one
+        orchestrator = self.cluster.wait_for_orchestrator()
+        self.down_nodes = [n for n in self.cluster.connected_nodes
+                           if n != orchestrator][-2:]
+        for node in self.down_nodes:
+            self.cluster.stop_node(node)
+        for node in self.down_nodes:
+            self.cluster.failover_node(node, graceful=False)
+
+        # The failed over nodes are added to the ejected nodes by rebalance
+        self.cluster.rebalance(wait=True, wait_for_ejected_nodes=False)
+
+
 def config_value(node, key):
     # Returns the ns_config value for key as a string, or "not_found".
     return testlib.diag_eval(
