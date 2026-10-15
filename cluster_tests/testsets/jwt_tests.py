@@ -959,9 +959,9 @@ class JWTTests(testlib.BaseTestSet):
             # wrong audience
             (lambda c: {**c, "aud": "wrong-audience"}, "RS256", "2011-04-29",
              401, "Invalid audience"),
-            # wrong signature (algorithm mismatch with configured issuer)
-            (lambda c: c, "ES256", "es256-key", 401,
-             "Mismatched signing algorithm in JWT"),
+            # wrong signature (algorithm mismatch with configured issuer),
+            # rejected before the signature verifies, so the reason is generic
+            (lambda c: c, "ES256", "es256-key", 401, "Invalid token"),
         ]
 
         for modify_claims, alg, key_id, expected_code, error in test_cases:

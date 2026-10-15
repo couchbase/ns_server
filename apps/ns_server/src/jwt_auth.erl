@@ -56,12 +56,18 @@
 
 -type claim_value_type() :: list | string | integer.
 
+-define(UNVERIFIED_TOKEN_REASON, <<"Invalid token">>).
+
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+%% A failure returns two reasons. The audit props always carry the real one.
+%% CallerReason is what the caller may be told. Until the signature verifies,
+%% the token proves nothing, so the caller only learns that it was rejected.
 -spec authenticate(Token :: string()) ->
-          {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
+          {ok, #authn_res{}, auth_audit_props()} |
+          {error, CallerReason :: binary(), auth_audit_props()}.
 authenticate(Token) ->
     Persisted =
         case menelaus_web_jwt:get_settings() of
@@ -76,7 +82,7 @@ authenticate(Token) ->
         {ok, Claims, IssProps} ->
             validate_token(TokenBin, Claims, IssProps);
         {error, Reason} ->
-            {error, audit_failure(#{}, Reason)}
+            {error, ?UNVERIFIED_TOKEN_REASON, audit_failure(#{}, Reason)}
     end.
 
 %%%===================================================================
@@ -353,7 +359,8 @@ audit_failure(Claims, Reason) ->
 
 -spec validate_token(TokenBin :: binary(), Claims :: map(),
                      IssProps :: map()) ->
-          {ok, #authn_res{}, auth_audit_props()} | {error, auth_audit_props()}.
+          {ok, #authn_res{}, auth_audit_props()} |
+          {error, binary(), auth_audit_props()}.
 validate_token(TokenBin, Claims, IssProps) ->
     case validate_signature(TokenBin, Claims, IssProps) of
         ok ->
@@ -363,11 +370,11 @@ validate_token(TokenBin, Claims, IssProps) ->
                     {ok, AuthnRes, AuditProps};
                 {error, Reason} ->
                     AuditProps = audit_failure(Claims, Reason),
-                    {error, AuditProps}
+                    {error, Reason, AuditProps}
             end;
         {error, Reason} ->
             AuditProps = audit_failure(Claims, Reason),
-            {error, AuditProps}
+            {error, ?UNVERIFIED_TOKEN_REASON, AuditProps}
     end.
 
 -spec validate_signature(TokenBin :: binary(), Claims :: map(),
@@ -1000,6 +1007,52 @@ extract_claims_test_() ->
                end}
              ]
      end}.
+
+authenticate_caller_reason_test_() ->
+    Secret = <<"0123456789abcdef0123456789abcdef">>,
+    Issuers = #{<<"test-issuer">> =>
+                    #{signing_algorithm => 'HS256',
+                      shared_secret => Secret,
+                      expiry_leeway_s => 0,
+                      audience_handling => any,
+                      audiences => [<<"test-aud">>]}},
+    Sign =
+        fun(Key, Payload) ->
+                JWT = jose_jwt:sign(jose_jwk:from_oct(Key),
+                                    #{<<"alg">> => <<"HS256">>}, Payload),
+                {_, Token} = jose_jws:compact(JWT),
+                binary_to_list(Token)
+        end,
+    Payload = #{<<"iss">> => <<"test-issuer">>, <<"sub">> => <<"user">>,
+                <<"aud">> => <<"test-aud">>,
+                <<"exp">> => erlang:system_time(second) + 600},
+    Reasons =
+        fun(Token) ->
+                {error, CallerReason, Audit} = authenticate(Token),
+                {CallerReason, proplists:get_value(<<"reason">>, Audit)}
+        end,
+    {setup,
+     fun() ->
+             meck:new([menelaus_web_jwt, jwt_issuer], [passthrough]),
+             meck:expect(menelaus_web_jwt, get_settings,
+                         fun() ->
+                                 {ok, #{enabled => true, issuers => Issuers}}
+                         end),
+             meck:expect(jwt_issuer, settings, fun() -> #{} end)
+     end,
+     fun(_) -> meck:unload() end,
+     [{"unknown issuer",
+       ?_assertEqual(
+          {<<"Invalid token">>, <<"Unknown issuer: other">>},
+          Reasons(Sign(Secret, Payload#{<<"iss">> => <<"other">>})))},
+      {"signed with another key",
+       ?_assertEqual(
+          {<<"Invalid token">>, <<"Invalid signature">>},
+          Reasons(Sign(<<"another key, also 32 bytes long">>, Payload)))},
+      {"expired after the signature verified",
+       ?_assertEqual(
+          {<<"Token has expired">>, <<"Token has expired">>},
+          Reasons(Sign(Secret, Payload#{<<"exp">> => 1})))}]}.
 
 get_claim_name_test() ->
     Props = #{sub_claim => <<"username">>,

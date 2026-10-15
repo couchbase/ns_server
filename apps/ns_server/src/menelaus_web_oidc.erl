@@ -603,7 +603,7 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
                             ?log_debug("OIDC UI login failed: ~p", [Reason]),
                             redirect_to_ui_with_error(Req, login_failed)
                     end;
-                {error, Audit} ->
+                {error, _CallerReason, Audit} ->
                     ?log_debug("OIDC ID token failed validation", []),
                     ns_audit:login_failure(
                       menelaus_auth:maybe_set_auth_audit_props(Req, Audit)),

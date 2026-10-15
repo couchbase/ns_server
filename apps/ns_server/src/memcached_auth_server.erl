@@ -249,17 +249,10 @@ authenticate(<<"OAUTHBEARER">>, AuthReq) ->
                          AuditProps} ->
                             {error, "JWT Invalid user " ++ User ++ " in token",
                              AuditProps};
-                        {error, _RespHeaders, AuditProps} ->
-                            Reason =
-                                case proplists:get_value(<<"reason">>,
-                                                         AuditProps,
-                                                         undefined) of
-                                    ReasonBin when is_binary(ReasonBin) ->
-                                        binary_to_list(ReasonBin);
-                                    _ ->
-                                        "JWT rejected"
-                                end,
-                            {error, Reason, AuditProps}
+                        {error, auth_failure, CallerReason, AuditProps} ->
+                            {error, binary_to_list(CallerReason), AuditProps};
+                        {error, _, AuditProps} ->
+                            {error, "JWT rejected", AuditProps}
                     end;
                 error ->
                     {error, "Invalid oauthbearer challenge", []}
@@ -433,6 +426,9 @@ process_data_test() ->
     %% n,a=User3,\01auth=Bearer invalid_token\01
     InvalidTokenChallenge =
         <<"bixhPVVzZXIzLAFhdXRoPUJlYXJlciBpbnZhbGlkX3Rva2VuAQ==">>,
+    %% n,a=User3,\01auth=Bearer forged_token\01
+    ForgedTokenChallenge =
+        <<"bixhPVVzZXIzLAFhdXRoPUJlYXJlciBmb3JnZWRfdG9rZW4B">>,
     InvalidFormatChallenge =
         <<"invalid_challenge">>,
 
@@ -564,6 +560,25 @@ process_data_test() ->
                         ok
                 end),
 
+              %% OAUTHBEARER tests - token rejected before its signature
+              %% verified: memcached is told less than the audit records
+              test_process_data(
+                {?MC_AUTH_REQUEST, undefined,
+                 {[{mechanism, <<"OAUTHBEARER">>},
+                   {challenge, ForgedTokenChallenge}]}},
+                fun (?MC_AUTH_REQUEST, ?KEY_ENOENT, undefined,
+                     {Props}) ->
+                        [{<<"error">>,
+                          {[{<<"context">>,
+                             <<"Authentication failed: Invalid token">>},
+                            {<<"ref">>, _}]}},
+                         {<<"audit_props">>, {AuditProps}}] = Props,
+
+                        <<"Invalid signature">> =
+                            proplists:get_value(<<"reason">>, AuditProps),
+                        ok
+                end),
+
               %% OAUTHBEARER tests - user mismatch
               test_process_data(
                 {?MC_AUTH_REQUEST, undefined,
@@ -688,7 +703,16 @@ with_mocked_users(Users, Fun) ->
                                          {<<"type">>, <<"jwt">>},
                                          {<<"reason">>, <<"Token has expired">>}
                                         ],
-                                    {error, [], AuditProps}
+                                    {error, auth_failure,
+                                     <<"Token has expired">>, AuditProps};
+                                "forged_token" ->
+                                    AuditProps =
+                                        [
+                                         {<<"type">>, <<"jwt">>},
+                                         {<<"reason">>, <<"Invalid signature">>}
+                                        ],
+                                    {error, auth_failure, <<"Invalid token">>,
+                                     AuditProps}
                             end;
                         ({Name, Pass}) ->
                             case [{N, D, ER} || {{N, P}, D, _, ER} <- Users,
