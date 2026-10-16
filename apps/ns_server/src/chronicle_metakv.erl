@@ -30,9 +30,9 @@
 %% set_multiple API's which guarantees that the API won't succeed if the
 %% revisions of the keys have changed since the keys were fetched.
 %%
-%% A watch hands its callback the current leaves it covers and then every change
-%% to them. Only leaves are reported, as directory entries change whenever a
-%% child is added or removed
+%% A watch hands its callback the current leaves it covers, then the snapshot
+%% revision they were read at, and then every change to them. Only leaves are
+%% reported, as directory entries change whenever a child is added or removed
 
 -module(chronicle_metakv).
 
@@ -86,7 +86,8 @@
                                 {cas, key(), revision()} |
                                 duplicate_keys}.
 
--type watch_event() :: {key(), revision(), value() | deleted}.
+-type watch_event() :: {key(), revision(), value() | deleted} |
+                       {snapshot_end, revision()}.
 
 upgrade_to_79(_, _, _) ->
     case chronicle_agent:get_info_for_rsm(metakv) of
@@ -492,7 +493,8 @@ dir_leaves({Key, {Value, Rev}}) ->
     [{Key, Rev, Value}].
 
 %% Subscribe before taking the snapshot, so that a change committed in between
-%% is not missed
+%% is not missed. The end of the snapshot is reported so that a caller can tell
+%% which leaves it no longer holds
 do_watch(Filter, Fetch, Callback) ->
     Self = self(),
     ns_pubsub:subscribe_link(
@@ -509,6 +511,7 @@ do_watch(Filter, Fetch, Callback) ->
       end),
     {ok, {Leaves, SnapshotRev}} = chronicle_kv:ro_txn(metakv, Fetch),
     lists:foreach(Callback, Leaves),
+    Callback({snapshot_end, SnapshotRev}),
     watch_loop(SnapshotRev, Callback).
 
 %% Any message other than a change ends the watch, as the caller has its socket
@@ -948,6 +951,10 @@ watch_test_() ->
                                            _)),
                ?assertMatch({Key, _, v1}, next_watched()),
 
+               %% the snapshot ends at the revision a get_dir would return
+               {ok, {_, DirRev}} = get_dir([subkey1, root], false, undefined),
+               ?assertEqual({snapshot_end, DirRev}, next_watched()),
+
                %% an event already covered by the snapshot, which only a race
                %% produces, so it is sent by hand
                gen_event:notify(chronicle_kv:event_manager(metakv),
@@ -982,6 +989,7 @@ watch_test_() ->
                   lists:sort([Key, Deeper]),
                   lists:sort([K || {K, _, _} <- [next_watched(),
                                                  next_watched()]])),
+               ?assertMatch({snapshot_end, _}, next_watched()),
 
                ?assertMatch({ok, _, update},
                             test_set(Deepest, v4, undefined, false)),
@@ -996,6 +1004,7 @@ watch_test_() ->
                   lists:sort([K || {K, _, _} <- [next_watched(),
                                                  next_watched(),
                                                  next_watched()]])),
+               ?assertMatch({snapshot_end, _}, next_watched()),
                stop_watch(Pid1)
        end},
       {"watch reports only its own leaf",
@@ -1010,6 +1019,7 @@ watch_test_() ->
 
                Pid = start_watch(watch(Key, _)),
                ?assertMatch({Key, _, v1}, next_watched()),
+               ?assertMatch({snapshot_end, _}, next_watched()),
 
                %% neither is the watched leaf, which the next event being the
                %% delete of Key shows
@@ -1024,6 +1034,7 @@ watch_test_() ->
                %% a leaf that does not exist yet is reported once created
                Missing = [key3, subkey1, root],
                Pid1 = start_watch(watch(Missing, _)),
+               ?assertMatch({snapshot_end, _}, next_watched()),
                ?assertMatch({ok, _, create},
                             test_set(Missing, v5, new, false)),
                ?assertMatch({Missing, _, v5}, next_watched()),
@@ -1034,6 +1045,7 @@ watch_test_() ->
                Key = [key1, subkey1, root],
                Pid = start_watch(watch_dir([subkey1, root], false, undefined,
                                            _)),
+               ?assertMatch({snapshot_end, _}, next_watched()),
                ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
                ?assertMatch({Key, _, v1}, next_watched()),
                stop_watch(Pid)

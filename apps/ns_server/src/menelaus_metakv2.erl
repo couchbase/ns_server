@@ -26,8 +26,9 @@
 %% of the same key is incompatible.
 %%
 %% GET /_metakv2/path/?feed=continuous streams the leaves the same request would
-%% list, and then every change to them. GET /_metakv2/path/key with
-%% feed=continuous does the same for the one leaf
+%% list, then {"revision": ..., "snapshotEnd": true} and then every change to
+%% them. GET /_metakv2/path/key with feed=continuous does the same for the one
+%% leaf
 %%
 %% For more details see the following document:
 %% https://docs.google.com/document/d/1J43NENn5NZ2Mf7h72cnVcgitvpidSJ5WFZSb_DKFggk
@@ -259,8 +260,9 @@ handle_get_dir(Req, Key, Recursive, Depth) ->
             menelaus_util:reply_json(Req, not_found_reply(Key, dir), 404)
     end.
 
-%% Streams one json object per leaf, the current ones first and then each
-%% change. The socket is made active so that the watch sees it close
+%% Streams one json object per leaf, the current ones first, then the snapshot
+%% end and then each change. The socket is made active so that the watch sees
+%% it close
 handle_watch(Req, Path, Watch) ->
     HTTPRes = menelaus_util:reply_ok(Req, "application/json; charset=utf-8",
                                      chunked),
@@ -269,6 +271,11 @@ handle_watch(Req, Path, Watch) ->
                                  [{active, true}]),
     Watch(write_watch_event(HTTPRes, _)).
 
+write_watch_event(HTTPRes, {snapshot_end, Rev}) ->
+    ?metakv_debug("Sent snapshot end rev: ~p", [Rev]),
+    mochiweb_response:write_chunk(
+      ejson:encode({[{revision, encode_revision(Rev)}, {snapshotEnd, true}]}),
+      HTTPRes);
 write_watch_event(HTTPRes, {Key, Rev, Change}) ->
     Fields = case Change of
                  Value when Value =/= deleted ->

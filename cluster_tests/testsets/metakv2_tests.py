@@ -169,6 +169,12 @@ def assert_event(event, path, value):
     testlib.assert_eq(event.get("value"), value, "value")
     assert "revision" in event, f"no revision in {event}"
 
+def assert_snapshot_end(event):
+    testlib.assert_eq(event.get("snapshotEnd"), True, "snapshotEnd")
+    assert "path" not in event, f"path in {event}"
+    assert "revision" in event, f"no revision in {event}"
+    return event["revision"]
+
 class Metakv2Tests(testlib.BaseTestSet):
     def __init__(self, cluster):
         super().__init__(cluster)
@@ -642,6 +648,11 @@ class Metakv2Tests(testlib.BaseTestSet):
         try:
             assert_event(feed.next(), key, "v1")
 
+            # The snapshot ends at the revision a GET of the directory returns
+            rev = self.metakv2_get("/root/subdir/").json()["revision"]
+            testlib.assert_eq(assert_snapshot_end(feed.next()), rev,
+                              "snapshot revision")
+
             # Neither is under the watch, which the next event arriving being
             # the one for key shows
             assert_updated(self.metakv2_put(deeper, value="v20"))
@@ -662,6 +673,7 @@ class Metakv2Tests(testlib.BaseTestSet):
         try:
             testlib.assert_eq({feed.next()["path"], feed.next()["path"]},
                               {new, other}, "paths")
+            assert_snapshot_end(feed.next())
             assert_updated(self.metakv2_put(deeper, value="v200"))
             assert_updated(self.metakv2_put(other, value="v300"))
             assert_event(feed.next(), other, "v300")
@@ -690,6 +702,7 @@ class Metakv2Tests(testlib.BaseTestSet):
         key = "/root/missing/key1"
         feed = self.metakv2_watch("/root/missing/")
         try:
+            assert_snapshot_end(feed.next())
             assert_created(self.metakv2_put(key, value="v1", create=True,
                                             recursive=True))
             assert_event(feed.next(), key, "v1")
@@ -714,6 +727,7 @@ class Metakv2Tests(testlib.BaseTestSet):
         feed = self.metakv2_watch(key)
         try:
             assert_event(feed.next(), key, "v1")
+            assert_snapshot_end(feed.next())
 
             # Not the watched leaf, which the next event arriving being the one
             # for key shows
@@ -739,6 +753,7 @@ class Metakv2Tests(testlib.BaseTestSet):
         key = "/root/missing/key1"
         feed = self.metakv2_watch(key)
         try:
+            assert_snapshot_end(feed.next())
             assert_created(self.metakv2_put(key, value="v1", create=True,
                                             recursive=True))
             assert_event(feed.next(), key, "v1")
