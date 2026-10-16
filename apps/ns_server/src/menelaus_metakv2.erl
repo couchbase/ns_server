@@ -262,13 +262,17 @@ handle_get_dir(Req, Key, Recursive, Depth) ->
 
 %% Streams one json object per leaf, the current ones first, then the snapshot
 %% end and then each change. The socket is made active so that the watch sees
-%% it close
+%% it close. A client that stops reading is cut off, so that the changes do not
+%% queue up behind it, and it resyncs on reconnecting
 handle_watch(Req, Path, Watch) ->
     HTTPRes = menelaus_util:reply_ok(Req, "application/json; charset=utf-8",
                                      chunked),
     ?metakv_debug("Starting watch of ~s", [Path]),
-    ok = mochiweb_socket:setopts(mochiweb_request:get(socket, Req),
-                                 [{active, true}]),
+    ok = mochiweb_socket:setopts(
+           mochiweb_request:get(socket, Req),
+           [{active, true},
+            {send_timeout, ?get_param(watch_send_timeout, 60000)},
+            {send_timeout_close, true}]),
     Watch(write_watch_event(HTTPRes, _)).
 
 write_watch_event(HTTPRes, {snapshot_end, Rev}) ->

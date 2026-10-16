@@ -698,6 +698,43 @@ class Metakv2Tests(testlib.BaseTestSet):
             lambda: self.watch_subscribers() == before, sleep_time=0.1,
             timeout=10, msg="watch to unsubscribe once the client has gone")
 
+    def set_watch_param(self, name, value):
+        testlib.diag_eval(
+            self.cluster,
+            f"ns_config:set({{node, node(), {{menelaus_metakv2, {name}}}}}, "
+            f"{value}).")
+
+    def delete_watch_param(self, name):
+        testlib.diag_eval(
+            self.cluster,
+            f"ns_config:delete({{node, node(), {{menelaus_metakv2, {name}}}}}).")
+
+    def watch_send_timeout_test(self):
+        key = "/root/subdir/key1"
+        value = "x" * 512 * 1024
+        self.set_watch_param("watch_send_timeout", 1000)
+        before = self.watch_subscribers()
+        feed = self.metakv2_watch("/root/subdir/")
+        try:
+            testlib.poll_for_condition(
+                lambda: self.watch_subscribers() == before + 1, sleep_time=0.1,
+                timeout=10, msg="watch to subscribe")
+
+            # Never read from the feed, so that the changes fill the socket
+            # buffers and the watch is cut off rather than queueing them
+            assert_created(self.metakv2_put(key, value=value, create=True,
+                                            recursive=True))
+            for i in range(64):
+                if self.watch_subscribers() == before:
+                    break
+                assert_updated(self.metakv2_put(key, value=f"{i}{value}"))
+            testlib.poll_for_condition(
+                lambda: self.watch_subscribers() == before, sleep_time=0.1,
+                timeout=10, msg="watch to be cut off")
+        finally:
+            feed.close()
+            self.delete_watch_param("watch_send_timeout")
+
     def watch_missing_dir_test(self):
         key = "/root/missing/key1"
         feed = self.metakv2_watch("/root/missing/")
