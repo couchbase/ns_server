@@ -261,11 +261,11 @@ get_supported_tls_security_levels(kv) ->
 get_supported_tls_security_levels(_) ->
     [1, 2, 3, 4, 5].
 
--spec ssl_security_level(atom() | []) -> [pos_integer()].
+-spec ssl_security_level(atom() | []) -> pos_integer().
 ssl_security_level(Service) ->
     ssl_security_level(Service, ns_config:latest()).
 
--spec ssl_security_level(atom() | [], ns_config()) -> [pos_integer()].
+-spec ssl_security_level(atom() | [], ns_config()) -> pos_integer().
 ssl_security_level(Service, Config) ->
     DefaultLevel = 1,
     get_sec_setting(Service, ssl_security_level, Config, DefaultLevel).
