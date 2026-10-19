@@ -147,7 +147,7 @@ get_tls_security_level(Service, Level) ->
         ns_ssl_services_setup:get_supported_tls_security_levels(Service),
     LevelsStr = [integer_to_list(S) || S <- TlsLevels],
     case lists:member(Level, LevelsStr) of
-        true -> {ok, list_to_atom(Level)};
+        true -> {ok, list_to_integer(Level)};
         false ->
             M = io_lib:format("Supported TLS Security Levels are '~s'",
                               [string:join(LevelsStr, ", ")]),
@@ -2027,7 +2027,7 @@ parse_post_data_test() ->
                       [{"Strict-Transport-Security",
                         "max-age=10;preload;includeSubDomains"}]},
                        {[ssl_minimum_protocol], 'tlsv1.2'},
-                       {[ssl_security_level], '1'},
+                       {[ssl_security_level], 1},
                        {[cipher_suites], []},
                        {[honor_cipher_order], true},
                        {[{security_settings, kv}, ssl_minimum_protocol],
@@ -2046,7 +2046,7 @@ parse_post_data_test() ->
                                  KeyValidator)),
     ?assertEqual({ok, [{[{security_settings, kv}, ssl_minimum_protocol],
                         'tlsv1.3'},
-                       {[{security_settings, kv}, ssl_security_level], '3'},
+                       {[{security_settings, kv}, ssl_security_level], 3},
                        {[{security_settings, kv}, cipher_suites], []},
                        {[{security_settings, kv}, honor_cipher_order], true}]},
                  parse_post_data(Conf, ["data"],
