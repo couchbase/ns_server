@@ -140,6 +140,9 @@ class AuthnTests(testlib.BaseTestSet):
         (wrong_user, wrong_password) = self.wrong_pass_creds
         testlib.post_fail(self.cluster, '/uilogin', 400, auth=None,
                           data={'user': wrong_user, 'password': wrong_password})
+        for data in [{'user': user}, {'password': password}, {}]:
+            testlib.post_fail(self.cluster, '/uilogin', 400, auth=None,
+                              data=data)
         self.uilogin_test_base(self.cluster.connected_nodes[0],
                                expected_username=user,
                                data={'user': user, 'password': password})

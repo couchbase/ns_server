@@ -575,7 +575,12 @@ uilogin(Req, Params) ->
                         {Usr, {error, auth_failure, []}};
                     _ ->
                         Password = proplists:get_value("password", Params),
-                        {Usr, authenticate({Usr, Password})}
+                        case Usr =:= undefined orelse Password =:= undefined of
+                            true ->
+                                {Usr, {error, auth_failure, []}};
+                            false ->
+                                {Usr, authenticate({Usr, Password})}
+                        end
                 end
         end,
 
