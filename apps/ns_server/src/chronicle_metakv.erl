@@ -509,27 +509,41 @@ do_watch(Filter, Fetch, Callback) ->
           (_) ->
               ok
       end),
+    MaxQueueLen = ?get_param(watch_max_queue_len, 10000),
     {ok, {Leaves, SnapshotRev}} = chronicle_kv:ro_txn(metakv, Fetch),
     lists:foreach(Callback, Leaves),
     Callback({snapshot_end, SnapshotRev}),
-    watch_loop(SnapshotRev, Callback).
+    watch_loop(SnapshotRev, MaxQueueLen, Callback).
 
 %% Any message other than a change ends the watch, as the caller has its socket
 %% in active mode so that a closed connection arrives here
-watch_loop({HistoryId, SnapshotSeqno} = SnapshotRev, Callback) ->
+watch_loop({HistoryId, SnapshotSeqno} = SnapshotRev, MaxQueueLen, Callback) ->
     receive
         {watch_event, _Key, {HistoryId, Seqno}, _Change}
           when Seqno =< SnapshotSeqno ->
             %% already reported as part of the snapshot
-            watch_loop(SnapshotRev, Callback);
+            watch_loop(SnapshotRev, MaxQueueLen, Callback);
         {watch_event, Key, Rev, {updated, Stored}} ->
+            check_queue_len(MaxQueueLen),
             Callback({Key, Rev, Stored}),
-            watch_loop(SnapshotRev, Callback);
+            watch_loop(SnapshotRev, MaxQueueLen, Callback);
         {watch_event, Key, Rev, deleted} ->
+            check_queue_len(MaxQueueLen),
             Callback({Key, Rev, deleted}),
-            watch_loop(SnapshotRev, Callback);
+            watch_loop(SnapshotRev, MaxQueueLen, Callback);
         _ ->
             erlang:exit(normal)
+    end.
+
+%% A watch that has fallen this far behind ends, so that its backlog is freed,
+%% and the client resyncs from the snapshot on reconnecting
+check_queue_len(MaxQueueLen) ->
+    case erlang:process_info(self(), message_queue_len) of
+        {message_queue_len, Len} when Len > MaxQueueLen ->
+            ?log_warning("Ending watch with ~b queued changes", [Len]),
+            erlang:exit(normal);
+        _ ->
+            ok
     end.
 
 -ifdef(TEST).
@@ -933,10 +947,21 @@ next_watched() ->
             timeout
     end.
 
+%% fake_ns_config provides the watch params
+watch_setup() ->
+    setup(),
+    fake_ns_config:setup().
+
+%% fake_chronicle_kv goes first, as chronicle_compat_events is subscribed to
+%% the ns_config_events that fake_ns_config stops
+watch_teardown(_) ->
+    teardown(ok),
+    fake_ns_config:teardown().
+
 watch_test_() ->
     {foreach,
-     fun setup/0,
-     fun teardown/1,
+     fun watch_setup/0,
+     fun watch_teardown/1,
      [{"watch_dir reports the snapshot, then changes to its own leaves",
        fun () ->
                Key = [key1, subkey1, root],
@@ -1058,6 +1083,50 @@ watch_test_() ->
                true = misc:poll_for_condition(
                         fun() -> not is_process_alive(Pid) end,
                         5000, 100)
+       end},
+      {"a watch that falls too far behind ends",
+       fun () ->
+               fake_ns_config:update_snapshot(
+                 {?MODULE, watch_max_queue_len}, 2),
+               Self = self(),
+               Ref = make_ref(),
+               %% the watch is held at the end of the snapshot, so that the
+               %% changes queue up behind it
+               Pid = spawn(
+                       fun () ->
+                               watch_dir(
+                                 [subkey1, root], false, undefined,
+                                 fun ({snapshot_end, _}) ->
+                                         Self ! {held, Ref},
+                                         receive {Ref, continue} -> ok end;
+                                     (Event) ->
+                                         Self ! {watched, Event}
+                                 end)
+                       end),
+               MRef = erlang:monitor(process, Pid),
+               receive {held, Ref} -> ok after 5000 -> error(not_held) end,
+
+               lists:foreach(
+                 fun (I) ->
+                         ?assertMatch({ok, _, create},
+                                      test_set([I, subkey1, root], v1, new,
+                                               true))
+                 end, lists:seq(1, 5)),
+               true = misc:poll_for_condition(
+                        fun () ->
+                                {message_queue_len, Len} =
+                                    process_info(Pid, message_queue_len),
+                                Len >= 5
+                        end, 5000, 10),
+
+               Pid ! {Ref, continue},
+               receive
+                   {'DOWN', MRef, process, Pid, Reason} ->
+                       ?assertEqual(normal, Reason)
+               after 5000 ->
+                       error(watch_still_alive)
+               end,
+               ?assertEqual(timeout, next_watched())
        end}]}.
 
 -endif.
