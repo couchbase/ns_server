@@ -75,7 +75,9 @@
                 client_cert_auth,
                 sec_settings_state,
                 afamily_requirement,
-                pkey_validation_timer,
+                %% Type => TimerRef, so that validating the key of one type
+                %% doesn't cancel the revalidation of the other
+                pkey_validation_timers = #{},
                 client_cert_regenerate_timer}).
 
 start_link() ->
@@ -1212,8 +1214,8 @@ reload_pkey_passphrase(Type) ->
     PassSettings = proplists:get_value(pkey_passphrase_settings, CertProps, []),
     ns_secrets:load_passphrase(Type, PassSettings).
 
-validate_pkey(Type, #state{pkey_validation_timer = TimerRef} = State) ->
-    catch erlang:cancel_timer(TimerRef),
+validate_pkey(Type, #state{pkey_validation_timers = Timers} = State) ->
+    catch erlang:cancel_timer(maps:get(Type, Timers, undefined)),
     KeyFile = pkey_file_path(Type),
     Res =
         case file:read_file(KeyFile) of
@@ -1231,13 +1233,15 @@ validate_pkey(Type, #state{pkey_validation_timer = TimerRef} = State) ->
         ok ->
             ?log_info("Private key (~p) passphrase validation suceeded",
                       [Type]),
-            {true, State#state{pkey_validation_timer = undefined}};
+            {true, State#state{pkey_validation_timers =
+                                   maps:remove(Type, Timers)}};
         {error, Reason} ->
             ?log_error("Private key (~p) passphrase validation failed: ~p",
                        [Type, Reason]),
             NewTimerRef = erlang:send_after(?PKEY_REVALIDATION_INTERVAL,
                                             self(), {revalidate_pkey, Type}),
-            {false, State#state{pkey_validation_timer = NewTimerRef}}
+            {false, State#state{pkey_validation_timers =
+                                    Timers#{Type => NewTimerRef}}}
     end.
 
 certs_epoch() ->
