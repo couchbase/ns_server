@@ -761,8 +761,8 @@ def http_get(url, timeout=60):
 
 
 def http_post(url, data, timeout=60):
-    return requests.get(url, auth=(default_username, default_pass),
-                        timeout=timeout, data=data)
+    return requests.post(url, auth=(default_username, default_pass),
+                         timeout=timeout, data=data)
 
 
 def connect(num_nodes=0,
