@@ -1813,7 +1813,8 @@ check_permissions_url_version(Snapshot) ->
            menelaus_roles:get_all_service_roles(),
            menelaus_users:get_users_version(),
            menelaus_users:get_groups_version(),
-           menelaus_roles:params_version(Snapshot)]),
+           menelaus_roles:params_version(Snapshot),
+           menelaus_roles:role_definitions_rev()]),
     base64:encode(crypto:hash(sha, B)).
 
 get_accessible_buckets(AuthnRes) ->
