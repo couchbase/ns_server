@@ -8,6 +8,7 @@
 # licenses/APL2.txt.
 import ipaddress
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -386,6 +387,82 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    def regen_and_drop_generated_certs_test(self):
+        # Earlier tests may leave uploaded certs
+        regenerate_certs_and_remove_unused_generated_cas(self.cluster)
+        node_certs_before = get_node_certs(self.cluster)
+        original_trusted_cas = get_trusted_CAs(self.cluster)
+        try:
+            # Repeated, so that the second request bumps an existing epoch
+            for _ in range(2):
+                ca_pem = regenerate_certs(self.cluster,
+                                          force_reset_ca=False,
+                                          drop_uploaded_certs=False,
+                                          drop_generated_certs=True)
+                wait_all_nodes_updated(self.cluster, node_certs_before, ca_pem)
+                assert_trusted_CAs_unchanged(self.cluster,
+                                             original_trusted_cas)
+                node_certs_before = get_node_certs(self.cluster)
+        finally:
+            regenerate_certs_and_remove_unused_generated_cas(self.cluster)
+
+    def regen_and_drop_generated_certs_with_uploaded_test(self):
+        node_certs_before = self.load_custom_certs()
+
+        original_trusted_cas = get_trusted_CAs(self.cluster)
+        try:
+            regenerate_certs(self.cluster,
+                             force_reset_ca=False,
+                             drop_uploaded_certs=False,
+                             drop_generated_certs=True)
+            assert_trusted_CAs_unchanged(self.cluster, original_trusted_cas)
+            assert_no_certs_changed(self.cluster, node_certs_before, None)
+        finally:
+            regenerate_certs_and_remove_unused_generated_cas(self.cluster,
+                                                             node_certs_before)
+
+    def regen_and_drop_certs_keeps_generated_test(self):
+        # Earlier tests may leave uploaded certs
+        regenerate_certs_and_remove_unused_generated_cas(self.cluster)
+        node_certs_before = get_node_certs(self.cluster)
+        try:
+            regenerate_certs(self.cluster, force_reset_ca=False)
+            assert_no_certs_changed(self.cluster, node_certs_before, None)
+        finally:
+            regenerate_certs_and_remove_unused_generated_cas(self.cluster)
+
+    def regen_reset_ca_keeping_generated_certs_fails_test(self):
+        # forceResetCACertificate defaults to true
+        testlib.post_fail(self.cluster, '/controller/regenerateCertificate',
+                          expected_code=400,
+                          params={'dropGeneratedCertificates': 'false'})
+
+    def regen_local_certs_without_quorum_test(self):
+        # Earlier tests may leave uploaded certs
+        regenerate_certs_and_remove_unused_generated_cas(self.cluster)
+        node = self.cluster.connected_nodes[0]
+        node_cert_before = get_node_cert(node)
+        other_pids = [n.get_ns_server_pid()
+                      for n in self.cluster.connected_nodes[1:]]
+        try:
+            # Pause the other nodes, so there is no quorum
+            for pid in other_pids:
+                os.kill(pid, signal.SIGSTOP)
+            r = testlib.post_fail(
+                node, '/controller/regenerateCertificate', expected_code=503,
+                params={'forceResetCACertificate': 'false',
+                        'dropUploadedCertificates': 'false',
+                        'dropGeneratedCertificates': 'true'})
+            assert r.json()['localOnly'] is True, r.text
+            # The CA can't be reset without quorum
+            testlib.post_fail(node, '/controller/regenerateCertificate',
+                              expected_code=400)
+        finally:
+            for pid in other_pids:
+                os.kill(pid, signal.SIGCONT)
+        self.cluster.wait_nodes_up()
+        assert_cert_regenerated(node, node_cert_before)
+
     def regen_certs_with_untrusted_ca_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -621,8 +698,10 @@ def regenerate_certs_and_remove_unused_generated_cas(cluster,
 
 def assert_CA_newly_trusted(cluster, trusted_cas_before, expected_new_pem):
     trusted_cas_after = get_trusted_CAs(cluster)
-    ca_ids_before = [ca['id'] for ca in trusted_cas_before]
-    new_cas = [ca for ca in trusted_cas_after if ca['id'] not in ca_ids_before]
+    # Compare by pem, as a removed CA's id can be reused
+    ca_pems_before = [ca['pem'] for ca in trusted_cas_before]
+    new_cas = [ca for ca in trusted_cas_after
+               if ca['pem'] not in ca_pems_before]
     assert len(new_cas) == 1, f'expected 1 new CA, got {len(new_cas)}'
     new_ca_props = new_cas[0]
     assert new_ca_props['pem'] == expected_new_pem, \
@@ -646,16 +725,20 @@ def assert_cert_regenerated(node, prev_cert_before, is_client=False):
 
 def assert_cert_unchanged(node, prev_cert_before, is_client=False):
     node_cert_after = get_node_cert(node, is_client=is_client)
-    assert node_cert_after['type'] != 'generated', \
-           'node_cert_after type == generated'
+    assert node_cert_after['type'] == prev_cert_before['type'], \
+           'node_cert_after type != node_cert_before type'
     assert node_cert_after['pem'] == prev_cert_before['pem'], \
            'node_cert_after pem != node_cert_before pem'
 
 
-def regenerate_certs(cluster, force_reset_ca=True, drop_uploaded_certs=True):
+def regenerate_certs(cluster, force_reset_ca=True, drop_uploaded_certs=True,
+                     drop_generated_certs=None):
     params = {'forceResetCACertificate': 'true' if force_reset_ca else 'false',
               'dropUploadedCertificates': 'true' if drop_uploaded_certs
                                                  else 'false'}
+    if drop_generated_certs is not None:
+        params['dropGeneratedCertificates'] = \
+            'true' if drop_generated_certs else 'false'
     r = testlib.post_succ(cluster, '/controller/regenerateCertificate',
                           params=params)
     return r.text

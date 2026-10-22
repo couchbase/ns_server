@@ -27,6 +27,7 @@
          chain_file_path/1,
          ca_file_path/0,
          sync/0,
+         regenerate_cert/2,
          ssl_minimum_protocol/1,
          internal_ssl_minimum_protocol/0,
          ssl_minimum_protocol/2,
@@ -658,6 +659,9 @@ sync() ->
     %% has been handled
     ok = gen_server:call(?MODULE, ping, ?TIMEOUT).
 
+regenerate_cert(Type, Kinds) ->
+    gen_server:call(?MODULE, {regenerate_cert, Type, Kinds}, ?TIMEOUT).
+
 set_certificate_chain(Type, CAEntry, Chain, PKey, PassphraseSettings,
                       ForceReload) ->
     ?log_debug("Setting node certificate chain"),
@@ -752,6 +756,8 @@ handle_config_change(cluster_compat_version, Parent) ->
     Parent ! ca_certificates_updated;
 handle_config_change(cluster_certs_epoch, Parent) ->
     Parent ! cert_and_pkey_changed;
+handle_config_change(generated_certs_epoch, Parent) ->
+    Parent ! cert_and_pkey_changed;
 handle_config_change(_OtherEvent, _Parent) ->
     ok.
 
@@ -778,8 +784,8 @@ handle_call({set_certificate_chain, Type, CAEntry, Chain, PKeyFun,
 
     Reload =
         case Chain =:= Pem andalso CAEntry =:= CA andalso
-             NewPassphraseSettings =:= OriginalPassphraseSettings andalso
-             IsUploaded of
+            NewPassphraseSettings =:= OriginalPassphraseSettings andalso
+            IsUploaded of
             true ->
                 case ForceReload of
                     false ->
@@ -830,13 +836,27 @@ handle_call({set_certs, Host, CA, NodeCert, NodeKeyFun, ClientCert,
             ?log_warning("Set certs: Client certs are not present. Ignoring")
     end,
     {reply, ok, read_marker_and_reload_ssl(State)};
+handle_call({regenerate_cert, Type, Kinds}, _From, State) ->
+    ?log_info("Received regenerate_cert call for ~p (~p)", [Type, Kinds]),
+    Kind = cert_kind(Type),
+    Reply =
+        case lists:member(Kind, Kinds) of
+            false ->
+                {skipped, Kind};
+            true ->
+                case generate_certs(Type, generated_cert_name(Type)) of
+                    true -> ok;
+                    false -> {error, no_private_key}
+                end
+        end,
+    {reply, Reply, read_marker_and_reload_ssl(State)};
 handle_call(ping, _From, State) ->
     {reply, ok, State};
 handle_call(resave_encrypted_files, _From, State) ->
     lists:foreach(
-        fun (Type) ->
-            resave_cert_info(Type)
-        end, [node_cert, client_cert]),
+      fun (Type) ->
+              resave_cert_info(Type)
+      end, [node_cert, client_cert]),
     {reply, ok, State};
 handle_call(get_key_ids_in_use, _From, State) ->
     %% normally tmp_certs_and_key_file will never exist here because
@@ -972,8 +992,14 @@ maybe_store_ca_certs() ->
 
     ShouldUpdate.
 
+%% The epoch is not added until it first gets set, so that upgraded nodes don't
+%% immediately generate new certs
 generated_cert_version(ClusterCA, Hostname) ->
-    base64:encode(erlang:md5(term_to_binary({ClusterCA, Hostname}))).
+    Term = case chronicle_kv:get(kv, generated_certs_epoch) of
+               {ok, {Epoch, _}} -> {ClusterCA, Hostname, Epoch};
+               {error, not_found} -> {ClusterCA, Hostname}
+           end,
+    base64:encode(erlang:md5(term_to_binary(Term))).
 
 maybe_generate_client_certs() ->
     maybe_generate_certs(client_cert, ?INTERNAL_CERT_USER).
@@ -1019,23 +1045,40 @@ should_regenerate_certs(CertType, Name) ->
     end.
 
 maybe_generate_node_certs() ->
-    maybe_generate_certs(node_cert, misc:extract_node_address(node())).
+    maybe_generate_certs(node_cert, generated_cert_name(node_cert)).
+
+generated_cert_name(node_cert) -> misc:extract_node_address(node());
+generated_cert_name(client_cert) -> ?INTERNAL_CERT_USER.
+
+cert_kind(node_cert) ->
+    case ns_server_cert:this_node_uses_self_generated_node_certs() of
+        true -> generated;
+        false -> uploaded
+    end;
+cert_kind(client_cert) ->
+    case ns_server_cert:this_node_uses_self_generated_client_certs() of
+        true -> generated;
+        false -> uploaded
+    end.
 
 maybe_generate_certs(Type, Name) ->
     ShouldGenerate = should_regenerate_certs(Type, Name),
     case ShouldGenerate of
         true ->
-            case ns_server_cert:generate_certs(Type, Name) of
-                no_private_key ->
-                    ?log_warning("Node doesn't have private key, "
-                                 "skipping ~p generation", [Type]),
-                    false;
-                {CA, CertChain, NodeKey} ->
-                    save_generated_certs(Type, CA, CertChain, NodeKey, Name),
-                    true
-            end;
+            generate_certs(Type, Name);
         false ->
             false
+    end.
+
+generate_certs(Type, Name) ->
+    case ns_server_cert:generate_certs(Type, Name) of
+        no_private_key ->
+            ?log_warning("Node doesn't have private key, "
+                         "skipping ~p generation", [Type]),
+            false;
+        {CA, CertChain, NodeKey} ->
+            save_generated_certs(Type, CA, CertChain, NodeKey, Name),
+            true
     end.
 
 async_ssl_reload(Event, Services, #state{reload_state = ReloadState} = State) ->
