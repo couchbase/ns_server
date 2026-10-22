@@ -77,7 +77,9 @@ push_report(TestSettings) ->
                     {error, unsupported};
                 ok ->
                     Call = {push_report, TestSettings},
-                    case gen_server:call(?SERVER, Call) of
+                    Timeout = timer:seconds(
+                        get_setting(reporting_timeout_seconds, TestSettings)),
+                    case gen_server:call(?SERVER, Call, Timeout) of
                         %% An older node replies ok without handling the call
                         ok -> {error, unsupported};
                         Result -> Result
@@ -463,7 +465,8 @@ push_report_test_() ->
              meck:unload()
      end,
      [{"Disabled", fun push_report_disabled_t/0},
-      {"Enabled", fun push_report_enabled_t/0}]}.
+      {"Enabled", fun push_report_enabled_t/0},
+      {"Timeout", fun push_report_timeout_t/0}]}.
 
 push_report_disabled_t() ->
     ?assertEqual({error, disabled}, push_report(#{})),
@@ -500,5 +503,25 @@ push_report_enabled_t() ->
     %% Receive the response back from the original call
     receive {result, Result} -> Result
     after ?LONG_TIMEOUT -> error(timeout) end.
+
+push_report_timeout_t() ->
+    Parent = self(),
+    meck:expect(menelaus_rest, json_request_hilevel,
+                fun (post, _, _, _) ->
+                        Parent ! {post_report, self()},
+
+                        receive {respond, Result} -> Result
+                        after ?LONG_TIMEOUT -> error(timeout) end
+                end),
+    Settings = (build_settings())#{reporting_enabled => true,
+                                   reporting_timeout_seconds => 1},
+
+    %% The call waits for the configured timeout
+    ?assertExit({timeout, {gen_server, call, [_, _, 1000]}},
+                push_report(Settings)),
+
+    %% Unblock the report so the gen_server is left idle
+    receive {post_report, Pid} -> Pid ! {respond, ok}
+    after ?MECK_WAIT_TIMEOUT -> error(timeout) end.
 
 -endif.
