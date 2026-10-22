@@ -1272,9 +1272,11 @@ upgrade_in_progress() ->
 
 filter_out_invalid_roles(Props, Definitions, Snapshot) ->
     Roles = proplists:get_value(roles, Props, []),
-    FilteredRoles = menelaus_roles:filter_out_invalid_roles(Roles, Definitions,
+    Roles1 = lists:map(fun menelaus_roles:old_role_to_new/1, Roles),
+    FilteredRoles = menelaus_roles:filter_out_invalid_roles(Roles1, Definitions,
                                                             Snapshot),
-    lists:keystore(roles, 1, Props, {roles, FilteredRoles}).
+    FilteredRoles1 = menelaus_roles:map_roles_for_compat(FilteredRoles),
+    lists:keystore(roles, 1, Props, {roles, FilteredRoles1}).
 
 cleanup_bucket_roles(BucketName) ->
     Snapshot = ns_bucket:remove_from_snapshot(
@@ -1751,6 +1753,50 @@ maybe_update_plain_auth_hashes_test_() ->
      end,
      [{lists:map(fun ({_, S}) -> BuildSettings(S) end, TestArg), TestFun}
       || TestArg <- TestArgs]}.
+
+cleanup_invalid_roles_test() ->
+    meck:new(replicated_dets, [passthrough]),
+    meck:expect(replicated_dets, select_with_update,
+                fun replicated_dets:toy_select_with_update/4),
+    meck:new(menelaus_roles, [passthrough]),
+    meck:expect(menelaus_roles, cleanup_service_roles, fun (_, _) -> ok end),
+    config_profile:load_default_profile_for_test(),
+    fake_chronicle_kv:setup(),
+    Snapshot = ns_bucket:toy_buckets([{"default", [{uuid, <<"id1">>}]}]),
+    Kept = {bucket_full_access, [{"default", <<"id1">>}]},
+    Removed = {bucket_full_access, [{"test2", <<"id2">>}]},
+    Check =
+        fun (Version, Docs, Expected) ->
+                replicated_dets:toy_init(storage_name()),
+                fake_chronicle_kv:setup_cluster_compat_version(Version),
+                [replicated_dets:toy_set(storage_name(), Id, [{roles, Roles}])
+                 || {Id, Roles} <- Docs],
+                cleanup_invalid_roles({bucket, "test2"}, Snapshot),
+                [?assertEqual([{roles, Roles}],
+                              get_props_raw(Type, Identity))
+                 || {{Type, Identity}, Roles} <- Expected],
+                ets:delete(storage_name())
+        end,
+    try
+        meck:expect(cluster_compat_mode, is_developer_preview, ?cut(false)),
+        %% Roles are kept as atoms before 8.5, as older nodes read them
+        Check(?VERSION_79,
+              [{{user, {"unaffected", local}}, [admin, Kept]},
+               {{user, {"affected", local}}, [admin, Removed]},
+               {{group, "affected"}, [Kept, Removed]}],
+              [{{user, {"unaffected", local}}, [admin, Kept]},
+               {{user, {"affected", local}}, [admin]},
+               {{group, "affected"}, [Kept]}]),
+        menelaus_roles:set_role_definitions(),
+        Check(?VERSION_85,
+              [{{user, {"affected", local}},
+                [<<"admin">>, menelaus_roles:old_role_to_new(Removed)]}],
+              [{{user, {"affected", local}}, [<<"admin">>]}])
+    after
+        fake_chronicle_kv:teardown(),
+        config_profile:unload_profile_for_test(),
+        meck:unload()
+    end.
 
 maybe_update_auth_test() ->
     CommonSettings = [{allow_hash_migration_during_auth, true}],

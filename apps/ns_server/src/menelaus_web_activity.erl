@@ -27,9 +27,9 @@
 -define(CONFIG_KEY, user_activity).
 
 -define(DEFAULT_TRACKED_ROLES,
-        [<<"admin">>, <<"ro_admin">>, <<"security_admin">>, <<"user_admin_local">>, <<"user_admin_external">>,
-         <<"cluster_admin">>, <<"eventing_admin">>, <<"backup_admin">>, <<"views_admin">>,
-         <<"replication_admin">>, <<"fts_admin">>, <<"analytics_admin">>]).
+        [admin, ro_admin, security_admin, user_admin_local, user_admin_external,
+         cluster_admin, eventing_admin, backup_admin, views_admin,
+         replication_admin, fts_admin, analytics_admin]).
 
 -spec default() -> [{atom(), any()}].
 default() ->
@@ -69,7 +69,11 @@ set_config(Changes) ->
     OldConfig = get_config(),
 
     NewConfig = misc:update_proplist(OldConfig, Changes),
-    ns_config:set(?CONFIG_KEY, NewConfig),
+    Roles = proplists:get_value(tracked_roles, NewConfig, []),
+    Roles1 = menelaus_roles:map_roles_for_compat(Roles),
+    NewConfig1 = lists:keystore(tracked_roles, 1, NewConfig,
+                                {tracked_roles, Roles1}),
+    ns_config:set(?CONFIG_KEY, NewConfig1),
     NewConfig.
 
 params() ->
@@ -131,6 +135,7 @@ bad_roles_test() ->
                       "nonsense_role,another_nonsense_role"},
                      get_roles(["nonsense_role", "another_nonsense_role"]))
     after
+        fake_chronicle_kv:teardown(),
         meck:unload(),
         config_profile:unload_profile_for_test()
     end.
@@ -148,6 +153,33 @@ get_groups(Groups) ->
     end.
 
 -ifdef(TEST).
+set_config_test() ->
+    config_profile:load_default_profile_for_test(),
+    fake_ns_config:setup(),
+    fake_chronicle_kv:setup(),
+    meck:expect(cluster_compat_mode, is_developer_preview, ?cut(false)),
+    try
+        StoredRoles =
+            fun () ->
+                    proplists:get_value(
+                      tracked_roles, ns_config:read_key_fast(?CONFIG_KEY, []))
+            end,
+        fake_ns_config:update_snapshot(?CONFIG_KEY, default()),
+        %% Roles are kept as atoms before 8.5, as older nodes read them
+        fake_chronicle_kv:setup_cluster_compat_version(?VERSION_79),
+        set_config([{enabled, true}]),
+        ?assertEqual(?DEFAULT_TRACKED_ROLES, StoredRoles()),
+        fake_chronicle_kv:setup_cluster_compat_version(?VERSION_85),
+        set_config([{enabled, false}]),
+        ?assertEqual([atom_to_binary(R) || R <- ?DEFAULT_TRACKED_ROLES],
+                     StoredRoles())
+    after
+        fake_chronicle_kv:teardown(),
+        fake_ns_config:teardown(),
+        meck:unload(),
+        config_profile:unload_profile_for_test()
+    end.
+
 bad_groups_test() ->
     meck:expect(menelaus_users, group_exists,
                 fun ("real_group1") -> true;
@@ -182,11 +214,12 @@ is_enabled(Config) ->
     proplists:get_bool(enabled, Config).
 
 config_upgrade_to_85(Config) ->
-    Default = default(),
     case ns_config:search(Config, ?CONFIG_KEY) of
         false ->
             %% This key really should exist...
-            [{set, ?CONFIG_KEY, Default}];
+            [{set, ?CONFIG_KEY,
+              menelaus_users:convert_roles_from_atom_to_binary(tracked_roles,
+                                                               default())}];
         {value, Settings} ->
             %% Update the roles list to use binary names
             [{set, ?CONFIG_KEY,

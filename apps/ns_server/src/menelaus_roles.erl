@@ -1370,7 +1370,8 @@ compile_params([ParamDef | RestParamDefs], [Param | RestParams], Acc, Ctx) ->
 compile_params(ParamDefs, Params, Buckets) ->
     compile_params(ParamDefs, Params, [], Buckets).
 
-compile_role({Name, Params}, CompileRole, Definitions, Snapshot) ->
+compile_role({Name, Params}, CompileRole, Definitions, Snapshot)
+  when is_binary(Name) ->
     case lists:keyfind(Name, 1, Definitions) of
         {Name, ParamDefs, _Props, Permissions} ->
             case compile_params(ParamDefs, Params, Snapshot) of
@@ -2116,16 +2117,16 @@ setup_meck() ->
     meck:new(ns_bucket, [passthrough]).
 
 filter_out_invalid_roles_test() ->
-    Roles = [{role1, [{"bucket1", <<"id1">>}]},
-             {role2, [{"bucket2", <<"id2">>}]}],
-    Definitions = [{role1, [bucket_name],
+    Roles = [{<<"role1">>, [{"bucket1", <<"id1">>}]},
+             {<<"role2">>, [{"bucket2", <<"id2">>}]}],
+    Definitions = [{<<"role1">>, [bucket_name],
                     [{name,<<"">>},{desc, <<"">>}],
                     [{[{bucket,bucket_name},settings],[read]}]},
-                   {role2, [bucket_name],
+                   {<<"role2">>, [bucket_name],
                     [{name,<<"">>},{desc, <<"">>}],
                     [{[{bucket,bucket_name},n1ql,update],[execute]}]}],
     Snapshot = ns_bucket:toy_buckets([{"bucket1", [{uuid, <<"id1">>}]}]),
-    ?assertEqual([{role1, [{"bucket1", <<"id1">>}]}],
+    ?assertEqual([{<<"role1">>, [{"bucket1", <<"id1">>}]}],
                  filter_out_invalid_roles(Roles, Definitions, Snapshot)).
 
 object_match(Param, Filter) ->
@@ -2354,6 +2355,11 @@ compile_roles_test() ->
     ?assertEqual([], compile_roles([{<<"test_role">>,
                                      [{"test", <<"wrong_id">>}]}],
                                    Definitions)),
+    ?assertError(function_clause,
+                 compile_role(simple_role, undefined, Definitions, #{})),
+    ?assertError(function_clause,
+                 compile_role({test_role, ["test"]}, undefined, Definitions,
+                              #{})),
 
     TestRole =
         fun (Success, Role, RoleParams, ParamsForExpected) ->
