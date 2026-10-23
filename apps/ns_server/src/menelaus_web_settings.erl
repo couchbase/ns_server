@@ -534,6 +534,20 @@ get_cluster_encryption(Level) ->
 services_with_security_settings() ->
     [kv, fts, index, eventing, n1ql, cbas, backup, ns_server, xdcr].
 
+services_supporting_tls_security_levels() ->
+    [kv].
+
+service_security_conf(S) ->
+    {{security_settings, S}, ns_cluster_membership:json_service_name(S),
+     [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
+      {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)}] ++
+         [{ssl_security_level, tlsSecurityLevel, undefined,
+           get_tls_security_level(S, _)} ||
+             lists:member(S, services_supporting_tls_security_levels())] ++
+         [{honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
+          {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
+           fun read_only/1}]}.
+
 is_allowed_on_cluster([password_hash_alg]) ->
     cluster_compat_mode:is_cluster_76();
 is_allowed_on_cluster([allow_hash_migration_during_auth]) ->
@@ -718,14 +732,7 @@ conf(security) ->
      {azure_allowed_domains, azureAllowedDomains,
       ?DEFAULT_AZURE_ALLOWED_DOMAINS, fun get_azure_allowed_domains/1},
      {validate_node_cert_san, validateNodeCertSan, true, fun get_bool/1}] ++
-        [{{security_settings, S}, ns_cluster_membership:json_service_name(S),
-          [{cipher_suites, cipherSuites, undefined, fun get_cipher_suites/1},
-           {ssl_minimum_protocol, tlsMinVersion, undefined, get_tls_version(_)},
-           {ssl_security_level, tlsSecurityLevel, undefined,
-            get_tls_security_level(S, _)},
-           {honor_cipher_order, honorCipherOrder, undefined, fun get_bool/1},
-           {supported_ciphers, supportedCipherSuites, ciphers:supported(S),
-            fun read_only/1}]} || S <- services_with_security_settings()];
+        [service_security_conf(S) || S <- services_with_security_settings()];
 conf(internal) ->
     [{index_aware_rebalance_disabled, indexAwareRebalanceDisabled, false,
       fun get_bool/1},
@@ -2046,12 +2053,12 @@ parse_post_data_test() ->
                                  KeyValidator)),
     ?assertEqual({ok, [{[{security_settings, kv}, ssl_minimum_protocol],
                         'tlsv1.3'},
-                       {[{security_settings, kv}, ssl_security_level], 3},
+                       {[{security_settings, kv}, ssl_security_level], 2},
                        {[{security_settings, kv}, cipher_suites], []},
                        {[{security_settings, kv}, honor_cipher_order], true}]},
                  parse_post_data(Conf, ["data"],
                                  <<"tlsMinVersion=tlsv1.3&"
-                                   "tlsSecurityLevel=3&"
+                                   "tlsSecurityLevel=2&"
                                    "cipherSuites=[]&"
                                    "honorCipherOrder=true">>,
                                  KeyValidator)),
@@ -2117,14 +2124,19 @@ parse_post_data_test() ->
                                    "tlsMinVersion=tlsv1.1">>,
                                  KeyValidator)),
     ?assertEqual({error, [<<"tlsSecurityLevel - Supported TLS Security "
-                            "Levels are '1, 2, 3, 4, 5'">>]},
+                            "Levels are '1, 2'">>]},
                  parse_post_data(Conf, [],
                                  <<"tlsSecurityLevel=8">>,
                                  KeyValidator)),
     ?assertEqual({error, [<<"data.tlsSecurityLevel - Supported TLS Security "
-                            "Levels are '1, 2, 3, 4, 5'">>]},
+                            "Levels are '1, 2'">>]},
                  parse_post_data(Conf, ["data"],
                                  <<"tlsSecurityLevel=6">>,
+                                 KeyValidator)),
+    ?assertEqual({error, [<<"data.tlsSecurityLevel - Supported TLS Security "
+                            "Levels are '1, 2'">>]},
+                 parse_post_data(Conf, ["data"],
+                                 <<"tlsSecurityLevel=3">>,
                                  KeyValidator)),
     meck:expect(cluster_compat_mode,
                 is_cluster_76,
@@ -2151,6 +2163,14 @@ parse_post_data_test() ->
 
     meck:unload(cluster_compat_mode),
     ok.
+
+service_security_conf_test() ->
+    lists:foreach(
+      fun (S) ->
+              {_, _, Items} = service_security_conf(S),
+              ?assertEqual(S =:= kv,
+                           lists:keymember(ssl_security_level, 1, Items))
+      end, services_with_security_settings()).
 
 find_key_to_delete_test() ->
     Conf = test_conf(),

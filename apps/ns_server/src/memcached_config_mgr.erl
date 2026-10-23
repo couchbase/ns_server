@@ -56,7 +56,7 @@ supported_tls_versions() ->
 
 -spec supported_tls_security_levels() -> [pos_integer()].
 supported_tls_security_levels() ->
-    [1, 2, 3, 4, 5].
+    [1, 2].
 
 -record(state, {
           port_pid :: pid(),
