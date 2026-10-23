@@ -32,10 +32,12 @@ auth_validators() ->
 
 %% The callback may have additional parameters, which are ignored. For
 %% example, Keycloak returns "session_state", "iss" - we ignore any
-%% additional parameters (so long as we don't use them).
+%% additional parameters (so long as we don't use them). A refusing IdP sends
+%% error instead of code (RFC 6749 section 4.1.2.1), so code is not required.
 callback_validators() ->
-    [validator:required(code, _),
-     validator:non_empty_string(code, _),
+    [validator:non_empty_string(code, _),
+     validator:string(error, _),
+     validator:string(error_description, _),
      validator:required(state, _),
      validator:non_empty_string(state, _)].
 
@@ -212,6 +214,7 @@ handle_callback(Req, InputType) ->
       fun (Props) ->
               Code = proplists:get_value(code, Props),
               State = proplists:get_value(state, Props),
+              Error = proplists:get_value(error, Props),
               %% Any failure before we hand off to the IdP token exchange is a
               %% technical failure the end user can't act on (expired CSRF
               %% state, mismatched PKCE/nonce config, issuer removed
@@ -229,6 +232,22 @@ handle_callback(Req, InputType) ->
                               ?log_debug("OIDC state not found or expired", []),
                               throw(login_failed)
                       end,
+
+                  case {Error, Code} of
+                      {undefined, undefined} ->
+                          ?log_debug("OIDC callback has neither code nor "
+                                     "error", []),
+                          throw(login_failed);
+                      {undefined, _} ->
+                          ok;
+                      _ ->
+                          ?log_debug("OIDC IdP returned error ~p: ~p",
+                                     [Error, proplists:get_value(
+                                               error_description, Props)]),
+                          ns_audit:login_failure(
+                            audit_props(Req, <<"IdP returned an error">>)),
+                          throw(login_failed)
+                  end,
 
                   IssuerName = maps:get(name, Preauth),
                   IssuerConfig =
