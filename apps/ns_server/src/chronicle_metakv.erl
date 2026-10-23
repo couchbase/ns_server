@@ -32,7 +32,8 @@
 %%
 %% A watch hands its callback the current leaves it covers, then the snapshot
 %% revision they were read at, and then every change to them. Only leaves are
-%% reported, as directory entries change whenever a child is added or removed
+%% reported, as directory entries change whenever a child is added or removed.
+%% A heartbeat is reported whenever the watch has been quiet for a while
 
 -module(chronicle_metakv).
 
@@ -87,7 +88,8 @@
                                 duplicate_keys}.
 
 -type watch_event() :: {key(), revision(), value() | deleted} |
-                       {snapshot_end, revision()}.
+                       {snapshot_end, revision()} |
+                       heartbeat.
 
 upgrade_to_79(_, _, _) ->
     case chronicle_agent:get_info_for_rsm(metakv) of
@@ -509,30 +511,38 @@ do_watch(Filter, Fetch, Callback) ->
           (_) ->
               ok
       end),
-    MaxQueueLen = ?get_param(watch_max_queue_len, 10000),
+    Opts = #{max_queue_len => ?get_param(watch_max_queue_len, 10000),
+             heartbeat_interval => ?get_param(watch_heartbeat_interval, 30000)},
     {ok, {Leaves, SnapshotRev}} = chronicle_kv:ro_txn(metakv, Fetch),
     lists:foreach(Callback, Leaves),
     Callback({snapshot_end, SnapshotRev}),
-    watch_loop(SnapshotRev, MaxQueueLen, Callback).
+    watch_loop(SnapshotRev, Opts, Callback).
 
 %% Any message other than a change ends the watch, as the caller has its socket
-%% in active mode so that a closed connection arrives here
-watch_loop({HistoryId, SnapshotSeqno} = SnapshotRev, MaxQueueLen, Callback) ->
+%% in active mode so that a closed connection arrives here. The heartbeat lets
+%% the client tell a quiet watch from a dead one, and makes a quiet watch write
+%% so that TCP eventually notices a peer that has gone
+watch_loop({HistoryId, SnapshotSeqno} = SnapshotRev,
+           #{max_queue_len := MaxQueueLen,
+             heartbeat_interval := HeartbeatInterval} = Opts, Callback) ->
     receive
         {watch_event, _Key, {HistoryId, Seqno}, _Change}
           when Seqno =< SnapshotSeqno ->
             %% already reported as part of the snapshot
-            watch_loop(SnapshotRev, MaxQueueLen, Callback);
+            watch_loop(SnapshotRev, Opts, Callback);
         {watch_event, Key, Rev, {updated, Stored}} ->
             check_queue_len(MaxQueueLen),
             Callback({Key, Rev, Stored}),
-            watch_loop(SnapshotRev, MaxQueueLen, Callback);
+            watch_loop(SnapshotRev, Opts, Callback);
         {watch_event, Key, Rev, deleted} ->
             check_queue_len(MaxQueueLen),
             Callback({Key, Rev, deleted}),
-            watch_loop(SnapshotRev, MaxQueueLen, Callback);
+            watch_loop(SnapshotRev, Opts, Callback);
         _ ->
             erlang:exit(normal)
+    after HeartbeatInterval ->
+            Callback(heartbeat),
+            watch_loop(SnapshotRev, Opts, Callback)
     end.
 
 %% A watch that has fallen this far behind ends, so that its backlog is freed,
@@ -947,6 +957,15 @@ next_watched() ->
             timeout
     end.
 
+%% skips the heartbeats that a slow write lets through
+next_change() ->
+    case next_watched() of
+        heartbeat ->
+            next_change();
+        Event ->
+            Event
+    end.
+
 %% fake_ns_config provides the watch params
 watch_setup() ->
     setup(),
@@ -1083,6 +1102,21 @@ watch_test_() ->
                true = misc:poll_for_condition(
                         fun() -> not is_process_alive(Pid) end,
                         5000, 100)
+       end},
+      {"a quiet watch reports heartbeats",
+       fun () ->
+               fake_ns_config:update_snapshot(
+                 {?MODULE, watch_heartbeat_interval}, 50),
+               Key = [key1, subkey1, root],
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+               ?assertEqual(heartbeat, next_watched()),
+
+               {ok, Rev, create} = test_set(Key, v1, new, true),
+               ?assertEqual({Key, Rev, v1}, next_change()),
+               ?assertEqual(heartbeat, next_watched()),
+               stop_watch(Pid)
        end},
       {"a watch that falls too far behind ends",
        fun () ->

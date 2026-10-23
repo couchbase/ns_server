@@ -28,7 +28,7 @@
 %% GET /_metakv2/path/?feed=continuous streams the leaves the same request would
 %% list, then {"revision": ..., "snapshotEnd": true} and then every change to
 %% them. GET /_metakv2/path/key with feed=continuous does the same for the one
-%% leaf
+%% leaf. A quiet feed sends {"heartbeat": true} every 30 seconds
 %%
 %% For more details see the following document:
 %% https://docs.google.com/document/d/1J43NENn5NZ2Mf7h72cnVcgitvpidSJ5WFZSb_DKFggk
@@ -275,6 +275,8 @@ handle_watch(Req, Path, Watch) ->
             {send_timeout_close, true}]),
     Watch(write_watch_event(HTTPRes, _)).
 
+write_watch_event(HTTPRes, heartbeat) ->
+    mochiweb_response:write_chunk(ejson:encode({[{heartbeat, true}]}), HTTPRes);
 write_watch_event(HTTPRes, {snapshot_end, Rev}) ->
     ?metakv_debug("Sent snapshot end rev: ~p", [Rev]),
     mochiweb_response:write_chunk(

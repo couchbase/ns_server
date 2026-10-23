@@ -698,21 +698,20 @@ class Metakv2Tests(testlib.BaseTestSet):
             lambda: self.watch_subscribers() == before, sleep_time=0.1,
             timeout=10, msg="watch to unsubscribe once the client has gone")
 
-    def set_watch_param(self, name, value):
+    def set_watch_param(self, module, name, value):
         testlib.diag_eval(
             self.cluster,
-            f"ns_config:set({{node, node(), {{menelaus_metakv2, {name}}}}}, "
-            f"{value}).")
+            f"ns_config:set({{node, node(), {{{module}, {name}}}}}, {value}).")
 
-    def delete_watch_param(self, name):
+    def delete_watch_param(self, module, name):
         testlib.diag_eval(
             self.cluster,
-            f"ns_config:delete({{node, node(), {{menelaus_metakv2, {name}}}}}).")
+            f"ns_config:delete({{node, node(), {{{module}, {name}}}}}).")
 
     def watch_send_timeout_test(self):
         key = "/root/subdir/key1"
         value = "x" * 512 * 1024
-        self.set_watch_param("watch_send_timeout", 1000)
+        self.set_watch_param("menelaus_metakv2", "watch_send_timeout", 1000)
         before = self.watch_subscribers()
         feed = self.metakv2_watch("/root/subdir/")
         try:
@@ -733,7 +732,29 @@ class Metakv2Tests(testlib.BaseTestSet):
                 timeout=10, msg="watch to be cut off")
         finally:
             feed.close()
-            self.delete_watch_param("watch_send_timeout")
+            self.delete_watch_param("menelaus_metakv2", "watch_send_timeout")
+
+    def watch_heartbeat_test(self):
+        key = "/root/subdir/key1"
+        self.set_watch_param("chronicle_metakv", "watch_heartbeat_interval",
+                             500)
+        feed = self.metakv2_watch("/root/subdir/")
+        try:
+            assert_snapshot_end(feed.next())
+            testlib.assert_eq(feed.next(), {"heartbeat": True}, "heartbeat")
+
+            # Heartbeats carry on around the changes
+            assert_created(self.metakv2_put(key, value="v1", create=True,
+                                            recursive=True))
+            event = feed.next()
+            while event == {"heartbeat": True}:
+                event = feed.next()
+            assert_event(event, key, "v1")
+            testlib.assert_eq(feed.next(), {"heartbeat": True}, "heartbeat")
+        finally:
+            feed.close()
+            self.delete_watch_param("chronicle_metakv",
+                                    "watch_heartbeat_interval")
 
     def watch_missing_dir_test(self):
         key = "/root/missing/key1"
