@@ -257,10 +257,8 @@ supported_versions(MinVer) ->
     get_supported_tls_versions(MinVer, none).
 
 -spec get_supported_tls_security_levels(atom() | []) -> [pos_integer()].
-get_supported_tls_security_levels(kv) ->
-    memcached_config_mgr:supported_tls_security_levels();
 get_supported_tls_security_levels(_) ->
-    [1, 2, 3, 4, 5].
+    memcached_config_mgr:supported_tls_security_levels().
 
 -spec ssl_security_level(atom() | []) -> pos_integer().
 ssl_security_level(Service) ->
