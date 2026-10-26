@@ -271,6 +271,8 @@ chronicle_upgrade_to_85(ChronicleTxn) ->
 %% jwks_uri_tls_ca - CA certificate for validating JWKS URI TLS connection
 %% jwks_uri_tls_sni - Server name for TLS SNI extension
 %% jwks_uri_tls_verify_peer - Whether to verify JWKS URI server certificate
+%% max_token_lifetime_s - Optional maximum of exp - iat. When set, tokens
+%% without iat are rejected.
 %% name - Unique identifier for this issuer. Must match the token's 'iss'
 %% claim exactly; it is the key used to look up the issuer config during
 %% validation, so it is a protocol identifier, not a display label.
@@ -303,6 +305,7 @@ chronicle_upgrade_to_85(ChronicleTxn) ->
          {jwks_uri_tls_ca, fun format_tls_ca/1},
          {jwks_uri_tls_sni, undefined},
          {jwks_uri_tls_verify_peer, undefined},
+         {max_token_lifetime_s, undefined},
          {name, undefined},
          {oidc_settings, fun storage_to_rest_format_oidc_provider/1},
          {public_key, fun format_public_key/1},
@@ -681,6 +684,7 @@ basic_validators() ->
                        ?EXPIRY_LEEWAY_MIN_S,
                        ?EXPIRY_LEEWAY_MAX_S, _),
      validator:default(expiryLeewayS, ?EXPIRY_LEEWAY_DEFAULT_S, _),
+     validator:integer(maxTokenLifetimeS, 1, infinity, _),
      validator:boolean(jitProvisioning, _),
      validator:default(jitProvisioning, false, _),
      validator:required(subClaim, _),
