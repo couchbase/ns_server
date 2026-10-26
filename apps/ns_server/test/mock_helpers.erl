@@ -344,6 +344,9 @@ janitor_agent(PidMap) ->
     meck:expect(?FUNCTION_NAME, wait_dcp_data_move,
                 fun (_, _, _, _, _) -> ok end),
 
+    meck:expect(?FUNCTION_NAME, get_file_version,
+                fun (_, _) -> {ok, []} end),
+
     meck:expect(?FUNCTION_NAME, get_vbucket_high_seqno,
                 fun (_, _, _, _) -> 0 end),
 

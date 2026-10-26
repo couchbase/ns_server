@@ -806,9 +806,7 @@ file_based_backfill_versions_compatible(Bucket, BucketConfig) ->
 node_file_version(Bucket, Node) ->
     %% Any error would tear down the rebalance, which is fine, because all
     %% nodes should be reachable
-    {ok, Stats} = ns_memcached:raw_stats(
-          Node, Bucket, <<"diskinfo version">>,
-          fun (K, V, Acc) -> [{K, V} | Acc] end, []),
+    {ok, Stats} = janitor_agent:get_file_version(Bucket, Node),
     lists:sort(Stats).
 
 rebalance_membase_bucket(BucketName, BucketConfig, ProgressFun,
