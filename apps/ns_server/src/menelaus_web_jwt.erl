@@ -279,6 +279,9 @@ chronicle_upgrade_to_85(ChronicleTxn) ->
 %% oidc_settings - Optional OIDC configuration for this issuer
 %% public_key - Public key used to verify token signatures
 %% public_key_source - Source of the public key (jwks/jwks_uri/pem)
+%% reject_tokens_issued_before - Optional ISO 8601 time, stored as Unix
+%% seconds. Tokens with an earlier iat are rejected. When set, tokens without
+%% iat are rejected.
 %% roles_claim - Field path of the claim containing role assignments
 %% roles_maps - Rules for mapping roles from tokens to local roles
 %% roles_maps_stop_first_match - Whether to stop after first matching roles map
@@ -310,6 +313,7 @@ chronicle_upgrade_to_85(ChronicleTxn) ->
          {oidc_settings, fun storage_to_rest_format_oidc_provider/1},
          {public_key, fun format_public_key/1},
          {public_key_source, undefined},
+         {reject_tokens_issued_before, fun format_unix_time/1},
          {roles_claim, undefined},
          {roles_maps, fun auth_mapping:format_mapping_rules/1},
          {roles_maps_stop_first_match, undefined},
@@ -685,6 +689,9 @@ basic_validators() ->
                        ?EXPIRY_LEEWAY_MAX_S, _),
      validator:default(expiryLeewayS, ?EXPIRY_LEEWAY_DEFAULT_S, _),
      validator:integer(maxTokenLifetimeS, 1, infinity, _),
+     validator:iso_8601_parsed(rejectTokensIssuedBefore, _),
+     validator:convert(rejectTokensIssuedBefore,
+                       fun misc:datetime_to_unix_timestamp/1, _),
      validator:boolean(jitProvisioning, _),
      validator:default(jitProvisioning, false, _),
      validator:required(subClaim, _),
@@ -1260,6 +1267,9 @@ format_jwks(Value) -> Value.
 
 format_public_key({PemBin, _Key}) when is_binary(PemBin) -> PemBin;
 format_public_key(Value) -> Value.
+
+format_unix_time(Seconds) ->
+    iso8601:format(calendar:system_time_to_universal_time(Seconds, second)).
 
 format_secret(undefined) -> undefined;
 format_secret(_) -> chronicle_kv_log:masked().

@@ -662,14 +662,18 @@ validate(nbf, Claims, IssProps) ->
     end;
 validate(iat, Claims, IssProps) ->
     MaxLifetime = maps:get(max_token_lifetime_s, IssProps, undefined),
+    Cutoff = maps:get(reject_tokens_issued_before, IssProps, undefined),
     IAT = maps:get(iat, Claims, undefined),
     if
-        MaxLifetime =:= undefined ->
+        MaxLifetime =:= undefined, Cutoff =:= undefined ->
             ok;
         IAT =:= undefined ->
             {error, <<"Missing/invalid claim: iat">>};
+        MaxLifetime =/= undefined,
         map_get(exp, Claims) - IAT > MaxLifetime ->
             {error, <<"Token lifetime exceeds the maximum">>};
+        Cutoff =/= undefined, IAT < Cutoff ->
+            {error, <<"Token was issued before the issuer's cutoff">>};
         true ->
             ok
     end;
@@ -793,6 +797,14 @@ validate_claims_test() ->
                           LifetimeProps)),
     ?assertEqual({error, <<"Missing/invalid claim: iat">>},
                  validate(iat, #{exp => Now + 600}, LifetimeProps)),
+    CutoffProps = IssProps#{reject_tokens_issued_before => Now},
+    ?assertEqual(ok, validate(iat, #{iat => Now, exp => Now + 600},
+                              CutoffProps)),
+    ?assertEqual({error, <<"Token was issued before the issuer's cutoff">>},
+                 validate(iat, #{iat => Now - 1, exp => Now + 600},
+                          CutoffProps)),
+    ?assertEqual({error, <<"Missing/invalid claim: iat">>},
+                 validate(iat, #{exp => Now + 600}, CutoffProps)),
 
     %% Test nbf validation
     ?assertEqual(ok, validate(nbf, #{}, IssProps)),
