@@ -230,33 +230,37 @@ handle_callback(Req, InputType) ->
                               %% Avoid logging the actual state value as it is a
                               %% short-lived secret used for CSRF protection.
                               ?log_debug("OIDC state not found or expired", []),
-                              throw(login_failed)
+                              throw({login_failed,
+                                     <<"login state not found or expired">>})
                       end,
+                  IssuerName = maps:get(name, Preauth),
 
                   case {Error, Code} of
                       {undefined, undefined} ->
                           ?log_debug("OIDC callback has neither code nor "
                                      "error", []),
-                          throw(login_failed);
+                          throw({login_failed,
+                                 <<"callback has neither code nor error">>,
+                                 IssuerName});
                       {undefined, _} ->
                           ok;
                       _ ->
                           ?log_debug("OIDC IdP returned error ~p: ~p",
                                      [Error, proplists:get_value(
                                                error_description, Props)]),
-                          ns_audit:login_failure(
-                            audit_props(Req, <<"IdP returned an error">>)),
-                          throw(login_failed)
+                          throw({login_failed, <<"IdP returned an error">>,
+                                 IssuerName})
                   end,
 
-                  IssuerName = maps:get(name, Preauth),
                   IssuerConfig =
                       case get_issuer_config(IssuerName) of
                           {ok, Cfg} -> Cfg;
                           {error, ErrMsg} ->
                               ?log_debug("OIDC issuer config error: ~s",
                                          [ErrMsg]),
-                              throw(login_failed)
+                              throw({login_failed,
+                                     <<"issuer configuration error">>,
+                                     IssuerName})
                       end,
 
                   OIDCConfig = maps:get(oidc_settings, IssuerConfig),
@@ -268,7 +272,9 @@ handle_callback(Req, InputType) ->
                   case {NonceValidation, Nonce} of
                       {true, undefined} ->
                           ?log_debug("OIDC callback missing nonce", []),
-                          throw(login_failed);
+                          throw({login_failed,
+                                 <<"nonce missing from login state">>,
+                                 IssuerName});
                       _ ->
                           ok
                   end,
@@ -277,7 +283,9 @@ handle_callback(Req, InputType) ->
                   case {PkceEnabled, CodeVerifier} of
                       {true, undefined} ->
                           ?log_debug("OIDC callback missing code_verifier", []),
-                          throw(login_failed);
+                          throw({login_failed, <<"PKCE code verifier missing "
+                                                 "from login state">>,
+                                 IssuerName});
                       _ ->
                           ok
                   end,
@@ -288,7 +296,11 @@ handle_callback(Req, InputType) ->
                                           Code, CodeVerifier, Nonce,
                                           RedirectBaseFromState)
               catch
-                  throw:login_failed ->
+                  throw:{login_failed, Reason} ->
+                      ns_audit:login_failure(audit_props(Req, Reason)),
+                      redirect_to_ui_with_error(Req, login_failed);
+                  throw:{login_failed, Reason, Issuer} ->
+                      ns_audit:login_failure(audit_props(Req, Reason, Issuer)),
                       redirect_to_ui_with_error(Req, login_failed)
               end
       end, Req, InputType, callback_validators()).
@@ -313,11 +325,17 @@ build_auth_redirect(IssuerConfig, Req) ->
                 {error, E} ->
                     ?log_warning("OIDC redirect for ~p build failed: ~p",
                                  [IssuerName, E]),
+                    ns_audit:login_failure(
+                      audit_props(Req, <<"authorization request failed">>,
+                                  IssuerName)),
                     ui_error_redirect_url(login_failed)
             end;
         {error, exists} ->
             ?log_warning("Failed to generate unique OIDC state after retries "
                          "for ~p", [IssuerName]),
+            ns_audit:login_failure(
+              audit_props(Req, <<"could not generate login state">>,
+                          IssuerName)),
             ui_error_redirect_url(login_failed)
     end.
 
@@ -573,7 +591,7 @@ exchange_code_and_login(Req, IssuerConfig, Code, Verifier, Nonce,
         {error, Reason} ->
             ?log_debug("OIDC token exchange failed: ~p", [Reason]),
             ns_audit:login_failure(
-              audit_props(Req, <<"token exchange failed">>)),
+              audit_props(Req, <<"token exchange failed">>, IssuerName)),
             redirect_to_ui_with_error(Req, login_failed)
     end.
 
@@ -631,7 +649,8 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
         _ ->
             ?log_debug("OIDC token response contained no ID token", []),
             ns_audit:login_failure(
-              audit_props(Req, <<"no ID token in token response">>)),
+              audit_props(Req, <<"no ID token in token response">>,
+                          IssuerName)),
             redirect_to_ui_with_error(Req, login_failed)
     end.
 
@@ -641,6 +660,11 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
 audit_props(Req, Reason) ->
     menelaus_auth:maybe_set_auth_audit_props(
       Req, [{<<"type">>, <<"oidc">>}, {<<"reason">>, Reason}]).
+
+audit_props(Req, Reason, IssuerName) ->
+    menelaus_auth:maybe_set_auth_audit_props(
+      Req, [{<<"type">>, <<"oidc">>}, {<<"reason">>, Reason},
+            {<<"iss">>, IssuerName}]).
 
 %% Bounce the browser back to the UI login screen with a generic, PII-free
 %% error code. The UI maps the code to a localized message. We deliberately do

@@ -883,6 +883,77 @@ class OIDCTests(testlib.BaseTestSet):
             testlib.post_succ(self.cluster, "/settings/audit",
                               data={"auditdEnabled": "false"})
 
+    def login_failure_before_idp_audit_test(self):
+        """A login that fails before the browser reaches the IdP, or on a
+        callback with an unknown state, produces an audit record naming the
+        reason."""
+        node = self.cluster.connected_nodes[0]
+        jwks = self._load_jwks()
+        testlib.post_succ(
+            self.cluster, "/settings/audit", data={"auditdEnabled": "true"}
+        )
+        try:
+            with MockOIDCProvider(
+                jwks, "oidc-client", "oidc-secret"
+            ) as provider:
+                # Discovery mode uses PAR, and the provider refuses the PAR
+                # call because of the wrong secret.
+                self._configure_with_provider(
+                    node,
+                    provider,
+                    use_discovery=True,
+                    oidc_overrides={"clientSecret": "wrong-secret"},
+                )
+
+                offset = testlib.audit_log_offset(node)
+                r = testlib.get_succ(
+                    node,
+                    "/oidc/auth",
+                    expected_code=302,
+                    params={"issuer": provider.issuer},
+                    headers=UI_HEADERS,
+                    allow_redirects=False,
+                    auth=None,
+                )
+                loc = r.headers["Location"]
+                assert "oidcError=login_failed" in loc, loc
+                event = testlib.wait_for_audit_event(
+                    node, 8193, since_offset=offset
+                )
+                testlib.assert_eq(
+                    event.get("reason"),
+                    "authorization request failed",
+                    name="reason",
+                )
+                testlib.assert_eq(event.get("type"), "oidc", name="type")
+                testlib.assert_eq(event.get("iss"), provider.issuer, name="iss")
+
+                offset = testlib.audit_log_offset(node)
+                r = testlib.get_succ(
+                    node,
+                    "/oidc/callback",
+                    expected_code=302,
+                    params={"code": "unused", "state": "not-a-known-state"},
+                    headers=UI_HEADERS,
+                    allow_redirects=False,
+                    auth=None,
+                )
+                loc = r.headers["Location"]
+                assert "oidcError=login_failed" in loc, loc
+                event = testlib.wait_for_audit_event(
+                    node, 8193, since_offset=offset
+                )
+                testlib.assert_eq(
+                    event.get("reason"),
+                    "login state not found or expired",
+                    name="reason",
+                )
+                testlib.assert_eq(event.get("type"), "oidc", name="type")
+        finally:
+            testlib.post_succ(
+                self.cluster, "/settings/audit", data={"auditdEnabled": "false"}
+            )
+
     def login_success_audit_test(self):
         """A successful OIDC login names the issuer and the claims.
 
