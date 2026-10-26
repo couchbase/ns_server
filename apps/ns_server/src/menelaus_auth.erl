@@ -620,15 +620,32 @@ uilogin_phase2(Req, UISessionType, UISessionName,
                     ns_audit:login_success(store_authn_res(AuthnRes, Req)),
                     {ok, [CookieHeader]};
                 AuthzRes when AuthzRes == forbidden; AuthzRes == auth_failure ->
-                    ns_audit:login_failure(store_authn_res(AuthnRes, Req)),
+                    audit_ui_login_failure(Req, AuthnRes, AuthzRes),
                     {error, {access_denied, UIPermission}};
                 password_expired ->
-                    ns_audit:login_failure(store_authn_res(AuthnRes, Req)),
+                    audit_ui_login_failure(Req, AuthnRes, password_expired),
                     {error, password_expired}
             end;
         true ->
             {error, internal}
     end.
+
+audit_ui_login_failure(Req, AuthnRes, AuthzRes) ->
+    Reason = case AuthzRes of
+                 forbidden -> <<"missing ui_access permission">>;
+                 auth_failure ->
+                     case expiry_status(AuthnRes) of
+                         expired -> <<"session expired">>;
+                         _ -> <<"no roles assigned">>
+                     end;
+                 password_expired -> <<"password expired">>
+             end,
+    Props = lists:keystore(<<"reason">>, 1,
+                           mochiweb_request:get_meta(auth_audit_props, [],
+                                                     Req),
+                           {<<"reason">>, Reason}),
+    Req1 = maybe_set_auth_audit_props(Req, Props),
+    ns_audit:login_failure(store_authn_res(AuthnRes, Req1)).
 
 -spec can_use_cert_for_auth(mochiweb_request()) ->
                                    can_use | cannot_use | must_use.

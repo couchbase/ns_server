@@ -338,9 +338,28 @@ class SamlTests(testlib.BaseTestSet):
                          authn={'class_ref': AUTHN_PASSWORD},
                          session_not_on_or_after=expiration_iso)
 
-            session = requests.Session()
-            post_saml_response(destination, response, session,
-                               expected_code=302)
+            node = self.cluster.connected_nodes[0]
+            testlib.post_succ(
+                self.cluster, "/settings/audit", data={"auditdEnabled": "true"}
+            )
+            try:
+                offset = testlib.audit_log_offset(node)
+                session = requests.Session()
+                post_saml_response(
+                    destination, response, session, expected_code=302
+                )
+                event = testlib.wait_for_audit_event(
+                    node, 8193, since_offset=offset
+                )
+                testlib.assert_eq(
+                    event.get("reason"), "session expired", name="reason"
+                )
+            finally:
+                testlib.post_succ(
+                    self.cluster,
+                    "/settings/audit",
+                    data={"auditdEnabled": "false"},
+                )
 
             ui_request('get', self.cluster.connected_nodes[0],
                        '/pools/default', session, expected_code=401)

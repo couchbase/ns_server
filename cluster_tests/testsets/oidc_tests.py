@@ -1029,6 +1029,9 @@ class OIDCTests(testlib.BaseTestSet):
                 testlib.assert_eq(event.get("sub"), "testuser", name="sub")
                 testlib.assert_eq(event.get("groups"), ["oidc_nonadmins"],
                                   name="groups")
+                testlib.assert_eq(
+                    event.get("reason"), "no roles assigned", name="reason"
+                )
         finally:
             testlib.post_succ(self.cluster, "/settings/audit",
                               data={"auditdEnabled": "false"})
