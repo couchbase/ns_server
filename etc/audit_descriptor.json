@@ -602,7 +602,10 @@
               "authenticated_userid" : {"domain" : "", "user" : ""},
               "sessionid" : "",
               "dropUploadedCertificates" : true,
-              "forceResetCACertificate" : true
+              "forceResetCACertificate" : true,
+              "dropGeneratedCertificates" : true,
+              "localOnly" : true,
+              "regeneratedCertificates" : []
           }
       },
       {
