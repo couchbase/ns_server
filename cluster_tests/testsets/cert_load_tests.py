@@ -461,6 +461,7 @@ class CertLoadTests(testlib.BaseTestSet):
             for pid in other_pids:
                 os.kill(pid, signal.SIGCONT)
         self.cluster.wait_nodes_up()
+        wait_for_agreed_orchestrator(self.cluster)
         assert_cert_regenerated(node, node_cert_before)
 
     def regen_certs_with_untrusted_ca_test(self):
@@ -639,6 +640,21 @@ class CertLoadTests(testlib.BaseTestSet):
                                                       is_client=True)
             node_certs.append((node, node_cert, client_cert))
         return node_certs
+
+
+def wait_for_agreed_orchestrator(cluster):
+    # Resumed nodes can claim mastership initially, which blocks failover, so
+    # wait until every node agrees on the orchestrator before continuing
+    def agreed():
+        orchestrators = {cluster.get_orchestrator_node(node)[0]
+                         for node in cluster.connected_nodes}
+        return len(orchestrators) == 1 and "" not in orchestrators
+
+    testlib.poll_for_condition(agreed, sleep_time=0.5, timeout=60)
+    # A resumed node may not have taken over yet, so check again after a
+    # master heartbeat
+    time.sleep(3)
+    testlib.poll_for_condition(agreed, sleep_time=0.5, timeout=60)
 
 
 def wait_all_nodes_updated(cluster, node_certs_before, new_ca_pem):
