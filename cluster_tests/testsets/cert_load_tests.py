@@ -461,6 +461,7 @@ class CertLoadTests(testlib.BaseTestSet):
             regenerate_certs_and_remove_unused_generated_cas(self.cluster,
                                                              node_certs_before)
 
+    @tag(Tag.LowUrgency)
     def regen_and_drop_generated_certs_test(self):
         # Earlier tests may leave uploaded certs
         regenerate_certs_and_remove_unused_generated_cas(self.cluster)
@@ -480,6 +481,7 @@ class CertLoadTests(testlib.BaseTestSet):
         finally:
             regenerate_certs_and_remove_unused_generated_cas(self.cluster)
 
+    @tag(Tag.LowUrgency)
     def regen_and_drop_generated_certs_with_uploaded_test(self):
         node_certs_before = self.load_custom_certs()
 
@@ -511,6 +513,7 @@ class CertLoadTests(testlib.BaseTestSet):
                           expected_code=400,
                           params={'dropGeneratedCertificates': 'false'})
 
+    @tag(Tag.LowUrgency)
     def regen_local_certs_without_quorum_test(self):
         # Earlier tests may leave uploaded certs
         regenerate_certs_and_remove_unused_generated_cas(self.cluster)
