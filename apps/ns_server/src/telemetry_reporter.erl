@@ -486,15 +486,16 @@ push_report_enabled_t() ->
               Result = push_report(Settings),
               Parent ! {result, Result}
       end),
-    %% Wait for gen_server to be in the handler
-    meck:wait(ns_node_disco, nodes_wanted, 0, ?MECK_WAIT_TIMEOUT),
+    %% Wait for report process to exit. It only exists once the first push has
+    %% been accepted
+    ReportPid = receive {post_report, Pid} -> Pid
+                after ?LONG_TIMEOUT -> error(timeout) end,
 
     %% Attempting to push while another push is in progress fails
     ?assertEqual({error, report_in_progress}, push_report(Settings)),
 
     %% Send ok to the pid mecking the json request
-    receive {post_report, Pid} -> Pid ! {respond, ok}
-    after ?MECK_WAIT_TIMEOUT -> error(timeout) end,
+    ReportPid ! {respond, ok},
 
     %% Receive the response back from the original call
     receive {result, Result} -> Result
