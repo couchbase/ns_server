@@ -400,7 +400,13 @@ get_option(Option, Options) ->
      proplists:delete(Option, Options)}.
 
 parse_json(Req) ->
-    ejson:decode(mochiweb_request:recv_body(Req)).
+    Body = get_body(Req),
+    try
+        ejson:decode(Body)
+    catch
+        _:_ ->
+            web_exception(400, "Invalid JSON")
+    end.
 
 parse_boolean(Value) ->
     case Value of
@@ -996,5 +1002,17 @@ assert_config_profile_flag_test() ->
                  assert_not_config_profile_flag(
                    disable_auto_rebalance_settings)),
     meck:unload(config_profile).
+
+parse_json_test() ->
+    meck:new(mochiweb_request, [passthrough]),
+    meck:expect(mochiweb_request, recv_body, fun (Body) -> Body end),
+    try
+        ?assertEqual({[{<<"a">>, 1}]}, parse_json(<<"{\"a\": 1}">>)),
+        [?assertEqual({web_exception, 400, "Invalid JSON", []},
+                      catch(parse_json(Body)))
+         || Body <- [<<"notjson">>, <<>>, undefined]]
+    after
+        meck:unload(mochiweb_request)
+    end.
 
 -endif.

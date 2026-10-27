@@ -174,9 +174,16 @@ cluster_init_validators(Config, Snapshot) ->
      validator:has_params(_),
      validator:unsupported(_)].
 
+parse_node_kv_list(Req) ->
+    case menelaus_util:parse_json(Req) of
+        {NodeKVList} when is_list(NodeKVList) ->
+            NodeKVList;
+        _ ->
+            menelaus_util:web_exception(400, "JSON object is expected")
+    end.
+
 handle_engage_cluster2(Req) ->
-    Body = mochiweb_request:recv_body(Req),
-    {NodeKVList} = ejson:decode(Body),
+    NodeKVList = parse_node_kv_list(Req),
     %% a bit kludgy, but 100% correct way to protect ourselves when
     %% everything will restart.
     process_flag(trap_exit, true),
@@ -275,7 +282,7 @@ handle_engage_cluster2(Req) ->
     exit(normal).
 
 handle_complete_join(Req) ->
-    {NodeKVList} = ejson:decode(mochiweb_request:recv_body(Req)),
+    NodeKVList = parse_node_kv_list(Req),
     erlang:process_flag(trap_exit, true),
     case ns_cluster:complete_join(NodeKVList) of
         {ok, _} ->

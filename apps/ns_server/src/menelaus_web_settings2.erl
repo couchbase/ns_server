@@ -406,7 +406,7 @@ parse_params(AllPossibleKeys, Req) ->
                               {KeyTokens, Val}
                           end, mochiweb_request:parse_post(Req));
             json ->
-                Body = case mochiweb_request:recv_body(Req) of
+                Body = case menelaus_util:get_body(Req) of
                            <<>> -> <<"{}">>; %% treat empty body as an empty
                                              %% object due to backward compat
                                              %% reasons
