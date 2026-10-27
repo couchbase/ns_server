@@ -39,6 +39,7 @@ class Service(Enum):
             Service.INDEX: "indexer_https_port",
             Service.FTS: "fts_ssl_port",
             Service.EVENTING: "eventing_https_port",
+            Service.BACKUP: "backup_https_port",
             Service.VIEWS: "ssl_capi_port"
         }[self]
 
