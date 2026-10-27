@@ -65,6 +65,7 @@
          validate_roles/3,
          drop_unrestorable_credential_grants/2,
          params_version/1,
+         role_definitions_rev/0,
          filter_out_invalid_roles/3,
          is_data_vertex/1,
          is_parameterized_vertex/1,
@@ -908,6 +909,14 @@ default_roles_85() ->
 role_definitions() ->
     chronicle_compat:get(role_definitions, #{required => true}).
 
+role_definitions_rev() ->
+    case chronicle_compat:get_with_rev(direct, role_definitions, #{}) of
+        {ok, {_, Rev}} ->
+            Rev;
+        {error, not_found} ->
+            undefined
+    end.
+
 -spec roles() -> [rbac_role_def(), ...].
 roles() ->
     Roles = role_definitions(),
@@ -1528,6 +1537,8 @@ start_compiled_roles_cache() ->
                 true;
             (rest_creds) ->
                 true;
+            (role_definitions) ->
+                true;
             (?SERVICE_ROLES_KEY) ->
                 true;
             (K) when K =:= CatalogsKey ->
@@ -1543,7 +1554,8 @@ start_compiled_roles_cache() ->
                  menelaus_users:get_groups_version(),
                  get_all_service_roles(),
                  ns_config_auth:is_system_provisioned(),
-                 params_version()}
+                 params_version(),
+                 role_definitions_rev()}
         end,
     GetEvents =
         case ns_node_disco:couchdb_node() == node() of

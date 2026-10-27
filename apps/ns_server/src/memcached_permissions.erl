@@ -150,6 +150,8 @@ filter_event(group_version) ->
     true;
 filter_event(user_version) ->
     true;
+filter_event(role_definitions) ->
+    true;
 filter_event(rest_creds) ->
     true;
 filter_event({node, Node, prometheus_auth_info}) ->
@@ -161,6 +163,8 @@ filter_event(Key) ->
 handle_event(user_version, State) ->
     {changed, State};
 handle_event(group_version, State) ->
+    {changed, State};
+handle_event(role_definitions, State) ->
     {changed, State};
 handle_event(rest_creds, #state{cluster_admin = ClusterAdmin} = State) ->
     case ns_config_auth:get_user(admin) of
