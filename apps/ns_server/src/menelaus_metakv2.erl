@@ -402,7 +402,7 @@ handle_put(Path, Req, Key) ->
                       Sensitive = proplists:get_value(sensitive, Params),
                       reply_set_result(Req, leaf, Start,
                                        chronicle_metakv:set(
-                                         Key, mochiweb_request:recv_body(Req),
+                                         Key, menelaus_util:get_body(Req),
                                          Rev, Recursive, Sensitive))
               end
       end, Req, qs,

@@ -395,10 +395,10 @@ parse_params(AllPossibleKeys, Req) ->
 
     Params =
         case Type of
-            text -> [{[],  mochiweb_request:recv_body(Req)}];
+            text -> [{[],  menelaus_util:get_body(Req)}];
             form when AllPossibleKeys == [""] -> %% Full key is passed in path
                                                  %% and body contains only value
-                Body = mochiweb_request:recv_body(Req),
+                Body = menelaus_util:get_body(Req),
                 [{[], mochiweb_util:unquote(Body)}];
             form ->
                 lists:map(fun ({Key, Val}) ->

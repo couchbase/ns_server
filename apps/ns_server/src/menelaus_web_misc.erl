@@ -153,7 +153,7 @@ handle_log_post(Req) ->
     end.
 
 handle_event_log_post(Req) ->
-    Log = mochiweb_request:recv_body(Req),
+    Log = menelaus_util:get_body(Req),
 
     %% Validate Event JSON size.
     case erlang:byte_size(Log) of

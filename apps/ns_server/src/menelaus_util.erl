@@ -88,7 +88,8 @@
          server_error_report/4,
          proxy_req/6,
          respond/2,
-         survive_web_server_restart/1]).
+         survive_web_server_restart/1,
+         get_body/1]).
 
 %% Internal exports.
 -export([wake_up/4]).

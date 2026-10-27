@@ -832,7 +832,7 @@ handle_diag_eval(Req) ->
         true -> ok;
         false -> menelaus_util:ensure_local(Req)
     end,
-    Snippet = binary_to_list(mochiweb_request:recv_body(Req)),
+    Snippet = binary_to_list(menelaus_util:get_body(Req)),
 
     ?log_error("WARNING: /diag/eval:~n~n~s", [Snippet]),
 

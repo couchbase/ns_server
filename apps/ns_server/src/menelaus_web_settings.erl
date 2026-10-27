@@ -990,7 +990,7 @@ handle_post(Type, Keys, Req) ->
       fun () ->
               OriginalCfg = conf(Type),
               case parse_post_data(OriginalCfg, Keys,
-                                   mochiweb_request:recv_body(Req),
+                                   menelaus_util:get_body(Req),
                                    is_allowed_setting(post, Req, _)) of
                   {ok, ToSet} ->
                       handle_post_with_parsed_data(Type, ToSet, Req);
