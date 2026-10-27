@@ -633,6 +633,7 @@ ssl_server_opts(handshake) ->
              {cacerts, read_ca_certs(ca_file_path())},
              {dh, dh_params_der()},
              {ciphers, CipherSuites},
+             {supported_groups, tls13_groups()},
              {honor_cipher_order, Order},
              {secure_renegotiate, true},
              %% Explicit rather than left to the OTP default: a resumed TLS 1.3
@@ -642,6 +643,35 @@ ssl_server_opts(handshake) ->
              {session_tickets, disabled}],
     cleanup_options(merge_ns_config_tls_options(server, ?MODULE, RawTLSOptions),
                     Versions).
+
+%% Hybrid groups go first so that they are preferred over classic ones, the
+%% default order is kept within each class.
+%% Pure post-quantum groups are skipped: OTP's TLS 1.3 server crashes when it
+%% has to send a HelloRetryRequest for one of them.
+-spec tls13_groups() -> [ssl:group()].
+tls13_groups() ->
+    Groups = ssl:groups(default),
+    [G || Class <- [hybrid, classic], G <- Groups,
+          tls13_group_class(G) == Class].
+
+%% Brainpool groups are disabled because OTP's TLS 1.3 server offers them by
+%% default but can't generate a key share for them (no clause in
+%% tls_handshake_1_3:generate_kex_keys/1) and aborts the handshake.
+-spec tls13_group_class(atom()) -> classic | hybrid | post_quantum | disabled.
+tls13_group_class(G) when G == x25519; G == x448;
+                          G == secp256r1; G == secp384r1; G == secp521r1;
+                          G == ffdhe2048; G == ffdhe3072; G == ffdhe4096;
+                          G == ffdhe6144; G == ffdhe8192 ->
+    classic;
+tls13_group_class(G) when G == x25519mlkem768; G == secp256r1mlkem768;
+                          G == secp384r1mlkem1024 ->
+    hybrid;
+tls13_group_class(G) when G == mlkem512; G == mlkem768; G == mlkem1024 ->
+    post_quantum;
+tls13_group_class(G) when G == brainpoolP256r1tls13;
+                          G == brainpoolP384r1tls13;
+                          G == brainpoolP512r1tls13 ->
+    disabled.
 
 tls_option_versions(anti_replay) -> ['tlsv1.3'];
 tls_option_versions(beast_mitigation) -> ['tlsv1'];
@@ -1867,6 +1897,24 @@ cleanup_options_reuse_session_test() ->
     ?assertEqual([{versions, ['tlsv1.2', 'tlsv1.3']}, {reuse_session, Fun}],
                  cleanup_options([{versions, ['tlsv1.2', 'tlsv1.3']},
                                   {reuse_session, Fun}])).
+
+%% ssl.erl rejects supported_groups when TLS 1.3 is not enabled
+cleanup_options_supported_groups_test() ->
+    Groups = {supported_groups, [x25519]},
+    ?assertEqual([{versions, ['tlsv1.2']}],
+                 cleanup_options([{versions, ['tlsv1.2']}, Groups])),
+    ?assertEqual([{versions, ['tlsv1.2', 'tlsv1.3']}, Groups],
+                 cleanup_options([{versions, ['tlsv1.2', 'tlsv1.3']},
+                                  Groups])).
+
+tls13_groups_test() ->
+    %% A group added by a new OTP release would crash the listener setup
+    lists:foreach(fun tls13_group_class/1, ssl:groups()),
+    Classes = [tls13_group_class(G) || G <- tls13_groups()],
+    {Hybrid, Rest} = lists:splitwith(fun (C) -> C == hybrid end, Classes),
+    ?assertNotEqual([], Hybrid),
+    ?assertNotEqual([], Rest),
+    ?assertEqual([], [C || C <- Rest, C =/= classic]).
 
 %% Unit coverage for the branches a real handshake can't easily produce, plus
 %% documentation of the current wording.  The regression guard against OTP
