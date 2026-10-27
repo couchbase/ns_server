@@ -1283,22 +1283,19 @@ compile_param(credential_id, Name, Snapshot) ->
         false -> undefined
     end;
 compile_param(catalog_name, Name, Ctx) ->
-    case Ctx of
-        #{catalogs := Catalogs} ->
-            find_object(
-              Name,
-              fun(CatalogName) ->
-                      case maps:find(list_to_binary(CatalogName),
-                                     Catalogs) of
-                          {ok, _Value} ->
-                              {CatalogName, Ctx};
-                          error ->
-                              undefined
-                      end
-              end);
-        _ ->
-            undefined
-    end.
+    %% The catalogs key is absent until the first catalog is created, so
+    %% default it to let wildcard params compile
+    Catalogs = maps:get(catalogs, Ctx, #{}),
+    find_object(
+      Name,
+      fun(CatalogName) ->
+              case maps:find(list_to_binary(CatalogName), Catalogs) of
+                  {ok, _Value} ->
+                      {CatalogName, Ctx};
+                  error ->
+                      undefined
+              end
+      end).
 
 %% A credential_id role param is valid when:
 %%   - `any' (from the `[*]' wildcard in the role string) — matches everything
@@ -3253,7 +3250,18 @@ produce_roles_by_permission_test__() ->
      {"consume any credential",
       Test([<<"admin">>] ++
                enum_roles([<<"credential_consumer">>], [[any]]),
-           {[{credentials, any}], consume})}].
+           {[{credentials, any}], consume})},
+     {"catalog roles without catalogs",
+      fun () ->
+              Roles = GetRoles(undefined),
+              ?assertListsEqual(
+                 [],
+                 enum_roles([<<"query_select_external_catalog">>,
+                             <<"query_update_external_catalog">>,
+                             <<"query_insert_external_catalog">>,
+                             <<"query_delete_external_catalog">>],
+                            [[any]]) -- Roles)
+      end}].
 
 role_names(Roles) ->
     Name = fun ({{N, _}, _}) when is_binary(N) -> N;
