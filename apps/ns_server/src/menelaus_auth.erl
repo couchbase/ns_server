@@ -373,6 +373,8 @@ init_auth_password_expired(Identity) ->
            AuthAuditProps :: auth_audit_props()} |
           {error, auth_failure | temporary_failure,
            AuthAuditProps :: auth_audit_props()} |
+          {error, auth_failure, CallerReason :: binary(),
+           AuthAuditProps :: auth_audit_props()} |
           {unfinished, RespHeaders :: [RespHeader]}
               when RespHeader :: {string(), string()}.
 authenticate(Auth) ->
@@ -407,6 +409,8 @@ authenticate(Auth) ->
           {ok, #authn_res{}, RespHeaders :: [RespHeader],
            AuthAuditProps :: auth_audit_props()} |
           {error, auth_failure | temporary_failure,
+           AuthAuditProps :: auth_audit_props()} |
+          {error, auth_failure, CallerReason :: binary(),
            AuthAuditProps :: auth_audit_props()} |
           {unfinished, RespHeaders :: [RespHeader]}
               when RespHeader :: {string(), string()}.
@@ -470,9 +474,9 @@ do_authenticate({scram_sha, AuthHeader}) ->
 do_authenticate({jwt, Token} = Param) ->
     ?call_on_ns_server_node(
        case jwt_auth:authenticate(Token) of
-           {error, AuthAuditProps} ->
+           {error, CallerReason, AuthAuditProps} ->
                ?count_auth("jwt", "failure"),
-               {error, auth_failure, AuthAuditProps};
+               {error, auth_failure, CallerReason, AuthAuditProps};
            {ok, AuthnRes, AuthAuditProps} ->
                ?count_auth("jwt", "succ"),
                {ok, AuthnRes, [], AuthAuditProps}
@@ -709,7 +713,12 @@ verify_rest_auth(Req, Permission) ->
         {error, auth_failure, AuthAuditProps} ->
             Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
             Req3 = maybe_set_auth_audit_props(Req2, AuthAuditProps),
-            Req4 = maybe_store_auth_failure_reason(Req3, AuthAuditProps),
+            {auth_failure, Req3};
+        {error, auth_failure, CallerReason, AuthAuditProps} ->
+            Req2 = maybe_store_rejected_user(get_rejected_user(Auth), Req),
+            Req3 = maybe_set_auth_audit_props(Req2, AuthAuditProps),
+            Req4 = mochiweb_request:set_meta(auth_failure_reason, CallerReason,
+                                             Req3),
             {auth_failure, Req4};
         {error, temporary_failure, AuthAuditProps} ->
             Req2 = maybe_set_auth_audit_props(Req, AuthAuditProps),
@@ -1106,18 +1115,6 @@ maybe_audit_jwt_auth_success(Req, AuthnRes, AuthAuditProps) ->
             ns_audit:jwt_auth_success(store_authn_res(AuthnRes, Req));
         false ->
             ok
-    end.
-
--spec maybe_store_auth_failure_reason(mochiweb_request(),
-                                      auth_audit_props()) ->
-          mochiweb_request().
-maybe_store_auth_failure_reason(Req, AuditProps) ->
-    case {proplists:get_value(<<"type">>, AuditProps),
-          proplists:get_value(<<"reason">>, AuditProps)} of
-        {<<"jwt">>, Reason} when Reason =/= undefined ->
-            mochiweb_request:set_meta(auth_failure_reason, Reason, Req);
-        _ ->
-            Req
     end.
 
 -spec temporary_failure_msg(auth_audit_props()) -> binary().

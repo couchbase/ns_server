@@ -8,7 +8,7 @@
 %% licenses/APL2.txt.
 
 -define(JWT_SIGNING_KEYS_KEY, jwt_signing_keys).
--define(OIDC_PREAUTH_STORE_TTL_SECONDS, 60).
+-define(OIDC_PREAUTH_STORE_TTL_SECONDS, 900).
 -define(OIDC_PREAUTH_STORE_SWEEP_INTERVAL_MS, 60000).
 
 -define(JWT_ALGORITHMS,

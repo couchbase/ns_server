@@ -147,13 +147,6 @@ class JWTTests(testlib.BaseTestSet):
         )
 
     def setup(self):
-        # Set shorter intervals for testing
-        testlib.set_config_key(self.cluster,
-                               "{menelaus_web_jwt, jwks_uri_refresh_min_s}", 1)
-        testlib.set_config_key(self.cluster,
-                                "{jwt_cache, jwks_cooldown_interval_ms}",
-                                1000)
-
         audit_payload = {"auditdEnabled": "true"}
         testlib.post_succ(self.cluster, "/settings/audit", data=audit_payload)
 
@@ -162,10 +155,6 @@ class JWTTests(testlib.BaseTestSet):
         assert r.json() == {"enabled": False, "issuers": []}
 
     def teardown(self):
-        testlib.delete_config_key(self.cluster,
-                                  "{menelaus_web_jwt, jwks_uri_refresh_min_s}")
-        testlib.delete_config_key(self.cluster,
-                                  "{jwt_cache, jwks_cooldown_interval_ms}")
         testlib.delete_succ(self.cluster, self.endpoint)
         # After DELETE, returns 200 with empty issuers list (not configured)
         r = testlib.get_succ(self.cluster, self.endpoint)
@@ -970,9 +959,9 @@ class JWTTests(testlib.BaseTestSet):
             # wrong audience
             (lambda c: {**c, "aud": "wrong-audience"}, "RS256", "2011-04-29",
              401, "Invalid audience"),
-            # wrong signature (algorithm mismatch with configured issuer)
-            (lambda c: c, "ES256", "es256-key", 401,
-             "Mismatched signing algorithm in JWT"),
+            # wrong signature (algorithm mismatch with configured issuer),
+            # rejected before the signature verifies, so the reason is generic
+            (lambda c: c, "ES256", "es256-key", 401, "Invalid token"),
         ]
 
         for modify_claims, alg, key_id, expected_code, error in test_cases:
@@ -1560,10 +1549,8 @@ class JWTTests(testlib.BaseTestSet):
             )
             assert r.status_code == 401
 
-            # Test key rotation with auto-refresh
+            # Test key rotation, with the default cooldown and refresh interval
             server.set_available()
-            # Update settings with short refresh interval for key rotation test
-            payload["jwksUriRefreshIntervalS"] = 1
             testlib.put_succ(self.cluster, self.endpoint, json=payload)
             r = testlib.get(
                 self.cluster, "/pools/default/buckets", auth=None,
@@ -1572,7 +1559,6 @@ class JWTTests(testlib.BaseTestSet):
             assert r.status_code == 200
 
             server.rotate_keys(rotated_jwks)
-            time.sleep(2)  # Wait for auto-refresh to happen
 
             # Old token is still present in the rotated JWKS
             r = testlib.get(
@@ -1581,7 +1567,7 @@ class JWTTests(testlib.BaseTestSet):
             )
             assert r.status_code == 200
 
-            # New token with rotated key
+            # New token with rotated key is accepted on its first use
             token = self.create_token(claims, key_id="rotated-key")
             headers = {"Authorization": f"Bearer {token}"}
             r = testlib.get(

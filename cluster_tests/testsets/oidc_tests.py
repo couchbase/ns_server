@@ -476,7 +476,7 @@ class OIDCTests(testlib.BaseTestSet):
             self.cluster, "{menelaus_web_jwt, jwks_uri_refresh_min_s}", 1
         )
         testlib.set_config_key(
-            self.cluster, "{jwt_cache, jwks_cooldown_interval_ms}", 1000
+            self.cluster, "{jwt_cache, jwks_min_fetch_interval_ms}", 1000
         )
 
     def teardown(self):
@@ -484,7 +484,7 @@ class OIDCTests(testlib.BaseTestSet):
             self.cluster, "{menelaus_web_jwt, jwks_uri_refresh_min_s}"
         )
         testlib.delete_config_key(
-            self.cluster, "{jwt_cache, jwks_cooldown_interval_ms}"
+            self.cluster, "{jwt_cache, jwks_min_fetch_interval_ms}"
         )
         testlib.ensure_deleted(self.cluster, "/settings/jwt")
         testlib.ensure_deleted(
@@ -753,71 +753,6 @@ class OIDCTests(testlib.BaseTestSet):
         loc = r3.headers.get("Location", "")
         assert f"oidcError={expected_error}" in loc, \
             f"Expected oidcError={expected_error} in Location: {loc}"
-
-        testlib.get_fail(
-            node,
-            "/pools/default",
-            expected_code=401,
-            headers=UI_HEADERS,
-            session=session,
-            auth=None,
-        )
-
-    def _oidc_ui_login_expect_auth_denied(self, node, issuer_name, session):
-        """Expect the callback to fail after the provider denies access.
-
-        The provider redirects back with error=access_denied (RFC 6749
-        §4.1.2.1). ns_server rejects the callback with 400 because 'code' is
-        required by callback_validators().
-        """
-        testlib.get_fail(
-            node,
-            "/pools/default",
-            expected_code=401,
-            headers=UI_HEADERS,
-            session=session,
-            auth=None,
-        )
-
-        r1 = testlib.get_succ(
-            node,
-            "/oidc/auth",
-            expected_code=302,
-            params={"issuer": issuer_name},
-            headers=UI_HEADERS,
-            allow_redirects=False,
-            session=session,
-            auth=None,
-        )
-        provider_loc = r1.headers["Location"]
-        assert not provider_loc.startswith(
-            "/"
-        ), f"Redirect failed: {provider_loc}"
-
-        r2 = testlib.http_request(
-            "GET",
-            provider_loc,
-            expected_code=302,
-            headers=UI_HEADERS,
-            allow_redirects=False,
-            session=session,
-        )
-        cb_loc = r2.headers["Location"]
-        assert "error=access_denied" in cb_loc, \
-            f"Expected access_denied in callback: {cb_loc}"
-        assert "state=" in cb_loc, \
-            f"Expected state in callback: {cb_loc}"
-
-        cb_path = cb_loc.replace(node.url, "")
-        testlib.get_fail(
-            node,
-            cb_path,
-            expected_code=400,
-            headers=UI_HEADERS,
-            allow_redirects=False,
-            session=session,
-            auth=None,
-        )
 
         testlib.get_fail(
             node,
@@ -1336,19 +1271,30 @@ class OIDCTests(testlib.BaseTestSet):
         """Negative case: IdP denies authorization; user is never authenticated.
 
         The provider returns error=access_denied in the callback redirect.
-        ns_server rejects the callback with 400 because 'code' is required.
+        ns_server sends the browser back to the UI with login_failed and
+        audits the failure (MB-74684).
         """
         node = self.cluster.connected_nodes[0]
         jwks = self._load_jwks()
-
-        with MockOIDCProvider(
-            jwks, "oidc-client", "oidc-secret", deny_auth=True
-        ) as provider:
-            self._configure_with_provider(node, provider)
-            session = requests.Session()
-            self._oidc_ui_login_expect_auth_denied(
-                node, provider.issuer, session
-            )
+        testlib.post_succ(self.cluster, "/settings/audit",
+                          data={"auditdEnabled": "true"})
+        try:
+            with MockOIDCProvider(
+                jwks, "oidc-client", "oidc-secret", deny_auth=True
+            ) as provider:
+                self._configure_with_provider(node, provider)
+                session = requests.Session()
+                offset = testlib.audit_log_offset(node)
+                self._oidc_ui_login_expect_denied(
+                    node, provider.issuer, session,
+                    expected_error="login_failed")
+                event = testlib.wait_for_audit_event(node, 8193,
+                                                     since_offset=offset)
+                testlib.assert_eq(event.get("reason"),
+                                  "IdP returned an error", name="reason")
+        finally:
+            testlib.post_succ(self.cluster, "/settings/audit",
+                              data={"auditdEnabled": "false"})
 
     def oidc_login_insufficient_permissions_test(self):
         """Negative case: JWT validates but user has no mapped privileges."""
