@@ -48,6 +48,7 @@
          remove_cert_key_opts/1,
          tls_peer_verification_client_opts/0,
          tls_no_peer_verification_client_opts/0,
+         maybe_add_tls13_groups/1,
          configured_ciphers_names/2,
          honor_cipher_order/1,
          honor_cipher_order/2,
@@ -654,6 +655,19 @@ tls13_groups() ->
     [G || Class <- [hybrid, classic], G <- Groups,
           tls13_group_class(G) == Class].
 
+%% For client options. Groups that are set already are kept, and none are added
+%% when versions excludes TLS 1.3 because ssl rejects that combination.
+-spec maybe_add_tls13_groups(list()) -> list().
+maybe_add_tls13_groups(Opts) ->
+    Versions = proplists:get_value(versions, Opts,
+                                   proplists:get_value(supported,
+                                                       ssl:versions())),
+    case lists:member('tlsv1.3', Versions) andalso
+         not proplists:is_defined(supported_groups, Opts) of
+        true -> [{supported_groups, tls13_groups()} | Opts];
+        false -> Opts
+    end.
+
 %% Brainpool groups are disabled because OTP's TLS 1.3 server offers them by
 %% default but can't generate a key share for them (no clause in
 %% tls_handshake_1_3:generate_kex_keys/1) and aborts the handshake.
@@ -760,7 +774,8 @@ tls_client_opts(Config, PresetOpts, KeyIn) ->
         end,
     IntVsn = internal_ssl_minimum_protocol(),
     IntVsns = lists:reverse(supported_versions(IntVsn)),
-    RawTLSOptions2 = [{versions, IntVsns} | RawTLSOptions],
+    RawTLSOptions2 = [{versions, IntVsns},
+                      {supported_groups, tls13_groups()} | RawTLSOptions],
     RawTLSOptions3 = misc:update_proplist(RawTLSOptions2, PresetOpts),
     merge_ns_config_tls_options(client, ?MODULE, RawTLSOptions3).
 
@@ -1915,6 +1930,14 @@ tls13_groups_test() ->
     ?assertNotEqual([], Hybrid),
     ?assertNotEqual([], Rest),
     ?assertEqual([], [C || C <- Rest, C =/= classic]).
+
+maybe_add_tls13_groups_test() ->
+    ?assertEqual([{supported_groups, tls13_groups()}, inet6],
+                 maybe_add_tls13_groups([inet6])),
+    TLS12Only = [{versions, ['tlsv1.2']}],
+    ?assertEqual(TLS12Only, maybe_add_tls13_groups(TLS12Only)),
+    Preset = [{supported_groups, [x25519]}],
+    ?assertEqual(Preset, maybe_add_tls13_groups(Preset)).
 
 %% Unit coverage for the branches a real handshake can't easily produce, plus
 %% documentation of the current wording.  The regression guard against OTP

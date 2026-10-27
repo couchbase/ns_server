@@ -139,7 +139,8 @@ add_tls_options("https://" ++ _, Options, HiddenAuth, VerifyServer) ->
                 ns_ssl_services_setup:tls_client_certs_opts(key);
             {basic_auth, _, _} -> []
         end,
-    NewConnectOptions = misc:update_proplist(TLSOptions, ConnectOptions),
+    NewConnectOptions = ns_ssl_services_setup:maybe_add_tls13_groups(
+                          misc:update_proplist(TLSOptions, ConnectOptions)),
 
     RawTLSOptions =
         misc:update_proplist(Options, [{connect_options, NewConnectOptions}]),

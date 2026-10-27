@@ -212,7 +212,13 @@ extract_pkey_pass_with_rest(PassSettings) ->
                                      [{verify, verify_none}]
                              end
                      end,
-    Options = AddrSettings ++ VerifySettings,
+    Options = case URL of
+                  "https://" ++ _ ->
+                      ns_ssl_services_setup:maybe_add_tls13_groups(
+                        AddrSettings ++ VerifySettings);
+                  _ ->
+                      AddrSettings ++ VerifySettings
+              end,
     Headers = proplists:get_value(headers, PassSettings, []),
     ?log_info("Calling REST API: ~s", [URL]),
     try rest_utils:request(<<"pkey_passphrase">>, URL, "GET", Headers, <<>>,

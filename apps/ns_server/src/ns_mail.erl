@@ -157,7 +157,9 @@ config_to_options(ServerConfig) ->
                                  %% the default was to not verify the peer.
                                  [{verify, verify_none}]
                          end,
-            [{tls, always}, {tls_options, TlsOptions} | Options2];
+            TlsOptions2 =
+                ns_ssl_services_setup:maybe_add_tls13_groups(TlsOptions),
+            [{tls, always}, {tls_options, TlsOptions2} | Options2];
         false ->
             [{tls, never} | Options2]
     end.

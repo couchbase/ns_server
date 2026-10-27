@@ -4113,7 +4113,11 @@ tls_connect_options(URL, AddressFamily, VerifyPeer, CACerts0, SNI0,
             "http://" ++ _ ->
                 []
         end ++ AddressSettings,
-    update_proplist_relaxed(Opts, ExtraOpts).
+    Opts2 = update_proplist_relaxed(Opts, ExtraOpts),
+    case URL of
+        "https://" ++ _ -> ns_ssl_services_setup:maybe_add_tls13_groups(Opts2);
+        "http://" ++ _ -> Opts2
+    end.
 
 compat_version_to_binary(Version) ->
     [V1, V2] = lists:map(
