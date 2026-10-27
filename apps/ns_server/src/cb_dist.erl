@@ -370,6 +370,7 @@ init([]) ->
     Config = read_config(config_path(), true),
     info_msg("Starting cb_dist with config ~p", [Config]),
     process_flag(trap_exit,true),
+    update_supported_groups(),
     application:set_env(kernel, cb_dist_post_tls_setup, post_tls_setup(_, _)),
     {ok, #s{config = Config}}.
 
@@ -842,6 +843,21 @@ maybe_update_keep_secrets(Type, Config) ->
                      [Type, Value]);
         {error, not_supported} ->
             false
+    end.
+
+%% Set here rather than in ssl_dist_opts because the groups are computed at
+%% runtime from what OTP supports. They can't change while the node is running,
+%% so it's done once at start.
+update_supported_groups() ->
+    %% The table doesn't exist when the node is started without
+    %% ssl_dist_optfile (couchbase-cli server-eshell, for example)
+    case ets:whereis(ssl_dist_opts) of
+        undefined -> ok;
+        _ ->
+            Groups = ns_ssl_services_setup:tls13_groups(),
+            [set_dist_tls_opts(T, [{supported_groups, Groups}])
+             || T <- [client, server]],
+            ok
     end.
 
 set_dist_tls_opts(Type, UpdatedOpts) ->

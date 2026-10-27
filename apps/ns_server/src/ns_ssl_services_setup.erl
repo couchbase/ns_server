@@ -48,6 +48,7 @@
          remove_cert_key_opts/1,
          tls_peer_verification_client_opts/0,
          tls_no_peer_verification_client_opts/0,
+         tls13_groups/0,
          maybe_add_tls13_groups/1,
          configured_ciphers_names/2,
          honor_cipher_order/1,
