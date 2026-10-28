@@ -125,9 +125,9 @@ allowed_memory_usage_max(MemSupData) ->
                                  MaxAllowed :: pos_integer()}.
 -type quota_error() :: quota_too_high_error() |
                        {service_quota_too_low, service(), Value :: integer(),
-                        MinRequired :: pos_integer()} |
+                        MinRequired :: non_neg_integer()} |
                        {service_quota_too_high, service(), Value :: integer(),
-                        MaxAllowed :: pos_integer()}.
+                        MaxAllowed :: non_neg_integer()}.
 -type quotas() :: [{service(), integer()}].
 
 -spec check_quotas([NodeInfo], ns_config(), map(), quotas()) ->
@@ -249,13 +249,22 @@ default_min_quota(n1ql) ->
 default_min_quota(eventing) ->
     256.
 
--spec min_quota(service()) -> pos_integer().
+-spec min_quota(service()) -> non_neg_integer().
 min_quota(Service) ->
     config_profile:get_value({Service, min_quota}, default_min_quota(Service)).
 
--spec max_quota(service()) -> pos_integer() | infinity.
+-spec max_quota(service()) -> non_neg_integer() | infinity.
 max_quota(Service) ->
     config_profile:get_value({Service, max_quota}, infinity).
+
+%% A profile may state a service's default quota outright rather than let it
+%% be derived from the node's memory.  The analytics profiles do this for kv,
+%% which hosts no buckets there and so needs no quota at all.  Note this is
+%% the whole quota, not an addition to min_quota/1: a service with a profile
+%% default takes no part in the proportional split below.
+-spec default_quota(service()) -> non_neg_integer() | undefined.
+default_quota(Service) ->
+    config_profile:get_value({Service, default_quota}, undefined).
 
 check_service_quota(kv, Quota, Snapshot) ->
     BucketsQuota = get_max_node_ram_quota(Snapshot) div ?MIB,
@@ -416,22 +425,36 @@ default_quotas(Services, MemSupData, Vsn) ->
 
     OrderedServices = [S || S <- services_ranking(Vsn),
                             lists:member(S, Services)],
-    MinQuotas = [min_quota(S) || S <- OrderedServices],
-    MinTotal = lists:sum(MinQuotas),
-    MinQuotasServices = lists:zip(OrderedServices, MinQuotas),
 
-    case MinTotal > MemoryMax of
-        true ->
-            %% we do not officialy support machines with that little memory
-            %% but some people (MB-29290) insist that one still should be able
-            %% to configure services manually on such machines. so we just
-            %% return minimum quotas here, despite the sum of them being
-            %% larger than available memory
-            MinQuotasServices;
-        false ->
-            calculate_remaining_default_quotas(Memory, MemoryMax, MinTotal,
-                                               MinQuotasServices, Vsn)
-    end.
+    %% Services whose default the profile states outright are settled here;
+    %% they only consume their stated share of the memory the remaining
+    %% services divide up between them.
+    {Stated, Derived} =
+        lists:partition(fun (S) -> default_quota(S) =/= undefined end,
+                        OrderedServices),
+    StatedQuotas = [{S, default_quota(S)} || S <- Stated],
+    StatedTotal = lists:sum([Q || {_, Q} <- StatedQuotas]),
+    Memory1 = Memory - StatedTotal,
+    MemoryMax1 = MemoryMax - StatedTotal,
+
+    MinQuotas = [min_quota(S) || S <- Derived],
+    MinTotal = lists:sum(MinQuotas),
+    MinQuotasServices = lists:zip(Derived, MinQuotas),
+
+    StatedQuotas ++
+        case MinTotal > MemoryMax1 of
+            true ->
+                %% we do not officialy support machines with that little
+                %% memory but some people (MB-29290) insist that one still
+                %% should be able to configure services manually on such
+                %% machines. so we just return minimum quotas here, despite
+                %% the sum of them being larger than available memory
+                MinQuotasServices;
+            false ->
+                calculate_remaining_default_quotas(Memory1, MemoryMax1,
+                                                   MinTotal,
+                                                   MinQuotasServices, Vsn)
+        end.
 
 calculate_remaining_default_quotas(Memory, MemoryMax,
                                    MinTotal, MinQuotas, Vsn) ->
@@ -512,10 +535,59 @@ quota_override_test() ->
         ?assertEqual(100, max_quota(kv)),
         ?assertEqual(100, min_quota(kv)),
         ?assertEqual(infinity, max_quota(cbas)),
+        ?assertEqual(undefined, default_quota(kv)),
         ?assertEqual({error,{service_quota_too_high, fts, 256, 100}},
                      check_service_quota(fts, 256, undefined))
     after
         meck:unload(config_profile)
+    end.
+
+%% A profile that states kv's default pins it at that value and keeps it out
+%% of the proportional split, so the memory it would otherwise have taken is
+%% left to the services that do use it.  This is the analytics shape: kv hosts
+%% no buckets there, so it needs no quota, but a quota of 100 stays settable
+%% for the tools that pass one.
+stated_default_quota_test() ->
+    MemSupData = {9822564352, undefined, undefined},
+    Services = services_ranking(?LATEST_VERSION_NUM),
+    SetProfile = fun (Profile) ->
+                         meck:expect(config_profile, get, fun () -> Profile end)
+                 end,
+    try
+        meck:new(config_profile, [passthrough]),
+        meck:new(ns_bucket, [passthrough]),
+
+        SetProfile([]),
+        Derived = default_quotas(Services, MemSupData, ?LATEST_VERSION_NUM),
+
+        SetProfile([{{kv, min_quota}, 0},
+                    {{kv, max_quota}, 100},
+                    {{kv, default_quota}, 0}]),
+        Quotas = default_quotas(Services, MemSupData, ?LATEST_VERSION_NUM),
+
+        ?assertEqual({kv, 0}, lists:keyfind(kv, 1, Quotas)),
+        %% every service still gets a quota, and the total still fits
+        ?assertEqual(lists:sort(Services),
+                     lists:sort([S || {S, _} <- Quotas])),
+        ?assertEqual(true,
+                     allowed_memory_usage_max(MemSupData) >=
+                         lists:sum([Q || {_, Q} <- Quotas])),
+        %% what kv gave up went to the others, not to waste
+        {cbas, DerivedCbas} = lists:keyfind(cbas, 1, Derived),
+        {cbas, StatedCbas} = lists:keyfind(cbas, 1, Quotas),
+        ?assertEqual(true, StatedCbas > DerivedCbas),
+        %% the stated default is a default, not a ceiling: the window the
+        %% tools that pass a quota rely on is untouched
+        ?assertEqual(0, min_quota(kv)),
+        ?assertEqual(100, max_quota(kv)),
+        meck:expect(ns_bucket, get_buckets, fun (_) -> [] end),
+        ?assertEqual(ok, check_service_quota(kv, 0, snapshot)),
+        ?assertEqual(ok, check_service_quota(kv, 100, snapshot)),
+        ?assertEqual({error, {service_quota_too_high, kv, 101, 100}},
+                     check_service_quota(kv, 101, snapshot))
+    after
+        meck:unload(config_profile),
+        meck:unload(ns_bucket)
     end.
 
 default_quotas_test_() ->
