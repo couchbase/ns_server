@@ -316,11 +316,8 @@ fetch_from_snapshot(Snapshot, Key, _Opts) ->
         Other -> Other
     end.
 
-get_keys_for_txn(Keys, _Snapshot) ->
-    %% We /probably/ should not care about writing to same keys at
-    %% the same time in such a test, so this is the simplest way to deal with
-    %% this for now.
-    maps:filter(fun(K, _) -> lists:member(K, Keys) end, get_ets_snapshot()).
+get_keys_for_txn(Keys, Snapshot) ->
+    maps:with(Keys, Snapshot).
 
 do_commits(TxnSnapshot, Commits) ->
     {NewMap, NewSeqno} = lists:foldl(
@@ -337,14 +334,14 @@ do_commits(TxnSnapshot, Commits) ->
 transaction(Name, Keys, Fun, Opts) ->
     TxnSnapshot = get_ets_snapshot(),
     Snapshot = case Keys of
-                   all -> get_ets_snapshot();
-                   _ -> get_keys_for_txn(Keys, {txn_slow, TxnSnapshot})
+                   all -> TxnSnapshot;
+                   _ -> get_keys_for_txn(Keys, TxnSnapshot)
                end,
     case Fun(Snapshot) of
         {commit, Commits} ->
             case do_commits(TxnSnapshot, Commits) of
-               ok -> {ok, {?FAKE_HISTORY_REV, get_snapshot_seqno()}};
-               retry -> transaction(Name, Keys, Fun, Opts)
+                ok -> {ok, {?FAKE_HISTORY_REV, get_snapshot_seqno()}};
+                retry -> transaction(Name, Keys, Fun, Opts)
             end;
         {commit, Commits, Results} ->
             case do_commits(TxnSnapshot, Commits) of
