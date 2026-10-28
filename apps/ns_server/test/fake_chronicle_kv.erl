@@ -98,14 +98,15 @@ update_snapshot(Key, Value) ->
 
 -spec update_snapshot(map()) -> true.
 update_snapshot(Map) when is_map(Map) ->
-    NewKVs = maps:map(
-               fun(_Key, Value) ->
-                       add_rev_to_value(Value)
-               end, Map),
     OldSnapshot = get_ets_snapshot(),
+    %% Chronicle stores revs, we won't bother with the actual history rev here,
+    %% but we do use the seqno in some places/tests.
+    Seqno = get_snapshot_seqno(OldSnapshot) + 1,
+    NewKVs = maps:map(fun(_Key, Value) -> add_rev_to_value(Value, Seqno) end,
+                      Map),
     NewSnapshot = maps:merge(OldSnapshot, NewKVs),
 
-    case store_ets_snapshot(OldSnapshot, NewSnapshot) of
+    case store_ets_snapshot(OldSnapshot, NewSnapshot, Seqno) of
         ok ->
             ok;
         retry ->
@@ -243,21 +244,8 @@ get_ets_snapshot() ->
     [{snapshot, Snapshot}] = ets:lookup(?TABLE_NAME, snapshot),
     Snapshot.
 
-get_snapshot_seqno() ->
-    Snapshot = get_ets_snapshot(),
-    get_snapshot_seqno(Snapshot).
-
 get_snapshot_seqno(Snapshot) ->
     maps:get(seqno, Snapshot).
-
-store_ets_snapshot(OldSnapshot, NewSnapshot) ->
-    Seqno = maps:fold(
-              fun(_Key, {_Value, {_, Seqno}}, Acc) ->
-                      max(Seqno, Acc);
-                 (seqno, _, Acc) ->
-                      Acc
-              end, 0, NewSnapshot),
-    store_ets_snapshot(OldSnapshot, NewSnapshot, Seqno).
 
 store_ets_snapshot(OldSnapshot, NewSnapshot, Seqno) ->
     compare_and_swap(OldSnapshot, NewSnapshot#{seqno => Seqno}).
@@ -311,11 +299,6 @@ notify_changes(OldSnapshot, NewSnapshot) ->
 
 add_rev_to_value(Value, Seqno) ->
     {Value, make_rev(Seqno)}.
-
-add_rev_to_value(Value) ->
-    %% Chronicle stores revs, we won't bother with the actual history rev here,
-    %% but we do use the seqno in some places/tests.
-    {Value, make_rev(get_snapshot_seqno() + 1)}.
 
 make_rev(Seqno) ->
     {?FAKE_HISTORY_REV, Seqno}.
