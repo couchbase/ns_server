@@ -1269,32 +1269,21 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
     %% it should contain options from /etc/ssl_dist_opts.in).
     [{client, TLSOpts}] = ets:lookup(ssl_dist_opts, client),
     Opts = application:get_env(kernel, inet_dist_connect_options, []),
-    %% cb_dist might not have updated the password in ssl_dist_opts yet,
-    %% so update it here
-    PassFun = ns_secrets:get_pkey_pass(client_cert),
-    Opts2 = misc:update_proplist(Opts, [{password, PassFun}]),
     SNIOpts = case inet:parse_address(Host) of
                   {ok, _} -> [];
                   _ -> [{server_name_indication, Host}]
               end,
     AllOpts = [binary, {active, false}, {packet, 4},
                AFamily, {nodelay, true}, {erl_dist, true}] ++ SNIOpts ++
-        lists:ukeysort(1, Opts2 ++ TLSOpts),
-    AllOpts2 =
-        lists:foldl(
-          fun ({cert, Cert}, Acc) ->
-                  [{cert, Cert} |
-                   proplists:delete(certfile, proplists:delete(cert, Acc))];
-              ({key, Key}, Acc) ->
-                  [{key, Key} | functools:chain(
-                                  Acc, [proplists:delete(key, _),
-                                        proplists:delete(keyfile, _),
-                                        proplists:delete(password, _)])];
-              (_, Acc) ->
-                  Acc
-          end, AllOpts, Options),
+        lists:ukeysort(1, Opts ++ TLSOpts),
     Timeout = net_kernel:connecttime(),
     try
+        %% Whichever way ssl_dist_opts gives the client cert and key, they
+        %% are replaced with the ones given in Options or, if not given, with
+        %% the client cert and the decrypted key ns_secrets has loaded (cb_dist
+        %% might not have put them in ssl_dist_opts yet)
+        AllOpts2 = [{certs_keys, otp_client_certs_keys(Options)} |
+                    ns_ssl_services_setup:remove_cert_key_opts(AllOpts)],
         IpAddr =
             case inet:getaddr(Host, AFamily) of
                 {ok, A} -> A;
@@ -1341,6 +1330,24 @@ check_otp_tls_connectivity(Host, Port, AFamily, Options) ->
     catch
         throw:{error, Reason} ->
             {error, Reason}
+    end.
+
+%% The client certs and keys for check_otp_tls_connectivity/4: {certs_keys, _}
+%% from Options, or the client cert chain and the decrypted key ns_secrets has
+%% loaded together.
+otp_client_certs_keys(Options) ->
+    case proplists:get_value(certs_keys, Options) of
+        undefined ->
+            CertAndKeyFun = ns_secrets:get_cert_and_pkey(client_cert),
+            case CertAndKeyFun() of
+                {ok, {Chain, Key}} ->
+                    [#{cert => Chain, key => Key}];
+                {error, Reason} ->
+                    throw({error, {client_cert_and_pkey_not_available,
+                                   Reason}})
+            end;
+        CertsKeys ->
+            CertsKeys
     end.
 
 do_add_node_engaged(NodeKVList, HiddenAuth, GroupUUID, Services, Scheme) ->

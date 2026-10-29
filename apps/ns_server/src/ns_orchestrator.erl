@@ -2234,9 +2234,13 @@ log_rebalance_completion(
     {ResultType, Severity, Fmt, Args} = get_log_msg(ExitReason,
                                                     Type,
                                                     AbortReason),
-    ale:log(?USER_LOGGER, Severity, Fmt ++ "~nRebalance Operation Id = ~s",
-            Args ++ [RebalanceId]),
-    {ResultType, lists:flatten(io_lib:format(Fmt, Args))}.
+    {Fmt1, Args1} =
+        ale_redact:redact_report({Fmt, Args},
+                                 #{mfa => {?MODULE, ?FUNCTION_NAME,
+                                           ?FUNCTION_ARITY}}),
+    ale:log(?USER_LOGGER, Severity, Fmt1 ++ "~nRebalance Operation Id = ~s",
+            Args1 ++ [RebalanceId]),
+    {ResultType, lists:flatten(io_lib:format(Fmt1, Args1))}.
 
 % ResultType() is used to add an event log with the appropriate event-id
 % via rebalance_observer.
@@ -3043,6 +3047,21 @@ needs_rebalance_api_changed_test() ->
     Resp5 = needs_rebalance(#{services => [dummyKey, key2],
                               buckets => [dummyKey]}),
     ?assertEqual(true, Resp5).
+
+%% A rebalance failed with a private key in the exit reason (a badmatch on ssl
+%% options). The user log is formatted from the same redacted message.
+log_rebalance_completion_redacts_private_keys_test() ->
+    Reason = {mover_crashed,
+              {badmatch,
+               [{certs_keys,
+                 [#{certfile => "client_chain.pem",
+                    key => {'PrivateKeyInfo', <<"not a real key">>}}]}]}},
+    State = #rebalancing_state{type = rebalance,
+                               rebalance_id = <<"rebalance-id">>},
+    {failure, Msg} = log_rebalance_completion(Reason, State),
+    ?assertEqual(nomatch, string:find(Msg, "not a real key")),
+    ?assertMatch([_ | _], string:find(Msg, "client_chain.pem")),
+    ?assertMatch([_ | _], string:find(Msg, "*** redacted ***")).
 
 get_uninitialized_services_test() ->
     Snapshot =

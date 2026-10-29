@@ -12,6 +12,10 @@
 -include("ns_common.hrl").
 -include_lib("ns_common/include/cut.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([decode_json_response_error/3,
          connection_error_message/3,
          engage_cluster_error/1,
@@ -69,6 +73,11 @@ connection_error_message({AFamily, nxdomain}, Host, _Port) ->
                                  "The hostname may be incorrect or not "
                                  "resolvable.",
                                  [misc:afamily2str(AFamily), Host]));
+connection_error_message({client_cert_and_pkey_not_available, Reason}, _Host,
+                         _Port) ->
+    list_to_binary(io_lib:format("The client certificate and private key of "
+                                 "this node couldn't be loaded. ~s",
+                                 [ns_secrets:format_error(Reason)]));
 connection_error_message({Error, _}, Host, Port) ->
     connection_error_message(Error, Host, Port);
 connection_error_message(nxdomain, Host, _Port) ->
@@ -488,3 +497,14 @@ address_check_error(Address, {address_not_allowed, ErrorMsg}) ->
     iolist_to_binary(
       io_lib:format("Requested hostname \"~s\" is not allowed: ~s",
                     [Address, ErrorMsg])).
+
+-ifdef(TEST).
+verify_otp_connectivity_connection_error_test() ->
+    ?assertEqual(<<"Failed to reach otp port 21400 for node 'n_1@127.0.0.1'. "
+                   "The client certificate and private key of this node "
+                   "couldn't be loaded. Failed to decrypt the private key. "
+                   "Check its passphrase settings">>,
+                 verify_otp_connectivity_connection_error(
+                   {client_cert_and_pkey_not_available, could_not_decrypt},
+                   'n_1@127.0.0.1', "127.0.0.1", 21400)).
+-endif.

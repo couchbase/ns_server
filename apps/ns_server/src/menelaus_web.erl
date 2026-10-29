@@ -118,11 +118,9 @@ maybe_start_http_server(Type, Options) ->
                        ({ip, _}) -> true;
                        ({port, _}) -> true;
                        ({ssl_opts, L}) ->
-                            {true, lists:map(fun ({K, _}) when K =:= password;
-                                                               K =:= key ->
-                                                     {K, "********"};
-                                                 (KV) -> KV
-                                             end, L)};
+                            {true, {ssl_opts, hide_secrets(L)}};
+                       ({ssl_handshake_opts_fun, F}) ->
+                            {true, {ssl_handshake_opts, hide_secrets(F())}};
                        (_) -> false
                    end, ServerOptions),
 
@@ -142,6 +140,21 @@ maybe_start_http_server(Type, Options) ->
                     Other
             end
     end.
+
+hide_secrets(SSLOpts) ->
+    lists:map(fun ({K, _}) when K =:= password; K =:= key ->
+                      {K, "********"};
+                  ({certs_keys, CKs}) ->
+                      {certs_keys, [hide_key(CK) || CK <- CKs]};
+                  (KV) -> KV
+              end, SSLOpts).
+
+hide_key(CertKey) when is_map(CertKey) ->
+    maps:map(fun (K, _) when K =:= key; K =:= password -> "********";
+                 (_, V) -> V
+             end, CertKey);
+hide_key(CertKey) ->
+    CertKey.
 
 get_approot() ->
     case application:get_env(ns_server, approot) of

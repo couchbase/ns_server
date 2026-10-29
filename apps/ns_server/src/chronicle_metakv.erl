@@ -30,6 +30,11 @@
 %% set_multiple API's which guarantees that the API won't succeed if the
 %% revisions of the keys have changed since the keys were fetched.
 %%
+%% A watch hands its callback the current leaves it covers, then the snapshot
+%% revision they were read at, and then every change to them. Only leaves are
+%% reported, as directory entries change whenever a child is added or removed.
+%% A heartbeat is reported whenever the watch has been quiet for a while.
+%%
 %% A leaf may be marked sensitive at creation time, in which case its value is
 %% stored wrapped as {?METAKV2_SENSITIVE, Value} and is masked by
 %% chronicle_kv_log:sanitize/2 before it can reach a log or a diagnostic dump.
@@ -61,6 +66,8 @@
          delete/1,
          delete_dir/2,
          sync_quorum/1,
+         watch/2,
+         watch_dir/4,
          invert_type/1]).
 
 -type key() :: list().
@@ -99,6 +106,10 @@
                                 {sensitive_unsupported, key()} |
                                 {cas, key(), revision()} |
                                 duplicate_keys}.
+
+-type watch_event() :: {key(), revision(), value() | deleted} |
+                       {snapshot_end, revision()} |
+                       heartbeat.
 
 upgrade_to_79(_, _, _) ->
     case chronicle_agent:get_info_for_rsm(metakv) of
@@ -548,6 +559,115 @@ sync_quorum(Timeout) ->
     catch
         exit:{error, timeout} ->
             {error, timeout}
+    end.
+
+%% reports the leaf, if it exists, followed by every change to it. never
+%% returns, see watch_loop/2
+-spec watch(key(), fun ((watch_event()) -> any())) -> no_return().
+watch(Key, Callback) ->
+    do_watch(_ =:= Key,
+             fun (Txn) ->
+                     [{Key, Rev, Value} ||
+                         {_, {Value, Rev}} <- fetch_leaves(Txn, [Key])]
+             end, Callback).
+
+%% reports the leaves that get_dir/3 would return, followed by every change to a
+%% leaf in that range. never returns, see watch_loop/2
+-spec watch_dir(key(), boolean(), integer() | undefined,
+                fun ((watch_event()) -> any())) -> no_return().
+watch_dir(Dir, Recursive, Depth, Callback) when
+      (Recursive =:= false andalso Depth =:= undefined) orelse
+      (Recursive =:= true andalso (Depth =:= undefined orelse Depth > 0)) ->
+    MaxDepth = case {Recursive, Depth} of
+                   {false, _} ->
+                       1;
+                   {true, undefined} ->
+                       infinity;
+                   {true, _} ->
+                       Depth
+               end,
+    do_watch(in_dir(_, Dir, MaxDepth),
+          fun (Txn) ->
+                  case fetch_dir(Txn, Dir, Recursive, Depth) of
+                      {error, not_found} ->
+                          [];
+                      Content ->
+                          dir_leaves(Content)
+                  end
+          end, Callback).
+
+in_dir(Key, Dir, MaxDepth) ->
+    Level = length(Key) - length(Dir),
+    Level >= 1 andalso Level =< MaxDepth andalso lists:suffix(Dir, Key).
+
+dir_leaves({_Dir, {dir, _Rev}}) ->
+    [];
+dir_leaves({_Dir, {Entries, _Rev}}) when is_list(Entries) ->
+    lists:flatmap(fun dir_leaves/1, Entries);
+dir_leaves({Key, {Value, Rev, _Sensitive}}) ->
+    [{Key, Rev, Value}].
+
+%% Subscribe before taking the snapshot, so that a change committed in between
+%% is not missed. The end of the snapshot is reported so that a caller can tell
+%% which leaves it no longer holds
+do_watch(Filter, Fetch, Callback) ->
+    Self = self(),
+    ns_pubsub:subscribe_link(
+      chronicle_kv:event_manager(metakv),
+      fun ({{key, {leaf, Key}}, Rev, Change}) ->
+              case Filter(Key) of
+                  true ->
+                      Self ! {watch_event, Key, Rev, Change};
+                  false ->
+                      ok
+              end;
+          (_) ->
+              ok
+      end),
+    Opts = #{max_queue_len => ?get_param(watch_max_queue_len, 10000),
+             heartbeat_interval => ?get_param(watch_heartbeat_interval, 30000)},
+    {ok, {Leaves, SnapshotRev}} = chronicle_kv:ro_txn(metakv, Fetch),
+    lists:foreach(Callback, Leaves),
+    Callback({snapshot_end, SnapshotRev}),
+    watch_loop(SnapshotRev, Opts, Callback).
+
+%% Any message other than a change ends the watch, as the caller has its socket
+%% in active mode so that a closed connection arrives here. The heartbeat lets
+%% the client tell a quiet watch from a dead one, and makes a quiet watch write
+%% so that TCP eventually notices a peer that has gone
+watch_loop({HistoryId, SnapshotSeqno} = SnapshotRev,
+           #{max_queue_len := MaxQueueLen,
+             heartbeat_interval := HeartbeatInterval} = Opts, Callback) ->
+    receive
+        {watch_event, _Key, {HistoryId, Seqno}, _Change}
+          when Seqno =< SnapshotSeqno ->
+            %% already reported as part of the snapshot
+            watch_loop(SnapshotRev, Opts, Callback);
+        {watch_event, Key, Rev, {updated, Stored}} ->
+            check_queue_len(MaxQueueLen),
+            {_Sensitive, Value} = strip_sensitive(Stored),
+            Callback({Key, Rev, Value}),
+            watch_loop(SnapshotRev, Opts, Callback);
+        {watch_event, Key, Rev, deleted} ->
+            check_queue_len(MaxQueueLen),
+            Callback({Key, Rev, deleted}),
+            watch_loop(SnapshotRev, Opts, Callback);
+        _ ->
+            erlang:exit(normal)
+    after HeartbeatInterval ->
+            Callback(heartbeat),
+            watch_loop(SnapshotRev, Opts, Callback)
+    end.
+
+%% A watch that has fallen this far behind ends, so that its backlog is freed,
+%% and the client resyncs from the snapshot on reconnecting
+check_queue_len(MaxQueueLen) ->
+    case erlang:process_info(self(), message_queue_len) of
+        {message_queue_len, Len} when Len > MaxQueueLen ->
+            ?log_warning("Ending watch with ~b queued changes", [Len]),
+            erlang:exit(normal);
+        _ ->
+            ok
     end.
 
 -ifdef(TEST).
@@ -1095,6 +1215,238 @@ basic_test_() ->
                ?assertMatch({ok, _, create},
                             test_set(Key2, v1, new, true, true)),
                ?assertEqual({?METAKV2_SENSITIVE, v1}, stored_value(Key2))
+       end}]}.
+
+start_watch(Watch) ->
+    Self = self(),
+    Pid = spawn_link(fun () ->
+                             Watch(fun (Event) ->
+                                           Self ! {watched, Event}
+                                   end)
+                     end),
+    true = misc:poll_for_condition(
+             fun () ->
+                     gen_event:which_handlers(
+                       chronicle_kv:event_manager(metakv)) =/= []
+             end, 5000, 10),
+    Pid.
+
+stop_watch(Pid) ->
+    erlang:unlink(Pid),
+    misc:terminate_and_wait(Pid, shutdown).
+
+next_watched() ->
+    receive
+        {watched, Event} ->
+            Event
+    after 5000 ->
+            timeout
+    end.
+
+%% skips the heartbeats that a slow write lets through
+next_change() ->
+    case next_watched() of
+        heartbeat ->
+            next_change();
+        Event ->
+            Event
+    end.
+
+%% fake_ns_config provides the watch params
+watch_setup() ->
+    setup(),
+    fake_ns_config:setup().
+
+%% fake_chronicle_kv goes first, as chronicle_compat_events is subscribed to
+%% the ns_config_events that fake_ns_config stops
+watch_teardown(_) ->
+    teardown(ok),
+    fake_ns_config:teardown().
+
+watch_test_() ->
+    {foreach,
+     fun watch_setup/0,
+     fun watch_teardown/1,
+     [{"watch_dir reports the snapshot, then changes to its own leaves",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Deeper = [key2, subkey2, subkey1, root],
+               Other = [key3, other, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Deeper, v2, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Other, v3, new, true)),
+
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+
+               %% the snapshot ends at the revision a get_dir would return
+               {ok, {_, DirRev}} = get_dir([subkey1, root], false, undefined),
+               ?assertEqual({snapshot_end, DirRev}, next_watched()),
+
+               %% an event already covered by the snapshot, which only a race
+               %% produces, so it is sent by hand
+               gen_event:notify(chronicle_kv:event_manager(metakv),
+                                {{key, {leaf, Key}},
+                                 chronicle_kv:get_revision(metakv),
+                                 {updated, stale}}),
+
+               %% neither is under the watch, which the next event being for Key
+               %% shows
+               ?assertMatch({ok, _, update},
+                            test_set(Deeper, v4, undefined, false)),
+               ?assertMatch({ok, _, update},
+                            test_set(Other, v4, undefined, false)),
+
+               {ok, UpdateRev, update} = test_set(Key, v5, undefined, false),
+               ?assertEqual({Key, UpdateRev, v5}, next_watched()),
+               {ok, DeleteRev} = test_delete(Key),
+               ?assertEqual({Key, DeleteRev, deleted}, next_watched()),
+               stop_watch(Pid)
+       end},
+      {"a recursive watch_dir follows get_dir depth",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Deeper = [key2, subkey2, subkey1, root],
+               Deepest = [key3, subkey3, subkey2, subkey1, root],
+               ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Deeper, v2, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Deepest, v3, new, true)),
+
+               Pid = start_watch(watch_dir([subkey1, root], true, 2, _)),
+               ?assertEqual(
+                  lists:sort([Key, Deeper]),
+                  lists:sort([K || {K, _, _} <- [next_watched(),
+                                                 next_watched()]])),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+
+               ?assertMatch({ok, _, update},
+                            test_set(Deepest, v4, undefined, false)),
+               {ok, Rev, update} = test_set(Deeper, v5, undefined, false),
+               ?assertEqual({Deeper, Rev, v5}, next_watched()),
+               stop_watch(Pid),
+
+               Pid1 = start_watch(watch_dir([subkey1, root], true, undefined,
+                                            _)),
+               ?assertEqual(
+                  lists:sort([Key, Deeper, Deepest]),
+                  lists:sort([K || {K, _, _} <- [next_watched(),
+                                                 next_watched(),
+                                                 next_watched()]])),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+               stop_watch(Pid1)
+       end},
+      {"watch reports only its own leaf",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Sibling = [key2, subkey1, root],
+               SameName = [key1, other, root],
+               ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
+               ?assertMatch({ok, _, create}, test_set(Sibling, v2, new, true)),
+               ?assertMatch({ok, _, create},
+                            test_set(SameName, v3, new, true)),
+
+               Pid = start_watch(watch(Key, _)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+
+               %% neither is the watched leaf, which the next event being the
+               %% delete of Key shows
+               ?assertMatch({ok, _, update},
+                            test_set(Sibling, v4, undefined, false)),
+               ?assertMatch({ok, _, update},
+                            test_set(SameName, v4, undefined, false)),
+               {ok, DeleteRev} = test_delete(Key),
+               ?assertEqual({Key, DeleteRev, deleted}, next_watched()),
+               stop_watch(Pid),
+
+               %% a leaf that does not exist yet is reported once created
+               Missing = [key3, subkey1, root],
+               Pid1 = start_watch(watch(Missing, _)),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+               ?assertMatch({ok, _, create},
+                            test_set(Missing, v5, new, false)),
+               ?assertMatch({Missing, _, v5}, next_watched()),
+               stop_watch(Pid1)
+       end},
+      {"watch_dir on a missing directory reports leaves once created",
+       fun () ->
+               Key = [key1, subkey1, root],
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+               ?assertMatch({ok, _, create}, test_set(Key, v1, new, true)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+               stop_watch(Pid)
+       end},
+      {"watch stops on unexpected message",
+       fun() ->
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               Pid ! unexpected,
+               true = misc:poll_for_condition(
+                        fun() -> not is_process_alive(Pid) end,
+                        5000, 100)
+       end},
+      {"a quiet watch reports heartbeats",
+       fun () ->
+               fake_ns_config:update_snapshot(
+                 {?MODULE, watch_heartbeat_interval}, 50),
+               Key = [key1, subkey1, root],
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+               ?assertEqual(heartbeat, next_watched()),
+
+               {ok, Rev, create} = test_set(Key, v1, new, true),
+               ?assertEqual({Key, Rev, v1}, next_change()),
+               ?assertEqual(heartbeat, next_watched()),
+               stop_watch(Pid)
+       end},
+      {"a watch that falls too far behind ends",
+       fun () ->
+               fake_ns_config:update_snapshot(
+                 {?MODULE, watch_max_queue_len}, 2),
+               Self = self(),
+               Ref = make_ref(),
+               %% the watch is held at the end of the snapshot, so that the
+               %% changes queue up behind it
+               Pid = spawn(
+                       fun () ->
+                               watch_dir(
+                                 [subkey1, root], false, undefined,
+                                 fun ({snapshot_end, _}) ->
+                                         Self ! {held, Ref},
+                                         receive {Ref, continue} -> ok end;
+                                     (Event) ->
+                                         Self ! {watched, Event}
+                                 end)
+                       end),
+               MRef = erlang:monitor(process, Pid),
+               receive {held, Ref} -> ok after 5000 -> error(not_held) end,
+
+               lists:foreach(
+                 fun (I) ->
+                         ?assertMatch({ok, _, create},
+                                      test_set([I, subkey1, root], v1, new,
+                                               true))
+                 end, lists:seq(1, 5)),
+               true = misc:poll_for_condition(
+                        fun () ->
+                                {message_queue_len, Len} =
+                                    process_info(Pid, message_queue_len),
+                                Len >= 5
+                        end, 5000, 10),
+
+               Pid ! {Ref, continue},
+               receive
+                   {'DOWN', MRef, process, Pid, Reason} ->
+                       ?assertEqual(normal, Reason)
+               after 5000 ->
+                       error(watch_still_alive)
+               end,
+               ?assertEqual(timeout, next_watched())
        end}]}.
 
 -endif.

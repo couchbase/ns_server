@@ -331,6 +331,8 @@ sanitize(Config, TagUserTuples) ->
               {stop, {cert_and_pkey, {Cert, sanitize_value(PKey)}}};
           ({cert_and_pkey, {Props, Cert, PKey}}) ->
               {stop, {cert_and_pkey, {Props, Cert, sanitize_value(PKey)}}};
+          ({certs_keys, CertsKeys}) when is_list(CertsKeys) ->
+              {stop, {certs_keys, [sanitize_cert_key(CK) || CK <- CertsKeys]}};
           ({{metakv, K}, {?METAKV_SENSITIVE, V}}) ->
               {stop, {{metakv, K}, {?METAKV_SENSITIVE, sanitize_value(V)}}};
           ({cookie, Cookie}) ->
@@ -371,6 +373,15 @@ sanitize(Config, TagUserTuples) ->
           (Other) ->
               Continue(Other)
       end, Config).
+
+%% An entry of ssl's certs_keys option: the key, and the password it can come
+%% with, are secret.
+sanitize_cert_key(CertKey) when is_map(CertKey) ->
+    maps:map(fun (K, _) when K =:= key; K =:= password -> "*****";
+                 (_, V) -> V
+             end, CertKey);
+sanitize_cert_key(Other) ->
+    Other.
 
 sanitize_value(Value) ->
     sanitize_value(Value, []).

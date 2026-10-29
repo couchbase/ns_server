@@ -245,10 +245,10 @@ bringup(MyIP, UserSupplied) ->
 
     ?log_info("Attempting to bring up net_kernel with name ~p", [MyNodeName]),
     ok = misc:wait_for_nodename(ShortName),
-    application:set_env(kernel, cb_dist_pkey_pass_mfa,
-                        {ns_secrets, get_pkey_pass, [node_cert]}),
-    application:set_env(kernel, cb_dist_client_pkey_pass_mfa,
-                        {ns_secrets, get_pkey_pass, [client_cert]}),
+    application:set_env(kernel, cb_dist_cert_and_pkey_mfa,
+                        {ns_secrets, get_cert_and_pkey, [node_cert]}),
+    application:set_env(kernel, cb_dist_client_cert_and_pkey_mfa,
+                        {ns_secrets, get_cert_and_pkey, [client_cert]}),
     Rv = decode_status(net_kernel:start([MyNodeName, longnames])),
     net_kernel:set_net_ticktime(misc:get_env_default(set_net_ticktime, 60)),
 

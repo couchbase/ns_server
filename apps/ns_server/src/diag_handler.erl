@@ -1028,4 +1028,24 @@ trim_term_test() ->
     %% Maps are unordered, so we have to use a singleton map here. Otherwise
     %% we don't know which part of the map is supposed to get trimmed.
     #{1 := '...'} = trim_term(#{1 => 2}, 2).
+
+%% cb_dist puts the decrypted private keys in ssl_dist_opts
+ssl_dist_opts_sanitizer_test() ->
+    Key = public_key:generate_key({rsa, 1024, 65537}),
+    Der = public_key:der_encode('PrivateKeyInfo', Key),
+    Entry = {server, [{certs_keys, [#{certfile => "chain.pem",
+                                      key => {'PrivateKeyInfo', Der}},
+                                    #{certfile => "chain2.pem",
+                                      keyfile => "pkey2.pem",
+                                      password => "secret"}]},
+                      {cacertfile, "ca.pem"}]},
+    {ok, Sanitize} = get_ets_table_sanitizer(ssl_dist_opts,
+                                             [{name, ssl_dist_opts}]),
+    ?assertEqual({server, [{certs_keys, [#{certfile => "chain.pem",
+                                           key => "*****"},
+                                         #{certfile => "chain2.pem",
+                                           keyfile => "pkey2.pem",
+                                           password => "*****"}]},
+                           {cacertfile, "ca.pem"}]},
+                 Sanitize(Entry)).
 -endif.

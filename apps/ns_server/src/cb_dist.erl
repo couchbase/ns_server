@@ -73,8 +73,7 @@
             name = undefined,
             ensure_config_timer = undefined,
             connections = [] :: [#con{}],
-            is_pkey_encrypted = #{client => false, server => false},
-            client_passphrase_updated = false,
+            client_pkey_updated = false,
             client_cert_auth = false :: boolean()}).
 
 -define(family, ?MODULE).
@@ -371,16 +370,13 @@ init([]) ->
     Config = read_config(config_path(), true),
     info_msg("Starting cb_dist with config ~p", [Config]),
     process_flag(trap_exit,true),
-    PKeysEncrypted = #{client => is_pkey_encrypted(client),
-                       server => is_pkey_encrypted(server)},
     application:set_env(kernel, cb_dist_post_tls_setup, post_tls_setup(_, _)),
-    {ok, #s{config = Config, is_pkey_encrypted = PKeysEncrypted}}.
+    {ok, #s{config = Config}}.
 
 handle_call({listen, Name}, _From, State) ->
-             %% We have name now, so we can try extracting client pkey
-             %% passphrase if we need it
+    %% We have name now, so we can try setting the client pkey if we need it
     info_msg("Received listen request for node name: ~p", [Name]),
-    State1 = maybe_update_client_pkey_passphrase(State#s{name = Name}),
+    State1 = maybe_update_client_pkey(State#s{name = Name}),
 
     Protos0 = get_protos(State1),
 
@@ -484,13 +480,14 @@ handle_call(status, _From, #s{listeners = Listeners,
                               name = Name,
                               config = Config,
                               connections = Connections,
-                              is_pkey_encrypted = IsPKeyEncrypted} = State) ->
+                              client_pkey_updated = ClientPKeyUpdated} =
+                State) ->
     {reply, [{name, Name},
              {config, Config},
              {listeners, Listeners},
              {acceptors, Acceptors},
              {connections, Connections},
-             {is_pkey_encrypted, IsPKeyEncrypted}], State};
+             {client_pkey_updated, ClientPKeyUpdated}], State};
 
 handle_call(get_config, _From, #s{config = Config} = State) ->
     {reply, Config, State};
@@ -503,19 +500,13 @@ handle_call({update_config, Props}, _From, #s{config = Cfg} = State) ->
     end;
 
 handle_call({register_outgoing_connection, Mod}, _From,
-            #s{connections = Connections, config=Config,
-               is_pkey_encrypted = #{client := IsPKeyEncrypted}} = State) ->
+            #s{connections = Connections, config=Config} = State) ->
     {CanAddConnection, NewState} =
         case proto_to_encryption(Mod) of
             true ->
                 maybe_update_keep_secrets(client, Config),
-                case IsPKeyEncrypted of
-                    true ->
-                        S = maybe_update_client_pkey_passphrase(State),
-                        {S#s.client_passphrase_updated, S};
-                    false ->
-                        {true, State}
-                end;
+                S = maybe_update_client_pkey(State),
+                {S#s.client_pkey_updated, S};
             false -> {true, State}
         end,
     case CanAddConnection of
@@ -525,9 +516,9 @@ handle_call({register_outgoing_connection, Mod}, _From,
             info_msg("Added connection ~p", [Con]),
             {reply, {ok, Ref}, NewState#s{connections = [Con | Connections]}};
         false ->
-            info_msg("Can't register new connection because there is no pkey "
-                     "pass", []),
-            {reply, {error, no_pkey_passphrase}, NewState}
+            info_msg("Can't register new connection because there is no "
+                     "client pkey", []),
+            {reply, {error, no_pkey}, NewState}
     end;
 
 handle_call({update_connection_pid, Ref, Pid}, _From, State) ->
@@ -547,24 +538,18 @@ handle_call(restart_tls, _From, #s{listeners = Listeners} = State) ->
       ssl_pem_cache:name(dist),
       {unconditionally_clear_pem_cache, self()},
       infinity),
-    PKeysEncrypted = #{client => is_pkey_encrypted(client),
-                       server => is_pkey_encrypted(server)},
     info_msg("Starting TLS distribution listeners...", []),
-    {reply, ok, ensure_config(State3#s{
-                                is_pkey_encrypted = PKeysEncrypted,
-                                client_passphrase_updated = false})};
+    %% The server pkey is set when the listeners are started again
+    {reply, ok, ensure_config(State3#s{client_pkey_updated = false})};
 
-handle_call(reload_client_cert, _From,
-            #s{is_pkey_encrypted = PKeysEncrypted} = State) ->
+handle_call(reload_client_cert, _From, State) ->
     info_msg("Reloading tls distribution client cert", []),
     gen_server:call(
       ssl_pem_cache:name(dist),
       {unconditionally_clear_pem_cache, self()},
       infinity),
-    NewPKeysEncrypted = PKeysEncrypted#{client => is_pkey_encrypted(client)},
-    {reply, ok, maybe_update_client_pkey_passphrase(
-                  State#s{is_pkey_encrypted = NewPKeysEncrypted,
-                          client_passphrase_updated = false})};
+    {reply, ok, maybe_update_client_pkey(
+                  State#s{client_pkey_updated = false})};
 
 handle_call(Request, _From, State) ->
     error_msg("Received unknown call: ~p", [Request]),
@@ -753,7 +738,7 @@ start_acceptor({_AddrType, Mod} = Listener,
             State;
         {LSocket, _, _} ->
             maybe_update_client_cert_verification(Mod, State),
-            case maybe_update_server_pkey_passphrase(Mod, State) of
+            case maybe_update_server_pkey(Mod) of
                 true ->
                     try
                         maybe_update_keep_secrets(server, Config),
@@ -770,8 +755,8 @@ start_acceptor({_AddrType, Mod} = Listener,
                               remove_proto(Listener, State))
                     end;
                 false ->
-                    info_msg("Private key password is not "
-                             "available yet or undefined, waiting...", []),
+                    info_msg("Private key is not available yet, "
+                             "waiting...", []),
                     start_ensure_config_timer(remove_proto(Listener, State))
             end
     end.
@@ -798,55 +783,56 @@ maybe_update_client_cert_verification(Mod, #s{config = Cfg}) ->
             ok
     end.
 
-maybe_update_client_pkey_passphrase(
-    #s{client_passphrase_updated = true} = State) ->
+maybe_update_client_pkey(#s{client_pkey_updated = true} = State) ->
     State;
-maybe_update_client_pkey_passphrase(
-    #s{client_passphrase_updated = false} = State) ->
+maybe_update_client_pkey(#s{client_pkey_updated = false} = State) ->
     Encr = lists:any(fun proto_to_encryption/1,
                      [M || {_, M} <- get_required_protos(State)]),
     case Encr of
         true ->
-            case maybe_update_pkey_passphrase(client, State) of
-                true -> State#s{client_passphrase_updated = true};
+            case update_cert_and_pkey(client) of
+                true -> State#s{client_pkey_updated = true};
                 false -> start_ensure_config_timer(State)
             end;
         false ->
             State
     end.
 
-maybe_update_server_pkey_passphrase(Mod, State) ->
+maybe_update_server_pkey(Mod) ->
     case proto_to_encryption(Mod) of
-        true -> maybe_update_pkey_passphrase(server, State);
+        true -> update_cert_and_pkey(server);
         false -> true
     end.
 
-maybe_update_pkey_passphrase(Type, #s{is_pkey_encrypted = IsPKeyEncrypted}) ->
-    case IsPKeyEncrypted of
-        #{Type := true} ->
-            case extract_pkey_passphrase(Type) of
-                {ok, PassFun} ->
-                    case set_dist_tls_opts(Type, [{password, PassFun}]) of
-                        ok ->
-                            info_msg("Updated ~p ssl_dist_opts (password)",
-                                     [Type]),
-                            case PassFun() of
-                                undefined ->
-                                    error_msg("Extracted ~p pkey passphrase is "
-                                              "undefined", [Type]),
-                                    false;
-                                _ ->
-                                    true
-                            end;
-                        {error, not_supported} ->
-                            false
-                    end;
-                {error, not_available} ->
+%% Gives ssl the cert chain and the decrypted private key of Type, which
+%% ns_secrets has loaded together, instead of the cert and key files, so that
+%% ssl doesn't decrypt the key again for every connection. Returns true if
+%% they are set.
+update_cert_and_pkey(Type) ->
+    case extract_cert_and_pkey(Type) of
+        {ok, {Chain, Key}} ->
+            case update_dist_tls_opts(Type,
+                                      set_cert_and_pkey_opt(_, Chain, Key)) of
+                ok ->
+                    info_msg("Updated ~p ssl_dist_opts (cert and private key)",
+                             [Type]),
+                    true;
+                {error, Reason} ->
+                    error_msg("Failed to set ~p cert and private key in "
+                              "ssl_dist_opts: ~p", [Type, Reason]),
                     false
             end;
-        _ ->
-            true
+        {error, Reason} ->
+            info_msg("~p cert and private key are not available: ~p",
+                     [Type, Reason]),
+            false
     end.
+
+%% Replaces whatever gives the cert and key in TLSOpts with
+%% {certs_keys, [#{cert => Chain, key => Key}]}
+set_cert_and_pkey_opt(TLSOpts, Chain, Key) ->
+    [{certs_keys, [#{cert => Chain, key => Key}]} |
+     ns_ssl_services_setup:remove_cert_key_opts(TLSOpts)].
 
 maybe_update_keep_secrets(Type, Config) ->
     Value = conf(keep_secrets, Config),
@@ -859,10 +845,14 @@ maybe_update_keep_secrets(Type, Config) ->
     end.
 
 set_dist_tls_opts(Type, UpdatedOpts) ->
+    update_dist_tls_opts(Type, misc:update_proplist(_, UpdatedOpts)).
+
+%% Replaces the ssl_dist_opts of Type with what UpdateFun returns for them
+update_dist_tls_opts(Type, UpdateFun) ->
     case access_ssl_dist_opts_ets(lookup, [Type]) of
         {ok, []} -> ok;
         {ok, [{Type, Opts}]} ->
-            NewOpts = misc:update_proplist(Opts, UpdatedOpts),
+            NewOpts = UpdateFun(Opts),
             %% Don't try to update if nothing has changed
             %% This check is needed for the case when unpatched erlang is used.
             %% The ets will be 'protected' then, and write will fail. But we
@@ -885,7 +875,7 @@ access_ssl_dist_opts_ets(F, A) ->
     catch
         error:badarg ->
             %% Not printing args here intentionally:
-            %% password might be present in args
+            %% private key might be present in args
             error_msg("Failed to call '~p' for ssl_dist_opts ets table, "
                       "it will not work on vanilla erlang", [F]),
             {error, not_supported}
@@ -935,6 +925,32 @@ set_dist_tls_opts_test() ->
           ?assertEqual({ok, [{server, [{a, 1}, {b, 2}]}]},
                        access_ssl_dist_opts_ets(lookup, [server]))
       end).
+
+set_cert_and_pkey_opt_test() ->
+    Chain = [<<"cert der">>, <<"intermediate der">>],
+    Key = {'PrivateKeyInfo', <<"der">>},
+    %% the way ssl_dist_opts.in gives the cert and key
+    ?assertEqual(
+       [{certs_keys, [#{cert => Chain, key => Key}]},
+        {cacertfile, "ca.pem"}, {depth, 10}],
+       set_cert_and_pkey_opt([{certs_keys, [#{certfile => "chain.pem",
+                                              keyfile => "pkey.pem"}]},
+                              {cacertfile, "ca.pem"}, {depth, 10}],
+                             Chain, Key)),
+    %% the way it gave them before, with the passphrase cb_dist used to set
+    ?assertEqual(
+       [{certs_keys, [#{cert => Chain, key => Key}]}, {cacertfile, "ca.pem"}],
+       set_cert_and_pkey_opt([{certfile, "chain.pem"}, {keyfile, "pkey.pem"},
+                              {cacertfile, "ca.pem"},
+                              {password, fun () -> "p" end}],
+                             Chain, Key)),
+    %% the cert and key are set already
+    NewChain = [<<"new cert der">>],
+    NewKey = {'PrivateKeyInfo', <<"new der">>},
+    ?assertEqual(
+       [{certs_keys, [#{cert => NewChain, key => NewKey}]}],
+       set_cert_and_pkey_opt([{certs_keys, [#{cert => Chain, key => Key}]}],
+                             NewChain, NewKey)).
 
 set_dist_tls_opts_protected_test() ->
     misc:executing_on_new_process(
@@ -1256,8 +1272,7 @@ ensure_config(#s{listeners = Listeners,
     State4 = lists:foldl(fun (P, S) -> add_proto(P, S) end,
                          State3, ToAdd ++ ToRestart),
 
-    maybe_update_client_pkey_passphrase(
-      State4#s{client_cert_auth = NewClientCertAuth}).
+    maybe_update_client_pkey(State4#s{client_cert_auth = NewClientCertAuth}).
 
 
 get_protos(#s{name = Name, config = Config}) ->
@@ -1463,14 +1478,14 @@ with_registered_connection(Fun, Module, Node) ->
                                     infinity),
                     erlang:raise(C, E, ST)
             end;
-        {error, no_pkey_passphrase} ->
+        {error, no_pkey} ->
             %% This might happen once during node start if some process attempts
             %% to connect to other nodes before ns_ssl_services_setup start
             spawn_opt(
               fun () ->
                   error_msg("** Connection to ~p failed. Client private key "
-                            "passphrase is missing or no loaded yet ", [Node]),
-                  ?shutdown2(Node, no_pkey_passphrase)
+                            "is missing or not loaded yet ", [Node]),
+                  ?shutdown2(Node, no_pkey)
               end, [link])
     end.
 
@@ -1584,50 +1599,31 @@ is_restartable_event({error, timeout}) ->
     true;
 is_restartable_event({error, {tls_alert, {_, _}}}) ->
     true;
-%% Passphrase doesn't match pkey or missing passphrase
-%% We shouldn't crash in this case, just restart the listener (we try to update
-%% the passphrase on every listener start)
+%% The key file can't be read or decrypted (ssl only reads it if we couldn't set
+%% the decrypted key). We shouldn't crash in this case, just restart the
+%% listener (we try to set the pkey on every listener start)
 is_restartable_event({error, {options, {keyfile, _, _}}}) ->
     true;
 is_restartable_event(_) ->
     false.
 
-is_pkey_encrypted(Type) when Type == server; Type == client ->
-    try ets:lookup(ssl_dist_opts, Type) of
-        [{Type, TLSOpts}] ->
-            case proplists:get_value(keyfile, TLSOpts) of
-                undefined -> false;
-                File ->
-                    case erl_prim_loader:get_file(File) of
-                        {ok, Pem, _} ->
-                            case public_key:pem_decode(Pem) of
-                                [{_, _, not_encrypted}] -> false;
-                                [{_, _, _}] -> true
-                            end;
-                        error -> false
-                    end
-            end
-    catch
-        error:badarg ->
-            info_msg("TLS dist is not available", []),
-            false
-    end.
-
-extract_pkey_passphrase(Type) ->
-    Key = case Type of
-              server -> cb_dist_pkey_pass_mfa;
-              client -> cb_dist_client_pkey_pass_mfa
+%% Returns {ok, {Chain, Key}}, Chain being the cert chain of Type and Key its
+%% decrypted private key, in the forms ssl's cert and key options take, or
+%% {error, Reason}. Gets them with the MFA dist_manager sets, which returns a
+%% fun that returns that.
+extract_cert_and_pkey(Type) ->
+    Env = case Type of
+              server -> cb_dist_cert_and_pkey_mfa;
+              client -> cb_dist_client_cert_and_pkey_mfa
           end,
-    case application:get_env(Key) of
+    case application:get_env(Env) of
         undefined ->
-            error_msg("Missing ~p env", [Key]),
+            error_msg("Missing ~p env", [Env]),
             {error, not_available};
         {ok, {M, F, A}} ->
             try erlang:apply(M, F, A) of
-                PassFun when is_function(PassFun) ->
-                    info_msg("Successfully extracted ~p pkey passphrase",
-                             [Type]),
-                    {ok, PassFun}
+                CertAndKeyFun when is_function(CertAndKeyFun, 0) ->
+                    CertAndKeyFun()
             catch
                 _:_ -> {error, not_available}
             end
