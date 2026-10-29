@@ -300,8 +300,9 @@ errors(encr_at_rest_errors_total) ->
     "Encryption-at-Rest errors have been detected on node \"~s\". "
     "Please check the logs for more details.";
 errors(cm_bucket_autoreprovision_total) ->
-    "Bucket auto-reprovisioning has occurred on node: ~p. A rebalance may be "
-    "necessary to rebuild replicas.";
+    "Bucket auto-reprovisioning has occurred. A rebalance may be "
+    "necessary to rebuild replicas. Please check the logs for the affected "
+    "buckets and nodes.";
 errors(backup_failure) ->
     "A '~s' task failed for the repository '~s'. Please see the UI for more "
     "information.";
@@ -830,7 +831,7 @@ check(oom, Opaque, _History, Stats) ->
 
 %% @doc check for any bucket reprovisions
 check(cm_bucket_autoreprovision_total, Opaque, _History, Stats) ->
-    check_global_stat_increased(Stats, cm_bucket_autoreprovision_total, Opaque);
+    check_autoreprovision(Stats, Opaque);
 
 %% @doc check for any CAS drift threshold exceeded errors on any bucket
 check(cas_drift_threshold, Opaque, _History, Stats) ->
@@ -1804,21 +1805,48 @@ check_stat_increased(Stats, StatName, Opaque, Formatter) ->
     end.
 
 check_global_stat_increased(Stats, StatName, Opaque) ->
-    New = fetch_bucket_stat(Stats, "@global", StatName),
-    case dict:is_key(StatName, Opaque) of
-        false ->
-            dict:store(StatName, New, Opaque);
-        true ->
-            Old = dict:fetch(StatName, Opaque),
-            case New > Old of
+    check_global_stat_increased(
+      Stats, StatName, Opaque,
+      fun () ->
+              Host = misc:extract_node_address(node()),
+              global_alert(StatName, fmt_to_bin(errors(StatName), [Host]))
+      end).
+
+check_global_stat_increased(Stats, StatName, Opaque, Alert) ->
+    GlobalStats = proplists:get_value("@global", Stats, []),
+    case proplists:get_value(StatName, GlobalStats) of
+        undefined ->
+            %% A failed stats query may omit the stat. Keeping the last
+            %% value means the next successful read is compared with it.
+            Opaque;
+        New ->
+            case dict:is_key(StatName, Opaque) of
                 false ->
-                    ok;
+                    dict:store(StatName, New, Opaque);
                 true ->
-                    Host = misc:extract_node_address(node()),
-                    global_alert(StatName, fmt_to_bin(errors(StatName), [Host]))
-            end,
-            dict:store(StatName, New, Opaque)
+                    Old = dict:fetch(StatName, Opaque),
+                    case New > Old of
+                        false ->
+                            ok;
+                        true ->
+                            Alert()
+                    end,
+                    dict:store(StatName, New, Opaque)
+            end
     end.
+
+check_autoreprovision(Stats, Opaque) ->
+    Key = cm_bucket_autoreprovision_total,
+    Alert =
+        case mb_master:master_node() =:= node() of
+            true ->
+                fun () ->
+                        global_alert(Key, fmt_to_bin(errors(Key), []))
+                end;
+            false ->
+                fun () -> ok end
+        end,
+    check_global_stat_increased(Stats, Key, Opaque, Alert).
 
 %% @doc Check for failure stat changes and alert if increased.
 %% Key is the opaque dict key, Num is the current count, and MsgFun
@@ -2388,5 +2416,17 @@ crl_format_test__() ->
     ?assertEqual("42", format_crl_number(42)),
     ?assertEqual("a.crl, b.crl",
                  format_crl_files([<<"b.crl">>, <<"a.crl">>])).
+
+check_global_stat_increased_missing_stat_test() ->
+    Stat = cm_bucket_autoreprovision_total,
+    Empty = dict:new(),
+    ?assertEqual(Empty, check_global_stat_increased([], Stat, Empty)),
+
+    Seen = check_global_stat_increased([{"@global", [{Stat, 1}]}], Stat,
+                                       Empty),
+    ?assertEqual({ok, 1}, dict:find(Stat, Seen)),
+    ?assertEqual(Seen, check_global_stat_increased([], Stat, Seen)),
+    ?assertEqual(Seen, check_global_stat_increased([{"@global", []}], Stat,
+                                                   Seen)).
 
 -endif.
