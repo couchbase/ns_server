@@ -31,6 +31,7 @@
 -define(UNMOUNT_VOLUMES_TIMEOUT,  ?get_timeout(unmount_volumes, 30000)).
 -define(RELEASE_SNAPSHOTS_TIMEOUT, ?get_timeout(release_snapshots, 30000)).
 -define(UPLOADERS_START_TIMEOUT, ?get_timeout(uploaders_start, 60000)).
+-define(GET_FILE_VERSION_TIMEOUT, ?get_timeout(get_file_version, 300000)).
 
 -record(state, {bucket_name :: ns_bucket:name(),
                 rebalance_pid :: undefined | pid(),
@@ -72,6 +73,7 @@
          wait_dcp_data_move/5,
          wait_seqno_persisted/5,
          get_vbucket_high_seqno/4,
+         get_file_version/2,
          dcp_takeover/5,
          inhibit_view_compaction/3,
          uninhibit_view_compaction/4,
@@ -674,6 +676,11 @@ get_vbucket_high_seqno(Bucket, Rebalancer, MasterNode, VBucket) ->
     true = is_integer(RV),
     RV.
 
+-spec get_file_version(ns_bucket:name(), node()) ->
+          {ok, [{binary(), binary()}]} | {exception, any()} | {error, any()}.
+get_file_version(Bucket, Node) ->
+    call(Bucket, Node, get_file_version, ?GET_FILE_VERSION_TIMEOUT).
+
 -spec wait_seqno_persisted(ns_bucket:name(), pid(), node(), vbucket_id(),
                            seq_no()) -> ok.
 wait_seqno_persisted(Bucket, Rebalancer, Node, VBucket, SeqNo) ->
@@ -1024,6 +1031,11 @@ do_handle_call({get_vbucket_high_seqno, VBucket},
     %% persisted seq no should not be possible here
     {ok, SeqNo} = ns_memcached:get_vbucket_high_seqno(Bucket, VBucket),
     {reply, SeqNo, State};
+do_handle_call(get_file_version, _From,
+               #state{bucket_name = Bucket} = State) ->
+    RV = ns_memcached:raw_stats(node(), Bucket, <<"diskinfo version">>,
+                                fun (K, V, Acc) -> [{K, V} | Acc] end, []),
+    {reply, RV, State};
 do_handle_call({get_failover_logs, VBucketsR}, From, State) ->
     handle_call_via_servant(
       From, State, VBucketsR,

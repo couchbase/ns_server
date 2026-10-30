@@ -115,11 +115,6 @@ rebalance_test_setup(SetupConfig) ->
                         dict:store(9, {"db_data_size", "1234"}, Stats)
                 end),
 
-    meck:expect(ns_memcached, raw_stats,
-                fun (_Node, _Bucket, <<"diskinfo version">>, _, _) ->
-                        {ok, []}
-                end),
-
     meck:new(ns_doctor),
     meck:expect(ns_doctor, get_nodes, fun() -> [] end),
     Pids = #{ns_doctor_sup => mocked},
