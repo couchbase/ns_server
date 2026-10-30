@@ -1380,6 +1380,29 @@ watch_test_() ->
                ?assertMatch({Key, _, v1}, next_watched()),
                stop_watch(Pid)
        end},
+      {"watches report sensitive leaves bare",
+       fun () ->
+               Key = [key1, subkey1, root],
+               ?assertMatch({ok, _, create},
+                            test_set(Key, v1, new, true, true)),
+
+               Pid = start_watch(watch_dir([subkey1, root], false, undefined,
+                                           _)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+               Pid1 = start_watch(watch(Key, _)),
+               ?assertMatch({Key, _, v1}, next_watched()),
+               ?assertMatch({snapshot_end, _}, next_watched()),
+
+               %% the update does not state the flag, so the stored value
+               %% stays tagged
+               {ok, Rev, update} = test_set(Key, v2, undefined, false),
+               ?assertEqual({?METAKV2_SENSITIVE, v2}, stored_value(Key)),
+               ?assertEqual({Key, Rev, v2}, next_watched()),
+               ?assertEqual({Key, Rev, v2}, next_watched()),
+               stop_watch(Pid),
+               stop_watch(Pid1)
+       end},
       {"watch stops on unexpected message",
        fun() ->
                Pid = start_watch(watch_dir([subkey1, root], false, undefined,
