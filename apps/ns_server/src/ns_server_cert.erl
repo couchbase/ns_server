@@ -42,6 +42,7 @@
          get_cert_info/2,
          set_generated_ca/2,
          validate_pkey/2,
+         decrypt_pkey/2,
          get_chain_info/2,
          trusted_CAs/1,
          generate_certs/2,
@@ -404,14 +405,42 @@ cipher_info() ->
                       encryptionScheme = EncryptionScheme
                     }}.
 
+%% Checks that PKeyPemBin is a supported private key that PassFun's
+%% passphrase decrypts; returns its pem entry, as it is.
+-spec validate_pkey(binary(), fun(() -> string() | undefined)) ->
+          {ok, public_key:pem_entry()} | {error, term()}.
 validate_pkey(PKeyPemBin, PassFun) ->
+    case decode_pkey(PKeyPemBin, PassFun) of
+        {ok, Entry, _Key} ->
+            {ok, Entry};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% Like validate_pkey/2, but returns the key decrypted, in the form ssl's
+%% key option takes.
+-spec decrypt_pkey(binary(), fun(() -> string() | undefined)) ->
+          {ok, {public_key:pki_asn1_type(), binary()}} | {error, term()}.
+decrypt_pkey(PKeyPemBin, PassFun) ->
+    case decode_pkey(PKeyPemBin, PassFun) of
+        {ok, _Entry, Key} ->
+            {ok, Key};
+        {error, _} = Error ->
+            Error
+    end.
+
+%% Does the work of both of the above, so that the key is decrypted once.
+-spec decode_pkey(binary(), fun(() -> string() | undefined)) ->
+          {ok, public_key:pem_entry(), {public_key:pki_asn1_type(), binary()}} |
+          {error, term()}.
+decode_pkey(PKeyPemBin, PassFun) ->
     try public_key:pem_decode(PKeyPemBin) of
-        [{Type, _, not_encrypted} = Entry] ->
+        [{Type, Der, not_encrypted} = Entry] ->
             case Type of
                 'PrivateKeyInfo' ->
-                    try element(1, public_key:pem_entry_decode(Entry)) of
+                    try key_type(public_key:pem_entry_decode(Entry)) of
                         T when ?SUPPORTED_PKEY_TYPE(T) ->
-                            {ok, Entry};
+                            {ok, Entry, {Type, Der}};
                         Other ->
                             ?log_debug("Invalid pkey type: ~p", [Other]),
                             {error, {invalid_pkey, Other}}
@@ -422,20 +451,20 @@ validate_pkey(PKeyPemBin, PassFun) ->
                             {error, malformed_pkey}
                     end;
                 _ when ?SUPPORTED_PKEY_TYPE(Type) ->
-                    {ok, Entry};
+                    {ok, Entry, {Type, Der}};
                 Other ->
                     ?log_debug("Invalid pkey type: ~p", [Other]),
                     {error, {invalid_pkey, Type}}
             end;
-        [{_Type, _, CipherInfo} = Entry] ->
+        [{Type, _, CipherInfo} = Entry] ->
             try {supported_pkey_cipher(CipherInfo),
-                 element(1, public_key:pem_entry_decode(Entry, PassFun))} of
-                {true, T} when ?SUPPORTED_PKEY_TYPE(T) ->
-                    {ok, Entry};
+                 decrypt_pem_entry(Entry, PassFun)} of
+                {true, {T, Der}} when ?SUPPORTED_PKEY_TYPE(T) ->
+                    {ok, Entry, {Type, Der}};
                 {false, _} ->
                     ?log_error("Unsupported pkey cipher: ~p", [CipherInfo]),
                     {error, {invalid_pkey_cipher, CipherInfo}};
-                {true, Other} ->
+                {true, {Other, _}} ->
                     ?log_debug("Invalid pkey type: ~p", [Other]),
                     {error, {invalid_pkey, Other}}
             catch
@@ -454,6 +483,20 @@ validate_pkey(PKeyPemBin, PassFun) ->
                        [{T, E, S}]),
             {error, malformed_pkey}
     end.
+
+%% Returns the type of the key in the encrypted pem entry, and the key,
+%% decrypted, as der.
+decrypt_pem_entry({Type, _, _} = Entry, PassFun) ->
+    Key = public_key:pem_entry_decode(Entry, PassFun),
+    {Type, Der, not_encrypted} = public_key:pem_entry_encode(Type, Key),
+    {key_type(Key), Der}.
+
+%% Not element(1, Key) as it is: for some keys (RSA-PSS), that's the key
+%% itself, which must not end up in the logs or an error.
+key_type(Key) when is_tuple(Key), is_atom(element(1, Key)) ->
+    element(1, Key);
+key_type(_) ->
+    unknown.
 
 %% Support PKCS-5v2 only
 supported_pkey_cipher({_Name, #'PBES2-params'{}}) -> true;
@@ -1219,7 +1262,8 @@ validate_otp_certs(client_cert, ChainPem, PKeyPem, PassphraseFun) ->
             PrivateKey = public_key:pem_entry_decode(PKeyEntry,
                                                      PassphraseFun),
             {_, KeyDer, _} = public_key:pem_entry_encode(KeyType, PrivateKey),
-            Opts = [{cert, ChainDer}, {key, {KeyType, KeyDer}}],
+            Opts = [{certs_keys, [#{cert => ChainDer,
+                                    key => {KeyType, KeyDer}}]}],
             case ns_cluster:verify_otp_connectivity(Node, Opts) of
                 {ok, _} -> ok;
                 {error, _, {_, Msg}} ->
@@ -1269,11 +1313,12 @@ with_test_otp_server(Fun, ChainPem, PKeyPem, PassphraseFun) ->
     PrivateKey = public_key:pem_entry_decode(PKeyEntry, PassphraseFun),
     {_, KeyDer, _} = public_key:pem_entry_encode(KeyType, PrivateKey),
 
-    ServerOpts = lists:map(
-                   fun ({certfile, _}) -> {cert, ChainDer};
-                       ({keyfile, _}) -> {key, {KeyType, KeyDer}};
-                       (O) -> O
-                   end, CurrentServerOptsWithAF),
+    %% Whichever way the current options give the cert and key, they are
+    %% replaced with the ones being tested
+    ServerOpts = [{certs_keys, [#{cert => ChainDer,
+                                  key => {KeyType, KeyDer}}]} |
+                  ns_ssl_services_setup:remove_cert_key_opts(
+                    CurrentServerOptsWithAF)],
     case ssl:listen(0, ServerOpts) of
         {ok, LSocket} ->
             Accepter = spawn(fun () ->

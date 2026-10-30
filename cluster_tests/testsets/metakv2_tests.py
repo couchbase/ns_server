@@ -9,6 +9,7 @@
 
 import testlib
 import json
+import requests
 
 METAKV2_ENDPOINT = "/_metakv2"
 CONTROLLER_ENDPOINT = METAKV2_ENDPOINT + "/_controller"
@@ -156,6 +157,40 @@ def assert_value(resp, expected):
     testlib.assert_eq(v, expected, "value", resp)
     return r
 
+class Feed:
+    """Reads the json objects of a continuous feed as they arrive"""
+    def __init__(self, resp):
+        self.resp = resp
+        self.chunks = resp.iter_content(chunk_size=None)
+        self.decoder = json.JSONDecoder()
+        self.buf = ""
+
+    def next(self):
+        while True:
+            self.buf = self.buf.lstrip()
+            if self.buf:
+                try:
+                    obj, end = self.decoder.raw_decode(self.buf)
+                    self.buf = self.buf[end:]
+                    return obj
+                except json.JSONDecodeError:
+                    pass
+            self.buf += next(self.chunks).decode("utf-8")
+
+    def close(self):
+        self.resp.close()
+
+def assert_event(event, path, value):
+    testlib.assert_eq(event.get("path"), path, "path")
+    testlib.assert_eq(event.get("value"), value, "value")
+    assert "revision" in event, f"no revision in {event}"
+
+def assert_snapshot_end(event):
+    testlib.assert_eq(event.get("snapshotEnd"), True, "snapshotEnd")
+    assert "path" not in event, f"path in {event}"
+    assert "revision" in event, f"no revision in {event}"
+    return event["revision"]
+
 class Metakv2Tests(testlib.BaseTestSet):
     def __init__(self, cluster):
         super().__init__(cluster)
@@ -224,6 +259,21 @@ class Metakv2Tests(testlib.BaseTestSet):
 
         return testlib.request('DELETE', self.cluster,
                                METAKV2_ENDPOINT + key, params=params)
+
+    def metakv2_watch(self, key, recursive=False, depth=None):
+        params = {'feed': 'continuous'}
+        if recursive:
+            params['recursive']='true'
+        if depth is not None:
+            params['depth']=depth
+
+        # Not verbose, as that reads the whole body, which never ends. The
+        # timeout bounds each read, so that a missing event fails the test
+        resp = testlib.request('GET', self.cluster, METAKV2_ENDPOINT + key,
+                               params=params, stream=True, verbose=False,
+                               session=requests.Session(), timeout=10)
+        testlib.assert_http_code(200, resp)
+        return Feed(resp)
 
     def assert_dir_content(self, dir, expected, recursive=True, depth=None):
         resp = self.metakv2_get(dir, recursive=recursive, depth=depth)
@@ -802,3 +852,190 @@ class Metakv2Tests(testlib.BaseTestSet):
             resp.text.strip(), "{{false,true},{false,true}}",
             "{secret found, plain found} for the snapshot and the log dump",
             resp)
+
+    def watch_dir_test(self):
+        key = "/root/subdir/key1"
+        deeper = "/root/subdir/subdir1/key2"
+        other = "/root/other/key3"
+        new = "/root/subdir/key4"
+
+        assert_created(self.metakv2_put(key, value="v1", create=True,
+                                        recursive=True))
+        assert_created(self.metakv2_put(deeper, value="v2", create=True,
+                                        recursive=True))
+        assert_created(self.metakv2_put(other, value="v3", create=True,
+                                        recursive=True))
+
+        feed = self.metakv2_watch("/root/subdir/")
+        try:
+            assert_event(feed.next(), key, "v1")
+
+            # The snapshot ends at the revision a GET of the directory returns
+            rev = self.metakv2_get("/root/subdir/").json()["revision"]
+            testlib.assert_eq(assert_snapshot_end(feed.next()), rev,
+                              "snapshot revision")
+
+            # Neither is under the watch, which the next event arriving being
+            # the one for key shows
+            assert_updated(self.metakv2_put(deeper, value="v20"))
+            assert_updated(self.metakv2_put(other, value="v30"))
+
+            assert_updated(self.metakv2_put(key, value="v10"))
+            assert_event(feed.next(), key, "v10")
+
+            assert_deleted(self.metakv2_delete(key))
+            assert_event(feed.next(), key, None)
+
+            assert_created(self.metakv2_put(new, value="v4", create=True))
+            assert_event(feed.next(), new, "v4")
+        finally:
+            feed.close()
+
+        feed = self.metakv2_watch("/root/", recursive=True, depth=2)
+        try:
+            testlib.assert_eq({feed.next()["path"], feed.next()["path"]},
+                              {new, other}, "paths")
+            assert_snapshot_end(feed.next())
+            assert_updated(self.metakv2_put(deeper, value="v200"))
+            assert_updated(self.metakv2_put(other, value="v300"))
+            assert_event(feed.next(), other, "v300")
+        finally:
+            feed.close()
+
+    def watch_subscribers(self):
+        resp = testlib.diag_eval(
+            self.cluster,
+            "length(gen_event:which_handlers("
+            "chronicle_kv:event_manager(metakv))).")
+        return int(resp.text.strip())
+
+    def watch_ends_with_connection_test(self):
+        before = self.watch_subscribers()
+        feed = self.metakv2_watch("/root/")
+        testlib.poll_for_condition(
+            lambda: self.watch_subscribers() == before + 1, sleep_time=0.1,
+            timeout=10, msg="watch to subscribe")
+        feed.close()
+        testlib.poll_for_condition(
+            lambda: self.watch_subscribers() == before, sleep_time=0.1,
+            timeout=10, msg="watch to unsubscribe once the client has gone")
+
+    def set_watch_param(self, module, name, value):
+        testlib.diag_eval(
+            self.cluster,
+            f"ns_config:set({{node, node(), {{{module}, {name}}}}}, {value}).")
+
+    def delete_watch_param(self, module, name):
+        testlib.diag_eval(
+            self.cluster,
+            f"ns_config:delete({{node, node(), {{{module}, {name}}}}}).")
+
+    def watch_send_timeout_test(self):
+        key = "/root/subdir/key1"
+        value = "x" * 512 * 1024
+        self.set_watch_param("menelaus_metakv2", "watch_send_timeout", 1000)
+        before = self.watch_subscribers()
+        feed = self.metakv2_watch("/root/subdir/")
+        try:
+            testlib.poll_for_condition(
+                lambda: self.watch_subscribers() == before + 1, sleep_time=0.1,
+                timeout=10, msg="watch to subscribe")
+
+            # Never read from the feed, so that the changes fill the socket
+            # buffers and the watch is cut off rather than queueing them
+            assert_created(self.metakv2_put(key, value=value, create=True,
+                                            recursive=True))
+            for i in range(64):
+                if self.watch_subscribers() == before:
+                    break
+                assert_updated(self.metakv2_put(key, value=f"{i}{value}"))
+            testlib.poll_for_condition(
+                lambda: self.watch_subscribers() == before, sleep_time=0.1,
+                timeout=10, msg="watch to be cut off")
+        finally:
+            feed.close()
+            self.delete_watch_param("menelaus_metakv2", "watch_send_timeout")
+
+    def watch_heartbeat_test(self):
+        key = "/root/subdir/key1"
+        self.set_watch_param("chronicle_metakv", "watch_heartbeat_interval",
+                             500)
+        feed = self.metakv2_watch("/root/subdir/")
+        try:
+            assert_snapshot_end(feed.next())
+            testlib.assert_eq(feed.next(), {"heartbeat": True}, "heartbeat")
+
+            # Heartbeats carry on around the changes
+            assert_created(self.metakv2_put(key, value="v1", create=True,
+                                            recursive=True))
+            event = feed.next()
+            while event == {"heartbeat": True}:
+                event = feed.next()
+            assert_event(event, key, "v1")
+            testlib.assert_eq(feed.next(), {"heartbeat": True}, "heartbeat")
+        finally:
+            feed.close()
+            self.delete_watch_param("chronicle_metakv",
+                                    "watch_heartbeat_interval")
+
+    def watch_missing_dir_test(self):
+        key = "/root/missing/key1"
+        feed = self.metakv2_watch("/root/missing/")
+        try:
+            assert_snapshot_end(feed.next())
+            assert_created(self.metakv2_put(key, value="v1", create=True,
+                                            recursive=True))
+            assert_event(feed.next(), key, "v1")
+        finally:
+            feed.close()
+
+    def watch_bad_feed_test(self):
+        for key in ["/root/", "/root/key"]:
+            resp = testlib.request('GET', self.cluster, METAKV2_ENDPOINT + key,
+                                   params={'feed': 'normal'})
+            testlib.assert_http_code(400, resp)
+
+    def watch_leaf_test(self):
+        key = "/root/subdir/key1"
+        sibling = "/root/subdir/key2"
+        deeper = "/root/subdir/key1/key3"
+
+        assert_created(self.metakv2_put(key, value="v1", create=True,
+                                        recursive=True))
+        assert_created(self.metakv2_put(sibling, value="v2", create=True))
+
+        feed = self.metakv2_watch(key)
+        try:
+            assert_event(feed.next(), key, "v1")
+            assert_snapshot_end(feed.next())
+
+            # Not the watched leaf, which the next event arriving being the one
+            # for key shows
+            assert_updated(self.metakv2_put(sibling, value="v20"))
+
+            assert_updated(self.metakv2_put(key, value="v10"))
+            assert_event(feed.next(), key, "v10")
+
+            assert_deleted(self.metakv2_delete(key))
+            assert_event(feed.next(), key, None)
+
+            # a directory in its place is not the leaf either
+            assert_created(self.metakv2_put(deeper, value="v3", create=True,
+                                            recursive=True))
+            assert_deleted(self.metakv2_delete(key + "/", recursive=True))
+
+            assert_created(self.metakv2_put(key, value="v4", create=True))
+            assert_event(feed.next(), key, "v4")
+        finally:
+            feed.close()
+
+    def watch_missing_leaf_test(self):
+        key = "/root/missing/key1"
+        feed = self.metakv2_watch(key)
+        try:
+            assert_snapshot_end(feed.next())
+            assert_created(self.metakv2_put(key, value="v1", create=True,
+                                            recursive=True))
+            assert_event(feed.next(), key, "v1")
+        finally:
+            feed.close()

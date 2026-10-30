@@ -854,24 +854,32 @@ proxy_req({Scheme, Host, Port, AFamily}, Path, Headers, Timeout,
           ExtraConnectOpts, Req) when is_atom(Scheme) ->
     Method = mochiweb_request:get(method, Req),
     Body = get_body(Req),
-    TLSOpts = case Scheme of
-                  https ->
-                      ns_ssl_services_setup:tls_client_opts(ns_config:latest(),
-                                                            ExtraConnectOpts);
-                  http ->
-                      []
-              end,
-    Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
-                                   {part_size, ?PART_SIZE}]},
-               {connect_options, [AFamily | TLSOpts]}],
-    Resp = lhttpc:request(Host, Port, Scheme =:= https, Path, Method, Headers,
-                          Body, Timeout, Options),
+    Resp =
+        try proxy_tls_opts(Scheme, ExtraConnectOpts) of
+            TLSOpts ->
+                Options = [{partial_download, [{window_size, ?WINDOW_SIZE},
+                                               {part_size, ?PART_SIZE}]},
+                           {connect_options, [AFamily | TLSOpts]}],
+                lhttpc:request(Host, Port, Scheme =:= https, Path, Method,
+                               Headers, Body, Timeout, Options)
+        catch
+            %% The client cert and key couldn't be loaded: fail the way a
+            %% connection that can't be set up does
+            error:{cert_and_pkey_not_available, _, _} = Reason ->
+                {error, Reason}
+        end,
     RespHeaderFilterFun =
         lists:filter(
             fun ({K, _}) ->
                 not lists:member(string:to_lower(K), ?PROXY_DROP_RESP_HEADERS)
             end, _),
     handle_resp(Resp, RespHeaderFilterFun, Req).
+
+proxy_tls_opts(https, ExtraConnectOpts) ->
+    ns_ssl_services_setup:tls_client_opts(ns_config:latest(), ExtraConnectOpts,
+                                          key);
+proxy_tls_opts(http, _ExtraConnectOpts) ->
+    [].
 
 get_body(Req) ->
     case mochiweb_request:recv_body(Req) of
