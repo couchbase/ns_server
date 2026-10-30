@@ -89,7 +89,8 @@
          proxy_req/6,
          respond/2,
          survive_web_server_restart/1,
-         get_body/1]).
+         get_body/1,
+         force_close_connection/0]).
 
 %% Internal exports.
 -export([wake_up/4]).
@@ -921,6 +922,11 @@ stream_body(Pid, Resp) ->
             mochiweb_response:write_chunk(<<>>, Resp)
     end.
 
+%% mochiweb decides keep-alive from the request alone, so use this when the
+%% handler knows the client won't send another request on the connection
+force_close_connection() ->
+    erlang:put(mochiweb_request_force_close, true).
+
 survive_web_server_restart(Fun) ->
     %% NOTE: due to required restart we need to protect
     %%       ourselves from 'death signal' of parent
@@ -929,7 +935,7 @@ survive_web_server_restart(Fun) ->
     %% Ask mochiweb to send "Connection: close" header
     %% otherwise the remote client might try to send another http request
     %% in this connection and get a connection close as the result.
-    erlang:put(mochiweb_request_force_close, true),
+    force_close_connection(),
 
     Fun(),
 

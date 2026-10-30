@@ -49,6 +49,7 @@ handle_upgrade(Req, Body) ->
     else
         {error, E} ->
             ?log_warning("Error with websocket request: ~p", [E]),
+            menelaus_util:force_close_connection(),
             menelaus_util:reply(Req, 400),
             {error, E}
     end.

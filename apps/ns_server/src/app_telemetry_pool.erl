@@ -221,10 +221,14 @@ connection_handler(Pid, {RespTuple, ReEntry, ReplyChannel}, Req) ->
         ok ->
             menelaus_websocket:enter(ReEntry, ok);
         {error, too_many_clients} ->
+            %% A client whose upgrade fails retries on a new connection, so
+            %% close this one rather than hold a listener slot for it
+            menelaus_util:force_close_connection(),
             menelaus_util:reply(Req, 429);
         Error ->
             ?log_error("Failed to handle app telemetry connection: ~p",
                        [Error]),
+            menelaus_util:force_close_connection(),
             menelaus_util:reply_text(Req, <<"Unexpected server error">>,
                                      500)
     end.
@@ -337,11 +341,13 @@ setup() ->
                 fun(_Socket, [_Prefix, _Opcode, _Payload, _Version]) ->
                         ok
                 end),
+    meck:new(menelaus_util, [passthrough]),
     meck:expect(menelaus_util, respond, fun (_, _) -> ok end),
     meck:expect(menelaus_auth, get_authn_res, fun(_) -> #authn_res{} end),
     meck:expect(menelaus_auth, has_permission, fun(_, _) -> true end).
 
 teardown(_) ->
+    gen_server:stop(?SERVER),
     meck:unload().
 
 simple_test__() ->
@@ -387,10 +393,31 @@ simple_test__() ->
                  app_telemetry_pool:call(Pid, ?TEST_FRAME, ?TIMEOUT)),
     ?assertEqual(ok, misc:wait_for_process(Pid, ?TIMEOUT)).
 
-simple_test_() ->
-    {setup,
+full_pool_closes_connection_test__() ->
+    Parent = self(),
+    meck:expect(mochiweb_websocket, upgrade_connection,
+                fun (_, _) ->
+                        {{101, [], ""}, fun (_) -> ok end, fun (_) -> ok end}
+                end),
+    meck:expect(menelaus_util, reply,
+                fun (_Req, Code) ->
+                        ForceClose = erlang:get(mochiweb_request_force_close),
+                        Parent ! {replied, Code, ForceClose}
+                end),
+
+    start_link(#{max => 0}),
+
+    %% Connect from another process, as the connection sets a process flag
+    %% and monitors the pool, which would otherwise leak into later tests
+    spawn_link(?cut(handle_connect(?CLIENT_HANDSHAKE))),
+    ?expect_message({replied, 429, true}, ?TIMEOUT).
+
+app_telemetry_pool_test_() ->
+    {foreach,
      fun setup/0,
      fun teardown/1,
-     fun simple_test__/0}.
+     [{"Simple", fun simple_test__/0},
+      {"Full pool closes connection",
+       fun full_pool_closes_connection_test__/0}]}.
 
 -endif.

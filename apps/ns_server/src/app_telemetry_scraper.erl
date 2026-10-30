@@ -55,6 +55,7 @@ handle_connect(Req) ->
         true ->
             app_telemetry_pool:handle_connect(Req);
         false ->
+            menelaus_util:force_close_connection(),
             menelaus_util:reply_not_found(Req)
     end.
 
