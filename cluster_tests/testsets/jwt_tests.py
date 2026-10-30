@@ -975,6 +975,84 @@ class JWTTests(testlib.BaseTestSet):
             assert r.status_code == expected_code
             assert r.json() == {"errors": error}
 
+    def max_token_lifetime_test(self):
+        """maxTokenLifetimeS rejects a token whose exp - iat exceeds it, and a
+        token without iat."""
+        self.auth_setup()
+        self.configure_jwt({"maxTokenLifetimeS": 3600})
+        issuer = testlib.get_succ(self.cluster, self.endpoint).json()[
+            "issuers"
+        ][0]
+        testlib.assert_eq(
+            issuer.get("maxTokenLifetimeS"), 3600, name="maxTokenLifetimeS"
+        )
+        now = int(time.time())
+        claims = {**self.base_claims, "groups": ["jwt_bucket_admins"]}
+
+        test_cases = [
+            ({**claims, "iat": now, "exp": now + 3600}, 200, None),
+            (
+                {**claims, "iat": now, "exp": now + 3601},
+                401,
+                "Token lifetime exceeds the maximum",
+            ),
+            ({**claims, "exp": now + 600}, 401, "Missing/invalid claim: iat"),
+        ]
+
+        for token_claims, expected_code, error in test_cases:
+            token = self.create_token(token_claims)
+            headers = {"Authorization": f"Bearer {token}"}
+            r = testlib.get(
+                self.cluster,
+                "/pools/default/buckets",
+                auth=None,
+                headers=headers,
+            )
+            assert r.status_code == expected_code, r.text
+            if error is not None:
+                assert r.json() == {"errors": error}
+
+    def reject_tokens_issued_before_test(self):
+        """rejectTokensIssuedBefore rejects a token with an earlier iat, and a
+        token without iat."""
+        self.auth_setup()
+        now = int(time.time())
+        cutoff = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 30))
+        self.configure_jwt({"rejectTokensIssuedBefore": cutoff})
+
+        issuer = testlib.get_succ(self.cluster, self.endpoint).json()[
+            "issuers"
+        ][0]
+        testlib.assert_eq(
+            issuer.get("rejectTokensIssuedBefore"),
+            cutoff,
+            name="rejectTokensIssuedBefore",
+        )
+
+        claims = {**self.base_claims, "groups": ["jwt_bucket_admins"]}
+        test_cases = [
+            ({**claims, "iat": now}, 200, None),
+            (
+                {**claims, "iat": now - 60},
+                401,
+                "Token was issued before the issuer's cutoff",
+            ),
+            (claims, 401, "Missing/invalid claim: iat"),
+        ]
+
+        for token_claims, expected_code, error in test_cases:
+            token = self.create_token(token_claims)
+            headers = {"Authorization": f"Bearer {token}"}
+            r = testlib.get(
+                self.cluster,
+                "/pools/default/buckets",
+                auth=None,
+                headers=headers,
+            )
+            assert r.status_code == expected_code, r.text
+            if error is not None:
+                assert r.json() == {"errors": error}
+
     def invalid_subject_claim_test(self):
         """JWT auth failures caused by an invalid/unmapped sub claim must
         surface a specific reason in the 401 body (MB-72543), instead of a
