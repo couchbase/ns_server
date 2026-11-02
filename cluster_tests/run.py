@@ -75,6 +75,7 @@ from testsets import \
     users_tests, \
     web_settings_tests, \
     native_encryption_tests, \
+    cont_backup_encryption_tests, \
     rest_eject_test, \
     node_remap_tests, \
     services_topology_tests, \
