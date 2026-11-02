@@ -19,8 +19,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(CONT_BACKUP_CBAUTH_LABEL, "cbcontbk-cbauth").
-
 -export([get_encryption_method/3,
          update_deks/2,
          get_required_usage/1,
@@ -98,34 +96,24 @@ bucket_exists_on_node(BucketUUID, Snapshot) ->
                   cb_cluster_secrets:chronicle_snapshot()) -> ok | {error, _}.
 update_deks({bucketDek, BucketUUID} = Kind, Snapshot) ->
     maybe
-        %% Push keys to backup first to avoid a theoretical
-        %% race when memcached already knows a new key, but
-        %% backup haven't received it yet.
-        %% In the case where kv has the key but continuous backup does
-        %% not it will be handled via retries.
-        ok ?= case ns_ports_setup:should_run(cont_backup, Snapshot) of
-                  true ->
-                      cb_deks_cbauth:call_update_keys_db(
-                        Kind, [?CONT_BACKUP_CBAUTH_LABEL], true);
-                  false ->
-                      ok
-              end,
+        %% Push keys to cbauth consumers (cbcontbk) first, so memcached
+        %% doesn't start using a key that a connected cbcontbk doesn't know
+        %% about. A missing connection is ignored so cbcontbk being down
+        %% doesn't block key rotation: it gets the keys when it connects, and
+        %% it retries files with unknown keys until then.
+        ok ?= cb_deks_cbauth:update_deks(Kind, Snapshot),
         ok ?= ns_memcached:set_active_dek_for_bucket_uuid(BucketUUID),
         ok
     end.
 
 -spec dek_consumers(cb_deks:dek_kind(),
                     cb_cluster_secrets:chronicle_snapshot()) -> [term()].
-dek_consumers(_Kind, Snapshot) ->
-    %% Continuous backup is the only bucket dek consumer that has no other
-    %% channel for receiving keys (memcached gets them as a part of the bucket
-    %% config), so it must be reported here. Otherwise cb_cluster_secrets
-    %% doesn't notice that cbcontbk has (re)started, and can skip pushing
-    %% keys to it (see call_set_active_cb).
-    case ns_ports_setup:should_run(cont_backup, Snapshot) of
-        true -> [json_rpc_connection:get_pid(?CONT_BACKUP_CBAUTH_LABEL)];
-        false -> []
-    end.
+dek_consumers(Kind, Snapshot) ->
+    %% cbauth consumers are reported by pid, so cb_cluster_secrets notices
+    %% when cbcontbk (re)starts and pushes keys to it again (see
+    %% call_set_active_cb). Memcached is a constant because it gets keys as a
+    %% part of the bucket config after a restart.
+    [memcached | cb_deks_cbauth:dek_consumers(Kind, Snapshot)].
 
 -spec get_required_usage(cb_deks:dek_kind()) ->
           cb_cluster_secrets:secret_usage().
@@ -159,24 +147,34 @@ get_force_encryption_timestamp({bucketDek, BucketUUID}, Snapshot) ->
 -spec get_dek_ids_in_use(cb_deks:dek_kind(),
                          cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, [cb_deks:dek_id()]} | {error, _}.
-get_dek_ids_in_use({bucketDek, BucketUUID}, Snapshot) ->
+get_dek_ids_in_use({bucketDek, BucketUUID} = Kind, Snapshot) ->
     case ns_memcached:get_dek_ids_in_use(BucketUUID) of
-        {ok, Ids} ->
-            {ok, Ids};
+        {ok, KvIds} ->
+            %% cbcontbk must be asked after memcached: magma stops reporting
+            %% a dek only after the backup generation that uses it is on
+            %% disk, so each dek is seen by at least one of the two calls.
+            maybe
+                {ok, CbauthIds} ?=
+                    cb_deks_cbauth:get_dek_ids_in_use(Kind, Snapshot),
+                {ok, lists:uniq(KvIds ++ CbauthIds)}
+            end;
         {error, retry} ->
             {error, retry};
         {error, not_found} ->
             case bucket_exists_on_node(BucketUUID,
                                        Snapshot) of
                 true -> {error, not_found};
-                false -> {ok, []}
+                %% Memcached not knowing the bucket doesn't mean cbauth
+                %% consumers don't use its deks (e.g. cbcontbk may still
+                %% have backup files)
+                false -> cb_deks_cbauth:get_dek_ids_in_use(Kind, Snapshot)
             end
     end.
 
 -spec initiate_drop_deks(cb_deks:dek_kind(), [cb_deks:dek_id()],
                          cb_cluster_secrets:chronicle_snapshot()) ->
           {ok, done | started} | {error, not_found | retry | _}.
-initiate_drop_deks({bucketDek, BucketUUID},
+initiate_drop_deks({bucketDek, BucketUUID} = Kind,
                    DekIds, Snapshot) ->
     Continuation = fun (_) ->
                        cb_cluster_secrets:dek_drop_complete(
@@ -184,8 +182,15 @@ initiate_drop_deks({bucketDek, BucketUUID},
                    end,
     case bucket_exists_on_node(BucketUUID, Snapshot) of
         true ->
-            ns_memcached:drop_deks(BucketUUID, DekIds, cb_cluster_secrets,
-                                   Continuation);
+            %% cbauth consumers (cbcontbk) go first because a failed drop is
+            %% retried soon, and we don't want to restart compaction in
+            %% memcached each time when cbcontbk is unavailable.
+            maybe
+                {ok, started} ?=
+                    cb_deks_cbauth:initiate_drop_deks(Kind, DekIds, Snapshot),
+                ns_memcached:drop_deks(BucketUUID, DekIds, cb_cluster_secrets,
+                                       Continuation)
+            end;
         false ->
             {error, not_found}
     end.
@@ -252,5 +257,115 @@ bucket_exists_on_node_test() ->
         file:del_dir(Dir),
         meck:unload([ns_bucket, ns_storage_conf])
     end.
+
+-define(TEST_UUID, <<"5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f">>).
+-define(TEST_KIND, {bucketDek, ?TEST_UUID}).
+-define(TEST_SNAPSHOT, #{}).
+
+-define(MOCKED_MODULES, [cb_deks_cbauth, ns_memcached, ns_bucket]).
+
+setup() ->
+    meck:new(?MOCKED_MODULES, [passthrough]),
+    meck:expect(ns_bucket, uuid2bucket, fun (_, _) -> {ok, "test"} end),
+    meck:expect(ns_bucket, get_bucket, fun (_, _) -> {ok, []} end),
+    meck:expect(ns_bucket, get_servers, fun (_) -> [node()] end).
+
+teardown(_) ->
+    meck:unload(?MOCKED_MODULES).
+
+%% Makes the mocked calls report themselves to the test process, so tests can
+%% check the order of calls to memcached and cbauth consumers
+expect_calls(Results) ->
+    Self = self(),
+    Report = fun (Name) -> Self ! {called, Name}, maps:get(Name, Results) end,
+    meck:expect(cb_deks_cbauth, update_deks,
+                fun (_, _) -> Report(cbauth_update) end),
+    meck:expect(cb_deks_cbauth, get_dek_ids_in_use,
+                fun (_, _) -> Report(cbauth_in_use) end),
+    meck:expect(cb_deks_cbauth, initiate_drop_deks,
+                fun (_, _, _) -> Report(cbauth_drop) end),
+    meck:expect(ns_memcached, set_active_dek_for_bucket_uuid,
+                fun (_) -> Report(kv_update) end),
+    meck:expect(ns_memcached, get_dek_ids_in_use,
+                fun (_) -> Report(kv_in_use) end),
+    meck:expect(ns_memcached, drop_deks,
+                fun (_, _, _, _) -> Report(kv_drop) end).
+
+received_calls() ->
+    receive
+        {called, Name} -> [Name | received_calls()]
+    after 0 ->
+        []
+    end.
+
+update_deks_test_() ->
+    Ok = #{cbauth_update => ok, kv_update => ok},
+    {foreach, fun setup/0, fun teardown/1,
+     [?_test(begin
+                 expect_calls(Ok),
+                 ?assertEqual(ok, update_deks(?TEST_KIND, ?TEST_SNAPSHOT)),
+                 ?assertEqual([cbauth_update, kv_update], received_calls())
+             end),
+      ?_test(begin
+                 expect_calls(Ok#{cbauth_update => {error, retry}}),
+                 ?assertEqual({error, retry},
+                              update_deks(?TEST_KIND, ?TEST_SNAPSHOT)),
+                 ?assertEqual([cbauth_update], received_calls())
+             end)]}.
+
+get_dek_ids_in_use_test_() ->
+    Ok = #{kv_in_use => {ok, [<<"a">>, <<"b">>]},
+           cbauth_in_use => {ok, [<<"b">>, <<"c">>, ?NULL_DEK]}},
+    {foreach, fun setup/0, fun teardown/1,
+     [?_test(begin
+                 expect_calls(Ok),
+                 ?assertEqual({ok, [<<"a">>, <<"b">>, <<"c">>, ?NULL_DEK]},
+                              get_dek_ids_in_use(?TEST_KIND, ?TEST_SNAPSHOT)),
+                 ?assertEqual([kv_in_use, cbauth_in_use], received_calls())
+             end),
+      ?_test(begin
+                 expect_calls(Ok#{cbauth_in_use => {error, retry}}),
+                 ?assertEqual({error, retry},
+                              get_dek_ids_in_use(?TEST_KIND, ?TEST_SNAPSHOT))
+             end),
+      ?_test(begin
+                 expect_calls(Ok#{kv_in_use => {error, retry}}),
+                 ?assertEqual({error, retry},
+                              get_dek_ids_in_use(?TEST_KIND, ?TEST_SNAPSHOT)),
+                 ?assertEqual([kv_in_use], received_calls())
+             end),
+      %% Bucket data is still on the node, so nothing can be removed
+      ?_test(begin
+                 expect_calls(Ok#{kv_in_use => {error, not_found}}),
+                 ?assertEqual({error, not_found},
+                              get_dek_ids_in_use(?TEST_KIND, ?TEST_SNAPSHOT)),
+                 ?assertEqual([kv_in_use], received_calls())
+             end),
+      ?_test(begin
+                 expect_calls(Ok#{kv_in_use => {error, not_found}}),
+                 meck:expect(ns_bucket, uuid2bucket,
+                             fun (_, _) -> {error, not_found} end),
+                 ?assertEqual({ok, [<<"b">>, <<"c">>, ?NULL_DEK]},
+                              get_dek_ids_in_use(?TEST_KIND, ?TEST_SNAPSHOT)),
+                 ?assertEqual([kv_in_use, cbauth_in_use], received_calls())
+             end)]}.
+
+initiate_drop_deks_test_() ->
+    Ok = #{cbauth_drop => {ok, started}, kv_drop => {ok, started}},
+    {foreach, fun setup/0, fun teardown/1,
+     [?_test(begin
+                 expect_calls(Ok),
+                 ?assertEqual({ok, started},
+                              initiate_drop_deks(?TEST_KIND, [<<"a">>],
+                                                 ?TEST_SNAPSHOT)),
+                 ?assertEqual([cbauth_drop, kv_drop], received_calls())
+             end),
+      ?_test(begin
+                 expect_calls(Ok#{cbauth_drop => {error, retry}}),
+                 ?assertEqual({error, retry},
+                              initiate_drop_deks(?TEST_KIND, [<<"a">>],
+                                                 ?TEST_SNAPSHOT)),
+                 ?assertEqual([cbauth_drop], received_calls())
+             end)]}.
 
 -endif.

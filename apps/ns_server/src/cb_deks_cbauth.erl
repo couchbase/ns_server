@@ -236,6 +236,11 @@ get_cbauth_services({serviceBucketDek, _}) ->
     %% cbas %% uncomment to pass service bucket keys to cbas
     %% eventing %% uncomment to pass service bucket keys to eventing
     ];
+%% cbcontbk owns magma's backup generations, which can be the only remaining
+%% users of some bucket deks. Memcached is not a cbauth service, so it is
+%% handled by cb_deks_bucket.
+get_cbauth_services({bucketDek, _}) ->
+    [cont_backup];
 %% This is a fake kind just to trick dialyzer that this function can return
 %% a non-empty list. To be removed once we have real services that use
 %% encryption.
@@ -257,7 +262,8 @@ get_cbauth_labels(Kind, Snapshot) ->
             Services = get_cbauth_services(Kind),
             NodeServices = ns_cluster_membership:node_services(Snapshot, Node),
             AllNodeServices = case lists:member(kv, NodeServices) of
-                                  true -> NodeServices ++ [projector];
+                                  true -> NodeServices ++
+                                              [projector, cont_backup];
                                   false -> NodeServices
                               end,
             TargetServices = [P || P <- Services,
@@ -268,6 +274,8 @@ get_cbauth_labels(Kind, Snapshot) ->
 
 is_service_enabled(projector) ->
     not config_profile:search({indexer, projector_disabled}, false);
+is_service_enabled(cont_backup) ->
+    cluster_compat_mode:is_continuous_backup_enabled(node());
 is_service_enabled(_) ->
     true.
 
@@ -406,6 +414,10 @@ cbauth_key_type_to_dek_kind_test() ->
 set_provisioned(V) ->
     meck:expect(ns_config_auth, is_system_provisioned, fun () -> V end).
 
+set_cont_backup_enabled(V) ->
+    meck:expect(cluster_compat_mode, is_continuous_backup_enabled,
+                fun (_) -> V end).
+
 set_projector_disabled(V) ->
     config_profile:set_data([{name, "default"},
                              {{indexer, projector_disabled}, V}]).
@@ -419,12 +431,13 @@ active_node(Services) ->
 get_cbauth_labels_test_() ->
     {setup,
      fun () ->
-         meck:new(ns_config_auth, [passthrough]),
+         meck:new([ns_config_auth, cluster_compat_mode], [passthrough]),
          set_provisioned(true),
-         set_projector_disabled(false)
+         set_projector_disabled(false),
+         set_cont_backup_enabled(true)
      end,
      fun (_) ->
-         meck:unload(ns_config_auth),
+         meck:unload([ns_config_auth, cluster_compat_mode]),
          config_profile:unload_profile_for_test()
      end,
      [{"kv+index node reports index and projector for logs",
@@ -481,6 +494,36 @@ get_cbauth_labels_test_() ->
            ?assertEqual(["index-cbauth"],
                         get_cbauth_labels(logDek, active_node([kv, index]))),
            set_projector_disabled(false)
+       end},
+      {"kv node reports cbcontbk for bucket deks",
+       fun () ->
+           set_provisioned(true),
+           ?assertEqual(["cbcontbk-cbauth"],
+                        get_cbauth_labels({bucketDek, <<"uuid">>},
+                                          active_node([kv, index]))),
+           ?assertEqual([], get_cbauth_labels({bucketDek, <<"uuid">>},
+                                              active_node([index])))
+       end},
+      {"failed over and delta recovery kv nodes report cbcontbk",
+       fun () ->
+           set_provisioned(true),
+           Failed = labels_snapshot([{membership, inactiveFailed},
+                                     {services, [kv]}]),
+           Delta = labels_snapshot([{membership, inactiveAdded},
+                                    {recovery_type, delta},
+                                    {services, [kv]}]),
+           ?assertEqual(["cbcontbk-cbauth"],
+                        get_cbauth_labels({bucketDek, <<"uuid">>}, Failed)),
+           ?assertEqual(["cbcontbk-cbauth"],
+                        get_cbauth_labels({bucketDek, <<"uuid">>}, Delta))
+       end},
+      {"cbcontbk is not reported if continuous backup is disabled",
+       fun () ->
+           set_provisioned(true),
+           set_cont_backup_enabled(false),
+           ?assertEqual([], get_cbauth_labels({bucketDek, <<"uuid">>},
+                                              active_node([kv]))),
+           set_cont_backup_enabled(true)
        end}]}.
 
 -endif.

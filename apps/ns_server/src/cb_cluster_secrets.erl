@@ -1378,13 +1378,7 @@ handle_info(calculate_dek_info, #state{proc_type = ?NODE_PROC} = State) ->
     {noreply, restart_dek_info_update_timer(false, NewState)};
 
 handle_info({notify_cbauth, Label}, #state{proc_type = ?NODE_PROC} = State) ->
-    Kinds = case Label of
-                "cbcontbk-cbauth" ->
-                    Buckets = ns_bucket:uuids(),
-                    [{bucketDek, UUID} || {_, UUID} <- Buckets];
-                _ ->
-                    cb_deks_cbauth:get_kinds_for_label(Label)
-            end,
+    Kinds = cb_deks_cbauth:get_kinds_for_label(Label),
     ?log_debug("Received notify_cbauth ~p, will update DEKs: ~p",
                [Label, Kinds]),
     NewState =
