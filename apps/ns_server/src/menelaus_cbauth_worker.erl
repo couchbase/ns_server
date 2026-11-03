@@ -205,6 +205,8 @@ label_to_service("cbq-engine-cbauth") ->
     n1ql;
 label_to_service("goxdcr-cbauth") ->
     xdcr;
+label_to_service("cbcontbk-cbauth") ->
+    cont_backup;
 label_to_service(Label) ->
     list_to_atom(strip_cbauth_suffix(Label)).
 
