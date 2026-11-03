@@ -210,8 +210,6 @@ get_kinds_for_label(Label) ->
         end, Kinds).
 
 %% This function defines which services use which encr-at-rest keys.
-%% Currently returns [] for all supported kinds, but structure is in place
-%% for future services that may use these DEKs.
 get_cbauth_services(logDek) ->
     [
       index,
@@ -241,10 +239,6 @@ get_cbauth_services({serviceBucketDek, _}) ->
 %% handled by cb_deks_bucket.
 get_cbauth_services({bucketDek, _}) ->
     [cont_backup];
-%% This is a fake kind just to trick dialyzer that this function can return
-%% a non-empty list. To be removed once we have real services that use
-%% encryption.
-get_cbauth_services(unknown_kind) -> [unknown_service];
 get_cbauth_services(_) -> error(invalid_dek_kind).
 
 %% Note that this must not be extended to skip services that merely happen to
