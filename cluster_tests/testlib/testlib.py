@@ -864,10 +864,22 @@ def read_audit_events(node, since_offset=0):
         return [], since_offset
     try:
         with open(path, 'rb') as f:
-            f.seek(since_offset)
+            start = max(since_offset - 1, 0)
+            f.seek(start)
             data = f.read()
     except FileNotFoundError:
         return [], since_offset
+
+    # memcached flushes the audit log in fixed-size chunks, so an offset
+    # taken from the file size can fall mid-record. That record predates
+    # the offset, so skip it rather than parse its tail.
+    first = 0
+    if since_offset > 0 and not data.startswith(b'\n'):
+        first = data.find(b'\n')
+        if first < 0:
+            return [], since_offset
+    data = data[first:]
+    start += first
 
     last_nl = data.rfind(b'\n')
     if last_nl < 0:
@@ -878,7 +890,7 @@ def read_audit_events(node, since_offset=0):
         line = line.strip()
         if line:
             events.append(json.loads(line))
-    return events, since_offset + last_nl + 1
+    return events, start + last_nl + 1
 
 
 def wait_for_audit_event(node, event_id, predicate=None, since_offset=0,
