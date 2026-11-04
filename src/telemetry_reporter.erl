@@ -260,7 +260,7 @@ post(URL, Port, Body, Timeout) ->
             Encoded = ejson:encode(JsonResponse),
             ?log_debug("Telemetry report rejected by portal. Error: ~s",
                        [Encoded]),
-            failure;
+            {failure, Encoded};
         {ok, _JsonResponse} ->
             %% Ignore unexpected success payload
             ?log_debug("Telemetry report sent successfuly. Ignored "
@@ -445,7 +445,8 @@ push_report_test_() ->
              meck:unload()
      end,
      [{"Disabled", fun push_report_disabled_t/0},
-      {"Enabled", fun push_report_enabled_t/0}]}.
+      {"Enabled", fun push_report_enabled_t/0},
+      {"Rejected", fun push_report_rejected_t/0}]}.
 
 push_report_disabled_t() ->
     ?assertEqual({error, disabled}, push_report(#{})),
@@ -482,5 +483,12 @@ push_report_enabled_t() ->
     %% Receive the response back from the original call
     receive {result, Result} -> Result
     after ?LONG_TIMEOUT -> error(timeout) end.
+
+push_report_rejected_t() ->
+    Error = {[{<<"status">>, 422}]},
+    meck:expect(menelaus_rest, json_request_hilevel, 4, {client_error, Error}),
+    Settings = (build_settings())#{reporting_enabled => true},
+
+    ?assertEqual({failure, <<"{\"status\":422}">>}, push_report(Settings)).
 
 -endif.
