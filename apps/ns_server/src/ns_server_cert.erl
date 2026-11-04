@@ -141,7 +141,7 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
                           %% need for such a check here
                           {ok, AddOldCA} =
                               add_CAs_txn_fun(generated, OldCert, []),
-                          {commit, Changes0, _} = AddOldCA(Txn),
+                          Changes0 = load_CAs_txn_changes(AddOldCA, Txn),
                           Epoch = ReadEpoch(Txn) + 1,
                           Changes1 = [{set, cluster_certs_epoch, Epoch}],
                           {commit, Changes0 ++ Changes1, OldPair};
@@ -155,7 +155,7 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts) ->
                                       []
                               end,
                           Changes1 = [{set, root_cert_and_pkey, NewPair}],
-                          {commit, Changes2, _} = AddCA(Txn),
+                          Changes2 = load_CAs_txn_changes(AddCA, Txn),
                           Changes = Changes0 ++ Changes1 ++ Changes2,
                           {commit, Changes, NewPair}
                   end
@@ -1242,6 +1242,13 @@ load_CAs(CAPropsList) ->
     {ok, _, R} = chronicle_kv:txn(kv, load_CAs_txn(CAPropsList, _)),
     {ok, R}.
 
+%% For embedding a load_CAs_txn fun into another transaction
+load_CAs_txn_changes(TxnFun, Txn) ->
+    case TxnFun(Txn) of
+        {commit, Changes, _} -> Changes;
+        {abort, {ok, no_rev, []}} -> []
+    end.
+
 load_CAs_txn(CAPropsList, ChronicleTxn) ->
     UTCTime = calendar:universal_time(),
     LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
@@ -1250,8 +1257,12 @@ load_CAs_txn(CAPropsList, ChronicleTxn) ->
               {error, not_found} -> []
           end,
     ToSet = maybe_append_CA_certs(CAs, CAPropsList, LoadTime),
-    NewCAs = ToSet -- CAs,
-    {commit, [{set, ca_certificates, ToSet}], NewCAs}.
+    case ToSet -- CAs of
+        %% A no-op set would still bump the revision and make concurrent
+        %% loads of the same CAs conflict (and possibly exceed retries)
+        [] -> {abort, {ok, no_rev, []}};
+        NewCAs -> {commit, [{set, ca_certificates, ToSet}], NewCAs}
+    end.
 
 maybe_append_CA_certs(CAs, [], _) ->
     CAs;
@@ -1656,6 +1667,19 @@ chronicle_upgrade_cert_to_79(Cert) ->
           "PXCblzKwY8o4WvPdBWjS1SDEfYPubygyh3dSdX92kYJvlRthIgrtsgZg1vc4w35g"
           "Qvlx+xG9le4klA5R0kI5LYlCQ1nL4rmrOqBxbvhnG6rH+Q==\n"
           "-----END CERTIFICATE-----">>).
+
+add_already_loaded_CAs_test() ->
+    fake_chronicle_kv:setup(),
+    try
+        ?assertMatch({ok, [_]}, add_CAs(uploaded, ?PEM_DEFAULT)),
+        {ok, {[_], Rev}} = chronicle_kv:get(kv, ca_certificates),
+        ?assertEqual({ok, []}, add_CAs(uploaded, ?PEM_DEFAULT)),
+        [{'Certificate', Der, _}] = public_key:pem_decode(?PEM_DEFAULT),
+        ?assertEqual({ok, []}, load_CAs([cert_props(uploaded, Der, [])])),
+        ?assertMatch({ok, {[_], Rev}}, chronicle_kv:get(kv, ca_certificates))
+    after
+        fake_chronicle_kv:teardown()
+    end.
 
 chronicle_upgrade_cert_to_79_test() ->
     CertWithoutPEM = [{subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
