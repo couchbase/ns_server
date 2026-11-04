@@ -271,12 +271,17 @@ chronicle_upgrade_to_85(ChronicleTxn) ->
 %% jwks_uri_tls_ca - CA certificate for validating JWKS URI TLS connection
 %% jwks_uri_tls_sni - Server name for TLS SNI extension
 %% jwks_uri_tls_verify_peer - Whether to verify JWKS URI server certificate
+%% max_token_lifetime_s - Optional maximum of exp - iat. When set, tokens
+%% without iat are rejected.
 %% name - Unique identifier for this issuer. Must match the token's 'iss'
 %% claim exactly; it is the key used to look up the issuer config during
 %% validation, so it is a protocol identifier, not a display label.
 %% oidc_settings - Optional OIDC configuration for this issuer
 %% public_key - Public key used to verify token signatures
 %% public_key_source - Source of the public key (jwks/jwks_uri/pem)
+%% reject_tokens_issued_before - Optional ISO 8601 time, stored as Unix
+%% seconds. Tokens with an earlier iat are rejected. When set, tokens without
+%% iat are rejected.
 %% roles_claim - Field path of the claim containing role assignments
 %% roles_maps - Rules for mapping roles from tokens to local roles
 %% roles_maps_stop_first_match - Whether to stop after first matching roles map
@@ -303,10 +308,12 @@ chronicle_upgrade_to_85(ChronicleTxn) ->
          {jwks_uri_tls_ca, fun format_tls_ca/1},
          {jwks_uri_tls_sni, undefined},
          {jwks_uri_tls_verify_peer, undefined},
+         {max_token_lifetime_s, undefined},
          {name, undefined},
          {oidc_settings, fun storage_to_rest_format_oidc_provider/1},
          {public_key, fun format_public_key/1},
          {public_key_source, undefined},
+         {reject_tokens_issued_before, fun format_unix_time/1},
          {roles_claim, undefined},
          {roles_maps, fun auth_mapping:format_mapping_rules/1},
          {roles_maps_stop_first_match, undefined},
@@ -681,6 +688,10 @@ basic_validators() ->
                        ?EXPIRY_LEEWAY_MIN_S,
                        ?EXPIRY_LEEWAY_MAX_S, _),
      validator:default(expiryLeewayS, ?EXPIRY_LEEWAY_DEFAULT_S, _),
+     validator:integer(maxTokenLifetimeS, 1, infinity, _),
+     validator:iso_8601_parsed(rejectTokensIssuedBefore, _),
+     validator:convert(rejectTokensIssuedBefore,
+                       fun misc:datetime_to_unix_timestamp/1, _),
      validator:boolean(jitProvisioning, _),
      validator:default(jitProvisioning, false, _),
      validator:required(subClaim, _),
@@ -1256,6 +1267,9 @@ format_jwks(Value) -> Value.
 
 format_public_key({PemBin, _Key}) when is_binary(PemBin) -> PemBin;
 format_public_key(Value) -> Value.
+
+format_unix_time(Seconds) ->
+    iso8601:format(calendar:system_time_to_universal_time(Seconds, second)).
 
 format_secret(undefined) -> undefined;
 format_secret(_) -> chronicle_kv_log:masked().

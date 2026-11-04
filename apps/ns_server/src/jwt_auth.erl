@@ -611,7 +611,7 @@ validate_custom_object_claim(ClaimValue) ->
 validate_payload(Claims, IssProps) ->
     Valid = functools:sequence_(
               [fun() -> validate(Claim, Claims, IssProps) end ||
-                  Claim <- [exp, nbf, aud]]),
+                  Claim <- [exp, nbf, iat, aud]]),
     case Valid of
         ok ->
             case validate_custom_claims(Claims, IssProps) of
@@ -641,7 +641,7 @@ validate_user(Claims, IssProps) ->
             auth_mapping:map_user(Value, maps:get(sub_maps, IssProps, []))
     end.
 
--spec validate(exp | nbf | aud, Claims :: map(), IssProps :: map()) ->
+-spec validate(exp | nbf | iat | aud, Claims :: map(), IssProps :: map()) ->
           ok | {error, binary()}.
 validate(exp, Claims, IssProps) ->
     Now = erlang:system_time(second),
@@ -659,6 +659,23 @@ validate(nbf, Claims, IssProps) ->
         undefined -> ok;
         NBF when Now >= NBF - ExpiryLeeway -> ok;
         _ -> {error, <<"Token not yet valid">>}
+    end;
+validate(iat, Claims, IssProps) ->
+    MaxLifetime = maps:get(max_token_lifetime_s, IssProps, undefined),
+    Cutoff = maps:get(reject_tokens_issued_before, IssProps, undefined),
+    IAT = maps:get(iat, Claims, undefined),
+    if
+        MaxLifetime =:= undefined, Cutoff =:= undefined ->
+            ok;
+        IAT =:= undefined ->
+            {error, <<"Missing/invalid claim: iat">>};
+        MaxLifetime =/= undefined,
+        map_get(exp, Claims) - IAT > MaxLifetime ->
+            {error, <<"Token lifetime exceeds the maximum">>};
+        Cutoff =/= undefined, IAT < Cutoff ->
+            {error, <<"Token was issued before the issuer's cutoff">>};
+        true ->
+            ok
     end;
 validate(aud, Claims, #{audience_handling := Handling,
                         audiences := Audiences}) ->
@@ -770,6 +787,24 @@ validate_claims_test() ->
     ?assertEqual(ok, validate(exp, #{exp => Now + 600}, IssProps)),
     ?assertEqual({error, <<"Token has expired">>},
                  validate(exp, #{exp => Now - 600}, IssProps)),
+
+    ?assertEqual(ok, validate(iat, #{exp => Now + 600}, IssProps)),
+    LifetimeProps = IssProps#{max_token_lifetime_s => 3600},
+    ?assertEqual(ok, validate(iat, #{iat => Now, exp => Now + 3600},
+                              LifetimeProps)),
+    ?assertEqual({error, <<"Token lifetime exceeds the maximum">>},
+                 validate(iat, #{iat => Now, exp => Now + 3601},
+                          LifetimeProps)),
+    ?assertEqual({error, <<"Missing/invalid claim: iat">>},
+                 validate(iat, #{exp => Now + 600}, LifetimeProps)),
+    CutoffProps = IssProps#{reject_tokens_issued_before => Now},
+    ?assertEqual(ok, validate(iat, #{iat => Now, exp => Now + 600},
+                              CutoffProps)),
+    ?assertEqual({error, <<"Token was issued before the issuer's cutoff">>},
+                 validate(iat, #{iat => Now - 1, exp => Now + 600},
+                          CutoffProps)),
+    ?assertEqual({error, <<"Missing/invalid claim: iat">>},
+                 validate(iat, #{exp => Now + 600}, CutoffProps)),
 
     %% Test nbf validation
     ?assertEqual(ok, validate(nbf, #{}, IssProps)),
