@@ -223,13 +223,26 @@ send_report(Config) ->
     Parent = self(),
     spawn_link(
       fun () ->
-              Endpoint = get_setting(reporting_endpoint, Config),
-              URL = binary_to_list(Endpoint),
-              Port = get_setting(reporting_port, Config),
-              Report = create_report(),
-              Timeout = timer:seconds(get_setting(reporting_timeout_seconds,
-                                                  Config)),
-              Result = post(URL, Port, Report, Timeout),
+              %% A crash here would take down the reporter, which sends a new
+              %% report on restart, so it could keep crashing
+              Result =
+                  try
+                      Endpoint = get_setting(reporting_endpoint, Config),
+                      URL = binary_to_list(Endpoint),
+                      Port = get_setting(reporting_port, Config),
+                      Report = create_report(),
+                      Timeout = timer:seconds(
+                                  get_setting(reporting_timeout_seconds,
+                                              Config)),
+                      post(URL, Port, Report, Timeout)
+                  catch
+                      _:Error:Stack ->
+                          ?log_error("Sending telemetry report crashed with "
+                                     "error: ~p~nStacktrace: ~p",
+                                     [Error, Stack]),
+                          {failure,
+                           <<"Internal error, see logs for details">>}
+                  end,
               MetricResult = case Result of
                                  success -> success;
                                  {failure, _} -> failure
@@ -242,10 +255,10 @@ post(URL, Port, Body, Timeout) ->
     Scheme = https,
     Request = {Scheme, URL, Port, "/api/v1/ingest/telemetry",
                "application/json", Body},
-    try menelaus_rest:json_request_hilevel(post, Request,
-                                           ?HIDE({basic_auth, "", ""}),
-                                           [{connect_timeout, Timeout},
-                                            {server_verification, false}]) of
+    case menelaus_rest:json_request_hilevel(post, Request,
+                                            ?HIDE({basic_auth, "", ""}),
+                                            [{connect_timeout, Timeout},
+                                             {server_verification, false}]) of
         ok ->
             ?log_debug("Telemetry report sent successfuly"),
             success;
@@ -270,12 +283,6 @@ post(URL, Port, Body, Timeout) ->
             ?log_debug("Telemetry report sent successfuly. Ignored "
                        "unexpected response"),
             success
-    catch
-        _:Error:Stack ->
-            ?log_error("Sending telemetry report crashed with error: ~p"
-                       "~nStacktrace: ~p",
-                       [Error, Stack]),
-            {failure, <<"Internal error, see logs for details">>}
     end.
 
 build_product() ->
@@ -451,7 +458,8 @@ push_report_test_() ->
      [{"Disabled", fun push_report_disabled_t/0},
       {"Enabled", fun push_report_enabled_t/0},
       {"Rejected", fun push_report_rejected_t/0},
-      {"Bad JSON", fun push_report_bad_json_t/0}]}.
+      {"Bad JSON", fun push_report_bad_json_t/0},
+      {"Crash", fun push_report_crash_t/0}]}.
 
 push_report_disabled_t() ->
     ?assertEqual({error, disabled}, push_report(#{})),
@@ -503,5 +511,12 @@ push_report_bad_json_t() ->
     Settings = (build_settings())#{reporting_enabled => true},
 
     ?assertEqual({failure, Reason}, push_report(Settings)).
+
+push_report_crash_t() ->
+    meck:expect(menelaus_rest, json_request_hilevel, 4, unexpected),
+    Settings = (build_settings())#{reporting_enabled => true},
+
+    ?assertEqual({failure, <<"Internal error, see logs for details">>},
+                 push_report(Settings)).
 
 -endif.
