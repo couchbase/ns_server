@@ -12,6 +12,7 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import testlib
@@ -250,6 +251,39 @@ class CertLoadTests(testlib.BaseTestSet):
     def pkcs12_encrypted_ec_key_test(self):
         self.generate_and_load_pkcs12_cert('ec',
                                            passphrase=testlib.random_str(8))
+
+    # Loading already trusted CAs must not write to chronicle, otherwise
+    # parallel loads conflict and may fail with exceeded_retries
+    def parallel_load_of_same_cas_test(self):
+        nodes = self.cluster.connected_nodes
+        trusted_cas_before = get_trusted_CAs(self.cluster)
+        new_ca, _ = run_generate_cert([], {})
+        ca_paths = []
+        try:
+            for node in nodes:
+                ca_paths.append(write_inbox_ca(node, self.ca_pem + new_ca))
+            # 10 per node is the size of the node session's connection pool
+            n = 10 * len(nodes)
+            with ThreadPoolExecutor(max_workers=n) as executor:
+                results = list(executor.map(
+                    lambda i: testlib.post(nodes[i % len(nodes)],
+                                           '/node/controller/loadTrustedCAs'),
+                    range(n)))
+        finally:
+            # Not from the responses: a request may fail after adding the CA
+            self.loaded_CA_ids.extend(
+                ca['id'] for ca in get_trusted_CAs(self.cluster)
+                if ca['pem'].strip() == new_ca.strip())
+            for p in ca_paths:
+                os.remove(p)
+        for r in results:
+            testlib.assert_http_code(200, r)
+        added = [ca for r in results for ca in r.json()]
+        # self.ca_pem is trusted already, so only new_ca gets added, once
+        testlib.assert_eq(len(added), 1, 'number of added CAs')
+        testlib.assert_eq(added[0]['pem'].strip(), new_ca.strip(), 'added CA')
+        assert_CA_newly_trusted(self.cluster, trusted_cas_before,
+                                added[0]['pem'])
 
     ## Reload node certificates is disruptive to the system. So if the cert
     ## is the same as what is in use we skip the reloading.
@@ -838,14 +872,19 @@ def load_cert(node, cert, key, passphrase, is_client, force_reload=False,
             os.remove(pkey_path)
 
 
-def load_ca(node, CA):
+def write_inbox_ca(node, CA):
     ca_dir = os.path.join(node.data_path(), 'inbox', 'CA')
     ca_path = os.path.join(ca_dir, 'ca.pem')
     os.makedirs(ca_dir, exist_ok=True)
-    try:
-        with open(ca_path, 'w') as f:
-            f.write(CA)
+    with open(ca_path, 'w') as f:
+        f.write(CA)
+    return ca_path
 
+
+def load_ca(node, CA):
+    ca_path = None
+    try:
+        ca_path = write_inbox_ca(node, CA)
         r = testlib.post_succ(node, '/node/controller/loadTrustedCAs')
         r = r.json()
         # Returning a list mostly to handle the case when that certificate
@@ -853,7 +892,7 @@ def load_ca(node, CA):
         # teardown()
         return [c['id'] for c in r]
     finally:
-        if os.path.exists(ca_path):
+        if ca_path is not None and os.path.exists(ca_path):
             os.remove(ca_path)
 
 
