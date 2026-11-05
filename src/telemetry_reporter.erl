@@ -261,6 +261,10 @@ post(URL, Port, Body, Timeout) ->
             ?log_debug("Telemetry report rejected by portal. Error: ~s",
                        [Encoded]),
             {failure, Encoded};
+        {error, bad_json, Reason, _} ->
+            ?log_debug("Telemetry report response could not be parsed. "
+                       "Error: ~s", [Reason]),
+            {failure, Reason};
         {ok, _JsonResponse} ->
             %% Ignore unexpected success payload
             ?log_debug("Telemetry report sent successfuly. Ignored "
@@ -446,7 +450,8 @@ push_report_test_() ->
      end,
      [{"Disabled", fun push_report_disabled_t/0},
       {"Enabled", fun push_report_enabled_t/0},
-      {"Rejected", fun push_report_rejected_t/0}]}.
+      {"Rejected", fun push_report_rejected_t/0},
+      {"Bad JSON", fun push_report_bad_json_t/0}]}.
 
 push_report_disabled_t() ->
     ?assertEqual({error, disabled}, push_report(#{})),
@@ -490,5 +495,13 @@ push_report_rejected_t() ->
     Settings = (build_settings())#{reporting_enabled => true},
 
     ?assertEqual({failure, <<"{\"status\":422}">>}, push_report(Settings)).
+
+push_report_bad_json_t() ->
+    Reason = <<"Malformed JSON response">>,
+    meck:expect(menelaus_rest, json_request_hilevel, 4,
+                {error, bad_json, Reason, {error, badarg, []}}),
+    Settings = (build_settings())#{reporting_enabled => true},
+
+    ?assertEqual({failure, Reason}, push_report(Settings)).
 
 -endif.
