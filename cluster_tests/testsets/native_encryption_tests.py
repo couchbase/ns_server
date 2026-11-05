@@ -1629,9 +1629,26 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
             bucket_uuid,
             verify_key_count=0)
 
+        # Encryption is already enabled, the only point here is to set config
+        # DEK rotation interval to 1s. This makes the node rotate its config
+        # DEK right when it joins, while the bucket data dir left from its
+        # previous membership is still on disk. The removal of old integrity
+        # tokens must not fail then (MB-75104). It used to fail on the bucket
+        # DEKs from that dir, which referred to the integrity token removed
+        # by drop_config_deks_for_node above.
+        set_cfg_encryption(self.cluster, 'encryptionKey', secret_id,
+                           dek_rotation=1)
+        join_time = datetime.now(timezone.utc)
+
         # Add the node back
         self.cluster.add_node(node_to_remove, services=original_services,
                               verbose=True)
+
+        poll_verify_node_dek_info(node_to_remove, 'configuration',
+                                  oldest_dek_time=join_time)
+        set_cfg_encryption(self.cluster, 'encryptionKey', secret_id,
+                           dek_rotation=default_dek_rotation)
+        assert_no_encryption_errors_in_user_log(node_to_remove, join_time)
 
         self.modify_encryption_for_node_readd_testing(node_to_remove, secret_id)
         # Deleting old secret, so all keys that not maintained properly should
@@ -4378,6 +4395,14 @@ def assert_file_is_decryptable(node, file_path):
     assert r.returncode == 0, f'cbcat returned {r.returncode}\n' \
                                 f'stdout: {r.stdout.decode()}\n' \
                                 f'stderr: {r.stderr.decode()}'
+
+
+def assert_no_encryption_errors_in_user_log(node, since):
+    since_ms = int(since.timestamp() * 1000)
+    r = testlib.get_succ(node, '/logs', params={'sinceTime': since_ms})
+    errors = [e for e in r.json()['list']
+              if 'Encryption key operation failed' in e['text']]
+    assert errors == [], f'unexpected encryption errors in user log: {errors}'
 
 
 def drop_config_deks_for_node(node):
