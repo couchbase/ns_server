@@ -15,6 +15,10 @@
 -include("ns_common.hrl").
 -include("cb_cluster_secrets.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -define(CONT_BACKUP_CBAUTH_LABEL, "cbcontbk-cbauth").
 
 -export([get_encryption_method/3,
@@ -71,9 +75,15 @@ bucket_exists_on_node(BucketUUID, Snapshot) ->
             begin %% In case of failed over node the data may still be on disk
                 Services = ns_cluster_membership:node_services(Snapshot, node()),
                 IsKVNode = lists:member(kv, Services),
+                %% Data of a newly added node is left from its previous
+                %% membership, it will not be used. Note that a node that is
+                %% being removed looks newly added too, as its membership
+                %% keys are deleted, and its data will not be used either.
+                IsNewNode = ns_cluster_membership:is_newly_added_node(
+                              node(), Snapshot),
                 Dir = ns_storage_conf:this_node_bucket_dbdir(BucketUUID),
                 ExistsOnDisk = filelib:is_dir(Dir),
-                IsKVNode andalso ExistsOnDisk
+                IsKVNode andalso not IsNewNode andalso ExistsOnDisk
             end
     else
         %% Bucket is not in config, so even if data is on disk it is not
@@ -194,3 +204,53 @@ fetch_chronicle_keys_in_txn({bucketDek, BucketUUID}, Txn) ->
     chronicle_compat:txn_get_many(
       [ns_bucket:root() | BucketKeys] ++
       ns_cluster_membership:node_membership_keys(node()), Txn).
+
+-ifdef(TEST).
+
+bucket_exists_on_node_test() ->
+    UUID = <<"uuid">>,
+    Dir = path_config:tempfile("cb_deks_bucket_test", ""),
+    meck:new(ns_bucket, [passthrough]),
+    meck:new(ns_storage_conf, [passthrough]),
+    try
+        meck:expect(ns_bucket, uuid2bucket,
+                    fun (U, _) when U =:= UUID -> {ok, "b"};
+                        (_, _) -> {error, not_found}
+                    end),
+        meck:expect(ns_storage_conf, this_node_bucket_dbdir,
+                    fun (U) when U =:= UUID -> Dir end),
+        Snapshot =
+            fun (Servers, NodeKVs) ->
+                maps:from_list(
+                  [{K, {V, rev}} ||
+                      {K, V} <- [{ns_bucket:sub_key("b", props),
+                                  [{servers, Servers}]} | NodeKVs]])
+            end,
+        Node = fun (Membership, RecoveryType, Services) ->
+                   [{{node, node(), membership}, Membership},
+                    {{node, node(), recovery_type}, RecoveryType},
+                    {{node, node(), services}, Services}]
+               end,
+        Active = Node(active, none, [kv]),
+        FailedOver = Node(inactiveFailed, none, [kv]),
+        Exists = fun (S) -> bucket_exists_on_node(UUID, S) end,
+
+        ?assert(Exists(Snapshot([node()], Active))),
+        ?assertNot(bucket_exists_on_node(<<"unknown">>,
+                                         Snapshot([node()], Active))),
+        ?assertNot(Exists(Snapshot([], FailedOver))),
+
+        ok = file:make_dir(Dir),
+        ?assert(Exists(Snapshot([], FailedOver))),
+        ?assert(Exists(Snapshot([], Node(inactiveAdded, delta, [kv])))),
+        ?assertNot(Exists(Snapshot([], Node(inactiveFailed, none, [index])))),
+        %% Newly added node
+        ?assertNot(Exists(Snapshot([], Node(inactiveAdded, none, [kv])))),
+        %% Node that is being removed, its membership keys are deleted
+        ?assertNot(Exists(Snapshot([], [])))
+    after
+        file:del_dir(Dir),
+        meck:unload([ns_bucket, ns_storage_conf])
+    end.
+
+-endif.

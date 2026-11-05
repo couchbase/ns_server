@@ -1618,16 +1618,16 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Node has left the cluster, but it still contains the bucket data
         # directory which will be removed only during rebalance
-        # Make sure DEKs in that bucket directory doesn't obstruct encryption
-        # at rest reconfiguration
+        # Make sure that directory doesn't obstruct encryption at rest
+        # reconfiguration
         drop_config_deks_for_node(node_to_remove)
         drop_bucket_deks_and_verify_dek_info(self.cluster, self.sample_bucket)
-        # node_to_remove should continue having 1 dek, drop deks should
-        # not affect it
+        # Bucket is not on node_to_remove anymore, so its deks are retired
+        # when the node leaves
         poll_verify_bucket_deks_files(
             [node_to_remove],
             bucket_uuid,
-            verify_key_count=1)
+            verify_key_count=0)
 
         # Add the node back
         self.cluster.add_node(node_to_remove, services=original_services,
@@ -1645,8 +1645,8 @@ class NativeEncryptionTests(testlib.BaseTestSet, SampleBucketTasksBase):
 
         # Node is added back, and it still contains the bucket data directory
         # (it will be removed only during rebalance)
-        # Try rotating config encryption DEK here to make sure those bucket
-        # DEKs do not obstruct config DEK rotation
+        # Try rotating config encryption DEK here to make sure that directory
+        # doesn't obstruct config DEK rotation
         drop_config_deks_for_node(node_to_remove)
         poll_verify_node_bucket_dek_info(node_to_remove, self.sample_bucket,
                                          missing=True)
