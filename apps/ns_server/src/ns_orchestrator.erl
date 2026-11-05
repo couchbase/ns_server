@@ -400,8 +400,7 @@ topology_aware_service_needs_rebalance(Service, ServiceNodes) ->
     case lists:member(Service,
                       ns_cluster_membership:topology_aware_services()) of
         true ->
-            %% TODO: consider caching this
-            Statuses = ns_doctor:get_nodes(),
+            Statuses = ns_doctor:get_nodes_snapshot(),
             lists:any(
               fun (Node) ->
                       NodeStatus = misc:dict_get(Node, Statuses, []),

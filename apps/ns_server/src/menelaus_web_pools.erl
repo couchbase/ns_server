@@ -214,7 +214,7 @@ do_build_pool_info(Id, InfoLevel, Stability, LocalAddr) ->
     Nodes = menelaus_web_node:build_nodes_info(Ctx),
 
     TasksURI = bin_concat_path(["pools", Id, "tasks"],
-                               [{"v", ns_doctor:get_tasks_version()}]),
+                               [{"v", ns_doctor:get_tasks_version_snapshot()}]),
 
     {ok, IndexesVersion0} = service_index:get_indexes_version(),
     IndexesVersion = list_to_binary(integer_to_list(IndexesVersion0)),
@@ -938,4 +938,55 @@ timeout_on_pools_default_post_test() ->
     meck:unload(ns_doctor),
     meck:unload(validator).
 
+%% /pools/default must be byte-identical whether built from full node statuses
+%% or from the projected rows ns_doctor publishes (ns_doctor:project_status/1),
+%% at every level and stability.
+snapshot_build(Level, Stability) ->
+    iolist_to_binary(
+      ejson:encode(do_build_pool_info("default", Level, Stability,
+                                      "127.0.0.1"))).
+
+snapshot_build_all() ->
+    [{{L, S}, snapshot_build(L, S)}
+     || L <- [normal, admin, internal, for_ui], S <- [stable, unstable]].
+
+snapshot_full_vs_projected_t(Variant, Compat, Enterprise) ->
+    fake_node_statuses:set_cluster(Compat, Enterprise),
+    Statuses = fake_node_statuses:statuses(Variant),
+    fake_node_statuses:publish(Statuses, full),
+    Full = snapshot_build_all(),
+    fake_node_statuses:publish(Statuses, projected),
+    Projected = snapshot_build_all(),
+    fake_node_statuses:assert_no_doctor_calls(),
+    lists:foreach(fun ({{LS, F}, {LS, P}}) ->
+                          ?assertEqual({LS, F}, {LS, P})
+                  end, lists:zip(Full, Projected)),
+    %% the builds really used the statuses
+    {_, Admin} = lists:keyfind({admin, unstable}, 1, Projected),
+    [?assertNotEqual({Needle, nomatch}, {Needle, binary:match(Admin, Needle)})
+     || Needle <- [<<"\"version\":\"8.0.4-6357-enterprise\"">>,
+                   <<"\"cpuCount\":16">>,
+                   <<"\"status\":\"", (atom_to_binary(Variant))/binary, "\"">>,
+                   <<"\"storageTotals\"">>, <<"\"mem_used\":104857600">>,
+                   <<"\"maxBucketCount\"">>, <<"tasks?v=12345">>]].
+
+%% With no rows (ns_doctor just started and has not heard from anyone) and
+%% with no table at all (ns_doctor is restarting), readers get the same as
+%% from an ns_doctor that has no statuses.
+snapshot_empty_t() ->
+    fake_node_statuses:set_cluster([8, 0], true),
+    fake_node_statuses:publish([], projected),
+    fake_node_statuses:delete_tasks_version(),
+    Empty = snapshot_build_all(),
+    fake_node_statuses:delete_snapshot(),
+    ?assertEqual(Empty, snapshot_build_all()).
+
+snapshot_test_() ->
+    {foreach, fun fake_node_statuses:setup/0, fun fake_node_statuses:teardown/1,
+     [{lists:flatten(io_lib:format("full vs projected: ~p", [C])),
+       fun () -> snapshot_full_vs_projected_t(V, Compat, EE) end}
+      || {V, Compat, EE} = C <- fake_node_statuses:cases()] ++
+         [{"empty and missing snapshot", fun snapshot_empty_t/0}]}.
+
 -endif.
+

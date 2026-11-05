@@ -43,7 +43,7 @@ bucket_ram_usage(BucketName) ->
     element(1, last_membase_sample(BucketName, live_bucket_nodes(BucketName))).
 
 get_node_infos(NodeNames) ->
-    NodesDict = ns_doctor:get_nodes(),
+    NodesDict = ns_doctor:get_nodes_snapshot(),
     lists:foldl(fun (N, A) ->
                         case dict:find(N, NodesDict) of
                             {ok, V} -> [{N, V} | A];

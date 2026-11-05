@@ -13,6 +13,13 @@
 -define(LOG_INTERVAL, 60000). % How often to dump current status to the logs
 -define(MAX_XDCR_TASK_ERRORS, 10).
 
+%% Snapshot of node statuses for REST readers. ns_doctor writes one projected
+%% row per node on every heartbeat, plus the tasks version.
+%% Readers look the rows up without calling ns_doctor.
+-define(SNAPSHOT, ns_doctor_snapshot).
+-define(SNAPSHOT_TMP, ns_doctor_snapshot_tmp).
+-define(UNKNOWN_TASKS_VERSION, "0").
+
 -include("ns_common.hrl").
 -include("ns_heart.hrl").
 
@@ -28,6 +35,13 @@
 -export([get_nodes/0, get_node/1, get_node/2,
          get_tasks_version/0, build_tasks_list/2, wait_statuses/2,
          get_memory_data/1]).
+-export([get_nodes_snapshot/0, get_tasks_version_snapshot/0,
+         project_status/1]).
+
+-ifdef(TEST).
+-export([create_snapshot_table/0, delete_snapshot_table/0,
+         store_snapshot_row/2, store_tasks_version/1]).
+-endif.
 
 -record(state, {
           nodes :: dict:dict(),
@@ -73,6 +87,9 @@ init([]) ->
               true;
           (nodes_wanted) ->
               true;
+          %% global tasks are part of the tasks version
+          (tasks) ->
+              true;
           (Key) ->
               ns_bucket:names_change(Key)
       end, fun (Key) ->
@@ -101,10 +118,12 @@ get_from_config(recovery_status) ->
             Other
     end;
 get_from_config(buckets) ->
-    lists:sort(ns_bucket:get_bucket_names()).
+    lists:sort(ns_bucket:get_bucket_names());
+get_from_config(tasks) ->
+    compute_global_tasks_hash().
 
 handle_call(get_tasks_version, _From, State) ->
-    NewState = maybe_refresh_tasks_version(State),
+    NewState = refresh_tasks_version(State),
     {reply, NewState#state.tasks_version, NewState};
 
 handle_call({get_node, Node}, _From, #state{nodes=Nodes} = State) ->
@@ -152,6 +171,7 @@ handle_info({config_change, nodes_wanted},
     NewStatuses =
         lists:foldl(
           fun (Node, Acc) ->
+                  delete_snapshot_row(Node),
                   dict:erase(Node, Acc)
           end, Statuses, ToRemove),
 
@@ -159,9 +179,11 @@ handle_info({config_change, nodes_wanted},
                           nodes_wanted=NewNodes}};
 
 handle_info({config_change, cluster_compat_version}, State) ->
-    handle_info({config_change, nodes_wanted},
-                State#state{tasks_hash_nodes = undefined,
-                            config_state = #{}});
+    {noreply, NewState} =
+        handle_info({config_change, nodes_wanted},
+                    State#state{tasks_hash_nodes = undefined,
+                                config_state = #{}}),
+    {noreply, refresh_tasks_version_on_config_change(NewState)};
 
 handle_info({config_change, Key},
             #state{config_state = ConfigState} = State) ->
@@ -171,10 +193,11 @@ handle_info({config_change, Key},
             OldValue ->
                 State;
             NewValue ->
-                %% force hash recomputation next time
-                %% maybe_refresh_tasks_version is called
-                State#state{tasks_hash_nodes = undefined,
-                            config_state = maps:put(Key, NewValue, ConfigState)}
+                %% recompute the tasks version so the snapshot has it
+                refresh_tasks_version_on_config_change(
+                  State#state{tasks_hash_nodes = undefined,
+                              config_state =
+                                  maps:put(Key, NewValue, ConfigState)})
         end,
     {noreply, NewState};
 
@@ -182,12 +205,17 @@ handle_info(acquire_initial_status,
             #state{nodes=NodeDict,
                    nodes_wanted = NodesWanted} = State) ->
     Replies = ns_heart:status_all(NodesWanted),
-    %% Get an initial status so we don't start up thinking everything's down
+    %% Get an initial status so we don't start up thinking everything's down.
+    %% The snapshot table is published only after this, already filled:
+    %% until then readers find no table and call us, so they wait for the
+    %% initial statuses instead of seeing every node as down.
     Nodes = lists:foldl(fun ({Node, Status}, Dict) ->
                                 update_status(Node, Status, Dict)
                         end, NodeDict, Replies),
     ?doctor_debug("Got initial status:~n~p", [lists:sort(dict:to_list(Nodes))]),
-    {noreply, State#state{nodes=Nodes}};
+    NewState = refresh_tasks_version(State#state{nodes=Nodes}),
+    publish_snapshot(NewState),
+    {noreply, NewState};
 
 handle_info(log, #state{nodes=NodeDict} = State) ->
     ?doctor_debug("Current node statuses:~n~p",
@@ -225,6 +253,69 @@ get_node(Node) ->
 
 get_tasks_version() ->
     gen_server:call(?MODULE, get_tasks_version).
+
+%% Same as get_nodes/0, but read from the snapshot: does not wait for
+%% ns_doctor, and has only the fields project_status/1 keeps. A row is as
+%% old as the last heartbeat ns_doctor processed from that node; stale and
+%% down are computed here, as get_nodes/0 does. Without a table (ns_doctor is
+%% starting or restarting) falls back to get_nodes/0.
+-spec get_nodes_snapshot() -> dict:dict().
+get_nodes_snapshot() ->
+    try ets:select(?SNAPSHOT, [{{{node, '$1'}, '$2'}, [], [{{'$1', '$2'}}]}]) of
+        Rows ->
+            Now = erlang:monotonic_time(),
+            LiveNodes = [node() | nodes()],
+            dict:from_list(
+              [{Node, annotate_status(Node, Status, Now, LiveNodes)}
+               || {Node, Status} <- Rows])
+    catch
+        error:badarg ->
+            get_nodes()
+    end.
+
+-spec get_tasks_version_snapshot() -> string().
+get_tasks_version_snapshot() ->
+    try ets:lookup(?SNAPSHOT, tasks_version) of
+        [{tasks_version, Version}] ->
+            Version;
+        [] ->
+            ?UNKNOWN_TASKS_VERSION
+    catch
+        error:badarg ->
+            try
+                get_tasks_version()
+            catch
+                E:R ->
+                    ?doctor_error("Error attempting to get tasks version: ~p",
+                                  [{E, R}]),
+                    ?UNKNOWN_TASKS_VERSION
+            end
+    end.
+
+%% Fields of a node status that readers of the snapshot use (/pools/default,
+%% full bucket info, nodes info). Keys are copied whole and only when
+%% present, so a row is a sub-list of the status in the same order. Notably
+%% left out: local_tasks, processes_stats, statistics, memory and
+%% system_memory_data.
+%%
+%% Fields missing from this list are silently absent for snapshot readers
+%% (proplists defaults, no crash). If you read a new ns_heart field through
+%% get_nodes_snapshot/0, add it here and to the fixture in
+%% pools_default_snapshot_tests.
+-spec project_status(list()) -> list().
+project_status(Status) ->
+    [KV || KV <- Status, is_snapshot_field(KV)].
+
+is_snapshot_field({{service_status, _}, _}) -> true;
+is_snapshot_field({K, _}) ->
+    lists:member(K, [last_heard, ready_buckets, version, system_arch,
+                     cpu_count, prod, prod_name, supported_compat_version,
+                     encryption_at_rest_info, wall_clock, memory_data,
+                     system_stats, interesting_stats, disk_data,
+                     node_storage_conf, per_bucket_interesting_stats,
+                     outgoing_replications_safeness_level,
+                     incoming_replications_conf_hashes]);
+is_snapshot_field(_) -> false.
 
 build_tasks_list(PoolId, RebStatusTimeout) ->
     NodesDict = gen_server:call(?MODULE, get_nodes),
@@ -294,6 +385,9 @@ is_significant_buckets_change(OldStatus, NewStatus) ->
 update_status(Name, Status0, Dict) ->
     TS = erlang:monotonic_time(),
     Status = [{last_heard, TS} | Status0],
+    %% Before the notifications below: a subscriber woken by them may read
+    %% the snapshot right away and must see this status.
+    store_snapshot_row(Name, project_status(Status)),
     PrevStatus = case dict:find(Name, Dict) of
                      {ok, V} -> V;
                      error -> []
@@ -324,6 +418,68 @@ update_status(Name, Status0, Dict) ->
 
     gen_event:notify(ns_doctor_events, {node_status, Name, Status}),
     dict:store(Name, Status, Dict).
+
+create_snapshot_table(Name) ->
+    Name = ets:new(Name, [named_table, protected, set,
+                          {read_concurrency, true}]),
+    ok.
+
+%% Creates the table with everything known so far. It is filled under a
+%% temporary name and then renamed, so readers either find no table (and
+%% call us) or a complete one, never an empty or partial one.
+publish_snapshot(#state{nodes = Nodes, tasks_version = TasksVersion}) ->
+    ok = create_snapshot_table(?SNAPSHOT_TMP),
+    Rows = [{{node, Node}, project_status(Status)}
+            || {Node, Status} <- dict:to_list(Nodes)],
+    true = ets:insert(?SNAPSHOT_TMP, Rows),
+    TasksVersion =/= undefined andalso
+        ets:insert(?SNAPSHOT_TMP, {tasks_version, TasksVersion}),
+    ?SNAPSHOT = ets:rename(?SNAPSHOT_TMP, ?SNAPSHOT),
+    ok.
+
+%% Writes are no-ops until acquire_initial_status creates the table.
+snapshot_write(Fun) ->
+    case ets:whereis(?SNAPSHOT) of
+        undefined ->
+            ok;
+        _ ->
+            Fun(),
+            ok
+    end.
+
+store_snapshot_row(Node, Status) ->
+    snapshot_write(fun () -> ets:insert(?SNAPSHOT, {{node, Node}, Status}) end).
+
+delete_snapshot_row(Node) ->
+    snapshot_write(fun () -> ets:delete(?SNAPSHOT, {node, Node}) end).
+
+store_tasks_version(Version) ->
+    snapshot_write(
+      fun () -> ets:insert(?SNAPSHOT, {tasks_version, Version}) end).
+
+refresh_tasks_version(#state{tasks_version = OldVersion} = State) ->
+    NewState = maybe_refresh_tasks_version(State),
+    case NewState#state.tasks_version of
+        OldVersion ->
+            ok;
+        NewVersion ->
+            store_tasks_version(NewVersion)
+    end,
+    NewState.
+
+%% Like process_heartbeat, notifies significant_buckets_change when the
+%% tasks hash changes, so watchers (streaming endpoints, /pools/default long
+%% poll) wake up.
+refresh_tasks_version_on_config_change(State) ->
+    NewState = refresh_tasks_version(State),
+    case NewState#state.tasks_hash =/= State#state.tasks_hash of
+        true ->
+            gen_event:notify(buckets_events,
+                             {significant_buckets_change, node()});
+        false ->
+            ok
+    end,
+    NewState.
 
 annotate_status(Node, Status, Now, LiveNodes) ->
     LastHeard = proplists:get_value(last_heard, Status),
@@ -1033,7 +1189,7 @@ build_recovery_task(PoolId) ->
 process_heartbeat(Node, Status, State) ->
     Nodes = update_status(Node, Status, State#state.nodes),
     NewState0 = State#state{nodes=Nodes},
-    NewState = maybe_refresh_tasks_version(NewState0),
+    NewState = refresh_tasks_version(NewState0),
     case NewState0#state.tasks_hash =/= NewState#state.tasks_hash of
         true ->
             gen_event:notify(buckets_events, {significant_buckets_change, Node});
@@ -1058,6 +1214,13 @@ get_memory_data(Nodes) ->
 
 -ifdef(TEST).
 
+create_snapshot_table() ->
+    create_snapshot_table(?SNAPSHOT).
+
+delete_snapshot_table() ->
+    ets:whereis(?SNAPSHOT) =/= undefined andalso ets:delete(?SNAPSHOT),
+    ok.
+
 initial_status_test_setup() ->
     meck:new(ns_pubsub),
     meck:expect(ns_pubsub,
@@ -1079,6 +1242,8 @@ initial_status_test_setup() ->
                 fun() ->
                         [node()]
                 end),
+
+    mock_tasks_version_inputs(),
 
     %% We try to send an event to ns_doctor_events. We need to register it to
     %% send it somewhere, so just send it to ourselves and we'll eat it
@@ -1115,7 +1280,25 @@ initial_status_t_teardown(HeartPid) ->
     meck:unload(ns_heart),
     meck:unload(ns_node_disco),
     meck:unload(chronicle_compat_events),
-    meck:unload(ns_pubsub).
+    meck:unload(ns_pubsub),
+    unload_tasks_version_inputs().
+
+mock_tasks_version_inputs() ->
+    meck:new(ns_bucket),
+    meck:expect(ns_bucket, node_bucket_names, fun (_) -> ["b"] end),
+    meck:expect(ns_bucket, get_bucket_names, fun () -> ["b"] end),
+    meck:expect(ns_bucket, names_change, fun (_) -> false end),
+    meck:new(rebalance),
+    meck:expect(rebalance, status_uuid, fun () -> undefined end),
+    meck:new(ns_orchestrator),
+    meck:expect(ns_orchestrator, is_recovery_running, fun () -> false end),
+    meck:new(global_tasks),
+    meck:expect(global_tasks, get_default_tasks, fun () -> [] end),
+    meck:expect(global_tasks, task_id,
+                fun (Task) -> proplists:get_value(task_id, Task) end).
+
+unload_tasks_version_inputs() ->
+    meck:unload([global_tasks, ns_orchestrator, rebalance, ns_bucket]).
 
 initial_status_t() ->
     {ok, Pid} = start_link(),
@@ -1142,4 +1325,158 @@ initial_status_test_() ->
             initial_status_t_teardown(HeartPid)
         end,
         [{"initial status test", fun () -> initial_status_t() end}]}.
+
+-define(PEER, 'ns_1@peer.example').
+
+snapshot_test_setup() ->
+    meck:new(chronicle_compat_events),
+    meck:expect(chronicle_compat_events, subscribe, fun (_, _) -> ok end),
+    meck:new(ns_node_disco),
+    meck:expect(ns_node_disco, nodes_wanted, fun () -> [node(), ?PEER] end),
+    meck:new(ns_heart),
+    mock_tasks_version_inputs(),
+    %% event managers ns_doctor notifies; events are dropped
+    [begin
+         Sink = spawn(fun Loop () -> receive _ -> Loop() end end),
+         erlang:register(Name, Sink),
+         Sink
+     end || Name <- [ns_doctor_events, buckets_events]].
+
+snapshot_test_teardown(Sinks) ->
+    [exit(Sink, kill) || Sink <- Sinks],
+    unload_tasks_version_inputs(),
+    meck:unload([ns_heart, ns_node_disco, chronicle_compat_events]).
+
+heartbeat(N) ->
+    [{active_buckets, ["b"]}, {ready_buckets, ["b"]}, {cpu_count, N},
+     {local_tasks, [[{type, xdcr}, {id, <<"r1">>}, {max_vbreps, N}]]},
+     {processes_stats, [{x, N}]}, {{service_status, index}, []}].
+
+snapshot_rows() ->
+    lists:sort(ets:tab2list(?SNAPSHOT)).
+
+snapshot_t() ->
+    Self = self(),
+    %% acquire_initial_status waits in here until the test releases it
+    meck:expect(ns_heart, status_all,
+                fun (_) ->
+                        Self ! {status_all, self()},
+                        receive go -> [{node(), heartbeat(1)}] end
+                end),
+    {ok, Pid} = start_link(),
+    receive {status_all, Waiter} -> ok end,
+
+    %% No table until the initial statuses are in: readers wait on the
+    %% call path.
+    ?assertEqual(undefined, ets:whereis(?SNAPSHOT)),
+    Reader = spawn_link(fun () -> Self ! {got, get_nodes_snapshot()} end),
+    receive {got, _} -> ?assert(false) after 100 -> ok end,
+    Waiter ! go,
+    Got = receive {got, D} -> D end,
+    ?assertEqual([node()], dict:fetch_keys(Got)),
+    unlink(Reader),
+    %% the table was filled under a temporary name, then renamed
+    ?assertEqual(undefined, ets:whereis(?SNAPSHOT_TMP)),
+    ?assertMatch([_], [R || {{node, _}, _} = R <- snapshot_rows()]),
+    ?assertNotEqual(?UNKNOWN_TASKS_VERSION, get_tasks_version_snapshot()),
+
+    %% A heartbeat lands in the snapshot, projected; readers see what
+    %% get_nodes/0 returns, minus the fields that aren't projected.
+    gen_server:cast(?MODULE, {heartbeat, ?PEER, heartbeat(2)}),
+    Full = get_nodes(),
+    Snap = get_nodes_snapshot(),
+    ?assertEqual(lists:sort(dict:fetch_keys(Full)),
+                 lists:sort(dict:fetch_keys(Snap))),
+    dict:fold(fun (Node, Status, ok) ->
+                      ?assertEqual(project_status(Status) -- [stale, down],
+                                   dict:fetch(Node, Snap) -- [stale, down]),
+                      ?assertEqual(proplists:get_bool(down, Status),
+                                   proplists:get_bool(down,
+                                                      dict:fetch(Node, Snap))),
+                      ok
+              end, ok, Full),
+    ?assertEqual(undefined, proplists:get_value(
+                              local_tasks, dict:fetch(?PEER, Snap))),
+    ?assertEqual(2, proplists:get_value(cpu_count, dict:fetch(?PEER, Snap))),
+    %% not this test's node: down, as get_nodes/0 says
+    ?assert(proplists:get_bool(down, dict:fetch(?PEER, Snap))),
+
+    %% The tasks version is published without anyone asking for it.
+    V1 = get_tasks_version_snapshot(),
+    ?assertNotEqual(?UNKNOWN_TASKS_VERSION, V1),
+    ?assertEqual(V1, get_tasks_version()),
+    %% an XDCR pause changes it (max_vbreps 0)
+    gen_server:cast(?MODULE, {heartbeat, ?PEER,
+                              lists:keyreplace(local_tasks, 1, heartbeat(2),
+                                               {local_tasks,
+                                                [[{type, xdcr}, {id, <<"r1">>},
+                                                  {max_vbreps, 0}]]})}),
+    _ = get_nodes(),
+    V2 = get_tasks_version_snapshot(),
+    ?assertNotEqual(V1, V2),
+    %% so does a config change, with no heartbeat, and watchers are woken
+    Sink = whereis(buckets_events),
+    unregister(buckets_events),
+    register(buckets_events, Self),
+    meck:expect(ns_bucket, get_bucket_names, fun () -> ["b", "c"] end),
+    Pid ! {config_change, buckets},
+    _ = get_nodes(),
+    V3 = get_tasks_version_snapshot(),
+    ?assertNotEqual(V2, V3),
+    Self2 = node(),
+    receive
+        {notify, {significant_buckets_change, Self2}} -> ok
+    after 0 ->
+            ?assert(false)
+    end,
+    %% a config change that leaves the version as is sends nothing
+    Pid ! {config_change, buckets},
+    _ = get_nodes(),
+    receive
+        {notify, {significant_buckets_change, _}} -> ?assert(false)
+    after 0 ->
+            ok
+    end,
+    unregister(buckets_events),
+    register(buckets_events, Sink),
+    %% and a new global task (chronicle key tasks, which we subscribe to)
+    [Filter | _] = [F || {_, {chronicle_compat_events, subscribe, [F, _]}, _}
+                             <- meck:history(chronicle_compat_events)],
+    ?assert(Filter(tasks)),
+    meck:expect(global_tasks, get_default_tasks,
+                fun () -> [[{task_id, <<"t1">>}]] end),
+    Pid ! {config_change, tasks},
+    _ = get_nodes(),
+    ?assertNotEqual(V3, get_tasks_version_snapshot()),
+
+    %% A node that leaves nodes_wanted leaves the snapshot.
+    meck:expect(ns_node_disco, nodes_wanted, fun () -> [node()] end),
+    Pid ! {config_change, nodes_wanted},
+    _ = get_nodes(),
+    ?assertEqual([node()], dict:fetch_keys(get_nodes_snapshot())),
+    ?assertEqual([], [R || {{node, N}, _} = R <- snapshot_rows(),
+                           N =:= ?PEER]),
+
+    %% The table goes with ns_doctor; readers then get what the call path
+    %% gives when ns_doctor is down.
+    gen_server:stop(Pid),
+    ?assertEqual(undefined, ets:whereis(?SNAPSHOT)),
+    ?assertEqual([], dict:to_list(get_nodes_snapshot())),
+    ?assertEqual(?UNKNOWN_TASKS_VERSION, get_tasks_version_snapshot()).
+
+snapshot_test_() ->
+    {setup, fun snapshot_test_setup/0, fun snapshot_test_teardown/1,
+     [{"snapshot", fun snapshot_t/0}]}.
+
+project_status_test() ->
+    Status = [{last_heard, 1}, {local_tasks, [x]}, {cpu_count, 4},
+              {{service_status, fts}, [{needs_rebalance, true}]},
+              {memory, [y]}, {version, [{ns_server, "8.0.4"}]},
+              {unknown_key, z}],
+    %% a sub-list, same order, nothing added
+    ?assertEqual([{last_heard, 1}, {cpu_count, 4},
+                  {{service_status, fts}, [{needs_rebalance, true}]},
+                  {version, [{ns_server, "8.0.4"}]}],
+                 project_status(Status)),
+    ?assertEqual([], project_status([])).
 -endif.
