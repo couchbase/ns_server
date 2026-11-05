@@ -2343,6 +2343,11 @@ read_all_deks(Snapshot) ->
                   {true, new_dek_info(Kind, ActiveId, Keys,
                                       IsEnabled)};
               {succ, {error, not_found}} ->
+                  %% Nothing else would retire these DEKs, as the kind is
+                  %% forgotten here (e.g. the node has left the cluster, but
+                  %% bucket DEKs are still on disk). Integrity token removal
+                  %% doesn't cover them, so they become unverifiable.
+                  encryption_service:garbage_collect_keys(Kind, []),
                   false
           end
       end, Term).
