@@ -64,24 +64,28 @@ get_static_value(Key) ->
 lookup_value_with_expiration(Key, InvalidPred) ->
     lookup_value_with_expiration(Key, InvalidPred,
                                  erlang:monotonic_time(millisecond)).
-lookup_value_with_expiration(Key, InvalidPred, Time) ->
+lookup_value_with_expiration(Key, InvalidPred, AsOf) ->
     case ets:lookup(?MODULE, Key) of
-        [] ->
-            {not_found, Time};
-        [{_, Value, Expiration, InvalidationState}] ->
-            case Time =< Expiration of
+        [{_, Value, _, _, BuildStart}] when BuildStart > AsOf ->
+            %% Built from inputs read after the caller arrived, so skip the
+            %% predicate, as the payload is new enough to serve.
+            %% N.B. This works under the assumption that the predicate is
+            %% just trying to ensure freshness, and is not particularly robust.
+            {ok, Value};
+        [{_, Value, Expiration, InvalidationState, _}]
+          when AsOf =< Expiration ->
+            case InvalidPred(Key, Value, InvalidationState) of
                 true ->
-                    case InvalidPred(Key, Value, InvalidationState) of
-                        true ->
-                            {not_found, Time};
-                        _ ->
-                            {ok, Value}
-                    end;
+                    {not_found, AsOf};
                 _ ->
-                    {not_found, Time}
-            end
+                    {ok, Value}
+            end;
+        _ ->
+            {not_found, AsOf}
     end.
 
+%% InvalidPred must only judge freshness, as entries built after the caller
+%% arrived are served without consulting it.
 lookup_or_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
     case lookup_value_with_expiration(Key, InvalidPred) of
         {not_found, AsOf} ->
@@ -99,7 +103,7 @@ compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
 do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
     case lookup_value_with_expiration(Key, InvalidPred, AsOf) of
         {not_found, LookupTime} ->
-            PreComputeTime = erlang:monotonic_time(millisecond),
+            BuildStart = erlang:monotonic_time(millisecond),
             case ComputeBody() of
                 {error, _} = Error ->
                     Error;
@@ -109,14 +113,14 @@ do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
                     %% waiting for this payload (in the message queue) can
                     %% serve it instead of recomputing it.
                     Expiration =
-                        case LookupTime + Age =< PreComputeTime of
+                        case LookupTime + Age =< BuildStart of
                             true -> erlang:monotonic_time(millisecond);
                             false -> LookupTime + Age
                         end,
 
                     ns_server_stats:notify_counter(<<"web_cache_updates">>),
-                    ets:insert(?MODULE, {Key,
-                                         Value, Expiration, InvalidationState}),
+                    ets:insert(?MODULE, {Key, Value, Expiration,
+                                         InvalidationState, BuildStart}),
                     Value
             end;
         {ok, Value} ->
@@ -131,7 +135,7 @@ schedule_cleanup() ->
 cleanup() ->
     Now = erlang:monotonic_time(millisecond),
     ToDelete = ets:foldl(
-                 fun ({Key, _, Expiration, _}, Acc) when Now > Expiration ->
+                 fun ({Key, _, Expiration, _, _}, Acc) when Now > Expiration ->
                          [Key | Acc];
                      (_, Acc) ->
                          Acc
@@ -187,7 +191,13 @@ web_cache_test_() ->
       {"compute error test", fun compute_error_not_cached_t/0},
       {"valid as of arrival test", fun valid_as_of_arrival_is_served_t/0},
       {"slow compute serve queue test",
-       fun slow_compute_serves_queued_arrival_t/0}
+       fun slow_compute_serves_queued_arrival_t/0},
+      {"churn coalesce test",
+       {timeout, 30, fun churn_queued_callers_share_build_t/0}},
+      {"update id: later build served",
+       {timeout, 30, fun update_id_later_build_served_t/0}},
+      {"update id: earlier build rebuilt",
+       {timeout, 30, fun update_id_earlier_build_rebuilt_t/0}}
      ]}.
 
 %% A cold read computes and stores the value, an immediate warm read reuses
@@ -335,5 +345,137 @@ slow_compute_serves_queued_arrival_t() ->
     %% R2 is served R1's value, its ComputeBody never runs
     ?assertEqual(v1, R2),
     ?assertEqual(1, count(<<"web_cache_updates">>)).
+
+%% Callers queued before a build started are served it, although the config
+%% version moved during the build, so two queued callers cost one build
+churn_queued_callers_share_build_t() ->
+    Counter = counters:new(2, []),
+    ConfigVersion = fun () -> counters:get(Counter, 1) end,
+    %% Each build moves the config version, so its own result fails the
+    %% predicate
+    Body = fun () ->
+                   counters:add(Counter, 2, 1),
+                   Vsn = ConfigVersion(),
+                   counters:add(Counter, 1, 1),
+                   {v, 60000, Vsn}
+           end,
+    IP = fun (_, _, Vsn) -> Vsn =/= ConfigVersion() end,
+    Parent = self(),
+    spawn_link(fun () ->
+                       work_queue:submit_sync_work(
+                         ?MODULE,
+                         fun () ->
+                                 Parent ! {queue_blocked, self()},
+                                 receive proceed -> ok end
+                         end)
+               end),
+    CachePid = receive {queue_blocked, P} -> P
+               after 5000 -> erlang:error(not_blocked)
+               end,
+    N = 2,
+    lists:foreach(
+      fun (_) ->
+              spawn_link(fun () ->
+                                 Parent ! {done,
+                                           lookup_or_compute_with_expiration(
+                                             ?TEST_KEY, Body, IP)}
+                         end)
+      end, lists:seq(1, N)),
+    wait_for_queue_len(CachePid, N),
+    %% Start the build after the callers' arrival millisecond, as a tie does
+    %% not postdate them
+    timer:sleep(1),
+    CachePid ! proceed,
+    lists:foreach(
+      fun (_) ->
+              receive {done, v} -> ok
+              after 10000 -> erlang:error(timeout)
+              end
+      end, lists:seq(1, N)),
+    ?assertEqual(1, counters:get(Counter, 2)).
+
+wait_for_queue_len(Pid, N) ->
+    case erlang:process_info(Pid, message_queue_len) of
+        {message_queue_len, Len} when Len >= N ->
+            ok;
+        _ ->
+            timer:sleep(1),
+            wait_for_queue_len(Pid, N)
+    end.
+
+%% poolsStreaming tags each pool_details entry with the UpdateID of the caller
+%% that built it, and a caller holding an UpdateID treats a differently tagged
+%% entry as invalid. These two tests use
+%% the same rule. State stands in for the config: event 2 sets it to 2 before
+%% the caller holding UpdateID 2 arrives.
+update_id_pred(CallerUpdateID) ->
+    fun (_Key, _Value, {OldUpdateID}) ->
+            CallerUpdateID =/= OldUpdateID andalso CallerUpdateID =/= undefined
+    end.
+
+update_id_body(Who, State, UpdateID) ->
+    fun () -> {{Who, counters:get(State, 1)}, 60000, {UpdateID}} end.
+
+%% A build that started after the caller arrived read State after event 2,
+%% so the caller is served it although it carries another caller's UpdateID.
+update_id_later_build_served_t() ->
+    State = counters:new(1, []),
+    counters:put(State, 1, 1),
+    Parent = self(),
+    spawn_link(fun () ->
+                       work_queue:submit_sync_work(
+                         ?MODULE,
+                         fun () ->
+                                 Parent ! {queue_blocked, self()},
+                                 receive proceed -> ok end
+                         end)
+               end),
+    CachePid = receive {queue_blocked, P} -> P
+               after 5000 -> erlang:error(not_blocked)
+               end,
+    %% Y (UpdateID 1) queues first, its build will start after X arrives
+    spawn_link(fun () ->
+                       Parent ! {y, lookup_or_compute_with_expiration(
+                                      ?TEST_KEY, update_id_body(y, State, 1),
+                                      update_id_pred(1))}
+               end),
+    wait_for_queue_len(CachePid, 1),
+    counters:put(State, 1, 2),
+    spawn_link(fun () ->
+                       Parent ! {x, lookup_or_compute_with_expiration(
+                                      ?TEST_KEY, update_id_body(x, State, 2),
+                                      update_id_pred(2))}
+               end),
+    wait_for_queue_len(CachePid, 2),
+    %% Start the build after X's arrival millisecond, as above
+    timer:sleep(1),
+    CachePid ! proceed,
+    ?assertEqual({y, 2}, receive {x, VX} -> VX after 5000 -> timeout end),
+    ?assertEqual({y, 2}, receive {y, VY} -> VY after 5000 -> timeout end),
+    ?assertEqual(1, count(<<"web_cache_updates">>)).
+
+%% A build already under way when the caller arrived may have read State
+%% before event 2: the caller must not be served it, and rebuilds.
+update_id_earlier_build_rebuilt_t() ->
+    State = counters:new(1, []),
+    counters:put(State, 1, 1),
+    Parent = self(),
+    SlowY = fun () ->
+                    V = counters:get(State, 1),
+                    Parent ! y_read_state,
+                    timer:sleep(300),
+                    {{y, V}, 60000, {1}}
+            end,
+    spawn_link(fun () ->
+                       Parent ! {y, lookup_or_compute_with_expiration(
+                                      ?TEST_KEY, SlowY, update_id_pred(1))}
+               end),
+    receive y_read_state -> ok after 5000 -> erlang:error(no_build) end,
+    counters:put(State, 1, 2),
+    ?assertEqual({x, 2},
+                 lookup_or_compute_with_expiration(
+                   ?TEST_KEY, update_id_body(x, State, 2), update_id_pred(2))),
+    ?assertEqual({y, 1}, receive {y, V} -> V after 5000 -> timeout end),
+    ?assertEqual(2, count(<<"web_cache_updates">>)).
 
 -endif.
