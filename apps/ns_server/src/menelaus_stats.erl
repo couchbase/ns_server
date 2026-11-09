@@ -1215,8 +1215,11 @@ aggregate_stat_entries(A, B) ->
 -define(SPACE_CHAR, 16#20).
 
 simple_memoize(Key, Body, Expiration) ->
+    %% Tag the key in a tuple, the cache groups payloads together by the first
+    %% element in the key for some things like build time tracking and we are
+    %% not overly interested in separating them for stats.
     menelaus_web_cache:lookup_or_compute_with_expiration(
-      Key,
+      {stats, Key},
       fun () ->
               {Body(), Expiration, []}
       end,

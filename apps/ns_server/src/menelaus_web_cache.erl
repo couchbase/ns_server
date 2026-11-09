@@ -121,6 +121,7 @@ do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
             case Result of
                 {Value, Age, InvalidationState} ->
                     BuildEnd = erlang:monotonic_time(millisecond),
+                    notify_build_time(Key, ok, BuildStart, BuildEnd),
                     %% Live at least until BuildEnd, so callers queued during
                     %% a build slower than Age are served it
                     Expiration = max(BuildStart + Age, BuildEnd),
@@ -129,6 +130,8 @@ do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
                                          InvalidationState, BuildStart}),
                     {ok, Value};
                 Failure ->
+                    BuildEnd = erlang:monotonic_time(millisecond),
+                    notify_build_time(Key, error, BuildStart, BuildEnd),
                     ?log_error("Computing ~p failed: ~p", [Key, Failure]),
                     Failure
             end;
@@ -136,6 +139,17 @@ do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
             ns_server_stats:notify_counter(<<"web_cache_inner_hits">>),
             {ok, Value}
     end.
+
+notify_build_time(Key, Result, BuildStart, BuildEnd) ->
+    ns_server_stats:notify_histogram(
+      {<<"web_cache_build_time">>, [{key, key_label(Key)}, {result, Result}]},
+      BuildEnd - BuildStart).
+
+%% Label by the key's tag only, as the rest holds bucket names and addresses
+key_label(Key) when is_tuple(Key) ->
+    element(1, Key);
+key_label(Key) ->
+    Key.
 
 schedule_cleanup() ->
     {ok, _} = timer:apply_after(?CLEANUP_INTERVAL, work_queue, submit_work,
