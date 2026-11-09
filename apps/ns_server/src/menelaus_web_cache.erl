@@ -96,17 +96,29 @@ lookup_or_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
     end.
 
 compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
-    work_queue:submit_sync_work(
-      ?MODULE,
-      ?cut(do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf))).
+    case work_queue:submit_sync_work(
+           ?MODULE,
+           ?cut(do_compute_with_expiration(Key, ComputeBody, InvalidPred,
+                                           AsOf))) of
+        {ok, RV} ->
+            RV;
+        {error, _} = Error ->
+            Error;
+        {exception, {Class, Reason, Stack}} ->
+            erlang:raise(Class, Reason, Stack)
+    end.
 
 do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
     case lookup_value_with_expiration(Key, InvalidPred, AsOf) of
         {not_found, _} ->
             BuildStart = erlang:monotonic_time(millisecond),
-            case ComputeBody() of
-                {error, _} = Error ->
-                    Error;
+            %% Body runs in the cache process, so fail only this caller
+            Result = try ComputeBody()
+                     catch
+                         Class:Reason:Stack ->
+                             {exception, {Class, Reason, Stack}}
+                     end,
+            case Result of
                 {Value, Age, InvalidationState} ->
                     BuildEnd = erlang:monotonic_time(millisecond),
                     %% Live at least until BuildEnd, so callers queued during
@@ -115,11 +127,14 @@ do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
                     ns_server_stats:notify_counter(<<"web_cache_updates">>),
                     ets:insert(?MODULE, {Key, Value, Expiration,
                                          InvalidationState, BuildStart}),
-                    Value
+                    {ok, Value};
+                Failure ->
+                    ?log_error("Computing ~p failed: ~p", [Key, Failure]),
+                    Failure
             end;
         {ok, Value} ->
             ns_server_stats:notify_counter(<<"web_cache_inner_hits">>),
-            Value
+            {ok, Value}
     end.
 
 schedule_cleanup() ->
@@ -188,6 +203,7 @@ web_cache_test_() ->
        fun slow_compute_serves_queued_arrival_t/0},
       {"churn coalesce test",
        {timeout, 30, fun churn_queued_callers_share_build_t/0}},
+      {"compute exception test", fun compute_exception_spares_cache_t/0},
       {"queued expiry test",
        {timeout, 30, fun value_built_after_queueing_lives_age_t/0}},
       {"update id: later build served",
@@ -398,6 +414,25 @@ wait_for_queue_len(Pid, N) ->
             timer:sleep(1),
             wait_for_queue_len(Pid, N)
     end.
+
+%% An exception in ComputeBody is raised in the caller, so the cache process
+%% and its table survive
+compute_exception_spares_cache_t() ->
+    IP = never_invalid(),
+    ?assertEqual(v1, lookup_or_compute_with_expiration(
+                       other_key, compute_body(v1, 60000), IP)),
+    Pid = whereis(?MODULE),
+    ?assertExit({timeout, _},
+                lookup_or_compute_with_expiration(
+                  ?TEST_KEY, fun () -> exit({timeout, some_call}) end, IP)),
+    ?assertError(boom,
+                 lookup_or_compute_with_expiration(
+                   ?TEST_KEY, fun () -> erlang:error(boom) end, IP)),
+    ?assertEqual(Pid, whereis(?MODULE)),
+    ?assertEqual(v1, lookup_or_compute_with_expiration(
+                       other_key, compute_body(v2, 60000), IP)),
+    ?assertEqual(v3, lookup_or_compute_with_expiration(
+                       ?TEST_KEY, compute_body(v3, 60000), IP)).
 
 %% A value built after its caller waited in the queue lives Age from when the
 %% build started, not from when the caller arrived: the next request shortly
