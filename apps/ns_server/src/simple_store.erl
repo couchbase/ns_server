@@ -56,7 +56,9 @@
 start_link(StoreName, ShouldEncrypt) ->
     ProcName = get_proc_name(StoreName),
     gen_server:start_link({local, ProcName}, ?MODULE,
-                          [StoreName, ShouldEncrypt], []).
+                          [StoreName, ShouldEncrypt],
+                          [{hibernate_after,
+                            ?get_param(hibernate_after, 10000)}]).
 
 get(StoreName, Key) ->
     get(StoreName, Key, false).
@@ -106,6 +108,11 @@ get_key_ids_in_use(StoreName) ->
 
 %% Internal
 init([StoreName, ShouldEncrypt]) ->
+    %% Every mutation is delivered as a closure capturing the value being
+    %% stored, so a queue of pending calls is made of large terms. Keep it off
+    %% the heap so GC doesn't have to walk it (MB-72708).
+    process_flag(message_queue_data, off_heap),
+
     %% Populate the table from the file if the file exists otherwise create
     %% an empty table.
     FilePath = path_config:component_path(data, get_file_name(StoreName)),
@@ -168,7 +175,7 @@ init_unencrypted(StoreName, FilePath) ->
 
 handle_call({work, Fun}, _From, State) ->
     {Res, NewState} = Fun(State),
-    {reply, Res, NewState, hibernate};
+    {reply, Res, NewState};
 
 handle_call(Unhandled, _From, State) ->
     ?log_error("Unhandled call: ~p", [Unhandled]),

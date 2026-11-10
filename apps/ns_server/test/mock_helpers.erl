@@ -238,6 +238,13 @@ ns_server_stats(PidMap0) ->
     {ok, NsServerStatsPid} = ?FUNCTION_NAME:start_link(),
     PidMap0#{?FUNCTION_NAME => NsServerStatsPid}.
 
+ns_server_stats(PidMap0) ->
+    os:putenv("NS_SERVER_BABYSITTER_PID", os:getpid()),
+    fake_ns_config:update_snapshot(
+      [{auto_failover_cfg, [{enabled, false}, {timeout, 1}, {count, 0}]}]),
+    {ok, NsServerStatsPid} = ?FUNCTION_NAME:start_link(),
+    PidMap0#{?FUNCTION_NAME => NsServerStatsPid}.
+
 %%%===================================================================
 %%% Mock setup functions
 %%%
