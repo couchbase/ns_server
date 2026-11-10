@@ -102,22 +102,16 @@ compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
 
 do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
     case lookup_value_with_expiration(Key, InvalidPred, AsOf) of
-        {not_found, LookupTime} ->
+        {not_found, _} ->
             BuildStart = erlang:monotonic_time(millisecond),
             case ComputeBody() of
                 {error, _} = Error ->
                     Error;
                 {Value, Age, InvalidationState} ->
-                    %% If this is already expired then set the expiry time to
-                    %% now, rather than lookup + age. This means that anything
-                    %% waiting for this payload (in the message queue) can
-                    %% serve it instead of recomputing it.
-                    Expiration =
-                        case LookupTime + Age =< BuildStart of
-                            true -> erlang:monotonic_time(millisecond);
-                            false -> LookupTime + Age
-                        end,
-
+                    BuildEnd = erlang:monotonic_time(millisecond),
+                    %% Live at least until BuildEnd, so callers queued during
+                    %% a build slower than Age are served it
+                    Expiration = max(BuildStart + Age, BuildEnd),
                     ns_server_stats:notify_counter(<<"web_cache_updates">>),
                     ets:insert(?MODULE, {Key, Value, Expiration,
                                          InvalidationState, BuildStart}),
@@ -194,6 +188,8 @@ web_cache_test_() ->
        fun slow_compute_serves_queued_arrival_t/0},
       {"churn coalesce test",
        {timeout, 30, fun churn_queued_callers_share_build_t/0}},
+      {"queued expiry test",
+       {timeout, 30, fun value_built_after_queueing_lives_age_t/0}},
       {"update id: later build served",
        {timeout, 30, fun update_id_later_build_served_t/0}},
       {"update id: earlier build rebuilt",
@@ -402,6 +398,28 @@ wait_for_queue_len(Pid, N) ->
             timer:sleep(1),
             wait_for_queue_len(Pid, N)
     end.
+
+%% A value built after its caller waited in the queue lives Age from when the
+%% build started, not from when the caller arrived: the next request shortly
+%% after is a hit, not another build.
+value_built_after_queueing_lives_age_t() ->
+    IP = never_invalid(),
+    Parent = self(),
+    spawn_link(fun () ->
+                       work_queue:submit_sync_work(
+                         ?MODULE,
+                         fun () ->
+                                 Parent ! queue_blocked,
+                                 timer:sleep(1500)
+                         end)
+               end),
+    receive queue_blocked -> ok after 5000 -> erlang:error(not_blocked) end,
+    ?assertEqual(v1, lookup_or_compute_with_expiration(
+                       ?TEST_KEY, compute_body(v1, 1000), IP)),
+    timer:sleep(20),
+    ?assertEqual(v1, lookup_or_compute_with_expiration(
+                       ?TEST_KEY, compute_body(v2, 1000), IP)),
+    ?assertEqual(1, count(<<"web_cache_updates">>)).
 
 %% poolsStreaming tags each pool_details entry with the UpdateID of the caller
 %% that built it, and a caller holding an UpdateID treats a differently tagged
