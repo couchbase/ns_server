@@ -163,8 +163,7 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts, DropGeneratedCerts) ->
                                       {ok, AddOldCA} =
                                           add_CAs_txn_fun(generated, OldCert,
                                                           []),
-                                      {commit, AddChanges, _} = AddOldCA(Txn),
-                                      AddChanges;
+                                      load_CAs_txn_changes(AddOldCA, Txn);
                                   false ->
                                       []
                               end,
@@ -181,7 +180,7 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts, DropGeneratedCerts) ->
                           %% writes the matching OOTB CRL in the same txn.
                           Changes1 = [{set, root_cert_and_pkey, NewPair},
                                       {set, ootb_crl, NewCrl}],
-                          {commit, Changes2, _} = AddCA(Txn),
+                          Changes2 = load_CAs_txn_changes(AddCA, Txn),
                           Changes = Changes0 ++ Changes1 ++ Changes2,
                           {commit, Changes, NewPair}
                   end
@@ -1525,6 +1524,13 @@ load_CAs(CAPropsList) ->
     {ok, _, R} = chronicle_kv:txn(kv, load_CAs_txn(CAPropsList, _)),
     {ok, R}.
 
+%% For embedding a load_CAs_txn fun into another transaction
+load_CAs_txn_changes(TxnFun, Txn) ->
+    case TxnFun(Txn) of
+        {commit, Changes, _} -> Changes;
+        {abort, {ok, no_rev, []}} -> []
+    end.
+
 load_CAs_txn(CAPropsList, ChronicleTxn) ->
     UTCTime = calendar:universal_time(),
     LoadTime = calendar:datetime_to_gregorian_seconds(UTCTime),
@@ -1533,8 +1539,12 @@ load_CAs_txn(CAPropsList, ChronicleTxn) ->
               {error, not_found} -> []
           end,
     ToSet = maybe_append_CA_certs(CAs, CAPropsList, LoadTime),
-    NewCAs = ToSet -- CAs,
-    {commit, [{set, ca_certificates, ToSet}], NewCAs}.
+    case ToSet -- CAs of
+        %% A no-op set would still bump the revision and make concurrent
+        %% loads of the same CAs conflict (and possibly exceed retries)
+        [] -> {abort, {ok, no_rev, []}};
+        NewCAs -> {commit, [{set, ca_certificates, ToSet}], NewCAs}
+    end.
 
 maybe_append_CA_certs(CAs, [], _) ->
     CAs;
@@ -2108,6 +2118,19 @@ upgrade_bad_ca_t() ->
     ?assertMatch({ok, _}, run_chronicle_upgrade()),
     ?assertEqual(none, called_with()),
     ?assertEqual({error, not_found}, chronicle_kv:get(kv, ootb_crl)).
+
+add_already_loaded_CAs_test() ->
+    fake_chronicle_kv:setup(),
+    try
+        ?assertMatch({ok, [_]}, add_CAs(uploaded, ?PEM_DEFAULT)),
+        {ok, {[_], Rev}} = chronicle_kv:get(kv, ca_certificates),
+        ?assertEqual({ok, []}, add_CAs(uploaded, ?PEM_DEFAULT)),
+        [{'Certificate', Der, _}] = public_key:pem_decode(?PEM_DEFAULT),
+        ?assertEqual({ok, []}, load_CAs([cert_props(uploaded, Der, [])])),
+        ?assertMatch({ok, {[_], Rev}}, chronicle_kv:get(kv, ca_certificates))
+    after
+        fake_chronicle_kv:teardown()
+    end.
 
 chronicle_upgrade_cert_to_79_test() ->
     CertWithoutPEM = [{subject, <<"CN=Couchbase Server 3f4b2bb0">>}],
