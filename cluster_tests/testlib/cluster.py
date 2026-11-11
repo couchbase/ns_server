@@ -890,7 +890,9 @@ class Cluster:
         testlib.poll_for_condition(
             lambda: self.are_nodes_healthy(),
             sleep_time=0.5,
-            timeout=60)
+            timeout=60,
+            # /pools/default returns 500 while ns_server is starting
+            retry_on_assert=True)
 
     def are_nodes_healthy(self):
         print("Checking if nodes are healthy")
