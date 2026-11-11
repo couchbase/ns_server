@@ -28,7 +28,8 @@ start_link() ->
     work_queue:start_link(?MODULE, fun cache_init/0).
 
 cache_init() ->
-    ets:new(?MODULE, [set, named_table]),
+    %% Public, as each type builds on its own queue
+    ets:new(?MODULE, [set, named_table, public]),
     VersionsPList = build_versions(),
     ets:insert(?MODULE, {versions, VersionsPList}),
     PackageVariant = read_package_variant(),
@@ -97,7 +98,7 @@ lookup_or_compute_with_expiration(Key, ComputeBody, InvalidPred) ->
 
 compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
     case work_queue:submit_sync_work(
-           ?MODULE,
+           build_queue(Key),
            ?cut(do_compute_with_expiration(Key, ComputeBody, InvalidPred,
                                            AsOf))) of
         {ok, RV} ->
@@ -108,11 +109,32 @@ compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
             erlang:raise(Class, Reason, Stack)
     end.
 
+%% Each type builds on its own queue, so a slow build of one does not hold up
+%% the others
+build_queue(Key) ->
+    Name = list_to_atom("menelaus_web_cache-" ++ atom_to_list(key_label(Key))),
+    case whereis(Name) of
+        undefined ->
+            %% Start it on the cache process, so it exits with the table owner
+            work_queue:submit_sync_work(
+              ?MODULE,
+              fun () ->
+                      case work_queue:start_link(Name) of
+                          {ok, _} ->
+                              Name;
+                          {error, {already_started, _}} ->
+                              Name
+                      end
+              end);
+        _ ->
+            Name
+    end.
+
 do_compute_with_expiration(Key, ComputeBody, InvalidPred, AsOf) ->
     case lookup_value_with_expiration(Key, InvalidPred, AsOf) of
         {not_found, _} ->
             BuildStart = erlang:monotonic_time(millisecond),
-            %% Body runs in the cache process, so fail only this caller
+            %% Body runs on the type's build queue, so fail only this caller
             Result = try ComputeBody()
                      catch
                          Class:Reason:Stack ->
@@ -184,7 +206,9 @@ setup() ->
     {CachePid, PidMap}.
 
 teardown({CachePid, PidMap}) ->
-    gen_server:stop(CachePid),
+    %% Not normal, so the linked build queues exit too
+    unlink(CachePid),
+    gen_server:stop(CachePid, shutdown, infinity),
     mock_helpers:teardown(PidMap),
     meck:unload(),
     fake_ns_config:teardown().
@@ -218,6 +242,7 @@ web_cache_test_() ->
       {"churn coalesce test",
        {timeout, 30, fun churn_queued_callers_share_build_t/0}},
       {"compute exception test", fun compute_exception_spares_cache_t/0},
+      {"build queue per type test", fun types_build_on_own_queues_t/0},
       {"queued expiry test",
        {timeout, 30, fun value_built_after_queueing_lives_age_t/0}},
       {"update id: later build served",
@@ -302,7 +327,7 @@ valid_as_of_arrival_is_served_t() ->
     Parent = self(),
     spawn_link(fun () ->
                        work_queue:submit_sync_work(
-                         ?MODULE,
+                         build_queue(?TEST_KEY),
                          fun () ->
                                  Parent ! queue_blocked,
                                  timer:sleep(Block)
@@ -389,7 +414,7 @@ churn_queued_callers_share_build_t() ->
     Parent = self(),
     spawn_link(fun () ->
                        work_queue:submit_sync_work(
-                         ?MODULE,
+                         build_queue(?TEST_KEY),
                          fun () ->
                                  Parent ! {queue_blocked, self()},
                                  receive proceed -> ok end
@@ -429,24 +454,48 @@ wait_for_queue_len(Pid, N) ->
             wait_for_queue_len(Pid, N)
     end.
 
-%% An exception in ComputeBody is raised in the caller, so the cache process
-%% and its table survive
+%% An exception in ComputeBody is raised in the caller, so the build queue and
+%% the table survive
 compute_exception_spares_cache_t() ->
     IP = never_invalid(),
     ?assertEqual(v1, lookup_or_compute_with_expiration(
                        other_key, compute_body(v1, 60000), IP)),
-    Pid = whereis(?MODULE),
+    Queue = build_queue(?TEST_KEY),
+    Pid = whereis(Queue),
     ?assertExit({timeout, _},
                 lookup_or_compute_with_expiration(
                   ?TEST_KEY, fun () -> exit({timeout, some_call}) end, IP)),
     ?assertError(boom,
                  lookup_or_compute_with_expiration(
                    ?TEST_KEY, fun () -> erlang:error(boom) end, IP)),
-    ?assertEqual(Pid, whereis(?MODULE)),
+    ?assertEqual(Pid, whereis(Queue)),
     ?assertEqual(v1, lookup_or_compute_with_expiration(
                        other_key, compute_body(v2, 60000), IP)),
     ?assertEqual(v3, lookup_or_compute_with_expiration(
                        ?TEST_KEY, compute_body(v3, 60000), IP)).
+
+%% A build of one type does not wait behind a build of another
+types_build_on_own_queues_t() ->
+    IP = never_invalid(),
+    Parent = self(),
+    SlowBody = fun () ->
+                       Parent ! {computing, self()},
+                       receive proceed -> ok end,
+                       {v1, 60000, undefined}
+               end,
+    spawn_link(fun () ->
+                       Parent ! {slow, lookup_or_compute_with_expiration(
+                                         {pool_details, x}, SlowBody, IP)}
+               end),
+    QueuePid = receive {computing, P} -> P
+               after 5000 -> erlang:error(compute_never_started)
+               end,
+    ?assertEqual(v2, lookup_or_compute_with_expiration(
+                       {stats, x}, compute_body(v2, 60000), IP)),
+    ?assertEqual(v3, lookup_or_compute_with_expiration(
+                       ?TEST_KEY, compute_body(v3, 60000), IP)),
+    QueuePid ! proceed,
+    ?assertEqual(v1, receive {slow, V} -> V after 5000 -> timeout end).
 
 %% A value built after its caller waited in the queue lives Age from when the
 %% build started, not from when the caller arrived: the next request shortly
@@ -456,7 +505,7 @@ value_built_after_queueing_lives_age_t() ->
     Parent = self(),
     spawn_link(fun () ->
                        work_queue:submit_sync_work(
-                         ?MODULE,
+                         build_queue(?TEST_KEY),
                          fun () ->
                                  Parent ! queue_blocked,
                                  timer:sleep(1500)
@@ -491,7 +540,7 @@ update_id_later_build_served_t() ->
     Parent = self(),
     spawn_link(fun () ->
                        work_queue:submit_sync_work(
-                         ?MODULE,
+                         build_queue(?TEST_KEY),
                          fun () ->
                                  Parent ! {queue_blocked, self()},
                                  receive proceed -> ok end

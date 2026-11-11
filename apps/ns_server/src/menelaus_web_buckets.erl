@@ -6228,7 +6228,8 @@ cached_setup() ->
     Pid.
 
 cached_teardown(Pid) ->
-    gen_server:stop(Pid),
+    %% Not normal, so the linked build queues exit too
+    gen_server:stop(Pid, shutdown, infinity),
     meck:unload(),
     fake_node_statuses:teardown(x).
 
