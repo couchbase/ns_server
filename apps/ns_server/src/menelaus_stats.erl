@@ -43,7 +43,7 @@ bucket_ram_usage(BucketName) ->
     element(1, last_membase_sample(BucketName, live_bucket_nodes(BucketName))).
 
 get_node_infos(NodeNames) ->
-    NodesDict = ns_doctor:get_nodes(),
+    NodesDict = ns_doctor:get_nodes_snapshot(),
     lists:foldl(fun (N, A) ->
                         case dict:find(N, NodesDict) of
                             {ok, V} -> [{N, V} | A];
@@ -491,8 +491,10 @@ build_response_for_specific_stat(BucketName, StatName, Params, LocalAddr) ->
                                               ClientTStamp, Window),
 
     Config = ns_config:get(),
+    AFamily = cb_dist:address_family(),
     Hostnames =
-        [menelaus_web_node:build_node_hostname(Config, N, LocalAddr) ||
+        [menelaus_web_node:build_node_hostname(Config, N, LocalAddr,
+                                               AFamily) ||
             N <- Nodes],
 
     Timestamps = [TS || {TS, _} <- hd(NodesSamples)],

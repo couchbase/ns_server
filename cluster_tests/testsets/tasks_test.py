@@ -177,11 +177,17 @@ class TasksBase:
         return uri.split("?v=")[1]
 
     def assert_tasks_version_changed(self, old_version):
-        new_version = self.get_tasks_version()
-        assert new_version != old_version, \
-            f"Tasks version was not changed when expected"
+        # ns_doctor publishes the tasks version once it has processed the
+        # config change, and /pools/default may serve a cached copy for up
+        # to 1 s, so the new version shows up eventually, not immediately.
+        def changed_version():
+            new_version = self.get_tasks_version()
+            return new_version if new_version != old_version else None
+
         # Return the new version, for subsequent comparisons without re-fetching
-        return new_version
+        return testlib.poll_for_condition(
+            changed_version, sleep_time=0.2, timeout=10, retry_value=None,
+            msg="Tasks version was not changed when expected")
 
     def assert_tasks_version_same(self, old_version):
         new_version = self.get_tasks_version()

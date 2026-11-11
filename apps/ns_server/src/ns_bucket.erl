@@ -1264,12 +1264,11 @@ get_max_buckets_supported() ->
 get_max_buckets() ->
     GlobalMax = get_max_buckets_supported(),
     KvNodes = ns_cluster_membership:service_active_nodes(kv),
+    Statuses = ns_doctor:get_nodes_snapshot(),
     AllCores =
-        lists:map(
-          fun (Node) ->
-                  Props = ns_doctor:get_node(Node),
-                  proplists:get_value(cpu_count, Props, GlobalMax)
-          end, KvNodes),
+        [proplists:get_value(cpu_count, ns_doctor:get_node(Node, Statuses),
+                             GlobalMax)
+         || Node <- KvNodes],
 
     case AllCores of
         [] ->
@@ -3745,12 +3744,11 @@ get_max_buckets_test_() ->
                                      [{enabled, CoresEnabled},
                                       {minimum, CoresPerBucket}]}]
                            end),
-               meck:expect(ns_doctor, get_node,
-                           fun (Node) ->
-                                   case maps:get(Node, NodeCores, undefined) of
-                                       undefined -> [];
-                                       Cores -> [{cpu_count, Cores}]
-                                   end
+               meck:expect(ns_doctor, get_nodes_snapshot,
+                           fun () ->
+                                   dict:from_list(
+                                     [{N, [{cpu_count, C}]}
+                                      || {N, C} <- maps:to_list(NodeCores)])
                            end),
                ?assertEqual(Expected, get_max_buckets())
        end}
