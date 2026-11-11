@@ -50,7 +50,8 @@ handle_post(Req) ->
       fun (Values) ->
               NewKVs = [{key_api_to_config(ApiK), V} ||
                         {ApiK, V} <- pre_process_post(Config, Values)],
-              case proplists:get_bool(auditd_enabled, NewKVs) of
+              NewSettings = misc:update_proplist(OldSettings, NewKVs),
+              case proplists:get_bool(auditd_enabled, NewSettings) of
                   true ->
                       ns_audit_cfg:sync_set_global(NewKVs),
                       ns_audit:modify_audit_settings(Req, NewKVs,
