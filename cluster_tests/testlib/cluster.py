@@ -28,6 +28,11 @@ sys.path.append(testlib.get_pylib_dir())
 
 import cluster_run_lib
 
+# Endpoints that only succeed once the service is ready to serve requests.
+# Covers the services that tests talk to directly on the service port.
+SERVICE_READINESS_PATHS = {Service.QUERY: '/admin/vitals',
+                           Service.CBAS: '/analytics/admin/active_requests'}
+
 clusters_to_kill = {}
 
 def kill_nodes(processes, urls, terminal_attrs, auth):
@@ -1007,6 +1012,38 @@ class Cluster:
                 attempts=30,
                 timeout=60,
                 msg="waiting for web service to restart")
+
+    @testlib.no_output_decorator
+    def wait_for_services(self, requirements, timeout=120):
+        """
+        Wait until the services required by the given requirements respond
+        on every connected node running them. Nodes report healthy well
+        before services like cbas start serving requests.
+        """
+        for node in self.connected_nodes:
+            # Services don't start on nodes that aren't rebalanced in yet
+            if node.get_cluster_membership() != 'active':
+                continue
+            node_services = node.get_services(use_cache=False)
+            for service, path in SERVICE_READINESS_PATHS.items():
+                if not requirements.has_service(service) or \
+                   service not in node_services:
+                    continue
+
+                def is_service_up():
+                    try:
+                        testlib.get_succ(node, path, service=service,
+                                         verbose=False)
+                        return True
+                    except RequestException:
+                        return False
+
+                testlib.poll_for_condition(
+                    is_service_up,
+                    sleep_time=0.5,
+                    timeout=timeout,
+                    retry_on_assert=True,
+                    msg=f"waiting for {service.value} on {node}")
 
     def disable_auto_failover(self):
         r = testlib.get_succ(self, '/settings/autoFailover').json()

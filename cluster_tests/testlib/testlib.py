@@ -121,6 +121,9 @@ def run_testset(testset, cluster, total_testsets_num, seed=None,
 
     testset_instance = testset['class'](cluster)
 
+    if not config['dry_run']:
+        cluster.wait_for_services(testset['requirements'])
+
     errors += log_at_all_nodes(cluster, f'starting testset {testset["name"]}')
 
     testset_seed = apply_with_seed(random, 'randbytes', [16],
