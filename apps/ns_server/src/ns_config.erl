@@ -1204,7 +1204,7 @@ initiate_save_config(Config, NewContinuation) ->
                         DekId = cb_crypto:get_dek_id(DS),
                         {DS, DekId};
                     false ->
-                        {undefined, []}
+                        {undefined, undefined}
                 end,
             {M, F, ASuffix} = Config#config.saver_mfa,
             A = [Config, DekSnapshot | ASuffix],
@@ -1910,6 +1910,14 @@ test_upgrade_config_with_many_upgrades() ->
     after 0 ->
             ok
     end.
+
+get_key_ids_in_use_during_unencrypted_save_test() ->
+    Cfg = initiate_save_config(
+            #config{saver_mfa = {?MODULE, do_not_save_config, []},
+                    supports_encryption = false}),
+    ?assertMatch({reply, {ok, [undefined]}, _},
+                 handle_call(get_key_ids_in_use, from,
+                             Cfg#config{key_ids_in_use = {ok, []}})).
 
 merge_values_test_() ->
     {timeout, 100, fun merge_values_test__/0}.
