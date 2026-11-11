@@ -63,6 +63,11 @@
 
 -export([compute_global_rev/1]).
 
+-export_type([config_version_token/0]).
+
+-type config_version_token() ::
+        {[{changes_counter, integer()}], pid() | undefined}.
+
 -export([save_config_sync/3, do_not_save_config/2]).
 
 % Exported for tests only
@@ -611,6 +616,7 @@ upgrade_config_explicitly(Upgrader) ->
     gen_server:call(?MODULE, {upgrade_config_explicitly, Upgrader},
                     ?UPGRADE_TIMEOUT).
 
+-spec config_version_token() -> config_version_token().
 config_version_token() ->
     {ets:lookup(ns_config_announces_counter, changes_counter), erlang:whereis(?MODULE)}.
 

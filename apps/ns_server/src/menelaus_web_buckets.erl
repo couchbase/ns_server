@@ -94,9 +94,41 @@ handle_bucket_list(Req) ->
     reply_json(Req, build_buckets_info(Req, Buckets, Ctx, get_info_level(Req))).
 
 handle_bucket_info(_PoolId, Id, Req) ->
-    Ctx = menelaus_web_node:get_context(Req, [Id], false, unstable),
-    [Json] = build_buckets_info(Req, [Id], Ctx, get_info_level(Req)),
-    reply_json(Req, Json).
+    LocalAddr = menelaus_util:local_addr(Req),
+    SkipMap = skip_map(Req),
+    case get_info_level(Req) of
+        for_ui ->
+            %% The UI wants no staleness, as for /pools/default.
+            reply_json(Req, build_one_bucket_info(Id, LocalAddr, for_ui,
+                                                  SkipMap));
+        normal ->
+            menelaus_util:reply_ok(
+              Req, "application/json",
+              cached_bucket_info_bytes(Id, LocalAddr, SkipMap))
+    end.
+
+build_one_bucket_info(Id, LocalAddr, InfoLevel, SkipMap) ->
+    Ctx = menelaus_web_node:get_context({ip, LocalAddr}, [Id], false,
+                                        unstable),
+    build_bucket_info(Id, Ctx, InfoLevel, SkipMap).
+
+%% Cached, as XDCR sources poll this on the target without rate limiting
+cached_bucket_info_bytes(Id, LocalAddr, SkipMap) ->
+    Token = fun () ->
+                    {menelaus_web_pools:config_version_token(), nodes()}
+            end,
+    menelaus_web_cache:lookup_or_compute_with_expiration(
+      {bucket_info, Id, SkipMap, LocalAddr},
+      fun () ->
+              %% NOTE: token needs to be taken before building
+              Vsn = Token(),
+              Json = build_one_bucket_info(Id, LocalAddr, normal, SkipMap),
+              {iolist_to_binary(menelaus_util:encode_json(Json)), 1000, Vsn}
+      end,
+      fun (_Key, _Value, Vsn) -> Vsn =/= Token() end).
+
+skip_map(Req) ->
+    proplists:get_value("skipMap", mochiweb_request:parse_qs(Req)) =:= "true".
 
 build_bucket_nodes_info(BucketName, BucketUUID, BucketConfig, Ctx) ->
     %% Only list nodes this bucket is mapped to
@@ -246,9 +278,7 @@ build_durability_impossible_fallback(BucketConfig) ->
     end.
 
 build_buckets_info(Req, Buckets, Ctx, InfoLevel) ->
-    SkipMap = InfoLevel =/= streaming andalso
-        proplists:get_value(
-          "skipMap", mochiweb_request:parse_qs(Req)) =:= "true",
+    SkipMap = InfoLevel =/= streaming andalso skip_map(Req),
     [build_bucket_info(BucketName, Ctx, InfoLevel, SkipMap) ||
         BucketName <- Buckets].
 
@@ -6177,6 +6207,79 @@ snapshot_test_() ->
        fun () -> snapshot_full_vs_projected_t(V, Compat, EE) end}
       || {V, Compat, EE} = C <- fake_node_statuses:cases()] ++
          [{"empty and missing snapshot", fun snapshot_empty_t/0}]}.
+
+%% Plain full bucket info is served from its own menelaus_web_cache.
+cached_setup() ->
+    fake_node_statuses:setup(),
+    %% ns_config is faked; chronicle changes drive invalidation, through
+    %% the revision of the fake chronicle snapshot
+    meck:expect(ns_config, config_version_token, fun () -> fake end),
+    meck:expect(chronicle_kv, get_revision,
+                fun (kv) ->
+                        Snapshot = fake_chronicle_kv:get_ets_snapshot(),
+                        {<<"fake">>, maps:get(seqno, Snapshot)}
+                end),
+    meck:new(menelaus_web_node, [passthrough]),
+    {ok, Pid} = menelaus_web_cache:start_link(),
+    unlink(Pid),
+    fake_node_statuses:set_cluster([8, 0], true),
+    fake_node_statuses:publish(fake_node_statuses:statuses(healthy),
+                               projected),
+    Pid.
+
+cached_teardown(Pid) ->
+    gen_server:stop(Pid),
+    meck:unload(),
+    fake_node_statuses:teardown(x).
+
+cached(Bucket, SkipMap) ->
+    cached_bucket_info_bytes(Bucket, "127.0.0.1", SkipMap).
+
+cached_builds() ->
+    meck:num_calls(menelaus_web_node, get_context, 4).
+
+%% Served bytes are exactly what the uncached handler encodes, per bucket and
+%% skipMap, and a repeated request is not rebuilt.
+cached_equals_uncached_t() ->
+    lists:foreach(
+      fun ({B, Skip}) ->
+              Uncached = snapshot_build_bucket(B, normal, Skip),
+              ?assertEqual({B, Skip, Uncached}, {B, Skip, cached(B, Skip)}),
+              N = cached_builds(),
+              ?assertEqual({B, Skip, Uncached}, {B, Skip, cached(B, Skip)}),
+              ?assertEqual(N, cached_builds())
+      end,
+      [{B, Skip} || B <- fake_node_statuses:bucket_names(),
+                    Skip <- [false, true]]).
+
+%% A chronicle change (here: the bucket's map) invalidates the entry at once.
+cached_invalidated_on_change_t() ->
+    Before = cached("default", false),
+    N = cached_builds(),
+    #{remote := R, old7x := O, absent := A} = fake_node_statuses:node_names(),
+    L = node(),
+    fake_chronicle_kv:update_snapshot(
+      {bucket, "default", props},
+      fake_node_statuses:bucket_props([[R, L], [L, R], [O, L], [A, R]], [])),
+    After = cached("default", false),
+    ?assertEqual(N + 1, cached_builds()),
+    ?assertNotEqual(Before, After),
+    ?assertEqual(snapshot_build_bucket("default", normal, false), After).
+
+%% A build that fails (bucket gone after the router's check) fails only that
+%% request, with the original error, and is not cached; the cache lives on.
+cached_build_error_t() ->
+    Pid = whereis(menelaus_web_cache),
+    ?assertError({badmatch, not_present}, cached("nonexistent", false)),
+    ?assertEqual(Pid, whereis(menelaus_web_cache)),
+    ?assertEqual(snapshot_build_bucket("default", normal, false),
+                 cached("default", false)).
+
+cached_bucket_info_test_() ->
+    {foreach, fun cached_setup/0, fun cached_teardown/1,
+     [{"cached equals uncached", fun cached_equals_uncached_t/0},
+      {"invalidated on change", fun cached_invalidated_on_change_t/0},
+      {"build error", fun cached_build_error_t/0}]}.
 
 -endif.
 

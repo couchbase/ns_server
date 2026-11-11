@@ -27,7 +27,8 @@
          handle_terse_cluster_info/1,
          get_cluster_name/0,
          pool_settings_post_validators/2,
-         handle_defragmented/2]).
+         handle_defragmented/2,
+         config_version_token/0]).
 
 %% for hibernate
 -export([handle_pool_info_wait_wake/4]).
@@ -161,6 +162,8 @@ handle_pool_info_wait_tail(Req, Id, LocalAddr, ETag, UpdateID) ->
     %% keeping memory usage low is imho more important
     exit(normal).
 
+-spec config_version_token() ->
+          {chronicle:revision(), ns_config:config_version_token()}.
 config_version_token() ->
     {chronicle_kv:get_revision(kv), ns_config:config_version_token()}.
 
