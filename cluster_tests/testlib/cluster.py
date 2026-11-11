@@ -1052,8 +1052,16 @@ class Cluster:
         if autofailover_enabled:
             testlib.post_succ(self, "/settings/autoFailover",
                               data={"enabled": "false"})
-            return {"enabled": "true" if autofailover_enabled else "false",
-                    "timeout": autofailover_timeout}
+            # The setting reaches other nodes via async ns_config replication,
+            # so we need to wait for it to be propagated before returning
+            for node in self.connected_nodes:
+                testlib.poll_for_condition(
+                    lambda: not testlib.get_succ(
+                        node, '/settings/autoFailover').json()['enabled'],
+                    sleep_time=0.1,
+                    timeout=60,
+                    msg=f"waiting for auto-failover disabled on {node}")
+            return {"enabled": "true", "timeout": autofailover_timeout}
         else:
             return None
 
