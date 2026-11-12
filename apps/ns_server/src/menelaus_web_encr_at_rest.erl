@@ -267,7 +267,7 @@ type_spec({dek_interval, Min}) ->
 
 handle_get(Path, Req) ->
     Settings = get_settings(direct),
-    NodesInfo = ns_doctor:get_nodes(),
+    NodesInfo = ns_doctor:get_nodes_snapshot(),
     Nodes = ns_cluster_membership:nodes_wanted(),
     MaybeWarning = get_master_password_warning(),
     List = lists:map(
@@ -447,7 +447,7 @@ handle_bucket_drop_keys(Bucket, ApplySettings, AuditPropsFun, Req) ->
       end, Req).
 
 build_bucket_encr_at_rest_info(BucketUUID) ->
-    NodesInfo = ns_doctor:get_nodes(),
+    NodesInfo = ns_doctor:get_nodes_snapshot(),
     Nodes = ns_cluster_membership:nodes_wanted(),
     I = aggregated_EAR_info({bucket_encryption, BucketUUID}, NodesInfo, Nodes),
     format_encr_at_rest_info(I).

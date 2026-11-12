@@ -253,7 +253,7 @@ build_full_node_info(Req, Node, IncludeOtpCookie) ->
     Config = get_config(Ctx),
     Snapshot = get_snapshot(Ctx),
     {KV} = (build_nodes_info_fun(Ctx, false))(Node),
-    NodeStatus = ns_doctor:get_node(Node),
+    NodeStatus = misc:dict_get(Node, ns_doctor:get_nodes_snapshot(), []),
     StorageConf =
         ns_storage_conf:storage_conf_from_node_status(Node, NodeStatus),
     R = {storage_conf_to_json(StorageConf)},
@@ -385,7 +385,7 @@ do_build_nodes_info_fun(#ctx{ns_config = Config,
             false ->
                 []
         end,
-    NodeStatuses = ns_doctor:get_nodes(),
+    NodeStatuses = ns_doctor:get_nodes_snapshot(),
 
     BucketsAll = ns_bucket:get_buckets(Snapshot),
     NetAFamily = cb_dist:address_family(),

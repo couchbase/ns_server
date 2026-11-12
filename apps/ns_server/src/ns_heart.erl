@@ -206,6 +206,8 @@ update_current_status_no_reply(State, QuickStatus) ->
             update_current_status_tail(State, QuickStatus2)
     end.
 
+%% REST handlers see only the fields ns_doctor:project_status/1 keeps. A new
+%% field that a REST handler reads must be added there as well.
 update_current_status_tail(State, QuickStatus) ->
     Status = QuickStatus ++ State#state.slow_status,
     {Status, State}.

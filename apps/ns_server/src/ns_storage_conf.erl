@@ -608,7 +608,7 @@ extract_disk_totals(DiskPaths, DiskStats) ->
 
 %% returns cluster_storage_info for subset of nodes
 nodes_storage_info(NodeNames, Config, Snapshot) ->
-    NodesDict = ns_doctor:get_nodes(),
+    NodesDict = ns_doctor:get_nodes_snapshot(),
     NodesInfos = lists:foldl(fun (N, A) ->
                                      case dict:find(N, NodesDict) of
                                          {ok, V} -> [{N, V} | A];
