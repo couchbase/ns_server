@@ -180,12 +180,14 @@ schedule_cleanup() ->
 cleanup() ->
     Now = erlang:monotonic_time(millisecond),
     ToDelete = ets:foldl(
-                 fun ({Key, _, Expiration, _, _}, Acc) when Now > Expiration ->
-                         [Key | Acc];
+                 fun ({_, _, Expiration, _, _} = Entry, Acc)
+                       when Now > Expiration ->
+                         [Entry | Acc];
                      (_, Acc) ->
                          Acc
                  end, [], ?MODULE),
-    [ets:delete(?MODULE, K) || K <- ToDelete],
+    %% By object, so an entry rebuilt since the fold is kept
+    lists:foreach(ets:delete_object(?MODULE, _), ToDelete),
     schedule_cleanup().
 
 -ifdef(TEST).
