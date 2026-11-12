@@ -111,7 +111,8 @@ get_dek_ids_in_use(Kind, Snapshot) ->
     Params = dek_kind_to_json(Kind),
     maybe
         {ok, Res} ?= cbauth_call("GetInUseKeys", Params, Kind, CbauthLabels),
-        Ids = lists:uniq(lists:append(Res)),
+        %% Go services may return null instead of an empty list (nil slice)
+        Ids = lists:uniq(lists:append([L || L <- Res, L =/= null])),
         TranslatedIds = lists:map(fun (<<>>) -> ?NULL_DEK;
                                       (Id) -> Id
                                   end, Ids),

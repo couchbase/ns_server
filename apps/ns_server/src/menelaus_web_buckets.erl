@@ -6875,4 +6875,60 @@ validate_bucket_config_with_memcached_test() ->
         meck:unload()
     end.
 
+%% Full bucket info (plain, ?basic_stats=, with and without skipMap, and
+%% streaming) must be byte-identical whether built from full node statuses or
+%% from the projected rows ns_doctor publishes (ns_doctor:project_status/1).
+snapshot_build_bucket(Bucket, Level, SkipMap) ->
+    Ctx = menelaus_web_node:get_context({ip, "127.0.0.1"}, [Bucket], false,
+                                        unstable),
+    iolist_to_binary(
+      ejson:encode(build_bucket_info(Bucket, Ctx, Level, SkipMap))).
+
+snapshot_build_all_buckets() ->
+    [{{B, L, Skip}, snapshot_build_bucket(B, L, Skip)}
+     || B <- fake_node_statuses:bucket_names(),
+        L <- [normal, for_ui, streaming],
+        Skip <- [false, true], not (L =:= streaming andalso Skip)].
+
+snapshot_full_vs_projected_t(Variant, Compat, Enterprise) ->
+    fake_node_statuses:set_cluster(Compat, Enterprise),
+    Statuses = fake_node_statuses:statuses(Variant),
+    fake_node_statuses:publish(Statuses, full),
+    Full = snapshot_build_all_buckets(),
+    FullFanOut = fake_node_statuses:stats_fan_out(),
+    fake_node_statuses:publish(Statuses, projected),
+    Projected = snapshot_build_all_buckets(),
+    fake_node_statuses:assert_no_doctor_calls(),
+    lists:foreach(fun ({{K, F}, {K, P}}) ->
+                          ?assertEqual({K, F}, {K, P})
+                  end, lists:zip(Full, Projected)),
+    %% basic stats asked the same nodes directly (a projection that lost
+    %% per_bucket_interesting_stats would make every request do it)
+    ?assertEqual(FullFanOut, fake_node_statuses:stats_fan_out()),
+    %% the builds really used the statuses
+    {_, Bucket} = lists:keyfind({"default", normal, false}, 1, Projected),
+    [?assertNotEqual({Needle, nomatch}, {Needle, binary:match(Bucket, Needle)})
+     || Needle <- [<<"\"replication\":1">>, <<"\"replication\":0.5">>,
+                   <<"\"replication\":0,">>, <<"\"basicStats\"">>,
+                   <<"\"memUsed\":52428800">>,
+                   <<"\"bucketEncryptionAtRestInfo\"">>]].
+
+%% With no rows and with no table at all (ns_doctor restarting), readers get
+%% the same as from an ns_doctor that has no statuses.
+snapshot_empty_t() ->
+    fake_node_statuses:set_cluster([8, 0], true),
+    fake_node_statuses:publish([], projected),
+    fake_node_statuses:delete_tasks_version(),
+    Empty = snapshot_build_all_buckets(),
+    fake_node_statuses:delete_snapshot(),
+    ?assertEqual(Empty, snapshot_build_all_buckets()).
+
+snapshot_test_() ->
+    {foreach, fun fake_node_statuses:setup/0, fun fake_node_statuses:teardown/1,
+     [{lists:flatten(io_lib:format("full vs projected: ~p", [C])),
+       fun () -> snapshot_full_vs_projected_t(V, Compat, EE) end}
+      || {V, Compat, EE} = C <- fake_node_statuses:cases()] ++
+         [{"empty and missing snapshot", fun snapshot_empty_t/0}]}.
+
 -endif.
+
