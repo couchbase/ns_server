@@ -174,8 +174,8 @@ key_label(Key) ->
     Key.
 
 schedule_cleanup() ->
-    {ok, _} = timer:apply_after(?CLEANUP_INTERVAL, work_queue, submit_work,
-                                [self(), fun cleanup/0]).
+    %% Sent as a work_queue cast to the pid, so the timer goes with the cache
+    erlang:send_after(?CLEANUP_INTERVAL, self(), {'$gen_cast', fun cleanup/0}).
 
 cleanup() ->
     Now = erlang:monotonic_time(millisecond),
@@ -248,7 +248,8 @@ web_cache_test_() ->
       {"update id: later build served",
        {timeout, 30, fun update_id_later_build_served_t/0}},
       {"update id: earlier build rebuilt",
-       {timeout, 30, fun update_id_earlier_build_rebuilt_t/0}}
+       {timeout, 30, fun update_id_earlier_build_rebuilt_t/0}},
+      {"cleanup timer test", fun cleanup_reschedules_t/0}
      ]}.
 
 %% A cold read computes and stores the value, an immediate warm read reuses
@@ -593,5 +594,22 @@ update_id_earlier_build_rebuilt_t() ->
                    ?TEST_KEY, update_id_body(x, State, 2), update_id_pred(2))),
     ?assertEqual({y, 1}, receive {y, V} -> V after 5000 -> timeout end),
     ?assertEqual(2, count(<<"web_cache_updates">>)).
+
+%% Cleanup removes expired entries, keeps live ones and fires again from its
+%% own timer
+cleanup_reschedules_t() ->
+    fake_ns_config:update_snapshot({?MODULE, cleanup}, 10),
+    Now = erlang:monotonic_time(millisecond),
+    ets:insert(?MODULE, {live_key, v, Now + 60000, s, Now}),
+    ets:insert(?MODULE, {expired_key, v, Now - 1, s, Now}),
+    work_queue:sync_work(?MODULE),
+    work_queue:submit_work(?MODULE, fun cleanup/0),
+    work_queue:sync_work(?MODULE),
+    ?assertEqual([], ets:lookup(?MODULE, expired_key)),
+    ets:insert(?MODULE, {expired_key, v, Now - 1, s, Now}),
+    ?assertEqual(true, misc:poll_for_condition(
+                         ?cut(ets:lookup(?MODULE, expired_key) =:= []),
+                         5000, 10)),
+    ?assertMatch([_], ets:lookup(?MODULE, live_key)).
 
 -endif.
