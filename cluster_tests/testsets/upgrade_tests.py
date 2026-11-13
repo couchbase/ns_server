@@ -199,10 +199,18 @@ class RbacRolesUpgradeChecks(UpgradeCheckSuite):
                 'ui_access', 'security_admin', 'query_list_index',
                 'user_admin_local', 'security_admin_local',
                 'security_admin_external', 'credential_consumer',
-                'external_catalog_admin', 'external_catalog_reader']
+                'external_catalog_admin', 'external_catalog_reader',
+                'query_select_external_catalog',
+                'query_insert_external_catalog',
+                'query_update_external_catalog',
+                'query_delete_external_catalog']
         elif self.prior_compat_mode == '8.0':
             expected = ['ui_access', 'credential_consumer', 'credential_admin',
-                        'external_catalog_admin', 'external_catalog_reader']
+                        'external_catalog_admin', 'external_catalog_reader',
+                        'query_select_external_catalog',
+                        'query_insert_external_catalog',
+                        'query_update_external_catalog',
+                        'query_delete_external_catalog']
         else:
             raise AssertionError(
                 f"Unexpected prior_compat_mode: {self.prior_compat_mode!r}")
