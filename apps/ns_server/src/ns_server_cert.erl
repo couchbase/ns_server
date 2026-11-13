@@ -189,11 +189,11 @@ generate_cluster_CA(ForceRegenerateCA, DropUploadedCerts, DropGeneratedCerts) ->
 
 generate_cert_and_pkey() ->
     StartTS = os:timestamp(),
-    Sha1 = ns_config:read_key_fast({cert, use_sha1}, false),
+    %% {cert, use_sha1} is ignored: it may be set by an older version, but
+    %% memcached can't use certificates signed by a SHA1 CA.
     %% generate_crl => the tool appends an empty CRL signed by the new CA, so
     %% the result is {CertPem, KeyPem, CrlPem}.
-    RV = generate_certs(#{use_sha1 => Sha1,
-                          common_name_prefix =>
+    RV = generate_certs(#{common_name_prefix =>
                               cluster_compat_mode:prod_name(),
                           generate_crl => true}),
     EndTS = os:timestamp(),
@@ -272,10 +272,6 @@ generate_certs(Cert) when is_map(Cert) ->
               (san_dns_names, Names, {A, E}) ->
                   NamesStr = lists:flatten(lists:join(",", Names)),
                   {["--san-dns-names=" ++ NamesStr | A], E};
-              (use_sha1, true, {A, E}) ->
-                  {["--use-sha1" | A], E};
-              (use_sha1, false, {A, E}) ->
-                  {A, E};
               (generate_crl, true, {A, E}) ->
                   {["--generate-crl" | A], E};
               (generate_crl, false, {A, E}) ->

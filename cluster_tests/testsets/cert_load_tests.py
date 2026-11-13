@@ -252,6 +252,15 @@ class CertLoadTests(testlib.BaseTestSet):
         load_cert(node, cert, key, passphrase=None, is_client=False,
                   expected_error='Malformed certificate')
 
+    # memcached rejects SHA1 certificates at all supported security levels
+    def set_cert_use_sha1_test(self):
+        r = testlib.post_fail(self.cluster, '/internalSettings',
+                              expected_code=400, data={'certUseSha1': 'true'})
+        testlib.assert_in('certUseSha1', r.text, r)
+        testlib.assert_in("SHA1 certificates can't be used", r.text, r)
+        testlib.post_succ(self.cluster, '/internalSettings',
+                          data={'certUseSha1': 'false'})
+
     def generate_cert_with_cn_prefix_test(self):
         cert, _ = generate_node_certs(self.node_addr, self.ca_pem,
                                       self.ca_key, key_type='rsa',
