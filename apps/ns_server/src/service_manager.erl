@@ -13,6 +13,10 @@
 -include("ns_common.hrl").
 -include("bucket_hibernation.hrl").
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 -export([rebalance/6,
          failover/3,
          pause_bucket/6,
@@ -162,6 +166,19 @@ wait_for_agents(#state{service = kv,
 wait_for_agents(#state{op_type = Type,
                        service = Service,
                        all_nodes = AllNodes}) ->
+    %% A service on a node just added may take well over a minute to connect
+    %% (e.g. on slow disk). Agents give up after their own connection
+    %% timeout and restart, and set_service_manager is bounded by the outer
+    %% timeout, so without this wait the rebalance fails although the
+    %% service is starting.
+    case Type of
+        rebalance ->
+            ok = service_agent:wait_for_agents(
+                   Service, get_status, AllNodes,
+                   ?get_timeout(wait_for_agent_connection, 300000));
+        _ ->
+            ok
+    end,
     Timeout = wait_for_agents_timeout(Type),
     {ok, Agents} = service_agent:wait_for_agents(Service, get_agent, AllNodes,
                                                  Timeout),
@@ -463,3 +480,151 @@ kv_resume_bucket_op(#state{all_nodes = Nodes,
                        remote_path = SourceRemotePath}, Node, Manager)
       end, Nodes, ?RESUME_BUCKET_TIMEOUT),
     State.
+
+-ifdef(TEST).
+
+-define(TEST_NODES, ['n1@host', 'n2@host']).
+-define(CONNECTED, [{connected, true}, {needs_rebalance, false}]).
+
+%% Agent replies to get_status per node, consumed in order with the last
+%% one repeating. Only the RPC layer is mocked, so the real
+%% service_agent:wait_for_agents/4 loop is exercised, including which
+%% replies it treats as worth retrying.
+setup_status_replies(Replies) ->
+    [ets:insert(?MODULE, {N, R}) || {N, R} <- Replies].
+
+next_status_reply(Node) ->
+    Reply = case ets:lookup(?MODULE, Node) of
+                [{Node, [Last]}] ->
+                    Last;
+                [{Node, [Next | Rest]}] ->
+                    ets:insert(?MODULE, {Node, Rest}),
+                    Next
+            end,
+    %% Recorded when served rather than inferred from the remaining
+    %% replies, so a reply still queued doesn't count as connected
+    Reply =:= ?CONNECTED andalso
+        ets:insert(?MODULE, {{connected, Node}, true}),
+    Reply.
+
+all_connected() ->
+    lists:all(?cut(ets:member(?MODULE, {connected, _})), ?TEST_NODES).
+
+num_status_polls() ->
+    meck:num_calls(misc, multi_call, ['_', '_', get_status, '_', '_']).
+
+setup() ->
+    fake_ns_config:setup(),
+    ets:new(?MODULE, [named_table, public]),
+    setup_status_replies([{N, [?CONNECTED]} || N <- ?TEST_NODES]),
+    %% run_op monitors the agents, so they must stay alive for the whole op
+    Agent = proc_lib:spawn(fun () -> receive stop -> ok end end),
+
+    meck:new(misc, [passthrough]),
+    %% get_status replies are never "ok", so service_agent's ok predicate
+    %% puts them all in the bad list, which is what the loop expects
+    meck:expect(misc, multi_call,
+                fun (Nodes, _, get_status, _, _) ->
+                        {[], [{N, next_status_reply(N)} || N <- Nodes]};
+                    (Nodes, _, get_agent, _, _) ->
+                        {[{N, {ok, Agent}} || N <- Nodes], []}
+                end),
+
+    %% Passthrough keeps wait_for_agents/4 real, while the calls made after
+    %% the wait are stubbed just enough for the rebalance to complete
+    meck:new(service_agent, [passthrough]),
+    %% Records whether all nodes were connected when the manager was set,
+    %% which is the ordering the fix guarantees
+    meck:expect(service_agent, set_service_manager,
+                fun (_, _, _) ->
+                        ets:insert(?MODULE,
+                                   {set_service_manager, all_connected()}),
+                        ok
+                end),
+    meck:expect(service_agent, unset_service_manager,
+                fun (_, _, _) -> ok end),
+    meck:expect(service_agent, get_node_infos,
+                fun (_, Nodes, _) ->
+                        {ok, [{N, [{priority, 0}]} || N <- Nodes]}
+                end),
+    meck:expect(service_agent, get_params, fun (_, _) -> {ok, []} end),
+    meck:expect(service_agent, prepare_rebalance,
+                fun (_, _, _, _, _, _, _) -> ok end),
+    meck:expect(service_agent, start_rebalance,
+                fun (_, _, _, _, _, _, _) ->
+                        %% The caller is the op worker, which then waits
+                        %% for the leader to report completion
+                        self() ! task_done,
+                        ok
+                end),
+
+    meck:new(ns_cluster_membership, [passthrough]),
+    meck:expect(ns_cluster_membership, update_service_map,
+                fun (_, _) -> {ok, 0} end),
+    meck:new(couch_uuids, [passthrough]),
+    meck:expect(couch_uuids, random, fun () -> <<"id">> end),
+    Agent.
+
+teardown(Agent) ->
+    Agent ! stop,
+    meck:unload(),
+    ets:delete(?MODULE),
+    fake_ns_config:teardown().
+
+rebalance() ->
+    rebalance(n1ql, ?TEST_NODES, [], [], fun (_) -> ok end, #{}).
+
+%% The agent on the added node is unconnected, then restarts when its
+%% connection waiter gives up, and only later connects
+rebalance_waits_for_connection_test_() ->
+    {setup, fun setup/0, fun teardown/1,
+     ?_test(
+        begin
+            %% The reply seen while the agent dies after its connection
+            %% waiter gives up, as in the rebalance failure of MB-75344
+            NoConnection =
+                {exit, {{linked_process_died, self(),
+                         {'n2@host', {no_connection, "label"}}},
+                        {gen_server, call, []}}},
+            setup_status_replies(
+              [{'n2@host', [[{connected, false}], NoConnection,
+                            ?CONNECTED]}]),
+            ?assertEqual(ok, rebalance()),
+            %% One poll per reply shows the wait retried through both the
+            %% unconnected agent and its restart, rather than failing
+            ?assertEqual(3, num_status_polls()),
+            ?assertEqual([{set_service_manager, true}],
+                         ets:lookup(?MODULE, set_service_manager))
+        end)}.
+
+%% A node that never connects fails the rebalance once the wait times out,
+%% before the service manager is set on any node
+rebalance_connection_timeout_test_() ->
+    {setup, fun setup/0, fun teardown/1,
+     ?_test(
+        begin
+            %% Shorter than the loop's 1s retry sleep, so the test takes one
+            %% retry rather than the default 5 minutes
+            fake_ns_config:set_timeout(
+              {?MODULE, wait_for_agent_connection}, 100),
+            setup_status_replies([{'n2@host', [[{connected, false}]]}]),
+            ?assertExit(
+               {service_rebalance_failed, n1ql,
+                {{badmatch,
+                  {error, {bad_nodes, n1ql, get_status,
+                           [{'n2@host', {error, timeout}}]}}}, _}},
+               rebalance()),
+            ?assertEqual([], ets:lookup(?MODULE, set_service_manager))
+        end)}.
+
+%% Failover must stay fast, so an unconnected agent isn't waited for here
+failover_does_not_wait_for_connection_test_() ->
+    {setup, fun setup/0, fun teardown/1,
+     ?_test(
+        begin
+            setup_status_replies([{'n2@host', [[{connected, false}]]}]),
+            ?assertEqual(ok, failover(n1ql, ?TEST_NODES, #{})),
+            ?assertEqual(0, num_status_polls())
+        end)}.
+
+-endif.
