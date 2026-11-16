@@ -75,7 +75,8 @@
          get_dek_rotation_interval/2,
          get_drop_keys_timestamp/2,
          get_force_encryption_timestamp/2,
-         reencrypt_file/4
+         reencrypt_file/4,
+         rand_uniform/2
         ]).
 
 -export_type([dek_snapshot/0, encryption_type/0]).
@@ -975,9 +976,35 @@ get_force_encryption_timestamp_test() ->
     end.
 -endif.
 
+%% Generates N: Lo =< N < Hi
+%% Unlike misc:rand_uniform/2, every bit of the result comes from
+%% crypto:strong_rand_bytes/1, so this function is suitable for generation of
+%% secrets.
+%% The random bits are converted to a number using "The Simple Discard Method"
+%% from NIST SP 800-90A Rev. 1, Appendix A.5.1: generate as many bits as it
+%% takes to represent (Hi - Lo - 1), and if the resulting number is out of
+%% range, discard it and try again. This way the result is not biased (as
+%% opposed to taking a remainder).
+-spec rand_uniform(integer(), integer()) -> integer().
+rand_uniform(Lo, Hi) when is_integer(Lo), is_integer(Hi), Lo < Hi ->
+    Range = Hi - Lo,
+    Lo + rand_below(Range, bit_length(Range - 1)).
+
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+rand_below(Range, Bits) ->
+    Bytes = (Bits + 7) div 8,
+    PadBits = Bytes * 8 - Bits,
+    <<_:PadBits, N:Bits/unsigned-integer>> = crypto:strong_rand_bytes(Bytes),
+    case N < Range of
+        true -> N;
+        false -> rand_below(Range, Bits)
+    end.
+
+bit_length(0) -> 0;
+bit_length(N) when N > 0 -> 1 + bit_length(N bsr 1).
 
 %% Determines if we can classify the file as encrypted based on the
 %% header data. To be classified as encrypted, a file header must have the
@@ -1898,5 +1925,18 @@ read_deks_test() ->
     after
         meck:unload(cb_deks)
     end.
+
+rand_uniform_test() ->
+    ?assertEqual(5, rand_uniform(5, 6)),
+    ?assertError(function_clause, rand_uniform(5, 5)),
+    lists:foreach(
+      fun ({Lo, Hi}) ->
+              Rs = [rand_uniform(Lo, Hi) || _ <- lists:seq(1, 10000)],
+              ?assert(lists:all(fun (R) -> R >= Lo andalso R < Hi end, Rs)),
+              %% With 10000 tries each of (at most 90) values must be seen
+              ?assertEqual(lists:seq(Lo, Hi - 1), lists:usort(Rs))
+      end, [{0, 2}, {10, 100}, {-3, 4}, {0, 64}, {0, 71}]),
+    Big = rand_uniform(0, 1 bsl 200),
+    ?assert(Big >= 0 andalso Big < (1 bsl 200)).
 
 -endif.
