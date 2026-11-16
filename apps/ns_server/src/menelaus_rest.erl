@@ -202,6 +202,8 @@ decode_json_response_ext(Response, Method, Request) ->
         {ok, any()} |
         %% json payload of 400
         {client_error, term()} |
+        %% 200 response payload that isn't json
+        {error, bad_json, binary(), {atom(), term(), list()}} |
         %% english error message and nested error
         {error, rest_error, binary(),
          {error, term()} | {bad_status, integer(), string()}}.
