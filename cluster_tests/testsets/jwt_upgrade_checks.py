@@ -27,6 +27,10 @@ and the writer behind it are the ones EA shipped.
 
 Developer preview would open the same gate. It also changes the role list that
 RbacRolesUpgradeChecks captures on the same cluster, so it is not an option.
+
+The internal issuer's signing key is also checked here. 8.0 generated an
+Ed25519 key, and chronicle_upgrade_to_85/1 in jwt_issuer replaces it with a
+P-256 key.
 """
 
 import os
@@ -54,6 +58,16 @@ GROUPS_MAP = "^grün-(.*)$ \\1"
 ENABLE_JWT_CODE = (
     "config_profile:set_data([{jwt_enabled, true} | config_profile:get()]),"
     "config_profile:get_bool(jwt_enabled).")
+
+
+INTERNAL_KEY_TYPE_CODE = (
+    "{ok, {#{<<\"kty\">> := Kty}, _}} ="
+    "    chronicle_kv:get(kv, jwt_signing_keys),"
+    "Kty.")
+
+INTERNAL_TOKEN_CODE = (
+    "{ok, T} = jwt_issuer:issue(\"@fusion\", [<<\"metakv2_access\">>], 600),"
+    "element(1, jwt_auth:authenticate(binary_to_list(T))).")
 
 
 def shape_code(pred):
@@ -115,6 +129,7 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
 
         self.assert_stored_shape(self.old_node, "is_list")
         self.assert_authenticates(self.old_node)
+        self.assert_internal_key_type(self.old_node, "OKP")
 
     def mixed_cluster_checks(self):
         if not self.applicable:
@@ -140,6 +155,11 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         # compat reaches 8.5.
         testlib.get_fail(self.new_node, "/settings/jwt", expected_code=400)
 
+        # The key is replaced only at 8.5 compat. Until then the 8.5 node
+        # signs and verifies with the 8.0 Ed25519 key.
+        self.assert_internal_key_type(self.new_node, "OKP")
+        self.assert_internal_token_authenticates(self.new_node)
+
     def post_upgrade_checks(self):
         if not self.applicable:
             return
@@ -156,6 +176,9 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         testlib.assert_eq(issuer["groupsMaps"], [GROUPS_MAP],
                           name="groupsMaps")
 
+        self.assert_internal_key_type(self.new_node, "EC")
+        self.assert_internal_token_authenticates(self.new_node)
+
         testlib.ensure_deleted(self.new_node, "/settings/jwt")
         testlib.ensure_deleted(self.new_node,
                                f"/settings/rbac/groups/{GROUP}")
@@ -168,6 +191,18 @@ class JwtUpgradeChecks(UpgradeCheckSuite):
         result = testlib.diag_eval(node, shape_code(pred)).text.strip()
         assert result == "[]", \
             f"stored jwt_settings fields failing {pred}: {result}"
+
+    def assert_internal_key_type(self, node, kty):
+        result = testlib.diag_eval(node, INTERNAL_KEY_TYPE_CODE).text.strip()
+        testlib.assert_eq(result, f'<<"{kty}">>', name="internal key type")
+
+    def assert_internal_token_authenticates(self, node):
+        """A key change reaches jwt_cache asynchronously, so poll."""
+        testlib.poll_for_condition(
+            lambda: testlib.diag_eval(
+                node, INTERNAL_TOKEN_CODE).text.strip() == "ok",
+            sleep_time=0.5, timeout=60,
+            msg=f"verify an internal issuer token on {node}")
 
     def token(self):
         return jwt.encode({"iss": ISSUER,

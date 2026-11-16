@@ -19,10 +19,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(JWT_EL_CURVE, 'Ed25519').
--define(JWT_SIGNING_ALG, 'EdDSA').
-
--export([chronicle_upgrade_to_79/1,
+-export([chronicle_upgrade_to_85/1,
          name/0,
          issue/3,
          settings/0]).
@@ -31,12 +28,20 @@
 name() ->
     <<"ns_server">>.
 
+%% Every FIPS module approves ES256.
 generate_keys() ->
-    {_, Map} = jose_jwk:to_map(jose_jwk:generate_key({okp, ?JWT_EL_CURVE})),
+    {_, Map} = jose_jwk:to_map(jose_jwk:generate_key({ec, <<"P-256">>})),
     Map.
 
--spec chronicle_upgrade_to_79(term()) -> term().
-chronicle_upgrade_to_79(ChronicleTxn) ->
+%% Keys created before 8.5 are Ed25519.
+signing_alg(#{<<"kty">> := <<"EC">>}) -> 'ES256';
+signing_alg(#{<<"kty">> := <<"OKP">>}) -> 'EdDSA'.
+
+%% The key is created only here, so ES256 starts exactly at 8.5 compat.
+%% Fusion buckets need 8.5 compat, so no token signed with the old key is in
+%% use when it is replaced.
+-spec chronicle_upgrade_to_85(term()) -> term().
+chronicle_upgrade_to_85(ChronicleTxn) ->
     chronicle_upgrade:set_key(?JWT_SIGNING_KEYS_KEY, generate_keys(),
                               ChronicleTxn).
 
@@ -63,7 +68,8 @@ issue(User, Roles, LifetimeSec) ->
                    },
             JWK = jose_jwk:from_map(JWKMap),
             JWS = jose_jwt:sign(
-                    JWK, #{<<"alg">> => atom_to_binary(?JWT_SIGNING_ALG)}, JWT),
+                    JWK, #{<<"alg">> => atom_to_binary(signing_alg(JWKMap))},
+                    JWT),
             {_, CompactJWS} = jose_jws:compact(JWS),
             {ok, CompactJWS};
         Error ->
@@ -77,7 +83,7 @@ settings() ->
             PEM = jose_jwk:to_pem(jose_jwk:to_public(JWKMap)),
             #{
               <<"ns_server">> =>
-                  #{signing_algorithm => ?JWT_SIGNING_ALG,
+                  #{signing_algorithm => signing_alg(JWKMap),
                     public_key_source => pem,
                     public_key => PEM,
                     expiry_leeway_s => 0,
@@ -91,23 +97,55 @@ settings() ->
     end.
 
 -ifdef(TEST).
-basic_test() ->
+issue_test_() ->
+    {foreach, fun issue_setup/0, fun issue_teardown/1,
+     [{"ES256 key", fun () -> issue_and_verify(generate_keys()) end},
+      {"Ed25519 key from before 8.5",
+       fun () -> issue_and_verify(ed25519_keys()) end}]}.
+
+upgrade_to_85_test_() ->
+    {foreach, fun fake_chronicle_kv:setup/0,
+     fun (_) -> fake_chronicle_kv:teardown() end,
+     [{"replaces the Ed25519 key",
+       fun () -> upgrade_to_85_t(ed25519_keys()) end},
+      {"creates the key on a fresh cluster",
+       fun () -> upgrade_to_85_t(undefined) end}]}.
+
+ed25519_keys() ->
+    {_, Map} = jose_jwk:to_map(jose_jwk:generate_key({okp, 'Ed25519'})),
+    Map.
+
+issue_setup() ->
     fake_ns_config:setup(),
     fake_ns_config:update_snapshot({node, node() ,is_enterprise}, true),
 
     meck:new(chronicle_compat_events, [passthrough]),
     meck:expect(chronicle_compat_events, subscribe, fun(_) -> ok end),
     fake_chronicle_kv:setup(),
-    fake_chronicle_kv:update_snapshot(?JWT_SIGNING_KEYS_KEY, generate_keys()),
     fake_chronicle_kv:update_snapshot(ns_bucket:root(), []),
 
     {ok, CachePid} = jwt_cache:start_link(),
-    CachePid ! internal_key_update,
+    %% A cache crash then fails the test, not the eunit runner
+    unlink(CachePid),
+    CachePid.
+
+issue_teardown(CachePid) ->
+    gen_server:stop(CachePid),
+    fake_chronicle_kv:teardown(),
+    fake_ns_config:teardown(),
+    meck:unload(chronicle_compat_events).
+
+issue_and_verify(Keys) ->
+    fake_chronicle_kv:update_snapshot(?JWT_SIGNING_KEYS_KEY, Keys),
+    jwt_cache ! internal_key_update,
     gen_server:call(jwt_cache, sync, 1000),
 
     RV = issue("@test", [<<"admin">>, <<"metakv2_access">>], 1000),
     ?assertMatch({ok, _}, RV),
     {ok, TokenBin} = RV,
+    ?assertEqual(atom_to_binary(signing_alg(Keys)),
+                 maps:get(<<"alg">>,
+                          jose:decode(jose_jws:peek_protected(TokenBin)))),
     RV1 = jwt_auth:authenticate(binary_to_list(TokenBin)),
     ?assertMatch({ok, #authn_res{type = tmp,
                                  session_id = undefined,
@@ -116,11 +154,19 @@ basic_test() ->
                                  extra_groups = [],
                                  extra_roles = [<<"admin">>, <<"metakv2_access">>],
                                  expiration_datetime_utc = _,
-                                 password_expired = false}, _}, RV1),
+                                 password_expired = false}, _}, RV1).
 
-    gen_server:stop(CachePid),
-    fake_chronicle_kv:teardown(),
-    fake_ns_config:teardown(),
-    meck:unload(chronicle_compat_events).
+upgrade_to_85_t(OldKeys) ->
+    OldKeys =:= undefined orelse
+        fake_chronicle_kv:update_snapshot(?JWT_SIGNING_KEYS_KEY, OldKeys),
+    ?assertMatch(
+       {ok, _},
+       chronicle_kv:txn(
+         kv, fun (Txn) ->
+                     chronicle_upgrade:build_commit(
+                       chronicle_upgrade_to_85({#{}, Txn}))
+             end)),
+    {ok, {Keys, _}} = chronicle_kv:get(kv, ?JWT_SIGNING_KEYS_KEY),
+    ?assertEqual('ES256', signing_alg(Keys)).
 
 -endif.
