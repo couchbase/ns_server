@@ -28,6 +28,8 @@
          this_node_evdir/0,
          this_node_bucket_dbdir/1,
          this_node_bucket_dbdir/2,
+         this_node_cont_backup_dir/0,
+         delete_cont_backup_dir/0,
          delete_unused_buckets_db_files/0,
          delete_old_2i_indexes/0,
          setup_storage_paths/0,
@@ -254,6 +256,25 @@ this_node_bucket_dbdir(BucketName, Snapshot) ->
 this_node_bucket_dbdir(UUID) ->
     {ok, DBDir} = this_node_dbdir(),
     filename:join(DBDir, binary_to_list(UUID)).
+
+-spec this_node_cont_backup_dir() -> string().
+this_node_cont_backup_dir() ->
+    {ok, DBDir} = this_node_dbdir(),
+    filename:join(DBDir, "@continuous_backup").
+
+%% Removes all continuous backup files on this node. Must only be called when
+%% continuous backup is not running (it owns these files otherwise).
+-spec delete_cont_backup_dir() -> ok | {error, term()}.
+delete_cont_backup_dir() ->
+    Dir = this_node_cont_backup_dir(),
+    ?log_info("Deleting continuous backup dir ~p", [Dir]),
+    case misc:rm_rf(Dir) of
+        ok -> ok;
+        {error, Reason} = Error ->
+            ?log_error("Failed to delete continuous backup dir ~p: ~p",
+                       [Dir, Reason]),
+            Error
+    end.
 
 pre_79_bucket_dbdir(BucketName) ->
     {ok, DBDir} = this_node_dbdir(),

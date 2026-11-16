@@ -321,16 +321,11 @@ build_port_arg(ArgName, PortPrefix, PortName, Config) ->
 build_port_args(Args, Config) ->
     [build_port_arg(ArgName, PortName, Config) || {ArgName, PortName} <- Args].
 
-get_writable_subdir(DirType, SubDirName) ->
-    ParentDir = case DirType of
-                    idx ->
-                        {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
-                        IdxDir;
-                    data ->
-                        {ok, DataDir} = ns_storage_conf:this_node_dbdir(),
-                        DataDir
-                end,
-    Dir = filename:join(ParentDir, SubDirName),
+get_writable_subdir(idx, SubDirName) ->
+    {ok, IdxDir} = ns_storage_conf:this_node_ixdir(),
+    ensure_writable_dir(filename:join(IdxDir, SubDirName)).
+
+ensure_writable_dir(Dir) ->
     case misc:ensure_writable_dir(Dir) of
         ok ->
             ok;
@@ -531,7 +526,8 @@ goport_args(backup, Config, _Cmd, NodeUUID) ->
                           [no_scheme])];
 
 goport_args(cont_backup, Config, _Cmd, _NodeUUID) ->
-    ContBackupDir = get_writable_subdir(data, "@continuous_backup"),
+    ContBackupDir =
+        ensure_writable_dir(ns_storage_conf:this_node_cont_backup_dir()),
 
     ["backup"] ++
     build_afamily_requirement("--") ++

@@ -835,6 +835,8 @@ service_to_label(n1ql) ->
     "cbq-engine-cbauth";
 service_to_label(xdcr) ->
     "goxdcr-cbauth";
+service_to_label(cont_backup) ->
+    "cbcontbk-cbauth";
 service_to_label(Service) ->
     atom_to_list(Service) ++ "-cbauth".
 

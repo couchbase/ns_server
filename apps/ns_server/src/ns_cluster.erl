@@ -1940,6 +1940,12 @@ perform_actual_join(RemoteNode, NewCookie, ChronicleInfo) ->
         %% which is wrong. Reset it to the value from new cluster.
         ns_ssl_services_setup:update_certs_epoch(),
 
+        %% Backup files that might have been left from previous membership
+        %% are useless and their deks are gone. Removing them before ns_server
+        %% starts, because continuous backup is not supposed to have any files
+        %% on a newly added node (see cb_deks_cbauth:get_cbauth_labels/2).
+        ns_storage_conf:delete_cont_backup_dir(),
+
         misc:remove_marker(join_marker_path()),
 
         ?cluster_debug("Join succeded, starting ns_server_cluster back", []),
@@ -1969,6 +1975,9 @@ perform_leave() ->
     menelaus_users:delete_storage_offline(),
     prometheus_cfg:wipe(),
     ns_ssl_services_setup:remove_node_certs(),
+    %% Bucket deks will be removed after leave, which makes backup files
+    %% unreadable
+    ns_storage_conf:delete_cont_backup_dir(),
 
     %% in order to disconnect from rest of nodes we need new cookie
     %% and explicit disconnect_node calls

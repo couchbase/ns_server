@@ -249,7 +249,11 @@ class RbacRolesUpgradeChecksFrom80(_RbacRolesUpgradeChecks):
 
     # Roles added after 8.0.
     EXPECTED_DIFF = ['ui_access', 'credential_consumer', 'credential_admin',
-                     'external_catalog_admin', 'external_catalog_reader']
+                     'external_catalog_admin', 'external_catalog_reader',
+                     'query_select_external_catalog',
+                     'query_insert_external_catalog',
+                     'query_update_external_catalog',
+                     'query_delete_external_catalog']
 
 
 class RbacRolesUpgradeChecksFrom76(_RbacRolesUpgradeChecks):
@@ -262,7 +266,11 @@ class RbacRolesUpgradeChecksFrom76(_RbacRolesUpgradeChecks):
         'ui_access', 'security_admin', 'query_list_index',
         'user_admin_local', 'security_admin_local',
         'security_admin_external', 'credential_consumer',
-        'external_catalog_admin', 'external_catalog_reader']
+        'external_catalog_admin', 'external_catalog_reader',
+        'query_select_external_catalog',
+        'query_insert_external_catalog',
+        'query_update_external_catalog',
+        'query_delete_external_catalog']
 
 
 class _RbacRoleChangesUpgradeChecks(UpgradeCheckSuite,
