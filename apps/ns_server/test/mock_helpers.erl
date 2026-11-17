@@ -475,6 +475,7 @@ cb_crl_manager(PidMap) ->
 
 dist_manager(PidMap) ->
     meck:expect(?FUNCTION_NAME, get_rename_txn_pid, fun () -> undefined end),
+    meck:expect(?FUNCTION_NAME, get_node_keys_rename, fun () -> undefined end),
     PidMap#{?FUNCTION_NAME => mocked}.
 
 rebalance_agent(PidMap) ->

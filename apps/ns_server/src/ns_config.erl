@@ -486,6 +486,19 @@ get_kv_map(Config) ->
 % ----------------------------------------
 
 search(Key) ->
+    case search_ets(Key) of
+        false ->
+            case search_renamed_node(fun search_ets/1, Key) of
+                retry ->
+                    search_ets(Key);
+                Res ->
+                    Res
+            end;
+        Res ->
+            Res
+    end.
+
+search_ets(Key) ->
     case ets:lookup(ns_config_ets_dup, Key) of
         [{_, ?DELETED_MARKER}] ->
             false;
@@ -494,6 +507,38 @@ search(Key) ->
         _ ->
             false
     end.
+
+%% During node rename node() changes some time before the node keys are
+%% renamed, so the keys might be stored under the other name
+search_renamed_node(Search, {node, Node, SubKey}) ->
+    case dist_manager:get_node_keys_rename() of
+        {OldNode, NewNode} ->
+            case lists:member(Node, [OldNode, NewNode]) of
+                true ->
+                    %% The keys can be renamed between the lookups, so the
+                    %% old name is looked up first and the new name wins
+                    OldRes = Search({node, OldNode, SubKey}),
+                    NewRes = Search({node, NewNode, SubKey}),
+                    case {NewRes, OldRes} of
+                        {{value, V}, _} ->
+                            {value, misc:rewrite_value(NewNode, Node, V)};
+                        {false, {value, V}} ->
+                            {value, misc:rewrite_value(OldNode, Node, V)};
+                        {false, false} ->
+                            false
+                    end;
+                false ->
+                    false
+            end;
+        %% The rename might have finished after the lookup missed, which only
+        %% matters if the lookup was in the current config
+        undefined when Node =:= node() ->
+            retry;
+        undefined ->
+            false
+    end;
+search_renamed_node(_Search, _Key) ->
+    false.
 
 read_key_fast(Key, Default) ->
     case search(Key) of
@@ -511,6 +556,19 @@ search_node(Key) -> search_node(latest(), Key).
 search(?NS_CONFIG_LATEST_MARKER, Key) ->
     search(Key);
 search(Config, Key) ->
+    case search_config(Config, Key) of
+        false ->
+            case search_renamed_node(search_config(Config, _), Key) of
+                retry ->
+                    false;
+                Res ->
+                    Res
+            end;
+        Res ->
+            Res
+    end.
+
+search_config(Config, Key) ->
     case search_raw(Config, Key) of
         {value, X} ->
             case strip_metadata(X) of
@@ -2539,6 +2597,39 @@ test_upgrade_config_with_many_upgrades() ->
     after 0 ->
             ok
     end.
+
+search_renamed_node_test() ->
+    Before = #{{node, old, key} => {old, value}},
+    After = #{{node, new, key} => {new, value}},
+    Both = #{{node, old, key} => {old, stale},
+             {node, new, key} => {new, value}},
+    %% Searches both the given config and the current one (ns_config_ets_dup)
+    Check = fun (Expected, Config, Key) ->
+                    ?assertEqual(Expected, search(Config, Key)),
+                    test_setup(Config),
+                    ?assertEqual(Expected, search(Key))
+            end,
+    Check(false, Before, {node, new, key}),
+
+    ets:new(dist_manager, [set, named_table, public]),
+    try
+        ets:insert(dist_manager, {rename_txn, self(), old, new}),
+        Check({value, {new, value}}, Before, {node, new, key}),
+        Check({value, {old, value}}, After, {node, old, key}),
+        ?assertEqual({value, {old, value}},
+                     search_renamed_node(search_config(Both, _),
+                                         {node, old, key})),
+        Check(false, Before, {node, nonode@nohost, key}),
+        Check(false, After, {node, new, missing}),
+        Check(false, After, {node, other, key})
+    after
+        ets:delete(dist_manager)
+    end,
+
+    Check(false, Before, {node, node(), key}),
+    NotFound = fun (_) -> false end,
+    ?assertEqual(retry, search_renamed_node(NotFound, {node, node(), key})),
+    ?assertEqual(false, search_renamed_node(NotFound, {node, other, key})).
 
 get_key_ids_in_use_during_unencrypted_save_test() ->
     Cfg = initiate_save_config(

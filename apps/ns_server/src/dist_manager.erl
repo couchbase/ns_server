@@ -24,7 +24,8 @@
 -export([adjust_my_address/4, save_address_config/1,
          ip_config_path/0, using_user_supplied_address/0, reset_address/0,
          this_node/0,
-         wait_for_node/1, fixup_config/1, need_fixup/0, get_rename_txn_pid/0]).
+         wait_for_node/1, fixup_config/1, need_fixup/0, get_rename_txn_pid/0,
+         get_node_keys_rename/0]).
 
 %% used by babysitter and ns_couchdb
 -export([configure_net_kernel/0]).
@@ -207,10 +208,10 @@ init([]) ->
                     fun  () ->
                             complete_rename(OldNode, fun fixup_node_in_config/2)
                     end),
-            ets:insert(?MODULE, {rename_txn_pid, Pid}),
+            ets:insert(?MODULE, {rename_txn, Pid, OldNode, node()}),
             proc_lib:init_ack({ok, self()}),
             misc:wait_for_process(Pid, infinity),
-            ets:delete(?MODULE, rename_txn_pid);
+            ets:delete(?MODULE, rename_txn);
         _ ->
             proc_lib:init_ack({ok, self()})
     end,
@@ -240,8 +241,7 @@ adjust_my_address(MyIP, UserSupplied, OnRename, AddrValidationFun) ->
 %% Bring up distributed erlang.
 bringup(MyIP, UserSupplied) ->
     ShortName = misc:get_env_default(short_name, "ns_1"),
-    MyNodeNameStr = ShortName ++ "@" ++ MyIP,
-    MyNodeName = list_to_atom(MyNodeNameStr),
+    MyNodeName = node_name(MyIP),
 
     ?log_info("Attempting to bring up net_kernel with name ~p", [MyNodeName]),
     ok = misc:wait_for_nodename(ShortName),
@@ -271,6 +271,9 @@ bringup(MyIP, UserSupplied) ->
     wait_for_node(ns_server:get_babysitter_node()),
 
     #state{self_started = Rv, my_ip = MyIP, user_supplied = UserSupplied}.
+
+node_name(MyIP) ->
+    list_to_atom(misc:get_env_default(short_name, "ns_1") ++ "@" ++ MyIP).
 
 wait_for_node(Node) when is_atom(Node) ->
     ?log_debug("Waiting for connection to node ~p to be established", [Node]),
@@ -318,11 +321,25 @@ teardown() ->
               end
       end).
 
+%% Returns {OldNode, NewNode} while the node is being renamed, during which
+%% node() might not match the name the node keys are stored under in ns_config
+get_node_keys_rename() ->
+    try ets:lookup(?MODULE, rename_txn) of
+        [{rename_txn, _Pid, OldNode, NewNode}] ->
+            {OldNode, NewNode};
+        [] ->
+            undefined
+    catch
+        %% dist_manager isn't running
+        error:badarg ->
+            undefined
+    end.
+
 get_rename_txn_pid() ->
-    case ets:lookup(?MODULE, rename_txn_pid) of
+    case ets:lookup(?MODULE, rename_txn) of
         [] ->
             undefined;
-        [{rename_txn_pid, Pid}] ->
+        [{rename_txn, Pid, _OldNode, _NewNode}] ->
             Pid
     end.
 
@@ -350,7 +367,8 @@ do_adjust_address(MyIP, UserSupplied, OnRename,
             MyIP ->
                 {State#state{user_supplied = UserSupplied}, nothing};
             _ ->
-                ets:insert(?MODULE, {rename_txn_pid, self()}),
+                ets:insert(?MODULE,
+                           {rename_txn, self(), OldNode, node_name(MyIP)}),
                 OnRename(),
                 Cookie = erlang:get_cookie(),
                 teardown(),
@@ -384,7 +402,7 @@ do_adjust_address(MyIP, UserSupplied, OnRename,
                  {address_save_failed, Error},
                  State}
         end,
-    ets:delete(?MODULE, rename_txn_pid),
+    ets:delete(?MODULE, rename_txn),
     RV.
 
 notify_couchdb_node(NewNSServerNodeName) ->
