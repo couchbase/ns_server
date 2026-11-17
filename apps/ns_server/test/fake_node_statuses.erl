@@ -31,7 +31,8 @@
          stats_fan_out/0,
          bucket_names/0,
          bucket_props/2,
-         bucket_map/1]).
+         bucket_map/1,
+         node_names/0]).
 
 -define(REMOTE, 'ns_1@remote.example').
 -define(OLD7X, 'ns_1@old7x.example').
@@ -59,6 +60,11 @@ cases() ->
 
 bucket_names() ->
     ["default", "magma"].
+
+%% The fixture's other nodes: one KV peer, an old 7.x node, and a node with
+%% no status at all.
+node_names() ->
+    #{remote => ?REMOTE, old7x => ?OLD7X, absent => ?ABSENT}.
 
 set_cluster(Compat, Enterprise) ->
     fake_ns_config:setup_cluster_compat_version(Compat),
