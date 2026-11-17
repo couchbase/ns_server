@@ -921,6 +921,23 @@
         "help": "Total number of cbauth uuid cache misses",
         "added": "7.6.0"
     },
+    "cm_web_cache_build_time_seconds": {
+        "type": "histogram",
+        "help": "Time taken to build a web cache payload",
+        "added": "8.0.5",
+        "stability": "internal",
+        "unit": "seconds",
+        "labels": [
+            {
+                "name": "key",
+                "help": "Type of payload built"
+            },
+            {
+                "name": "result",
+                "help": "Build result (ok/error)"
+            }
+        ]
+    },
     "cm_web_cache_hits_total": {
         "type": "counter",
         "help": "Total number of web cache hits",
