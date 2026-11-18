@@ -79,7 +79,8 @@
 
 -ifdef(TEST).
 -export([get_tick_period_from_state/1,
-         get_errors_from_state/1]).
+         get_errors_from_state/1,
+         is_failover_running_from_state/1]).
 -endif.
 
 -define(SERVER, {via, leader_registry, ?MODULE}).
@@ -619,10 +620,11 @@ process_action({mail_kv_not_fully_failed_over, {Node, _}}, S, _, _, _) ->
        [Node]),
     S;
 process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
-               _Snapshot)
+               TickSnapshot)
   when is_list(NodesWithUUIDs) ->
     Nodes = [N || {N, _} <- NodesWithUUIDs],
     DownNodeNames = [N || {N, _, _} <- DownNodes],
+    Opts = #{expected_topology => expected_topology(TickSnapshot)},
     Snapshot = failover:get_snapshot(),
 
     KVNodes = ns_cluster_membership:service_nodes(Snapshot, Nodes, kv),
@@ -648,12 +650,19 @@ process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
                     %% remove the skip_safety_check option in
                     %% failover:validate_failover_services_safety.
                     trigger_autofailover(Nodes1, NodeStatuses, DownNodeNames,
-                                         DownNodes, #{}, S1)
+                                         DownNodes, Opts, S1)
             end;
         false ->
             trigger_autofailover(Nodes, NodeStatuses, DownNodeNames, DownNodes,
-                                 #{}, S)
+                                 Opts, S)
     end.
+
+%% The decision is made on a possibly stale local config, so the failover should
+%% not proceed if the synced config shows a different membership.
+expected_topology(Snapshot) ->
+    #{active => ns_cluster_membership:active_nodes(Snapshot),
+      inactiveFailed => ns_cluster_membership:inactive_failed_nodes(Snapshot),
+      inactiveAdded => ns_cluster_membership:inactive_added_nodes(Snapshot)}.
 
 trim_needed(_Nodes, #state{disable_max_count = true}) ->
     false;
@@ -806,6 +815,11 @@ process_failover_error(config_sync_failed, Nodes, S) ->
                           Nodes, S);
 process_failover_error(stopped_by_user, Nodes, S) ->
     report_failover_error(stopped_by_user, "Stopped by user.", Nodes, S);
+process_failover_error(expected_topology_mismatch, Nodes, S) ->
+    %% Not alerted, as the next tick re-evaluates the nodes on the new topology
+    ?log_info("Not failing over nodes ~p as the cluster topology changed "
+              "after deciding to fail them over", [Nodes]),
+    S;
 process_failover_error(last_node, Nodes, S) ->
     report_failover_error(last_node, "Could not fail over the final active "
                                      "node running a service.", Nodes, S).
@@ -1162,6 +1176,11 @@ get_tick_period_from_state(#state{tick_period = TickPeriod}) ->
 -spec get_errors_from_state(#state{}) -> sets:set().
 get_errors_from_state(#state{reported_errors = Errors}) ->
     Errors.
+
+%% Test function, checks whether a failover is running for a provided state
+-spec is_failover_running_from_state(#state{}) -> boolean().
+is_failover_running_from_state(#state{auto_failover_ref = Ref}) ->
+    Ref =/= undefined.
 
 -define(FLAG, autofailover_unsafe).
 reported_test() ->

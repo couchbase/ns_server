@@ -588,6 +588,47 @@ auto_failover_post_network_partition_stale_config(SetupConfig, PidMap) ->
                   get_auto_failover_reported_errors(AutoFailoverPid)
       end, 5000, 100).
 
+auto_failover_topology_changed_test_() ->
+    SetupArgs =
+        build_setup_config(#{buckets => [],
+                             healthy_nodes => [{'a', [kv]}, {'c', [kv]}],
+                             unhealthy_nodes => [{'b', [kv]}]}),
+
+    {foreachx,
+     fun auto_failover_test_setup/1,
+     fun failover_test_teardown/2,
+     [{SetupArgs,
+       fun(T, R) ->
+               {"Auto failover with topology changed after decision",
+                ?_test(auto_failover_topology_changed_t(T, R))}
+       end}]}.
+
+%% The orchestrator decides to fail over 'b' on a stale config, but the synced
+%% config shows that 'a' was failed over in the meantime (MB-75349)
+auto_failover_topology_changed_t(SetupConfig, PidMap) ->
+    meck:expect(chronicle_compat, pull,
+                fun(_) ->
+                        Nodes = maps:get(nodes, SetupConfig),
+                        fake_config_helpers:setup_cluster_config(
+                          Nodes#{'a' => {inactiveFailed, [kv]}})
+                end),
+
+    #{auto_failover := AutoFailoverPid} = PidMap,
+    perform_auto_failover_and_poll_counter(AutoFailoverPid, failover_fail, 1),
+
+    ?assertEqual(['b', 'c'], ns_cluster_membership:active_nodes()),
+    ?assertEqual(0, get_failover_complete_count()),
+    ?assert(meck:called(chronicle_compat, pull, '_')),
+
+    %% The mismatch is handled without crashing or alerting
+    ?assert(misc:poll_for_condition(
+              fun() ->
+                      not auto_failover:is_failover_running_from_state(
+                            sys:get_state(AutoFailoverPid))
+              end, 5000, 100)),
+    ?assert(is_process_alive(AutoFailoverPid)),
+    ?assertEqual([], get_auto_failover_reported_errors(AutoFailoverPid)).
+
 enable_auto_failover_test(_SetupConfig, PidMap) ->
     #{auto_failover := AutoFailoverPid} = PidMap,
 

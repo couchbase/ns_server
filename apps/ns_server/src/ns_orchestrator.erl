@@ -367,6 +367,7 @@ start_failover(Nodes, Options) when is_map(Options) ->
                               config_sync_failed |
                               quorum_lost |
                               stopped_by_user |
+                              expected_topology_mismatch |
                               {autofailover_unsafe, [bucket_name()]} |
                               {nodes_down, [node()], [bucket_name()]} |
                               {cannot_preserve_durability_majority,
