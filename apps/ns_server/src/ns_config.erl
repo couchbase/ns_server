@@ -324,18 +324,19 @@ do_update_rec(Fun, Acc, [Key | Keys], Rest, UUID, NewConfig, NewPairs,
 
 do_update(Fun, Acc, Keys, Rest, UUID, NewConfig, NewPairs, Erased, OldKey,
           {NewKey, NewValue}) ->
-    Rest1 =
+    {Rest1, Erased1} =
         case NewKey =:= OldKey of
             true ->
-                Rest;
+                {Rest, Erased};
             false ->
                 %% key has changed, so drop the pair it displaces from the
-                %% part of the config we have not processed yet
-                maps:remove(NewKey, Rest)
+                %% part of the config we have not processed yet, and erase the
+                %% old key from ns_config_ets_dup
+                {maps:remove(NewKey, Rest), [OldKey | Erased]}
         end,
 
     do_update_rec(Fun, Acc, Keys, Rest1, UUID, NewConfig#{NewKey => NewValue},
-                  NewPairs#{NewKey => NewValue}, Erased).
+                  NewPairs#{NewKey => NewValue}, Erased1).
 
 update(Fun) ->
     update_with_vclocks(
@@ -1060,8 +1061,7 @@ handle_call({update_with_changes, Fun}, _From, #config{uuid = UUID} = State) ->
                                 {NewState, NewPairs}
                         end,
 
-                    erase_ets_dup(Erased),
-                    update_ets_dup(FinalPairs),
+                    apply_changes_to_ets_dup(FinalPairs, Erased, NewConfig),
                     announce_locally_made_changes(FinalPairs),
                     {reply, Reply, initiate_save_config(FinalState)}
             end;
@@ -1437,6 +1437,12 @@ update_ets_dup(KVMap) when is_map(KVMap) ->
                             [{K, strip_metadata(V)} | Acc]
                     end, [], KVMap),
     ets:insert(ns_config_ets_dup, KVs).
+
+%% New keys go in first, so that a renamed key is always found under at least
+%% one of its names
+apply_changes_to_ets_dup(Pairs, Erased, NewConfig) ->
+    update_ets_dup(Pairs),
+    erase_ets_dup([K || K <- Erased, not is_map_key(K, NewConfig)]).
 
 erase_ets_dup(Keys) ->
     lists:foreach(
@@ -2597,6 +2603,43 @@ test_upgrade_config_with_many_upgrades() ->
     after 0 ->
             ok
     end.
+
+update_renamed_key_test_() ->
+    {setup, fun mock_tombstone_agent/0, fun (_) -> unmock_tombstone_agent() end,
+     fun update_renamed_key/0}.
+
+update_renamed_key() ->
+    Old = #{a => 1, c => 3, d => 4},
+    %% The order the keys are processed in isn't defined, so the cases are
+    %% built from it
+    [First, Second, Third] = maps:keys(Old),
+    #{First := V1, Second := V2, Third := V3} = Old,
+    lists:foreach(
+      fun ({Renames, Expected}) ->
+              Rename = fun (K, V, _VClock, Acc) ->
+                               case maps:find(K, Renames) of
+                                   {ok, NewK} -> {{update, {NewK, V}}, Acc};
+                                   error -> {skip, Acc}
+                               end
+                       end,
+              {NewPairs, Erased, NewConfig, _} =
+                  do_update_rec(Rename, undefined, Old, <<"uuid">>),
+              ?assertEqual(lists:sort(Expected),
+                           lists:sort([{K, strip_metadata(V)} ||
+                                          {K, V} <- maps:to_list(NewConfig)])),
+
+              test_setup(Old),
+              apply_changes_to_ets_dup(NewPairs, Erased, NewConfig),
+              ?assertEqual(lists:sort(Expected),
+                           lists:sort([{K, V} || K <- [new | maps:keys(Old)],
+                                                 {value, V} <- [search(K)]]))
+      end,
+      %% First is renamed away and then renamed into
+      [{#{First => new, Second => First},
+        [{new, V1}, {First, V2}, {Third, V3}]},
+       %% Second is overwritten by First before it is renamed
+       {#{First => Second, Second => new},
+        [{Second, V1}, {Third, V3}]}]).
 
 search_renamed_node_test() ->
     Before = #{{node, old, key} => {old, value}},
