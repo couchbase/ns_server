@@ -1578,7 +1578,7 @@ gen_password(Policy) ->
 gen_password(Policy, 0) ->
     erlang:error({pass_gen_retries_exceeded, Policy});
 gen_password({MinLength, _} = Policy, Retries) ->
-    Length = max(MinLength, misc:rand_uniform(8, 16)),
+    Length = max(MinLength, cb_crypto:rand_uniform(8, 16)),
     Letters =
         "0123456789abcdefghijklmnopqrstuvwxyz"
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*?",
@@ -1588,15 +1588,12 @@ gen_password({MinLength, _} = Policy, Retries) ->
         _ -> gen_password(Policy, Retries - 1)
     end.
 
+%% Each character is drawn directly from crypto:strong_rand_bytes (without
+%% bias), so the result is suitable for use as a secret
 crypto_random_string(Length, AllowedChars) ->
-    S = rand:seed_s(exrop, misc:generate_crypto_seed()),
     AllowedLen = length(AllowedChars),
-    {Password, _} = lists:mapfoldl(
-        fun(_, Acc) ->
-                {Rand, NewAcc} = rand:uniform_s(AllowedLen, Acc),
-                {lists:nth(Rand, AllowedChars), NewAcc}
-        end, S, lists:seq(1, Length)),
-    Password.
+    [lists:nth(cb_crypto:rand_uniform(1, AllowedLen + 1), AllowedChars) ||
+        _ <- lists:seq(1, Length)].
 
 reset_admin_password(Password) ->
     {User, Error} =
