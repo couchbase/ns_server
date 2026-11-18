@@ -19,8 +19,9 @@
 
 %% API
 -export([start_link/0, authenticate/2, settings/0, wipe/0, storage_path/1,
-         get_auth_info/0, derived_metrics/2, with_applied_defaults/1,
-         derived_metrics_interval/1, max_scrape_int/0]).
+         get_auth_info/0, get_auth_info/1, derived_metrics/2,
+         with_applied_defaults/1, derived_metrics_interval/1,
+         max_scrape_int/0]).
 
 -export_type([stats_settings/0]).
 
@@ -431,7 +432,12 @@ generate_prometheus_args(Settings) ->
 
 -spec get_auth_info() -> {rbac_user_id(), rbac_password()} | undefined.
 get_auth_info() ->
-    case ns_config:search_node(prometheus_auth_info) of
+    get_auth_info(node()).
+
+-spec get_auth_info(node()) -> {rbac_user_id(), rbac_password()} | undefined.
+get_auth_info(Node) ->
+    case ns_config:search_node(Node, ns_config:latest(),
+                               prometheus_auth_info) of
         {value, {User, {auth, AuthInfo}}} ->
             {User, AuthInfo};
         false ->

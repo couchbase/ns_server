@@ -565,7 +565,8 @@ maybe_push_config_encryption_key(DeksSnapshot) ->
     end.
 
 get_memcached_config_path() ->
-    Path = ns_config:search_node_prop(ns_config:latest(), memcached,
+    Path = ns_config:search_node_prop(dist_manager:this_node(),
+                                      ns_config:latest(), memcached,
                                       config_path),
     true = is_list(Path),
     Path.
@@ -610,8 +611,9 @@ do_read_current_memcached_config([Path | Rest]) ->
 %% So essentially node specific ones take priority over global, which take
 %% priority over defaults
 memcached_params(Config) ->
+    Node = dist_manager:this_node(),
     {value, NodeNsCfgParams} =
-        ns_config:search(Config, {node, node(), memcached}),
+        ns_config:search(Config, {node, Node, memcached}),
     GlobalNsCfgParams = ns_config:search(Config, memcached, []),
 
     GlobalChronicleParams =
@@ -620,12 +622,12 @@ memcached_params(Config) ->
           #{default => []}),
     NodeChronicleParams =
         chronicle_compat:get(
-          direct, {node, node(), memcached_config_settings},
+          direct, {node, Node, memcached_config_settings},
           #{default => []}),
 
     DefaultCfgMcdParams =
         ?MCD_SETTINGS_CHRONICLE_DEFAULTS ++
-        ns_config:search(Config, {node, node(), memcached_defaults}, []),
+        ns_config:search(Config, {node, Node, memcached_defaults}, []),
 
     GlobalMcdParams = GlobalChronicleParams ++ GlobalNsCfgParams,
     NodeMcdParams = NodeChronicleParams ++ NodeNsCfgParams,
@@ -636,14 +638,14 @@ get_config_profile([], _Params) ->
     list_to_binary(config_profile:name()).
 
 memcached_config(Config) ->
-    {value, McdConf} = ns_config:search(Config, {node, node(),
-                                                 memcached_config}),
+    Node = dist_manager:this_node(),
+    {value, McdConf} = ns_config:search(Config, {node, Node, memcached_config}),
 
     McdParams = memcached_params(Config),
 
     {Props} = expand_memcached_config(McdConf, McdParams),
     ExtraProps = ns_config:search(Config,
-                                  {node, node(), memcached_config_extra}, []),
+                                  {node, Node, memcached_config_extra}, []),
     ExtraPropsG = ns_config:search(Config, memcached_config_extra, []),
 
     BinPrefix = filename:dirname(path_config:component_path(bin)),
@@ -724,12 +726,13 @@ is_snappy_enabled([], _Params) ->
 
 is_snappy_enabled() ->
     Cfg = ns_config:latest(),
+    Node = dist_manager:this_node(),
 
     %% Local snappy config > global snappy config > default snappy value.
-    Default = ns_config:search_prop(Cfg, {node, node(), memcached_defaults},
+    Default = ns_config:search_prop(Cfg, {node, Node, memcached_defaults},
                                     datatype_snappy, false),
 
-    ns_config:search_node_prop(Cfg, memcached, datatype_snappy, Default).
+    ns_config:search_node_prop(Node, Cfg, memcached, datatype_snappy, Default).
 
 get_fallback_salt([], _Params) ->
     base64:encode(scram_sha:get_fallback_salt()).
@@ -839,8 +842,10 @@ format_ciphers(RFCCipherNames) ->
     iolist_to_binary(lists:join(":", OpenSSLNames)).
 
 prometheus_cfg([], _Params) ->
-    {[{port, service_ports:get_port(memcached_prometheus)},
-      {family, ns_config:read_key_fast({node, node(), address_family}, inet)}]}.
+    Node = dist_manager:this_node(),
+    {[{port, service_ports:get_port(memcached_prometheus, ns_config:latest(),
+                                    Node)},
+      {family, ns_config:read_key_fast({node, Node, address_family}, inet)}]}.
 
 sasl_mechanisms([], _Params) ->
     list_to_binary(lists:join(" ", auth_mechs())).

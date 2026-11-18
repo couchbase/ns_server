@@ -26,7 +26,8 @@
                 prometheus_auth}).
 
 start_link() ->
-    Path = ns_config:search_node_prop(ns_config:latest(), isasl, path),
+    Path = ns_config:search_node_prop(dist_manager:this_node(),
+                                      ns_config:latest(), isasl, path),
     memcached_cfg:start_link(?MODULE, Path).
 
 sync() ->
@@ -47,7 +48,8 @@ init() ->
     #state{users = extract_users(Config),
            admin_passwords = extract_passwords(Config),
            rest_creds = ns_config_auth:get_admin_user_and_auth(),
-           prometheus_auth = prometheus_cfg:get_auth_info()}.
+           prometheus_auth =
+               prometheus_cfg:get_auth_info(dist_manager:this_node())}.
 
 filter_event(auth_version) ->
     true;
@@ -181,8 +183,10 @@ extract_passwords(Config) ->
       ns_config_auth:get_special_passwords(dist_manager:this_node(), Config)).
 
 extract_users(Config) ->
-    Admin = ns_config:search_node_prop(Config, memcached, admin_user),
-    Other = ns_config:search_node_prop(Config, memcached, other_users, []),
+    Node = dist_manager:this_node(),
+    Admin = ns_config:search_node_prop(Node, Config, memcached, admin_user),
+    Other = ns_config:search_node_prop(Node, Config, memcached, other_users,
+                                       []),
     %% Checking for undefined to work around temporary inconsistency in
     %% ns_config during node rename.
     [Admin || Admin /= undefined] ++ Other.

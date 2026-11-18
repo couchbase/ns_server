@@ -115,7 +115,8 @@ admin_user_privileges() ->
     ['NodeSupervisor', 'BucketThrottleManagement', 'Unthrottled'].
 
 start_link() ->
-    Path = ns_config:search_node_prop(ns_config:latest(), memcached, rbac_file),
+    Path = ns_config:search_node_prop(dist_manager:this_node(),
+                                      ns_config:latest(), memcached, rbac_file),
     memcached_cfg:start_link(?MODULE, Path).
 
 sync() ->
@@ -134,7 +135,7 @@ init() ->
            prometheus_user = prom_user()}.
 
 prom_user() ->
-    case prometheus_cfg:get_auth_info() of
+    case prometheus_cfg:get_auth_info(dist_manager:this_node()) of
         {U, _} ->
             U;
         undefined ->
@@ -142,8 +143,10 @@ prom_user() ->
     end.
 
 spec_users() ->
-    [ns_config:search_node_prop(ns_config:latest(), memcached, admin_user) |
-     ns_config:search_node_prop(ns_config:latest(), memcached,
+    Node = dist_manager:this_node(),
+    [ns_config:search_node_prop(Node, ns_config:latest(), memcached,
+                                admin_user) |
+     ns_config:search_node_prop(Node, ns_config:latest(), memcached,
                                 other_users, [])].
 
 filter_event(group_version) ->
