@@ -96,6 +96,17 @@ get_bool("false") ->
 get_bool(_) ->
     {error, "Accepted values are 'true' and 'false'."}.
 
+%% OpenSSL rejects SHA1 signatures at all security levels supported by the
+%% Data Service, so a CA generated with SHA1 can't be used. The setting is
+%% ignored when generating certificates, and "false" is only accepted so
+%% that existing scripts keep working.
+get_cert_use_sha1("false") ->
+    {ok, false};
+get_cert_use_sha1("true") ->
+    {error, "SHA1 certificates can't be used by the Data Service."};
+get_cert_use_sha1(_) ->
+    {error, "Only accepted value is 'false'."}.
+
 only_true("true") -> {ok, true};
 only_true(_) -> {error, "Only accepted value is 'true'."}.
 
@@ -759,7 +770,7 @@ conf(internal) ->
      {gotraceback, gotraceback, <<"single">>, fun get_string/1},
      {failover_bulk_buckets_janitor_factor, failoverBulkJanitorFactor,
       1, get_number(1, ?MAX_BUCKETS_SUPPORTED)},
-     {{cert, use_sha1}, certUseSha1, false, fun get_bool/1},
+     {{cert, use_sha1}, certUseSha1, false, fun get_cert_use_sha1/1},
      {{client_cert, not_after_duration_s}, clientCertNotAfterDurationSeconds,
       ?INTERNAL_CERT_MAX_NOT_AFTER_DURATION,
       get_number(?INTERNAL_CERT_MIN_NOT_AFTER_DURATION,
