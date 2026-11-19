@@ -463,11 +463,13 @@ auto_failover_async_t(_SetupConfig, PidMap) ->
     %% test that the auto_failover module isn't locked up mid-failover.
     meck:expect(janitor_agent, mark_bucket_warmed,
                 fun(_,_) ->
-                        Ticks = meck:num_calls(ns_doctor, get_nodes, '_'),
+                        Ticks = meck:num_calls(node_status_analyzer,
+                                               get_statuses, '_'),
 
                         %% Send a bunch more ticks, we should be able to process
-                        %% these, check against the calls to ns_doctor that we
-                        %% are processing each tick as we send it.
+                        %% these, check against the calls to
+                        %% node_status_analyzer that we are processing each tick
+                        %% as we send it.
                         lists:foreach(
                           fun(Count) ->
                                   AutoFailoverPid ! tick,
@@ -475,8 +477,9 @@ auto_failover_async_t(_SetupConfig, PidMap) ->
                                   misc:poll_for_condition(
                                     fun() ->
                                             Count + Ticks + 1 =:=
-                                                meck:num_calls(ns_doctor,
-                                                               get_nodes, '_')
+                                                meck:num_calls(
+                                                  node_status_analyzer,
+                                                  get_statuses, '_')
                                     end, 5000, 100)
                           end,
                           lists:seq(0, 3)),

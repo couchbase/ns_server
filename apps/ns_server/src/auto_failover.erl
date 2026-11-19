@@ -377,7 +377,6 @@ handle_info(tick, #state{auto_failover_ref = AutoFailoverRef} = State0) ->
 
     NonPendingNodes = lists:sort(ns_cluster_membership:active_nodes(Snapshot)),
 
-    NodeStatuses = ns_doctor:get_nodes(),
     DownNodes = fastfo_down_nodes(NonPendingNodes),
 
     State = log_down_nodes_reason(DownNodes, State1),
@@ -404,7 +403,7 @@ handle_info(tick, #state{auto_failover_ref = AutoFailoverRef} = State0) ->
                            lists:foldl(
                              fun(Action, S) ->
                                      process_action(Action, S, DownNodes,
-                                                    NodeStatuses, Snapshot)
+                                                    Snapshot)
                              end, State#state{
                                     auto_failover_logic_state = LogicState},
                              Actions),
@@ -416,8 +415,7 @@ handle_info(tick, #state{auto_failover_ref = AutoFailoverRef} = State0) ->
 
     {noreply, NewState#state{tick_ref = Ref}};
 
-handle_info({auto_failover_complete, Nodes, DownNodes, NodeStatuses, Result},
-            State) ->
+handle_info({auto_failover_complete, Nodes, Reasons, Result}, State) ->
     %% Process a message sent when auto_failover completes.
     %%
     %% It could be the case that we have disabled auto-failover between an
@@ -435,8 +433,7 @@ handle_info({auto_failover_complete, Nodes, DownNodes, NodeStatuses, Result},
     NewState = case Result of
                    {ok, UnsafeNodes} ->
                        FailedOver = Nodes -- [N || {N, _} <- UnsafeNodes],
-                       [log_failover_success(N, DownNodes, NodeStatuses) ||
-                           N <- FailedOver],
+                       [log_failover_success(N, Reasons) || N <- FailedOver],
                        NewState1 = lists:foldl(fun log_unsafe_node/2, State,
                                                UnsafeNodes),
                        NewCount = NewState1#state.count + length(FailedOver),
@@ -580,7 +577,7 @@ trim_nodes_for_failover(Nodes, S) ->
     end.
 
 process_action({mail_too_small, Service, SvcNodes, {Node, _UUID}},
-               S, _, _, _) ->
+               S, _, _) ->
     ?log_and_alert(
        auto_failover_cluster_too_small,
        "Could not auto-failover node (~p). "
@@ -591,36 +588,35 @@ process_action({mail_too_small, Service, SvcNodes, {Node, _UUID}},
         length(SvcNodes),
         auto_failover_logic:service_failover_min_node_count()]),
     S;
-process_action({mail_down_warning, {Node, _UUID}}, S, _, _, _) ->
+process_action({mail_down_warning, {Node, _UUID}}, S, _, _) ->
     ?log_and_alert(
        auto_failover_other_nodes_down,
        "Could not auto-failover node (~p). "
        "There was at least another node down.",
        [Node]),
     S;
-process_action({mail_down_warning_multi_node, {Node, _UUID}}, S, _, _, _) ->
+process_action({mail_down_warning_multi_node, {Node, _UUID}}, S, _, _) ->
     ?log_and_alert(
        auto_failover_other_nodes_down,
        "Could not auto-failover node (~p). "
        "The list of nodes being down has changed.",
        [Node]),
     S;
-process_action({mail_auto_failover_disabled, Service, {Node, _}}, S, _, _, _) ->
+process_action({mail_auto_failover_disabled, Service, {Node, _}}, S, _, _) ->
     ?log_and_alert(
        auto_failover_disabled,
        "Could not auto-failover node (~p). "
        "Auto-failover for ~s service is disabled.",
        [Node, ns_cluster_membership:user_friendly_service_name(Service)]),
     S;
-process_action({mail_kv_not_fully_failed_over, {Node, _}}, S, _, _, _) ->
+process_action({mail_kv_not_fully_failed_over, {Node, _}}, S, _, _) ->
     ?log_and_alert(
        auto_failover_other_nodes_down,
        "Could not auto-failover service node (~p). "
        "One of the data service nodes cannot be automatically failed over.",
        [Node]),
     S;
-process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
-               TickSnapshot)
+process_action({failover, NodesWithUUIDs}, S, DownNodes, TickSnapshot)
   when is_list(NodesWithUUIDs) ->
     Nodes = [N || {N, _} <- NodesWithUUIDs],
     DownNodeNames = [N || {N, _, _} <- DownNodes],
@@ -649,12 +645,11 @@ process_action({failover, NodesWithUUIDs}, S, DownNodes, NodeStatuses,
                     %% Once min_supported_version is bumped to 8.0, we can
                     %% remove the skip_safety_check option in
                     %% failover:validate_failover_services_safety.
-                    trigger_autofailover(Nodes1, NodeStatuses, DownNodeNames,
-                                         DownNodes, Opts, S1)
+                    trigger_autofailover(Nodes1, DownNodeNames, DownNodes,
+                                         Opts, S1)
             end;
         false ->
-            trigger_autofailover(Nodes, NodeStatuses, DownNodeNames, DownNodes,
-                                 Opts, S)
+            trigger_autofailover(Nodes, DownNodeNames, DownNodes, Opts, S)
     end.
 
 %% The decision is made on a possibly stale local config, so the failover should
@@ -703,12 +698,12 @@ maybe_report_max_node_reached(AllNodes, NotFailedOver, ErrMsg, S) ->
             S
     end.
 
-trigger_autofailover([], _NodeStatuses, _DownNodeNames, _DownNodes, _Opts,
-                     State) ->
+trigger_autofailover([], _DownNodeNames, _DownNodes, _Opts, State) ->
     State;
-trigger_autofailover(Nodes, NodeStatuses, DownNodeNames, DownNodes, Opts,
-                     State) ->
-    FailoverReasons = failover_reasons(Nodes, DownNodes, NodeStatuses),
+trigger_autofailover(Nodes, DownNodeNames, DownNodes, Opts, State) ->
+    NodeStatuses = ns_doctor:get_nodes(),
+    Reasons = [{N, failover_reason(N, DownNodes, NodeStatuses)} || N <- Nodes],
+    FailoverReasons = failover_reasons(Reasons),
     Self = self(),
     Pid = erlang:spawn_link(
             fun() ->
@@ -718,13 +713,13 @@ trigger_autofailover(Nodes, NodeStatuses, DownNodeNames, DownNodes, Opts,
                           Nodes,
                           Opts#{failover_reasons => FailoverReasons,
                                 down_nodes => DownNodeNames}),
-                    Self ! {auto_failover_complete, Nodes, DownNodes,
-                            NodeStatuses, R}
+                    Self ! {auto_failover_complete, Nodes, Reasons, R}
             end),
     State#state{auto_failover_ref = Pid}.
 
-log_failover_success(Node, DownNodes, NodeStatuses) ->
-    case failover_reason(Node, DownNodes, NodeStatuses) of
+log_failover_success(Node, Reasons) ->
+    {Node, Reason0} = lists:keyfind(Node, 1, Reasons),
+    case Reason0 of
         {Reason, MA} ->
             master_activity_events:note_autofailover_done(Node, MA),
             ?log_and_alert(
@@ -738,12 +733,8 @@ log_failover_success(Node, DownNodes, NodeStatuses) ->
 
     end.
 
-failover_reasons(FailedOverNodes, DownNodes, NodeStatuses) ->
-    Fun = fun (N) ->
-                  {Reason, _} = failover_reason(N, DownNodes, NodeStatuses),
-                  {N, Reason}
-          end,
-    [Fun(Node) || Node <- FailedOverNodes].
+failover_reasons(Reasons) ->
+    lists:map(fun ({N, {Reason, _}}) -> {N, Reason} end, Reasons).
 
 failover_reason(Node, DownNodes, NodeStatuses) ->
     {_, DownInfo, _} = lists:keyfind(Node, 1, DownNodes),
