@@ -439,7 +439,7 @@
     "cm_node_reachable_total": {
         "type": "counter",
         "help": "Total number of times the node identified by the node label was reported as reachable (came up). This complements cm_node_unreachable_total and can help identify intermittent network connectivity issues that may not trigger auto-failover.",
-        "added": "8.1.0",
+        "added": "7.6.13",
         "labels": [
             {
                 "name": "node",
