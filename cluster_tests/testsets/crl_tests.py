@@ -1116,6 +1116,74 @@ class CRLTests(testlib.BaseTestSet):
             for f in get_crl_files(node):
                 delete_crl_file(node, f['filename'])
 
+    def same_this_update_crl_number_test(self):
+        """Two CRLs from one CA with the same thisUpdate: the higher CRL Number
+        wins, whatever the filenames (MB-75442).
+
+        thisUpdate has one-second resolution, so a CA that issues two CRLs
+        within a second gives them equal thisUpdate.  The cache returns CRLs in
+        filename order and OTP stops at the first complete CRL, so the tie used
+        to be decided by whichever filename sorted first.  Each case below puts
+        the superseded CRL in the filename that sorts first.
+        """
+        node = self.cluster.connected_nodes[0]
+        ca_ids = []
+
+        try:
+            # A CA with a subject of its own, so that no other CRL matches it
+            # by issuer name (see reason_partitioned_crl_test).
+            root_ca_pem, root_ca_key_pem = generate_root_ca()
+            tie_ca_pem, tie_ca_key_pem = generate_intermediate_ca(
+                root_ca_pem, root_ca_key_pem, cn='Test Tie CA')
+            ca_ids = load_multiple_cas(node, [root_ca_pem, tie_ca_pem])
+
+            cert_pem, _ = generate_client_cert_cn(
+                tie_ca_pem, tie_ca_key_pem, 'tie-user')
+            cert_b64 = cert_pem_to_b64_der(cert_pem)
+
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'})
+
+            # generate_crl numbers CRLs in the order they are generated, so
+            # the second CRL of each pair has the higher number.
+            def check(first_revoked, expected):
+                this_update = _initial_this_update()
+                lower = generate_crl(tie_ca_pem, tie_ca_key_pem,
+                                     [cert_pem] if first_revoked else [],
+                                     this_update=this_update)
+                higher = generate_crl(tie_ca_pem, tie_ca_key_pem,
+                                      [] if first_revoked else [cert_pem],
+                                      this_update=this_update)
+                upload_crl_file(node, 'tie_a_lower.pem', lower)
+                upload_crl_file(node, 'tie_b_higher.pem', higher)
+                _assert_crl_file_status(self.cluster, 'tie_a_lower.pem',
+                                        'active')
+                _assert_crl_file_status(self.cluster, 'tie_b_higher.pem',
+                                        'active')
+                r = crl_test_validate(self.cluster, policy='Require',
+                                      certs=[cert_b64])
+                testlib.assert_eq(r['results'][0]['status'], expected)
+                delete_crl_file(node, 'tie_a_lower.pem')
+                delete_crl_file(node, 'tie_b_higher.pem')
+
+            # The newer CRL adds a revocation: it must not be ignored.
+            check(first_revoked=False, expected='revoked')
+            print("Same thisUpdate, higher CRL Number revokes: cert revoked")
+
+            # The newer CRL drops one (e.g. a lifted certificateHold): the
+            # older CRL must not keep it revoked.
+            check(first_revoked=True, expected='good')
+            print("Same thisUpdate, lower CRL Number revokes: cert good")
+        finally:
+            for ca_id in ca_ids:
+                testlib.delete(node, f'/pools/default/trustedCAs/{ca_id}')
+            set_crl_settings(self.cluster,
+                             policy_per_scope={'clientAuth': 'Disabled',
+                                               'nodeToNode': 'Disabled'})
+            for f in get_crl_files(node):
+                delete_crl_file(node, f['filename'])
+
     def custom_internal_client_cert_crl_test(self):
         """Test that custom internal client certs are subject to CRL checks.
 
