@@ -757,10 +757,28 @@ build_dps_and_crls(OtpCert) ->
     %% Sort newest-first so that pkix_crls_validate/3 sees the most
     %% recent CRL first and avoids false "not revoked" results when
     %% an outdated CRL is checked before a newer one.
-    lists:sort(
-        fun ({_, {_, CRL1}}, {_, {_, CRL2}}) ->
-                crl_this_update_secs(CRL1) >= crl_this_update_secs(CRL2)
-        end, Decoded).
+    sort_newest_first(Decoded).
+
+%% thisUpdate has one-second resolution, so two CRLs issued within the same
+%% second tie on it; the CRL Number (RFC 5280 5.2.3) breaks the tie.  Without
+%% it the tie would fall back to filename order, as that is the order the
+%% cache returns CRLs in.
+-spec sort_newest_first([{DP, {Der, #'CertificateList'{}}}]) ->
+          [{DP, {Der, #'CertificateList'{}}}].
+sort_newest_first(DPsAndCRLs) ->
+    Keyed = [{crl_order_key(CRL), E} || {_DP, {_Der, CRL}} = E <- DPsAndCRLs],
+    [E || {_, E} <- lists:sort(fun ({K1, _}, {K2, _}) -> K1 >= K2 end,
+                               Keyed)].
+
+%% A CRL with no (decodable) CRL Number sorts below any numbered one: an atom
+%% would sort above every integer.
+-spec crl_order_key(#'CertificateList'{}) -> {non_neg_integer(), integer()}.
+crl_order_key(CRL) ->
+    {crl_this_update_secs(CRL),
+     case cb_crl_manager:get_crl_number(CRL) of
+         undefined -> -1;
+         N -> N
+     end}.
 
 -spec crl_this_update_secs(#'CertificateList'{}) -> non_neg_integer().
 crl_this_update_secs(#'CertificateList'{tbsCertList = TBS}) ->
@@ -1182,6 +1200,34 @@ describe_crl_test() ->
                  describe_crl(#'CertificateList'{tbsCertList = garbage})),
     ?assertEqual(unknown_crl, describe_crl(garbage)),
     ?assertEqual(unknown_crl, describe_crl({<<"der">>, garbage})).
+
+%% Newest thisUpdate first; on a thisUpdate tie the higher CRL Number wins and
+%% a CRL with no usable number loses, whatever the input order (MB-75442).
+sort_newest_first_test() ->
+    CRL = fun (ThisUpdate, CRLNumber) ->
+                  #'CertificateList'{tbsCertList = TBS} = C =
+                      fake_crl("ca", CRLNumber),
+                  C#'CertificateList'{
+                    tbsCertList = TBS#'TBSCertList'{
+                                    thisUpdate = {generalTime, ThisUpdate}}}
+          end,
+    Sort = fun (CRLs) ->
+                   [C || {_, {_, C}} <- sort_newest_first(
+                                          [fake_dp_and_crl(C) || C <- CRLs])]
+           end,
+    Earlier = "20261115120243Z",
+    Tie = "20261115120244Z",
+    Num1 = CRL(Tie, 1),
+    Num2 = CRL(Tie, 2),
+    NoNum = CRL(Tie, asn1_NOVALUE),
+    BadNum = CRL(Tie, <<"not a CRL number">>),
+    ?assertEqual([Num2, Num1], Sort([Num1, Num2])),
+    ?assertEqual([Num2, Num1], Sort([Num2, Num1])),
+    ?assertEqual([Num1, NoNum], Sort([NoNum, Num1])),
+    ?assertEqual([Num1, BadNum], Sort([BadNum, Num1])),
+    %% thisUpdate still comes first: the number only breaks a tie.
+    Old5 = CRL(Earlier, 5),
+    ?assertEqual([Num1, Old5], Sort([Old5, Num1])).
 
 %% Every doubt is answered with false, because refusing only forces a full
 %% handshake.
