@@ -259,7 +259,9 @@ default(Vsn) ->
        {dcp_snapshot_marker_hps_enabled, true},
        {dcp_snapshot_marker_purge_seqno_enabled, true},
        %% How much space all of the memcached log files are allowed to take
-       %% together before memcached starts purging the oldest ones.
+       %% together before memcached starts purging the oldest ones. Not
+       %% settable through REST; override it in {node, N, memcached} and
+       %% restart memcached.
        {log_max_aggregated_size, ?MCD_LOG_MAX_AGGREGATED_SIZE}]},
 
      %% Memcached config
