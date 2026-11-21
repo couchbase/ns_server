@@ -169,6 +169,19 @@ call_disk_sink(SinkName, Call, Timeout) ->
             {error, unknown_sink}
     end.
 
+%% Like call_disk_sink/3, but never raises: for the calls ale makes to its
+%% sinks from its own process, or from the drop-DEKs process linked to it. A
+%% sink that dies before it replies mustn't take ale down with it: ale_sup is
+%% one_for_all, so that would take every sink down too, and nothing would ever
+%% start them again.
+try_call_disk_sink(SinkName, Call, Timeout) ->
+    try
+        call_disk_sink(SinkName, Call, Timeout)
+    catch
+        exit:{Reason, {gen_server, call, _}} ->
+            {error, {sink_failed, Reason}}
+    end.
+
 sync_sink(SinkName) ->
     call_disk_sink(SinkName, sync, infinity).
 
@@ -185,12 +198,14 @@ get_encryptable_sink_names(State) ->
           end, State#state.sinks),
     dict:fetch_keys(EncrSinks).
 
+%% Returns {SinkName, {ok, Deks} | {error, Reason}} for each stopped sink: see
+%% maybe_add_historical_deks/3.
 get_historical_deks(CurrLiveEcrSinks, #state{historical_deks = HistDeks}) ->
     HistSinks = dict:fetch_keys(HistDeks),
-    lists:flatmap(
+    lists:map(
       fun(SinkName) ->
-              {ok, Deks} = dict:find(SinkName, HistDeks),
-              Deks
+              {ok, InUseDeks} = dict:find(SinkName, HistDeks),
+              {SinkName, InUseDeks}
       end, HistSinks -- CurrLiveEcrSinks).
 
 do_set_log_deks_snapshot(LogsDS, State) ->
@@ -199,8 +214,9 @@ do_set_log_deks_snapshot(LogsDS, State) ->
     RVs =
         lists:map(
           fun(SinkName) ->
-                  {SinkName, call_disk_sink(SinkName,
-                                            notify_active_key_updt, infinity)}
+                  {SinkName,
+                   try_call_disk_sink(SinkName, notify_active_key_updt,
+                                      infinity)}
           end, EncryptableSinks),
 
     Failures = [Result || {_Sink, R} = Result <- RVs, R =/= ok],
@@ -236,8 +252,8 @@ do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State) ->
     CallDropSink =
         fun(SinkName) ->
             DropArgs = {drop_log_deks, DekIdsToDrop, WorkSzThresh},
-            case call_disk_sink(SinkName, DropArgs, infinity) of
-                {error, unknown_sink} = E ->
+            case try_call_disk_sink(SinkName, DropArgs, infinity) of
+                {error, _} = E ->
                     {E, 0};
                 {_Rv, _Count} = Res ->
                     Res
@@ -285,19 +301,25 @@ do_drop_log_deks(DekIdsToDrop, WorkSzThresh, From, State) ->
 
     try_drop_deks_work(Work, From, State).
 
+%% Fails if any sink, running or stopped, can't tell which DEKs its files use,
+%% rather than leave out DEKs that may still be in use.
 do_get_all_used_deks(State) ->
     EncryptableSinks = get_encryptable_sink_names(State),
-    InUseDeks =
-        lists:flatmap(
+    RVs =
+        lists:map(
           fun(SinkName) ->
-                  {ok, InUseDeks} =
-                      call_disk_sink(SinkName, get_in_use_deks, infinity),
-                  InUseDeks
-          end, EncryptableSinks),
+                  {SinkName,
+                   try_call_disk_sink(SinkName, get_in_use_deks, infinity)}
+          end, EncryptableSinks) ++
+        get_historical_deks(EncryptableSinks, State),
 
-    AddnlInUseDeks = get_historical_deks(EncryptableSinks, State),
-
-    {ok, lists:usort(InUseDeks ++ AddnlInUseDeks)}.
+    case [Failure || {_Sink, {error, _}} = Failure <- RVs] of
+        [] ->
+            InUseDeks = [Deks || {_Sink, {ok, Deks}} <- RVs],
+            {ok, lists:usort(lists:append(InUseDeks))};
+        Failures ->
+            {error, Failures}
+    end.
 
 init_log_encryption_ds(LogDS) ->
     set_global_log_deks_snapshot(LogDS).
@@ -789,9 +811,24 @@ do_start_sink(Name, SinkMeta, Module, Args,
             end
     end.
 
+%% Remembers which DEKs the files of a sink being stopped use, for
+%% do_get_all_used_deks/1. If the sink can't tell us (it is down, or dies
+%% before it replies), the sink is stopped all the same, and the error is what
+%% gets remembered: do_get_all_used_deks/1 then fails until a sink of that name
+%% is started again.
 maybe_add_historical_deks(_IsEncryptable = true, SinkName,
                           #state{historical_deks = OldHistory} = State) ->
-    {ok, InUseDeks} = call_disk_sink(SinkName, get_in_use_deks, infinity),
+    InUseDeks = try_call_disk_sink(SinkName, get_in_use_deks, infinity),
+    case InUseDeks of
+        {ok, _} ->
+            ok;
+        {error, _} ->
+            ale:error(?ALE_LOGGER,
+                      "Failed to get the DEKs in use by sink ~p, which is "
+                      "being stopped: ~p. Listing the DEKs in use will fail "
+                      "until a sink of that name is started again.",
+                      [SinkName, InUseDeks])
+    end,
     NewHistory = dict:store(SinkName, InUseDeks, OldHistory),
     State#state{historical_deks = NewHistory};
 maybe_add_historical_deks(_IsEncryptable = false, _SinkName, State) ->
