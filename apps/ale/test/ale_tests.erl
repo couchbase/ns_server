@@ -201,6 +201,95 @@ assert_log_failure_kept() ->
     ?assertEqual([], handler_changes(Watch)),
     assert_handlers_intact().
 
+%% ale makes calls to its sinks from its own process. A sink that is down, or
+%% dies before it replies, must not take ale down with it: ale_sup is
+%% one_for_all, so every other sink would go too, and nothing starts them
+%% again. Each test runs on a peer node of its own, since a failure restarts
+%% ale_sup.
+sink_failure_test_() ->
+    Tests = [{"get_all_used_deks with a failed sink",
+              assert_used_deks_sink_failure},
+             {"stop_sink of a failed sink", assert_stop_failed_sink},
+             {"set_log_deks_snapshot with a failed sink",
+              assert_set_deks_sink_failure},
+             {"drop_log_deks with a failed sink",
+              assert_drop_deks_sink_failure},
+             {"sync_sink raises if the sink dies during it",
+              assert_sync_sink_failure}],
+    {foreach, fun start_ale_peer/0, fun stop_ale_peer/1,
+     [fun (Peer) ->
+              {Title, fun () -> on_peer(Peer, Fun, [], 4000) end}
+      end || {Title, Fun} <- Tests]}.
+
+assert_used_deks_sink_failure() ->
+    Ale = start_test_sinks(),
+    %% bad dies while ale waits on it
+    ?assertMatch({error, [{bad, {error, {sink_failed, died_on_call}}}]},
+                 ale:get_all_used_deks()),
+    %% and is then down until ale_dynamic_sup restarts it
+    ?assertMatch({error, [{bad, {error, unknown_sink}}]},
+                 ale:get_all_used_deks()),
+    assert_ale_intact(Ale).
+
+assert_stop_failed_sink() ->
+    Ale = start_test_sinks(),
+    ?assertEqual(ok, ale:stop_sink(bad)),
+    assert_ale_intact(Ale),
+    ?assertEqual([good], sink_names()),
+    %% which DEKs bad's files use is unknown, so nothing can be said to be
+    %% unused...
+    ?assertMatch({error, [{bad, {error, {sink_failed, died_on_call}}}]},
+                 ale:get_all_used_deks()),
+    %% ...until bad is back to say
+    ok = ale:start_sink(bad, ale_test_sink, [{in_use, [bad_dek]}]),
+    ?assertEqual({ok, [bad_dek, good_dek]}, ale:get_all_used_deks()).
+
+assert_set_deks_sink_failure() ->
+    Ale = start_test_sinks(),
+    ?assertMatch({error, [{bad, {error, {sink_failed, died_on_call}}}]},
+                 ale:set_log_deks_snapshot(#{})),
+    assert_ale_intact(Ale).
+
+assert_drop_deks_sink_failure() ->
+    Ale = start_test_sinks(),
+    ?assertMatch({error, [{bad, {error, {sink_failed, died_on_call}}}]},
+                 ale:drop_log_deks([good_dek], 1024, 2000)),
+    %% the drop runs in a process linked to ale
+    timer:sleep(100),
+    assert_ale_intact(Ale).
+
+%% Unlike the calls ale makes to its sinks itself, sync_sink/1 runs in the
+%% process that wants the sink synced, and leaves a sink dying during it for
+%% that process to deal with.
+assert_sync_sink_failure() ->
+    Ale = start_test_sinks(),
+    ?assertExit({died_on_call, _}, ale:sync_sink(bad)),
+    %% and is then down until ale_dynamic_sup restarts it
+    ?assertEqual({error, unknown_sink}, ale:sync_sink(bad)),
+    assert_ale_intact(Ale).
+
+%% Starts sinks good, which says its files use good_dek, and bad, which dies
+%% whenever it is called. Returns ale's pid.
+start_test_sinks() ->
+    %% keep the reports of bad dying off the console of the peer, which is the
+    %% output of the tests
+    ok = logger:remove_handler(default),
+    ok = ale:start_sink(good, ale_test_sink, [{in_use, [good_dek]}]),
+    ok = ale:start_sink(bad, ale_test_sink, [die]),
+    whereis(ale).
+
+%% ale hasn't restarted, so still knows about good, which is still running.
+assert_ale_intact(Ale) ->
+    ?assertEqual(Ale, whereis(ale)),
+    ?assert(lists:member(good, sink_names())),
+    ?assert(is_pid(whereis(ale_utils:sink_id(good)))),
+    ok.
+
+sink_names() ->
+    lists:sort([Name || {Name, _Meta} <-
+                            proplists:get_value(
+                              sinks, ale:capture_logging_diagnostics())]).
+
 %% Runs ?MODULE:Fun(Args...) on Peer, failing the test unless it returns ok.
 on_peer(Peer, Fun, Args, Timeout) ->
     ?assertEqual(ok, peer:call(Peer, ?MODULE, Fun, Args, Timeout)).
