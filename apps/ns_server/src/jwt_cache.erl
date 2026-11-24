@@ -103,6 +103,7 @@
                           }).
 
 -define(JWKS_DEFAULT_EXPIRY_S, 6 * 60 * 60). %% 6 hours
+-define(JWKS_MIN_EXPIRY_S, ?get_param(jwks_min_expiry_s, 5 * 60)). %% 5 minutes
 -define(JWKS_SYNC_TIMEOUT_MS, 10000). %% 10 seconds
 -define(JWKS_MIN_FETCH_INTERVAL_MS,
         ?get_param(jwks_min_fetch_interval_ms, 5000)). %% 5 seconds
@@ -435,10 +436,12 @@ fetch_and_cache_jwks(IssuerProps = #{public_key_source := jwks_uri}) ->
         {JwksJson, MaxAge} ->
             case validate_jwks(JwksJson, IssuerProps) of
                 {ok, KidToJWKMap} ->
+                    %% Some IdPs send max-age=0. Without a floor the keys
+                    %% expire before the lookup that fetched them.
                     Expiry = FetchTime +
                         (case MaxAge of
                              undefined -> ?JWKS_DEFAULT_EXPIRY_S;
-                             Age -> Age
+                             Age -> max(Age, ?JWKS_MIN_EXPIRY_S)
                          end) * 1000,
                     cache_jwks_entry(IssuerProps, KidToJWKMap, Expiry);
                 {error, _} ->
@@ -763,7 +766,9 @@ cache_lookup_test() ->
                                                                <<"test1">>),
         ?assert(is_map(KidToJWKMap)),
         ?assertEqual(2, maps:size(KidToJWKMap)),
-        ?assert(Expiry > StartTime),
+        %% A max-age above the floor is used as is
+        ?assert(Expiry >= StartTime + 21600 * 1000),
+        ?assert(Expiry =< erlang:monotonic_time(millisecond) + 21600 * 1000),
 
         %% First lookup should fetch
         {ok, JWK1} = get_jwk(IssuerProps, <<"key1">>),
@@ -794,7 +799,26 @@ cache_lookup_test() ->
         {ok, JWK2} = get_jwk(IssuerProps, <<"key2">>),
         {ok, JWK1} = get_jwk(IssuerProps, <<"key1">>),
         ?assertEqual(meck:num_calls(rest_utils, request, ['_', '_', '_', '_',
-                                                          '_', '_', '_']), 3)
+                                                          '_', '_', '_']), 3),
+
+        %% max-age=0 is raised to the floor, so the fetched keys are usable
+        meck:expect(rest_utils, request,
+                    fun(<<"jwks">>, _, "GET", [], <<>>, 5000, _) ->
+                            {ok, {{200, []},
+                                  [{"cache-control",
+                                    "no-cache,must-revalidate,max-age=0,"
+                                    "no-store,private"}], TestJWKS}}
+                    end),
+        meck:reset(rest_utils),
+        jwt_cache ! settings_update,
+        gen_server:call(jwt_cache, sync, 1000),
+        ZeroAgeFetch = erlang:monotonic_time(millisecond),
+        {ok, JWK1} = get_jwk(IssuerProps, <<"key1">>),
+        {ok, JWK2} = get_jwk(IssuerProps, <<"key2">>),
+        ?assertEqual(1, meck:num_calls(rest_utils, request, '_')),
+        [{_, #jwks_cache_entry{expiry = ZeroAgeExpiry}}] =
+            ets:lookup(?MODULE, <<"test1">>),
+        ?assert(ZeroAgeExpiry >= ZeroAgeFetch + 5 * 60 * 1000)
     after
         meck:unload(jwt_issuer),
         meck:unload(chronicle_kv),
