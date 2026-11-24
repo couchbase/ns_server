@@ -372,11 +372,16 @@ normalize_decoded(V) ->
 %% objects need to change.
 -spec audit_map_to_proplist(AuditMap :: map()) -> auth_audit_props().
 audit_map_to_proplist(AuditMap) ->
-    lists:sort(maps:fold(
-                 fun(Claim, Value, Acc) ->
-                         [{audit_claim_name(Claim),
-                           normalize_decoded(Value)} | Acc]
-                 end, [], AuditMap)).
+    {Custom, Standard} =
+        lists:partition(fun({Claim, _}) -> is_binary(Claim) end,
+                        maps:to_list(AuditMap)),
+    Props = [{audit_claim_name(Claim), normalize_decoded(Value)} ||
+                {Claim, Value} <- Standard],
+    case Custom of
+        [] -> lists:sort(Props);
+        _ -> lists:sort([{<<"custom_claims">>,
+                          normalize_decoded(maps:from_list(Custom))} | Props])
+    end.
 
 -spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) ->
           auth_audit_props().
@@ -1235,16 +1240,20 @@ audit_map_to_proplist_test() ->
                   {<<"sub">>, <<"Алиса"/utf8>>}
                  ], lists:sort(audit_map_to_proplist(NonAscii))),
 
-    %% A custom claim holds the decoded JSON, so an array of small integers
-    %% stays an array. Guessing by shape would have made it a string.
+    %% Custom claims are audited under custom_claims, so one named like a
+    %% field of the audit record cannot replace it. A custom claim holds the
+    %% decoded JSON.
     Custom = #{
+               sub => <<"test-user">>,
                <<"port_list">> => [101, 110, 103],
-               <<"tenant">> => <<"acme">>
+               <<"remote">> => <<"6.6.6.6">>
               },
+    [{<<"custom_claims">>, {CustomProps}}, {<<"sub">>, <<"test-user">>}] =
+        audit_map_to_proplist(Custom),
     ?assertEqual([
                   {<<"port_list">>, [101, 110, 103]},
-                  {<<"tenant">>, <<"acme">>}
-                 ], lists:sort(audit_map_to_proplist(Custom))),
+                  {<<"remote">>, <<"6.6.6.6">>}
+                 ], lists:sort(CustomProps)),
 
     Nested = #{
                <<"user_metadata">> =>
@@ -1257,11 +1266,10 @@ audit_map_to_proplist_test() ->
                                         <<"age">> => 30,
                                         <<"active">> => true
                                        }
-                                 }
+                    }
               },
-    Actual = audit_map_to_proplist(Nested),
-    ?assertEqual(1, length(Actual)),
-    [{<<"user_metadata">>, UserMetadata}] = Actual,
+    [{<<"custom_claims">>, {[{<<"user_metadata">>, UserMetadata}]}}] =
+        audit_map_to_proplist(Nested),
     {UserMetadataKVs} = UserMetadata,
     ?assertEqual(2, length(UserMetadataKVs)),
 
@@ -1289,10 +1297,11 @@ audit_map_to_proplist_utf8_test() ->
                <<"профиль"/utf8>> => #{<<"name">> => <<"Алекс"/utf8>>},
                <<"codes">> => [1, 2, 3]
               },
+    [{<<"custom_claims">>, {Props}}] = audit_map_to_proplist(Custom),
     ?assertEqual([
                   {<<"codes">>, [1, 2, 3]},
                   {<<"профиль"/utf8>>, {[{<<"name">>, <<"Алекс"/utf8>>}]}}
-                 ], lists:sort(audit_map_to_proplist(Custom))).
+                 ], lists:sort(Props)).
 
 custom_claims_validation_test_() ->
     [
