@@ -19,7 +19,7 @@
  {<<"jose">>,{pkg,<<"jose">>,<<"1.11.12">>},0},
  {<<"oidcc">>,
   {git,"https://github.com/couchbasedeps/oidcc.git",
-       {ref,"84c526c3ae1f2ea7d44eb5742f7557ec0adaaaf4"}},
+       {ref,"2e967f9251805cfb01fb8c7f7aa77f0369667e4a"}},
   0},
  {<<"ranch">>,{pkg,<<"ranch">>,<<"1.8.0">>},1},
  {<<"telemetry">>,{pkg,<<"telemetry">>,<<"1.4.2">>},1},
