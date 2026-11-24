@@ -496,10 +496,8 @@ class OIDCTests(testlib.BaseTestSet):
     # =========================================================================
 
     @staticmethod
-    def _load_jwks():
-        jwks_path = os.path.join(
-            testlib.get_resources_dir(), "jwt", "jwks.json"
-        )
+    def _load_jwks(name="jwks.json"):
+        jwks_path = os.path.join(testlib.get_resources_dir(), "jwt", name)
         with open(jwks_path, "r") as f:
             return json.load(f)
 
@@ -531,7 +529,7 @@ class OIDCTests(testlib.BaseTestSet):
             "audienceHandling": "any",
             "subClaim": "sub",
             "audClaim": "aud",
-            "audiences": [oidc_settings["clientId"]],
+            "audiences": ["bearer-audience"],
             "signingAlgorithm": "RS256",
             "jitProvisioning": True,
             "publicKeySource": public_key_source,
@@ -1046,7 +1044,19 @@ class OIDCTests(testlib.BaseTestSet):
             self._configure_with_provider(node, provider)
             session = requests.Session()
             self._oidc_ui_login(node, provider.issuer, session)
-            self._oidc_ui_logout(node, session, provider)
+            r = self._oidc_ui_logout(node, session, provider)
+
+            # The ID token's aud is the client id, which is not among the
+            # issuer's audiences, so it is not a bearer credential.
+            query = urllib.parse.urlparse(r.headers["Location"]).query
+            id_token = urllib.parse.parse_qs(query)["id_token_hint"][0]
+            testlib.get_fail(
+                node,
+                "/pools/default",
+                expected_code=401,
+                headers={"Authorization": f"Bearer {id_token}"},
+                auth=None,
+            )
 
     def oidc_callback_form_post_test(self):
         """The callback is served on POST as well as on GET, for an IdP using
@@ -1199,8 +1209,23 @@ class OIDCTests(testlib.BaseTestSet):
         node = self.cluster.connected_nodes[0]
         jwks = self._load_jwks()
 
+        # The issuer's own keys are for bearer tokens. They are set to a key
+        # the provider does not sign with, and login must still succeed.
+        rotated = self._load_jwks("jwks_rotated.json")
+        bearer_jwks = {
+            "keys": [k for k in rotated["keys"] if k["kid"] == "rotated-key"]
+        }
+
         with MockOIDCProvider(jwks, "oidc-client", "oidc-secret") as provider:
-            self._configure_with_provider(node, provider, use_discovery=True)
+            self._configure_with_provider(
+                node,
+                provider,
+                use_discovery=True,
+                issuer_overrides={
+                    "publicKeySource": "jwks",
+                    "jwks": bearer_jwks,
+                },
+            )
             session = requests.Session()
             testlib.poll_for_condition(
                 lambda: self._oidc_ui_login(node, provider.issuer, session),
