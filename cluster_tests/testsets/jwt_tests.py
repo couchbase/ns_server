@@ -1229,8 +1229,9 @@ class JWTTests(testlib.BaseTestSet):
                 f"aud audited as {event['aud']!r}"
             assert event["groups"] == expected_groups, \
                 f"groups audited as {event['groups']!r}"
-            assert event["displayName"] == display_name, \
-                f"displayName audited as {event['displayName']!r}"
+            custom = event["custom_claims"]
+            assert custom["displayName"] == display_name, \
+                f"displayName audited as {custom['displayName']!r}"
 
         # A forbidden request records the claims of the token that was used.
         # Neither mapped group grants security admin, so reading the JWT

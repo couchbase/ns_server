@@ -31,6 +31,7 @@
               "jti": "",
               "groups": "",
               "token_roles": "",
+              "custom_claims": {},
               "mapped_groups": "",
               "mapped_roles": "",
               "expiry_with_leeway": 0
@@ -62,7 +63,8 @@
               "iat": 0,
               "jti": "",
               "groups": "",
-              "token_roles": ""
+              "token_roles": "",
+              "custom_claims": {}
           }
       },
       {
@@ -1396,7 +1398,8 @@
             "iat": 0,
             "jti": "",
             "groups": "",
-            "token_roles": ""
+            "token_roles": "",
+            "custom_claims": {}
         }
       },
       {
@@ -1618,6 +1621,7 @@
             "jti": "",
             "groups": "",
             "token_roles": "",
+            "custom_claims": {},
             "mapped_groups": "",
             "mapped_roles": "",
             "expiry_with_leeway": ""
@@ -2559,6 +2563,7 @@
             "jti": "",
             "groups": "",
             "token_roles": "",
+            "custom_claims": {},
             "mapped_groups": "",
             "mapped_roles": "",
             "expiry_with_leeway": ""

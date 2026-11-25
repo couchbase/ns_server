@@ -32,7 +32,8 @@
 -module(jwt_auth).
 
 %% API
--export([authenticate/1, get_standard_claim_names/0]).
+-export([authenticate/1, authenticate_id_token/2,
+         get_standard_claim_names/0]).
 
 
 -include("ns_common.hrl").
@@ -69,6 +70,37 @@
           {ok, #authn_res{}, auth_audit_props()} |
           {error, CallerReason :: binary(), auth_audit_props()}.
 authenticate(Token) ->
+    authenticate(Token, issuers(), fun validate_signature/3).
+
+%% Authenticates an ID token at the end of an OIDC login.
+%%
+%% The token must come from oidcc, which has already validated it as OIDC
+%% Core 3.1.3.7 requires. oidcc checks the signature, see menelaus_web_oidc
+%% for where its keys come from. It checks that iss is the provider and that
+%% aud contains the client id. It also checks azp, exp, nbf and the nonce.
+%%
+%% This function applies the rest of the issuer's settings, such as the user
+%% and role mapping. aud is checked again, against oidc_settings.client_id.
+%%
+%% The issuer's bearer token settings are not used. Those are audiences,
+%% audience_handling, aud_claim, signing_algorithm and the key settings. If
+%% audiences were used, any ID token would also pass as a bearer token.
+-spec authenticate_id_token(Token :: string(), IssuerName :: binary()) ->
+          {ok, #authn_res{}, auth_audit_props()} |
+          {error, CallerReason :: binary(), auth_audit_props()}.
+authenticate_id_token(Token, IssuerName) ->
+    Issuers =
+        case maps:find(IssuerName, issuers()) of
+            {ok, #{oidc_settings := #{client_id := ClientId}} = Props} ->
+                #{IssuerName => Props#{aud_claim => <<"aud">>,
+                                       audience_handling => any,
+                                       audiences => [ClientId]}};
+            _ ->
+                #{}
+        end,
+    authenticate(Token, Issuers, fun (_TokenBin, _Claims, _IssProps) -> ok end).
+
+issuers() ->
     Persisted =
         case menelaus_web_jwt:get_settings() of
             {ok, #{enabled := true, issuers := Issuers}} ->
@@ -76,11 +108,13 @@ authenticate(Token) ->
             _ ->
                 #{}
         end,
+    maps:merge(Persisted, jwt_issuer:settings()).
+
+authenticate(Token, Settings, ValidateSignature) ->
     TokenBin = list_to_binary(Token),
-    Settings = maps:merge(Persisted, jwt_issuer:settings()),
     case extract_claims(TokenBin, Settings) of
         {ok, Claims, IssProps} ->
-            validate_token(TokenBin, Claims, IssProps);
+            validate_token(TokenBin, Claims, IssProps, ValidateSignature);
         {error, Reason} ->
             {error, ?UNVERIFIED_TOKEN_REASON, audit_failure(#{}, Reason)}
     end.
@@ -338,11 +372,16 @@ normalize_decoded(V) ->
 %% objects need to change.
 -spec audit_map_to_proplist(AuditMap :: map()) -> auth_audit_props().
 audit_map_to_proplist(AuditMap) ->
-    lists:sort(maps:fold(
-                 fun(Claim, Value, Acc) ->
-                         [{audit_claim_name(Claim),
-                           normalize_decoded(Value)} | Acc]
-                 end, [], AuditMap)).
+    {Custom, Standard} =
+        lists:partition(fun({Claim, _}) -> is_binary(Claim) end,
+                        maps:to_list(AuditMap)),
+    Props = [{audit_claim_name(Claim), normalize_decoded(Value)} ||
+                {Claim, Value} <- Standard],
+    case Custom of
+        [] -> lists:sort(Props);
+        _ -> lists:sort([{<<"custom_claims">>,
+                          normalize_decoded(maps:from_list(Custom))} | Props])
+    end.
 
 -spec audit_success(Claims :: map(), AuthnRes :: #authn_res{}) ->
           auth_audit_props().
@@ -358,11 +397,13 @@ audit_failure(Claims, Reason) ->
      audit_map_to_proplist(Claims)].
 
 -spec validate_token(TokenBin :: binary(), Claims :: map(),
-                     IssProps :: map()) ->
+                     IssProps :: map(),
+                     ValidateSignature :: fun((binary(), map(), map()) ->
+                                                     ok | {error, binary()})) ->
           {ok, #authn_res{}, auth_audit_props()} |
           {error, binary(), auth_audit_props()}.
-validate_token(TokenBin, Claims, IssProps) ->
-    case validate_signature(TokenBin, Claims, IssProps) of
+validate_token(TokenBin, Claims, IssProps, ValidateSignature) ->
+    case ValidateSignature(TokenBin, Claims, IssProps) of
         ok ->
             case validate_payload(Claims, IssProps) of
                 {ok, AuthnRes} ->
@@ -1045,12 +1086,15 @@ extract_claims_test_() ->
 
 authenticate_caller_reason_test_() ->
     Secret = <<"0123456789abcdef0123456789abcdef">>,
-    Issuers = #{<<"test-issuer">> =>
-                    #{signing_algorithm => 'HS256',
-                      shared_secret => Secret,
-                      expiry_leeway_s => 0,
-                      audience_handling => any,
-                      audiences => [<<"test-aud">>]}},
+    Issuer = #{signing_algorithm => 'HS256',
+               shared_secret => Secret,
+               expiry_leeway_s => 0,
+               audience_handling => any,
+               audiences => [<<"test-aud">>]},
+    Oidc = Issuer#{oidc_settings => #{client_id => <<"client">>}},
+    Issuers = #{<<"test-issuer">> => Oidc,
+                <<"second-issuer">> => Oidc,
+                <<"bearer-issuer">> => Issuer},
     Sign =
         fun(Key, Payload) ->
                 JWT = jose_jwt:sign(jose_jwk:from_oct(Key),
@@ -1068,12 +1112,15 @@ authenticate_caller_reason_test_() ->
         end,
     {setup,
      fun() ->
-             meck:new([menelaus_web_jwt, jwt_issuer], [passthrough]),
+             meck:new([menelaus_web_jwt, jwt_issuer, menelaus_auth],
+                      [passthrough]),
              meck:expect(menelaus_web_jwt, get_settings,
                          fun() ->
                                  {ok, #{enabled => true, issuers => Issuers}}
                          end),
-             meck:expect(jwt_issuer, settings, fun() -> #{} end)
+             meck:expect(jwt_issuer, settings, fun() -> #{} end),
+             meck:expect(menelaus_auth, is_external_auth_allowed,
+                         fun(_) -> true end)
      end,
      fun(_) -> meck:unload() end,
      [{"unknown issuer",
@@ -1087,7 +1134,41 @@ authenticate_caller_reason_test_() ->
       {"expired after the signature verified",
        ?_assertEqual(
           {<<"Token has expired">>, <<"Token has expired">>},
-          Reasons(Sign(Secret, Payload#{<<"exp">> => 1})))}]}.
+          Reasons(Sign(Secret, Payload#{<<"exp">> => 1})))},
+      {"ID token is checked against the client id, not the audiences",
+       fun() ->
+               IdToken = Sign(Secret, Payload#{<<"aud">> => <<"client">>}),
+               ?assertMatch({ok, _, _},
+                            authenticate_id_token(IdToken, <<"test-issuer">>)),
+               ?assertMatch({error, <<"Invalid audience">>, _},
+                            authenticate(IdToken)),
+               ?assertMatch({error, <<"Invalid audience">>, _},
+                            authenticate_id_token(Sign(Secret, Payload),
+                                                  <<"test-issuer">>))
+       end},
+      {"ID token signature is left to oidcc",
+       fun() ->
+               IdToken = Sign(<<"another key, also 32 bytes long">>,
+                              Payload#{<<"aud">> => <<"client">>}),
+               ?assertMatch({ok, _, _},
+                            authenticate_id_token(IdToken, <<"test-issuer">>)),
+               ?assertMatch({error, <<"Invalid token">>, _},
+                            authenticate(IdToken))
+       end},
+      {"ID token from an issuer other than the login's",
+       ?_assertMatch(
+          {error, <<"Invalid token">>, _},
+          authenticate_id_token(
+            Sign(Secret, Payload#{<<"iss">> => <<"second-issuer">>,
+                                  <<"aud">> => <<"client">>}),
+            <<"test-issuer">>))},
+      {"ID token from an issuer not configured for OIDC login",
+       ?_assertMatch(
+          {error, <<"Invalid token">>, _},
+          authenticate_id_token(
+            Sign(Secret, Payload#{<<"iss">> => <<"bearer-issuer">>,
+                                  <<"aud">> => <<"client">>}),
+            <<"bearer-issuer">>))}]}.
 
 get_claim_name_test() ->
     Props = #{sub_claim => <<"username">>,
@@ -1159,16 +1240,20 @@ audit_map_to_proplist_test() ->
                   {<<"sub">>, <<"Алиса"/utf8>>}
                  ], lists:sort(audit_map_to_proplist(NonAscii))),
 
-    %% A custom claim holds the decoded JSON, so an array of small integers
-    %% stays an array. Guessing by shape would have made it a string.
+    %% Custom claims are audited under custom_claims, so one named like a
+    %% field of the audit record cannot replace it. A custom claim holds the
+    %% decoded JSON.
     Custom = #{
+               sub => <<"test-user">>,
                <<"port_list">> => [101, 110, 103],
-               <<"tenant">> => <<"acme">>
+               <<"remote">> => <<"6.6.6.6">>
               },
+    [{<<"custom_claims">>, {CustomProps}}, {<<"sub">>, <<"test-user">>}] =
+        audit_map_to_proplist(Custom),
     ?assertEqual([
                   {<<"port_list">>, [101, 110, 103]},
-                  {<<"tenant">>, <<"acme">>}
-                 ], lists:sort(audit_map_to_proplist(Custom))),
+                  {<<"remote">>, <<"6.6.6.6">>}
+                 ], lists:sort(CustomProps)),
 
     Nested = #{
                <<"user_metadata">> =>
@@ -1181,11 +1266,10 @@ audit_map_to_proplist_test() ->
                                         <<"age">> => 30,
                                         <<"active">> => true
                                        }
-                                 }
+                    }
               },
-    Actual = audit_map_to_proplist(Nested),
-    ?assertEqual(1, length(Actual)),
-    [{<<"user_metadata">>, UserMetadata}] = Actual,
+    [{<<"custom_claims">>, {[{<<"user_metadata">>, UserMetadata}]}}] =
+        audit_map_to_proplist(Nested),
     {UserMetadataKVs} = UserMetadata,
     ?assertEqual(2, length(UserMetadataKVs)),
 
@@ -1213,10 +1297,11 @@ audit_map_to_proplist_utf8_test() ->
                <<"профиль"/utf8>> => #{<<"name">> => <<"Алекс"/utf8>>},
                <<"codes">> => [1, 2, 3]
               },
+    [{<<"custom_claims">>, {Props}}] = audit_map_to_proplist(Custom),
     ?assertEqual([
                   {<<"codes">>, [1, 2, 3]},
                   {<<"профиль"/utf8>>, {[{<<"name">>, <<"Алекс"/utf8>>}]}}
-                 ], lists:sort(audit_map_to_proplist(Custom))).
+                 ], lists:sort(Props)).
 
 custom_claims_validation_test_() ->
     [

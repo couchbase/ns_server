@@ -421,6 +421,10 @@ build_manual_provider_configuration(IssuerConfig) ->
         end_session_endpoint = EndSessionEndpoint
        }}.
 
+%% In discovery mode, oidcc takes the ID token keys and signing algorithms
+%% from the discovery document. In manual mode, oidc_settings does not
+%% contain them, so they come from the issuer's settings. An IdP usually signs
+%% its access and ID tokens with the same keys and algorithm.
 -spec build_manual_client_context(map()) ->
           {ok, oidcc_client_context:t()} | {error, term()}.
 build_manual_client_context(IssuerConfig) ->
@@ -603,7 +607,8 @@ handle_oidc_login_success(Req, IssuerName, Token) ->
     case Token of
         {oidcc_token, {oidcc_token_id, IdTokenBin, _Claims}, _Access, _Refresh,
          _Scope} when is_binary(IdTokenBin) ->
-            case jwt_auth:authenticate(binary_to_list(IdTokenBin)) of
+            case jwt_auth:authenticate_id_token(binary_to_list(IdTokenBin),
+                                                IssuerName) of
                 {ok, AuthnResJWT, Audit} ->
                     SessionId = menelaus_auth:new_session_id(),
                     %% Store the original ID token in the authn result so that
