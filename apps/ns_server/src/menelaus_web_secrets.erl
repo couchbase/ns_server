@@ -806,7 +806,7 @@ awskms_key_validators(CurSecretProps) ->
      validator:default(configFile, "", _),
      validate_optional_file(configFile, _),
      validator:integer(reqTimeoutMs, 1000, ?MAX_KMS_GO_TIMEOUT_MS, _),
-     validator:default(reqTimeoutMs, 30000, _),
+     validator:default(reqTimeoutMs, ?AWSKMS_DEFAULT_REQ_TIMEOUT_MS, _),
      validator:validate(fun (_) -> {error, "read only"} end, storedKeyIds, _),
      validator:string(profile, _),
      validator:default(profile, "", _)] ++
